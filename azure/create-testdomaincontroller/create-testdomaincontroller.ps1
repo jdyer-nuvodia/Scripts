@@ -187,6 +187,9 @@ if (-not $vm) {
     Write-Host "Time Zone: $($shutdownSchedule.properties.timeZoneId)"
     Write-Host "Target Resource ID: $($shutdownSchedule.properties.targetResourceId)"
 
+    # Debugging output
+    $shutdownSchedule | ConvertTo-Json -Depth 10 | Write-Host
+
     New-AzResource -ResourceId "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$resourceGroup/providers/microsoft.devtestlab/schedules/shutdown-computevm-$vmName" -Location $location -Properties $shutdownSchedule
 
     # Create PowerShell script for AD DS installation and configuration
