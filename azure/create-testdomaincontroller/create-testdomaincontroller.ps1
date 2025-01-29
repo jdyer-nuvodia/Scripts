@@ -9,6 +9,7 @@ $adminPassword = "TS=pGxB~8m^A~WH^[yB8"
 $domainName = "JB-TEST.local"
 $publicIpName = "$vmName-PublicIP"
 $storageAccountName = "jbteststorage0"
+$nsgName = "JB-TEST-NSG"
 
 # Function to wait for VM creation
 function Wait-ForVM {
@@ -79,6 +80,15 @@ if (-not $existingSubnet) {
     Write-Host "Subnet $subnetName already exists in virtual network $vnetName"
 }
 
+# Check if Network Security Group exists, create if it doesn't
+$nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName -ErrorAction SilentlyContinue
+if (-not $nsg) {
+    Write-Host "Creating Network Security Group $nsgName"
+    $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name $nsgName
+} else {
+    Write-Host "Network Security Group $nsgName already exists"
+}
+
 # Check if Network Interface exists
 $nicName = "$($vmName)VMNic"
 $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName -ErrorAction SilentlyContinue
@@ -141,7 +151,6 @@ if (-not $vm) {
     Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -VMName $vmName -CommandId 'RunPowerShellScript' -ScriptString $scriptBlock
 
     # Update NSG to allow traffic on port 10443
-    $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup
     Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
         -Name "Allow_RDP_10443" `
         -Description "Allow RDP" `
