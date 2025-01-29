@@ -181,6 +181,12 @@ if (-not $vm) {
         }
     }
 
+    Write-Host "Creating auto-shutdown schedule with the following properties:"
+    Write-Host "Location: $location"
+    Write-Host "Daily Recurrence Time: $($shutdownSchedule.properties.dailyRecurrence.time)"
+    Write-Host "Time Zone: $($shutdownSchedule.properties.timeZoneId)"
+    Write-Host "Target Resource ID: $($shutdownSchedule.properties.targetResourceId)"
+
     New-AzResource -ResourceId "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$resourceGroup/providers/microsoft.devtestlab/schedules/shutdown-computevm-$vmName" -Location $location -Properties $shutdownSchedule
 
     # Create PowerShell script for AD DS installation and configuration
