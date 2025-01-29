@@ -86,7 +86,7 @@ if (-not $nic) {
 }
 
 # Check if Public IP exists
-$publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction Stop
+$publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction SilentlyContinue
 if (-not $publicIp) {
     Write-Host "Creating public IP address $publicIpName"
     $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroup -Location $location -AllocationMethod Static -Sku Standard
