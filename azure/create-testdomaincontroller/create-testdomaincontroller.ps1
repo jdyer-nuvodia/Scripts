@@ -10,6 +10,8 @@ $domainName = "JB-TEST.local"
 $publicIpName = "$vmName-PublicIP"
 $storageAccountName = "jbteststorage0"
 $nsgName = "JB-TEST-NSG"
+$automationAccountName = "JB-TEST-Automation"
+$runbookName = "AutoShutdownRunbook"
 
 # Function to wait for VM creation
 function Wait-ForVM {
@@ -164,33 +166,41 @@ if (-not $vm) {
         -DestinationPortRange 10443
     $nsg | Set-AzNetworkSecurityGroup
 
-    # Set up auto-shutdown
-    $shutdownSchedule = @{
-        "location" = $location
-        "properties" = @{
-            "status" = "Enabled"
-            "taskType" = "ComputeVmShutdownTask"
-            "dailyRecurrence" = @{
-                "time" = "2100"
-            }
-            "timeZoneId" = "US Mountain Standard Time"
-            "notificationSettings" = @{
-                "status" = "Disabled"
-            }
-            "targetResourceId" = (Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName).Id
-        }
+    # Set up Azure Automation account
+    if (-not (Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction SilentlyContinue)) {
+        Write-Host "Creating Azure Automation account $automationAccountName"
+        New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $location
+    } else {
+        Write-Host "Azure Automation account $automationAccountName already exists"
     }
 
-    Write-Host "Creating auto-shutdown schedule with the following properties:"
-    Write-Host "Location: $location"
-    Write-Host "Daily Recurrence Time: $($shutdownSchedule.properties.dailyRecurrence.time)"
-    Write-Host "Time Zone: $($shutdownSchedule.properties.timeZoneId)"
-    Write-Host "Target Resource ID: $($shutdownSchedule.properties.targetResourceId)"
+    # Create the runbook for auto-shutdown
+    $runbookScript = @"
+workflow $runbookName {
+    param (
+        [string] \$resourceGroupName,
+        [string] \$vmName
+    )
 
-    # Debugging output
-    $shutdownSchedule | ConvertTo-Json -Depth 10 | Write-Host
+    \$connection = Get-AutomationConnection -Name AzureRunAsConnection
+    Add-AzAccount -ServicePrincipal -TenantId \$connection.TenantId -ApplicationId \$connection.ApplicationId -CertificateThumbprint \$connection.CertificateThumbprint
 
-    New-AzResource -ResourceId "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$resourceGroup/providers/microsoft.devtestlab/schedules/shutdown-computevm-$vmName" -Location $location -Properties $shutdownSchedule
+    Stop-AzVM -ResourceGroupName \$resourceGroupName -Name \$vmName -Force
+}
+"@
+
+    # Publish the runbook
+    Write-Host "Creating runbook $runbookName"
+    $runbook = New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow -Description "Auto-shutdown runbook for VMs" -LogProgress -LogVerbose
+    Set-AzAutomationRunbookContent -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Content $runbookScript
+    Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup
+
+    # Schedule the runbook
+    Write-Host "Scheduling runbook $runbookName"
+    $schedule = New-AzAutomationSchedule -AutomationAccountName $automationAccountName -ResourceGroupName $resourceGroup -Name "DailyShutdownSchedule" -StartTime (Get-Date).Date.AddHours(21) -DayInterval 1 -Description "Daily shutdown schedule"
+    Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -ResourceGroupName $resourceGroup -RunbookName $runbookName -ScheduleName $schedule.Name -Parameters @{ "resourceGroupName" = $resourceGroup; "vmName" = $vmName }
+
+    Write-Host "Auto-shutdown schedule created successfully."
 
     # Create PowerShell script for AD DS installation and configuration
     $script = @'
