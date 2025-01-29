@@ -19,7 +19,7 @@ function Wait-ForVM {
     )
     $timer = 0
     while ($timer -lt $Timeout) {
-        $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction Stop
+        $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction SilentlyContinue
         if ($vm) {
             return $true
         }
@@ -30,7 +30,7 @@ function Wait-ForVM {
 }
 
 # Check if resource group exists
-if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction Stop)) {
+if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction SilentlyContinue)) {
     Write-Host "Creating resource group $resourceGroup"
     New-AzResourceGroup -Name $resourceGroup -Location $location
 } else {
@@ -38,7 +38,7 @@ if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction Stop)) {
 }
 
 # Check if storage account exists, create if it doesn't
-$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction Stop
+$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction SilentlyContinue
 if (-not $storageAccount) {
     Write-Host "Creating storage account $storageAccountName"
     $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -Location $location -SkuName Standard_LRS
@@ -59,8 +59,7 @@ New-AzVirtualNetwork @vnet
 $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
 
 # Check if the subnet already exists before adding it
-$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction Stop
-
+$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction SilentlyContinue
 if (-not $existingSubnet) {
     Write-Host "Adding subnet $subnetName to virtual network $vnetName"
     Add-AzVirtualNetworkSubnetConfig `
@@ -100,7 +99,7 @@ $nic.IpConfigurations[0].PublicIpAddress = $publicIp
 Set-AzNetworkInterface -NetworkInterface $nic
 
 # Check if VM exists
-$vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction Stop
+$vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction SilentlyContinue
 if (-not $vm) {
     Write-Host "Creating VM $vmName"
 
