@@ -1,5 +1,5 @@
 # Directory you want to add to the PATH
-$rootPath = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts"
+$rootPath = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts"
 
 # Get all subdirectories recursively
 $subDirs = Get-ChildItem -Path $rootPath -Recurse -Directory

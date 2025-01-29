@@ -19,7 +19,7 @@ function Wait-ForVM {
     )
     $timer = 0
     while ($timer -lt $Timeout) {
-        $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction SilentlyContinue
+        $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction Stop
         if ($vm) {
             return $true
         }
@@ -30,7 +30,7 @@ function Wait-ForVM {
 }
 
 # Check if resource group exists
-if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction SilentlyContinue)) {
+if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction Stop)) {
     Write-Host "Creating resource group $resourceGroup"
     New-AzResourceGroup -Name $resourceGroup -Location $location
 } else {
@@ -38,7 +38,7 @@ if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction SilentlyContinue
 }
 
 # Check if storage account exists, create if it doesn't
-$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction SilentlyContinue
+$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction Stop
 if (-not $storageAccount) {
     Write-Host "Creating storage account $storageAccountName"
     $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -Location $location -SkuName Standard_LRS
@@ -59,7 +59,7 @@ New-AzVirtualNetwork @vnet
 $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
 
 # Check if the subnet already exists before adding it
-$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction SilentlyContinue
+$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction Stop
 
 if (-not $existingSubnet) {
     Write-Host "Adding subnet $subnetName to virtual network $vnetName"
@@ -86,7 +86,7 @@ if (-not $nic) {
 }
 
 # Check if Public IP exists
-$publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction SilentlyContinue
+$publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction Stop
 if (-not $publicIp) {
     Write-Host "Creating public IP address $publicIpName"
     $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroup -Location $location -AllocationMethod Static -Sku Standard
@@ -95,18 +95,18 @@ if (-not $publicIp) {
 }
 
 # Connect the public IP to the VMNic
-$nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic"
+$nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic" -ErrorAction Stop
 $nic.IpConfigurations[0].PublicIpAddress = $publicIp
 Set-AzNetworkInterface -NetworkInterface $nic
 
 # Check if VM exists
-$vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction SilentlyContinue
+$vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction Stop
 if (-not $vm) {
     Write-Host "Creating VM $vmName"
-    
+
     # Create VM Configuration
     $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_B2s"
-    $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential (New-Object System.Management.Automation.PSCredential($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force))) -ProvisionVMAgent -EnableAutoUpdate
+    $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential (New-Object System.Management.Automation.PSCredential($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)))
     $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2022-Datacenter" -Version "latest"
     $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
     $vmConfig = Set-AzVMOSDisk -VM $vmConfig -Windows -Caching ReadWrite -CreateOption FromImage -DiskSizeInGB 128 -Name "$($vmName)OSDisk"
@@ -162,7 +162,7 @@ if (-not $vm) {
             "targetResourceId" = (Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName).Id
         }
     }
-    New-AzResource -ResourceId "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$resourceGroup/providers/microsoft.devtestlab/schedules/shutdown-computevm-$vmName" -Location $location -Properties $shutdownSchedule.properties -Force
+    New-AzResource -ResourceId "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$resourceGroup/providers/microsoft.devtestlab/schedules/shutdown-computevm-$vmName" -Location $location -Properties $shutdownSchedule
 
     # Create PowerShell script for AD DS installation and configuration
     $script = @'
