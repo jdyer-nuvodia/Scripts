@@ -46,17 +46,23 @@ if (-not $storageAccount) {
     Write-Host "Storage account $storageAccountName already exists"
 }
 
-# Create the virtual network
-$vnet = @{
-    ResourceGroupName = $resourceGroup
-    Location = $location
-    Name = $vnetName
-    AddressPrefix = "10.0.0.0/16"
-}
-New-AzVirtualNetwork @vnet
+# Check if virtual network exists, create if it doesn't
+$virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
+if (-not $virtualNetwork) {
+    Write-Host "Creating virtual network $vnetName"
+    $vnet = @{
+        ResourceGroupName = $resourceGroup
+        Location = $location
+        Name = $vnetName
+        AddressPrefix = "10.0.0.0/16"
+    }
+    New-AzVirtualNetwork @vnet
 
-# Retrieve the created virtual network object
-$virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
+    # Retrieve the created virtual network object
+    $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
+} else {
+    Write-Host "Virtual network $vnetName already exists"
+}
 
 # Check if the subnet already exists before adding it
 $existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction SilentlyContinue
