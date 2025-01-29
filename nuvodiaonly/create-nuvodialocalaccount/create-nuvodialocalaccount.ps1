@@ -1,0 +1,1 @@
+New-LocalUser -Name nuvodialocal -Password (ConvertTo-SecureString "Nuvodi@20!3" -AsPlainText -Force) -FullName "Nuvodia Local" -Description "Nuvodia Local Admin Account" 

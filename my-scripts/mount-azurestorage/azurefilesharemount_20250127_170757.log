@@ -1,0 +1,319 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20250127170757
+Username: LT-JBDYER\Nuvodialocal
+RunAs User: LT-JBDYER\Nuvodialocal
+Configuration Name: 
+Machine: LT-JBDYER (Microsoft Windows NT 10.0.22631.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -EncodedCommand IwAgAEUAbgBhAGIAbABlACAAdgBlAHIAYgBvAHMAZQAgAG8AdQB0AHAAdQB0AA0ACgAkAFYAZQByAGIAbwBzAGUAUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAiAEMAbwBuAHQAaQBuAHUAZQAiAA0ACgANAAoAIwAgAFMAdABhAHIAdAAgAGwAbwBnAGcAaQBuAGcADQAKACQAbABvAGcARgBpAGwAZQAgAD0AIAAiAEMAOgBcAFUAcwBlAHIAcwBcAGoAZAB5AGUAcgBcAE8AbgBlAEQAcgBpAHYAZQAgAC0AIABOAHUAdgBvAGQAaQBhAFwARABvAGMAdQBtAGUAbgB0AHMAXABXAGkAbgBkAG8AdwBzAFAAbwB3AGUAcgBTAGgAZQBsAGwAXABTAGMAcgBpAHAAdABzAFwAMQBNAHkAIABTAGMAcgBpAHAAdABzAFwATQBvAHUAbgB0AC0AQQB6AHUAcgBlAFMAdABvAHIAYQBnAGUAXABBAHoAdQByAGUARgBpAGwAZQBTAGgAYQByAGUATQBvAHUAbgB0AF8AJAAoAEcAZQB0AC0ARABhAHQAZQAgAC0ARgBvAHIAbQBhAHQAIAAnAHkAeQB5AHkATQBNAGQAZABfAEgASABtAG0AcwBzACcAKQAuAGwAbwBnACIADQAKAFMAdABhAHIAdAAtAFQAcgBhAG4AcwBjAHIAaQBwAHQAIAAtAFAAYQB0AGgAIAAkAGwAbwBnAEYAaQBsAGUAIAAtAEEAcABwAGUAbgBkAA0ACgANAAoAdAByAHkAIAB7AA0ACgAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiAFMAYwByAGkAcAB0ACAAcwB0AGEAcgB0AGUAZAAgAGEAdAAgACQAKABHAGUAdAAtAEQAYQB0AGUAKQAiAA0ACgANAAoAIAAgACAAIAAjACAAUwBwAGUAYwBpAGYAeQAgAHQAaABlACAAbgBlAHQAdwBvAHIAawAgAGkAbgB0AGUAcgBmAGEAYwBlACAAdABvACAAdQBzAGUADQAKACAAIAAgACAAJABpAG4AdABlAHIAZgBhAGMAZQBUAG8AVQBzAGUAIAA9ACAAIgBFAHQAaABlAHIAbgBlAHQAIAA0ACIADQAKACAAIAAgACAAVwByAGkAdABlAC0AVgBlAHIAYgBvAHMAZQAgACIAUwBwAGUAYwBpAGYAaQBlAGQAIABpAG4AdABlAHIAZgBhAGMAZQA6ACAAJABpAG4AdABlAHIAZgBhAGMAZQBUAG8AVQBzAGUAIgANAAoADQAKACAAIAAgACAAIwAgAEcAZQB0ACAAYQBsAGwAIABuAGUAdAB3AG8AcgBrACAAYQBkAGEAcAB0AGUAcgBzAA0ACgAgACAAIAAgACQAYQBsAGwAQQBkAGEAcAB0AGUAcgBzACAAPQAgAEcAZQB0AC0ATgBlAHQAQQBkAGEAcAB0AGUAcgANAAoAIAAgACAAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgBBAGwAbAAgAG4AZQB0AHcAbwByAGsAIABhAGQAYQBwAHQAZQByAHMAOgAiAA0ACgAgACAAIAAgACQAYQBsAGwAQQBkAGEAcAB0AGUAcgBzACAAfAAgAEYAbwByAEUAYQBjAGgALQBPAGIAagBlAGMAdAAgAHsAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgAgACAAJAAoACQAXwAuAE4AYQBtAGUAKQAgAC0AIAAkACgAJABfAC4AUwB0AGEAdAB1AHMAKQAiACAAfQANAAoADQAKACAAIAAgACAAIwAgAEcAZQB0ACAAdABoAGUAIABzAHAAZQBjAGkAZgBpAGUAZAAgAG4AZQB0AHcAbwByAGsAIABpAG4AdABlAHIAZgBhAGMAZQANAAoAIAAgACAAIAAkAG4AaQBjACAAPQAgAEcAZQB0AC0ATgBlAHQASQBQAEMAbwBuAGYAaQBnAHUAcgBhAHQAaQBvAG4AIAB8ACAAVwBoAGUAcgBlAC0ATwBiAGoAZQBjAHQAIAB7ACAADQAKACAAIAAgACAAIAAgACAAIAAkAF8ALgBJAG4AdABlAHIAZgBhAGMAZQBBAGwAaQBhAHMAIAAtAGUAcQAgACQAaQBuAHQAZQByAGYAYQBjAGUAVABvAFUAcwBlACAALQBhAG4AZAAgAA0ACgAgACAAIAAgACAAIAAgACAAJABfAC4ASQBQAHYANABEAGUAZgBhAHUAbAB0AEcAYQB0AGUAdwBhAHkAIAAtAG4AZQAgACQAbgB1AGwAbAAgAC0AYQBuAGQAIAANAAoAIAAgACAAIAAgACAAIAAgACQAXwAuAE4AZQB0AEEAZABhAHAAdABlAHIALgBTAHQAYQB0AHUAcwAgAC0AZQBxACAAIgBVAHAAIgAgAA0ACgAgACAAIAAgAH0ADQAKAA0ACgAgACAAIAAgAGkAZgAgACgALQBuAG8AdAAgACQAbgBpAGMAKQAgAHsADQAKACAAIAAgACAAIAAgACAAIAB0AGgAcgBvAHcAIAAiAFMAcABlAGMAaQBmAGkAZQBkACAAaQBuAHQAZQByAGYAYQBjAGUAIAAnACQAaQBuAHQAZQByAGYAYQBjAGUAVABvAFUAcwBlACcAIABuAG8AdAAgAGYAbwB1AG4AZAAgAG8AcgAgAG4AbwB0ACAAaQBuACAAYQAgAHYAYQBsAGkAZAAgAHMAdABhAHQAZQAuACIADQAKACAAIAAgACAAfQANAAoADQAKACAAIAAgACAAVwByAGkAdABlAC0AVgBlAHIAYgBvAHMAZQAgACIAUwBlAGwAZQBjAHQAZQBkACAAaQBuAHQAZQByAGYAYQBjAGUAIABkAGUAdABhAGkAbABzADoAIgANAAoAIAAgACAAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgAgACAATgBhAG0AZQA6ACAAJAAoACQAbgBpAGMALgBJAG4AdABlAHIAZgBhAGMAZQBBAGwAaQBhAHMAKQAiAA0ACgAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiACAAIABJAFAAIABBAGQAZAByAGUAcwBzADoAIAAkACgAJABuAGkAYwAuAEkAUAB2ADQAQQBkAGQAcgBlAHMAcwAuAEkAUABBAGQAZAByAGUAcwBzACkAIgANAAoAIAAgACAAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgAgACAARABlAGYAYQB1AGwAdAAgAEcAYQB0AGUAdwBhAHkAOgAgACQAKAAkAG4AaQBjAC4ASQBQAHYANABEAGUAZgBhAHUAbAB0AEcAYQB0AGUAdwBhAHkALgBOAGUAeAB0AEgAbwBwACkAIgANAAoADQAKACAAIAAgACAAVwByAGkAdABlAC0ASABvAHMAdAAgACIAVABlAHMAdABpAG4AZwAgAGMAbwBuAG4AZQBjAHQAaQBvAG4AIABvAG4AIABpAG4AdABlAHIAZgBhAGMAZQAgACQAKAAkAG4AaQBjAC4ASQBuAHQAZQByAGYAYQBjAGUAQQBsAGkAYQBzACkALgAuAC4AIgANAAoADQAKACAAIAAgACAAIwAgAFQAZQBzAHQAIAB0AGgAZQAgAGMAbwBuAG4AZQBjAHQAaQBvAG4AIAB0AGgAcgBvAHUAZwBoACAAdABoAGUAIABzAHAAZQBjAGkAZgBpAGUAZAAgAG4AZQB0AHcAbwByAGsAIABpAG4AdABlAHIAZgBhAGMAZQANAAoAIAAgACAAIAAkAGMAbwBuAG4AZQBjAHQAVABlAHMAdABSAGUAcwB1AGwAdAAgAD0AIABUAGUAcwB0AC0ATgBlAHQAQwBvAG4AbgBlAGMAdABpAG8AbgAgAC0AQwBvAG0AcAB1AHQAZQByAE4AYQBtAGUAIABqAGIAdABlAHMAdABzAHQAbwByAGEAZwBlADAALgBmAGkAbABlAC4AYwBvAHIAZQAuAHcAaQBuAGQAbwB3AHMALgBuAGUAdAAgAC0AUABvAHIAdAAgADQANAA1ACAALQBJAG4AdABlAHIAZgBhAGMAZQBBAGwAaQBhAHMAIAAkAG4AaQBjAC4ASQBuAHQAZQByAGYAYQBjAGUAQQBsAGkAYQBzACAALQBXAGEAcgBuAGkAbgBnAEEAYwB0AGkAbwBuACAAUwBpAGwAZQBuAHQAbAB5AEMAbwBuAHQAaQBuAHUAZQANAAoAIAAgACAAIAANAAoAIAAgACAAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgBDAG8AbgBuAGUAYwB0AGkAbwBuACAAdABlAHMAdAAgAHIAZQBzAHUAbAB0ADoAIgANAAoAIAAgACAAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgAgACAAVABDAFAAIAB0AGUAcwB0ACAAcwB1AGMAYwBlAGUAZABlAGQAOgAgACQAKAAkAGMAbwBuAG4AZQBjAHQAVABlAHMAdABSAGUAcwB1AGwAdAAuAFQAYwBwAFQAZQBzAHQAUwB1AGMAYwBlAGUAZABlAGQAKQAiAA0ACgAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiACAAIABQAGkAbgBnACAAcwB1AGMAYwBlAGUAZABlAGQAOgAgACQAKAAkAGMAbwBuAG4AZQBjAHQAVABlAHMAdABSAGUAcwB1AGwAdAAuAFAAaQBuAGcAUwB1AGMAYwBlAGUAZABlAGQAKQAiAA0ACgAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiACAAIABOAGEAbQBlACAAcgBlAHMAbwBsAHUAdABpAG8AbgAgAHMAdQBjAGMAZQBlAGQAZQBkADoAIAAkACgAJABjAG8AbgBuAGUAYwB0AFQAZQBzAHQAUgBlAHMAdQBsAHQALgBOAGEAbQBlAFIAZQBzAG8AbAB1AHQAaQBvAG4AUwB1AGMAYwBlAGUAZABlAGQAKQAiAA0ACgANAAoAIAAgACAAIABpAGYAIAAoACQAYwBvAG4AbgBlAGMAdABUAGUAcwB0AFIAZQBzAHUAbAB0AC4AVABjAHAAVABlAHMAdABTAHUAYwBjAGUAZQBkAGUAZAApACAAewANAAoAIAAgACAAIAAgACAAIAAgAFcAcgBpAHQAZQAtAEgAbwBzAHQAIAAiAEMAbwBuAG4AZQBjAHQAaQBvAG4AIAB0AG8AIABqAGIAdABlAHMAdABzAHQAbwByAGEAZwBlADAALgBmAGkAbABlAC4AYwBvAHIAZQAuAHcAaQBuAGQAbwB3AHMALgBuAGUAdAAgAG8AbgAgAHAAbwByAHQAIAA0ADQANQAgAHMAdQBjAGMAZQBlAGQAZQBkACAAdABoAHIAbwB1AGcAaAAgAGkAbgB0AGUAcgBmAGEAYwBlACAAJAAoACQAbgBpAGMALgBJAG4AdABlAHIAZgBhAGMAZQBBAGwAaQBhAHMAKQAuACIADQAKAA0ACgAgACAAIAAgACAAIAAgACAAIwAgAFMAYQB2AGUAIAB0AGgAZQAgAHAAYQBzAHMAdwBvAHIAZAAgAHMAbwAgAHQAaABlACAAZAByAGkAdgBlACAAdwBpAGwAbAAgAHAAZQByAHMAaQBzAHQAIABvAG4AIAByAGUAYgBvAG8AdAANAAoAIAAgACAAIAAgACAAIAAgACQAcwBlAGMAdQByAGUAUABhAHMAcwB3AG8AcgBkACAAPQAgAEMAbwBuAHYAZQByAHQAVABvAC0AUwBlAGMAdQByAGUAUwB0AHIAaQBuAGcAIAAiAHMAeABtAEIAYQBNAEsAagBJAFEASgA5AE4ASwB6AFcAdgBuAGEAZgA5AGYAeABYAGgAUwBjAHgATgArADkAYgB0AGoANQB4AEUAQQBtAEUAcgA4AHgASwBFAG0AUgBCAEgAdwB3AGgAegB6AEYAZwBCAFIAcgBMAHcAcgBUAGMAawBWAHAAMQBIADcAYwArAEkASABPAFAAKwBBAFMAdABwADEARgBuAFcAZwA9AD0AIgAgAC0AQQBzAFAAbABhAGkAbgBUAGUAeAB0ACAALQBGAG8AcgBjAGUADQAKACAAIAAgACAAIAAgACAAIAAkAGMAcgBlAGQAZQBuAHQAaQBhAGwAIAA9ACAATgBlAHcALQBPAGIAagBlAGMAdAAgAFMAeQBzAHQAZQBtAC4ATQBhAG4AYQBnAGUAbQBlAG4AdAAuAEEAdQB0AG8AbQBhAHQAaQBvAG4ALgBQAFMAQwByAGUAZABlAG4AdABpAGEAbAAgACgAIgBBAFoAVQBSAEUAXABqAGIAdABlAHMAdABzAHQAbwByAGEAZwBlADAAIgAsACAAJABzAGUAYwB1AHIAZQBQAGEAcwBzAHcAbwByAGQAKQANAAoADQAKACAAIAAgACAAIAAgACAAIAAjACAATQBvAHUAbgB0ACAAdABoAGUAIABkAHIAaQB2AGUADQAKACAAIAAgACAAIAAgACAAIAAkAGQAcgBpAHYAZQBMAGUAdAB0AGUAcgAgAD0AIAAiAFoAIgANAAoAIAAgACAAIAAgACAAIAAgACQAcgBvAG8AdABQAGEAdABoACAAPQAgACIAXABcAGoAYgB0AGUAcwB0AHMAdABvAHIAYQBnAGUAMAAuAGYAaQBsAGUALgBjAG8AcgBlAC4AdwBpAG4AZABvAHcAcwAuAG4AZQB0AFwAagBiAHQAZQBzAHQAcwB0AG8AcgBhAGcAZQAwACIADQAKACAAIAAgACAAIAAgACAAIAANAAoAIAAgACAAIAAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiAEEAdAB0AGUAbQBwAHQAaQBuAGcAIAB0AG8AIABtAG8AdQBuAHQAIABkAHIAaQB2AGUAIAAkAGQAcgBpAHYAZQBMAGUAdAB0AGUAcgAiAA0ACgAgACAAIAAgACAAIAAgACAADQAKACAAIAAgACAAIAAgACAAIAAjACAAQwBoAGUAYwBrACAAaQBmACAAdABoAGUAIABkAHIAaQB2AGUAIABpAHMAIABhAGwAcgBlAGEAZAB5ACAAbQBvAHUAbgB0AGUAZAANAAoAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAIQAoAFQAZQBzAHQALQBQAGEAdABoACAAIgAkAHsAZAByAGkAdgBlAEwAZQB0AHQAZQByAH0AOgAiACkAKQAgAHsADQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAE4AZQB3AC0AUABTAEQAcgBpAHYAZQAgAC0ATgBhAG0AZQAgACQAZAByAGkAdgBlAEwAZQB0AHQAZQByACAALQBQAFMAUAByAG8AdgBpAGQAZQByACAARgBpAGwAZQBTAHkAcwB0AGUAbQAgAC0AUgBvAG8AdAAgACQAcgBvAG8AdABQAGEAdABoACAALQBDAHIAZQBkAGUAbgB0AGkAYQBsACAAJABjAHIAZQBkAGUAbgB0AGkAYQBsACAALQBQAGUAcgBzAGkAcwB0ACAALQBFAHIAcgBvAHIAQQBjAHQAaQBvAG4AIABTAHQAbwBwAA0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIABXAHIAaQB0AGUALQBIAG8AcwB0ACAAIgBEAHIAaQB2AGUAIAAkAHsAZAByAGkAdgBlAEwAZQB0AHQAZQByAH0AOgAgAGgAYQBzACAAYgBlAGUAbgAgAHMAdQBjAGMAZQBzAHMAZgB1AGwAbAB5ACAAbQBvAHUAbgB0AGUAZAAuACIADQAKACAAIAAgACAAIAAgACAAIAB9ACAAZQBsAHMAZQAgAHsADQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAFcAcgBpAHQAZQAtAEgAbwBzAHQAIAAiAEQAcgBpAHYAZQAgACQAewBkAHIAaQB2AGUATABlAHQAdABlAHIAfQA6ACAAaQBzACAAYQBsAHIAZQBhAGQAeQAgAG0AbwB1AG4AdABlAGQALgAiAA0ACgAgACAAIAAgACAAIAAgACAAfQANAAoADQAKACAAIAAgACAAIAAgACAAIAAjACAAVgBlAHIAaQBmAHkAIAB0AGgAZQAgAG0AbwB1AG4AdABlAGQAIABkAHIAaQB2AGUADQAKACAAIAAgACAAIAAgACAAIAAkAG0AbwB1AG4AdABlAGQARAByAGkAdgBlACAAPQAgAEcAZQB0AC0AUABTAEQAcgBpAHYAZQAgAC0ATgBhAG0AZQAgACQAZAByAGkAdgBlAEwAZQB0AHQAZQByACAALQBFAHIAcgBvAHIAQQBjAHQAaQBvAG4AIABTAGkAbABlAG4AdABsAHkAQwBvAG4AdABpAG4AdQBlAA0ACgAgACAAIAAgACAAIAAgACAAaQBmACAAKAAkAG0AbwB1AG4AdABlAGQARAByAGkAdgBlACkAIAB7AA0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgBNAG8AdQBuAHQAZQBkACAAZAByAGkAdgBlACAAZABlAHQAYQBpAGwAcwA6ACIADQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiACAAIABOAGEAbQBlADoAIAAkACgAJABtAG8AdQBuAHQAZQBkAEQAcgBpAHYAZQAuAE4AYQBtAGUAKQAiAA0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIABXAHIAaQB0AGUALQBWAGUAcgBiAG8AcwBlACAAIgAgACAAUgBvAG8AdAA6ACAAJAAoACQAbQBvAHUAbgB0AGUAZABEAHIAaQB2AGUALgBSAG8AbwB0ACkAIgANAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAVwByAGkAdABlAC0AVgBlAHIAYgBvAHMAZQAgACIAIAAgAFUAcwBlAGQAIABzAHAAYQBjAGUAOgAgACQAKAAkAG0AbwB1AG4AdABlAGQARAByAGkAdgBlAC4AVQBzAGUAZAApACIADQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiACAAIABGAHIAZQBlACAAcwBwAGEAYwBlADoAIAAkACgAJABtAG8AdQBuAHQAZQBkAEQAcgBpAHYAZQAuAEYAcgBlAGUAKQAiAA0ACgAgACAAIAAgACAAIAAgACAAfQAgAGUAbABzAGUAIAB7AA0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIABXAHIAaQB0AGUALQBXAGEAcgBuAGkAbgBnACAAIgBEAHIAaQB2AGUAIAAkAGQAcgBpAHYAZQBMAGUAdAB0AGUAcgAgAGkAcwAgAG4AbwB0ACAAdgBpAHMAaQBiAGwAZQAgAGEAcwAgAGEAIABQAFMARAByAGkAdgBlAC4AIABJAHQAIABtAGEAeQAgAG4AbwB0ACAAaABhAHYAZQAgAG0AbwB1AG4AdABlAGQAIABjAG8AcgByAGUAYwB0AGwAeQAuACIADQAKACAAIAAgACAAIAAgACAAIAB9AA0ACgAgACAAIAAgAH0AIABlAGwAcwBlACAAewANAAoAIAAgACAAIAAgACAAIAAgAHQAaAByAG8AdwAgACIAVQBuAGEAYgBsAGUAIAB0AG8AIAByAGUAYQBjAGgAIAB0AGgAZQAgAEEAegB1AHIAZQAgAHMAdABvAHIAYQBnAGUAIABhAGMAYwBvAHUAbgB0ACAAdgBpAGEAIABwAG8AcgB0ACAANAA0ADUAIABvAG4AIABpAG4AdABlAHIAZgBhAGMAZQAgACQAKAAkAG4AaQBjAC4ASQBuAHQAZQByAGYAYQBjAGUAQQBsAGkAYQBzACkALgAgAEMAaABlAGMAawAgAHQAbwAgAG0AYQBrAGUAIABzAHUAcgBlACAAeQBvAHUAcgAgAG8AcgBnAGEAbgBpAHoAYQB0AGkAbwBuACAAbwByACAASQBTAFAAIABpAHMAIABuAG8AdAAgAGIAbABvAGMAawBpAG4AZwAgAHAAbwByAHQAIAA0ADQANQAsACAAbwByACAAdQBzAGUAIABBAHoAdQByAGUAIABQADIAUwAgAFYAUABOACwAIABBAHoAdQByAGUAIABTADIAUwAgAFYAUABOACwAIABvAHIAIABFAHgAcAByAGUAcwBzACAAUgBvAHUAdABlACAAdABvACAAdAB1AG4AbgBlAGwAIABTAE0AQgAgAHQAcgBhAGYAZgBpAGMAIABvAHYAZQByACAAYQAgAGQAaQBmAGYAZQByAGUAbgB0ACAAcABvAHIAdAAuACIADQAKACAAIAAgACAAfQANAAoAfQANAAoAYwBhAHQAYwBoACAAewANAAoAIAAgACAAIABXAHIAaQB0AGUALQBFAHIAcgBvAHIAIAAiAEEAbgAgAGUAcgByAG8AcgAgAG8AYwBjAHUAcgByAGUAZAA6ACAAJABfACIADQAKACAAIAAgACAAVwByAGkAdABlAC0AVgBlAHIAYgBvAHMAZQAgACIARQByAHIAbwByACAAZABlAHQAYQBpAGwAcwA6ACAAJAAoACQAXwAuAEUAeABjAGUAcAB0AGkAbwBuAC4ATQBlAHMAcwBhAGcAZQApACIADQAKACAAIAAgACAAVwByAGkAdABlAC0AVgBlAHIAYgBvAHMAZQAgACIAUwB0AGEAYwBrACAAdAByAGEAYwBlADoAIAAkACgAJABfAC4AUwBjAHIAaQBwAHQAUwB0AGEAYwBrAFQAcgBhAGMAZQApACIADQAKAH0ADQAKAGYAaQBuAGEAbABsAHkAIAB7AA0ACgAgACAAIAAgAFcAcgBpAHQAZQAtAFYAZQByAGIAbwBzAGUAIAAiAFMAYwByAGkAcAB0ACAAYwBvAG0AcABsAGUAdABlAGQAIABhAHQAIAAkACgARwBlAHQALQBEAGEAdABlACkAIgANAAoAIAAgACAAIABTAHQAbwBwAC0AVAByAGEAbgBzAGMAcgBpAHAAdAANAAoADQAKACAAIAAgACAAVwByAGkAdABlAC0ASABvAHMAdAAgACIAYABuAFMAYwByAGkAcAB0ACAAZQB4AGUAYwB1AHQAaQBvAG4AIABjAG8AbQBwAGwAZQB0AGUAZAAuACAATABvAGcAIABmAGkAbABlACAAcwBhAHYAZQBkACAAdABvADoAIAAkAGwAbwBnAEYAaQBsAGUAIgANAAoAIAAgACAAIABXAHIAaQB0AGUALQBIAG8AcwB0ACAAIgBQAHIAZQBzAHMAIABFAG4AdABlAHIAIAB0AG8AIABlAHgAaQB0AC4ALgAuACIADQAKACAAIAAgACAAUgBlAGEAZAAtAEgAbwBzAHQADQAKAH0A
+Process ID: 50792
+PSVersion: 5.1.22621.4391
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.22621.4391
+BuildVersion: 10.0.22621.4391
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\1My Scripts\Mount-AzureStorage\AzureFileShareMount_20250127_170757.log
+VERBOSE: Script started at 01/27/2025 17:07:57
+VERBOSE: Specified interface: Ethernet 4
+VERBOSE: All network adapters:
+VERBOSE:   Ethernet 3 - Disconnected
+VERBOSE:   Wi-Fi - Disconnected
+VERBOSE:   Ethernet 2 - Up
+VERBOSE:   Ethernet 4 - Up
+VERBOSE:   Bluetooth Network Connection - Disconnected
+VERBOSE: Operation '' complete.
+VERBOSE: Perform operation 'Enumerate CimInstances' with following parameters, ''namespaceName' = root\cimv2,'className' = win32_ComputerSystem'.
+VERBOSE: Operation 'Enumerate CimInstances' complete.
+VERBOSE: ----------------------------------------
+VERBOSE: Interface Ethernet 4
+VERBOSE: ----------------------------------------
+VERBOSE: InterfaceAlias: Get-NetAdapter -Name 'Ethernet 4' -CimSession LT-JBDYER | select InterfaceAlias
+VERBOSE: InterfaceIndex: Get-NetAdapter -Name 'Ethernet 4' -CimSession LT-JBDYER | select InterfaceIndex
+VERBOSE: InterfaceDescription: Get-NetAdapter -Name 'Ethernet 4' -CimSession LT-JBDYER | select InterfaceDescription
+VERBOSE: NetCompartment: Get-NetCompartment -CompartmentId '-1' -CimSession LT-JBDYER
+VERBOSE: NetProfile: Get-NetConnectionProfile -InterfaceAlias 'Ethernet 4' -CimSession LT-JBDYER
+VERBOSE: NetIPv6Interface: Get-NetIPInterface -InterfaceAlias 'Ethernet 4' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: NetIPv4Interface: Get-NetIPInterface -InterfaceAlias 'Ethernet 4' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6Address: Get-NetIPAddress -InterfaceAlias 'Ethernet 4' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv4Address: Get-NetIPAddress -InterfaceAlias 'Ethernet 4' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6DefaultGateway: Get-NetRoute -DestinationPrefix '::/0' -InterfaceAlias 'Ethernet 4' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: IPv4DefaultGateway: Get-NetRoute -DestinationPrefix '0.0.0.0/0' -InterfaceAlias 'Ethernet 4' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: DNSServer: Get-DnsClientServerAddress -InterfaceAlias 'Ethernet 4' -CimSession LT-JBDYER | select ServerAddresses
+VERBOSE: ----------------------------------------
+VERBOSE: Interface Ethernet 3
+VERBOSE: ----------------------------------------
+VERBOSE: InterfaceAlias: Get-NetAdapter -Name 'Ethernet 3' -CimSession LT-JBDYER | select InterfaceAlias
+VERBOSE: InterfaceIndex: Get-NetAdapter -Name 'Ethernet 3' -CimSession LT-JBDYER | select InterfaceIndex
+VERBOSE: InterfaceDescription: Get-NetAdapter -Name 'Ethernet 3' -CimSession LT-JBDYER | select InterfaceDescription
+VERBOSE: NetCompartment: Get-NetCompartment -CompartmentId '-1' -CimSession LT-JBDYER
+VERBOSE: NetProfile: Get-NetConnectionProfile -InterfaceAlias 'Ethernet 3' -CimSession LT-JBDYER
+VERBOSE: NetIPv6Interface: Get-NetIPInterface -InterfaceAlias 'Ethernet 3' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: NetIPv4Interface: Get-NetIPInterface -InterfaceAlias 'Ethernet 3' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6Address: Get-NetIPAddress -InterfaceAlias 'Ethernet 3' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv4Address: Get-NetIPAddress -InterfaceAlias 'Ethernet 3' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6DefaultGateway: Get-NetRoute -DestinationPrefix '::/0' -InterfaceAlias 'Ethernet 3' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: IPv4DefaultGateway: Get-NetRoute -DestinationPrefix '0.0.0.0/0' -InterfaceAlias 'Ethernet 3' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: DNSServer: Get-DnsClientServerAddress -InterfaceAlias 'Ethernet 3' -CimSession LT-JBDYER | select ServerAddresses
+VERBOSE: ----------------------------------------
+VERBOSE: Interface Ethernet 2
+VERBOSE: ----------------------------------------
+VERBOSE: InterfaceAlias: Get-NetAdapter -Name 'Ethernet 2' -CimSession LT-JBDYER | select InterfaceAlias
+VERBOSE: InterfaceIndex: Get-NetAdapter -Name 'Ethernet 2' -CimSession LT-JBDYER | select InterfaceIndex
+VERBOSE: InterfaceDescription: Get-NetAdapter -Name 'Ethernet 2' -CimSession LT-JBDYER | select InterfaceDescription
+VERBOSE: NetCompartment: Get-NetCompartment -CompartmentId '-1' -CimSession LT-JBDYER
+VERBOSE: NetProfile: Get-NetConnectionProfile -InterfaceAlias 'Ethernet 2' -CimSession LT-JBDYER
+VERBOSE: NetIPv6Interface: Get-NetIPInterface -InterfaceAlias 'Ethernet 2' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: NetIPv4Interface: Get-NetIPInterface -InterfaceAlias 'Ethernet 2' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6Address: Get-NetIPAddress -InterfaceAlias 'Ethernet 2' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv4Address: Get-NetIPAddress -InterfaceAlias 'Ethernet 2' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6DefaultGateway: Get-NetRoute -DestinationPrefix '::/0' -InterfaceAlias 'Ethernet 2' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: IPv4DefaultGateway: Get-NetRoute -DestinationPrefix '0.0.0.0/0' -InterfaceAlias 'Ethernet 2' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: DNSServer: Get-DnsClientServerAddress -InterfaceAlias 'Ethernet 2' -CimSession LT-JBDYER | select ServerAddresses
+VERBOSE: ----------------------------------------
+VERBOSE: Interface Bluetooth Network Connection
+VERBOSE: ----------------------------------------
+VERBOSE: InterfaceAlias: Get-NetAdapter -Name 'Bluetooth Network Connection' -CimSession LT-JBDYER | select InterfaceAlias
+VERBOSE: InterfaceIndex: Get-NetAdapter -Name 'Bluetooth Network Connection' -CimSession LT-JBDYER | select InterfaceIndex
+VERBOSE: InterfaceDescription: Get-NetAdapter -Name 'Bluetooth Network Connection' -CimSession LT-JBDYER | select InterfaceDescription
+VERBOSE: NetCompartment: Get-NetCompartment -CompartmentId '-1' -CimSession LT-JBDYER
+VERBOSE: NetProfile: Get-NetConnectionProfile -InterfaceAlias 'Bluetooth Network Connection' -CimSession LT-JBDYER
+VERBOSE: NetIPv6Interface: Get-NetIPInterface -InterfaceAlias 'Bluetooth Network Connection' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: NetIPv4Interface: Get-NetIPInterface -InterfaceAlias 'Bluetooth Network Connection' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6Address: Get-NetIPAddress -InterfaceAlias 'Bluetooth Network Connection' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv4Address: Get-NetIPAddress -InterfaceAlias 'Bluetooth Network Connection' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6DefaultGateway: Get-NetRoute -DestinationPrefix '::/0' -InterfaceAlias 'Bluetooth Network Connection' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: IPv4DefaultGateway: Get-NetRoute -DestinationPrefix '0.0.0.0/0' -InterfaceAlias 'Bluetooth Network Connection' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: DNSServer: Get-DnsClientServerAddress -InterfaceAlias 'Bluetooth Network Connection' -CimSession LT-JBDYER | select ServerAddresses
+VERBOSE: ----------------------------------------
+VERBOSE: Interface Wi-Fi
+VERBOSE: ----------------------------------------
+VERBOSE: InterfaceAlias: Get-NetAdapter -Name 'Wi-Fi' -CimSession LT-JBDYER | select InterfaceAlias
+VERBOSE: InterfaceIndex: Get-NetAdapter -Name 'Wi-Fi' -CimSession LT-JBDYER | select InterfaceIndex
+VERBOSE: InterfaceDescription: Get-NetAdapter -Name 'Wi-Fi' -CimSession LT-JBDYER | select InterfaceDescription
+VERBOSE: NetCompartment: Get-NetCompartment -CompartmentId '-1' -CimSession LT-JBDYER
+VERBOSE: NetProfile: Get-NetConnectionProfile -InterfaceAlias 'Wi-Fi' -CimSession LT-JBDYER
+VERBOSE: NetIPv6Interface: Get-NetIPInterface -InterfaceAlias 'Wi-Fi' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: NetIPv4Interface: Get-NetIPInterface -InterfaceAlias 'Wi-Fi' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6Address: Get-NetIPAddress -InterfaceAlias 'Wi-Fi' -AddressFamily IPv6 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv4Address: Get-NetIPAddress -InterfaceAlias 'Wi-Fi' -AddressFamily IPv4 -PolicyStore ActiveStore -CimSession LT-JBDYER
+VERBOSE: IPv6DefaultGateway: Get-NetRoute -DestinationPrefix '::/0' -InterfaceAlias 'Wi-Fi' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: IPv4DefaultGateway: Get-NetRoute -DestinationPrefix '0.0.0.0/0' -InterfaceAlias 'Wi-Fi' -PolicyStore ActiveStore -CimSession LT-JBDYER | select NextHop
+VERBOSE: DNSServer: Get-DnsClientServerAddress -InterfaceAlias 'Wi-Fi' -CimSession LT-JBDYER | select ServerAddresses
+# Enable verbose output
+$VerbosePreference = "Continue"
+
+# Start logging
+$logFile = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\1My 
+Scripts\Mount-AzureStorage\AzureFileShareMount_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+Start-Transcript -Path $logFile -Append
+
+try {
+    Write-Verbose "Script started at $(Get-Date)"
+
+    # Specify the network interface to use
+    $interfaceToUse = "Ethernet 4"
+    Write-Verbose "Specified interface: $interfaceToUse"
+
+    # Get all network adapters
+    $allAdapters = Get-NetAdapter
+    Write-Verbose "All network adapters:"
+    $allAdapters | ForEach-Object { Write-Verbose "  $($_.Name) - $($_.Status)" }
+
+    # Get the specified network interface
+    $nic = Get-NetIPConfiguration | Where-Object { 
+        $_.InterfaceAlias -eq $interfaceToUse -and 
+        $_.IPv4DefaultGateway -ne $null -and 
+        $_.NetAdapter.Status -eq "Up" 
+    }
+
+    if (-not $nic) {
+        throw "Specified interface '$interfaceToUse' not found or not in a valid state."
+    }
+
+    Write-Verbose "Selected interface details:"
+    Write-Verbose "  Name: $($nic.InterfaceAlias)"
+    Write-Verbose "  IP Address: $($nic.IPv4Address.IPAddress)"
+    Write-Verbose "  Default Gateway: $($nic.IPv4DefaultGateway.NextHop)"
+
+    Write-Host "Testing connection on interface $($nic.InterfaceAlias)..."
+
+    # Test the connection through the specified network interface
+    $connectTestResult = Test-NetConnection -ComputerName jbteststorage0.file.core.windows.net -Port 445 
+-InterfaceAlias $nic.InterfaceAlias -WarningAction SilentlyContinue
+    
+    Write-Verbose "Connection test result:"
+    Write-Verbose "  TCP test succeeded: $($connectTestResult.TcpTestSucceeded)"
+    Write-Verbose "  Ping succeeded: $($connectTestResult.PingSucceeded)"
+    Write-Verbose "  Name resolution succeeded: $($connectTestResult.NameResolutionSucceeded)"
+
+    if ($connectTestResult.TcpTestSucceeded) {
+        Write-Host "Connection to jbteststorage0.file.core.windows.net on port 445 succeeded through interface 
+$($nic.InterfaceAlias)."
+
+        # Save the password so the drive will persist on reboot
+        $securePassword = ConvertTo-SecureString 
+"sxmBaMKjIQJ9NKzWvnaf9fxXhScxN+9btj5xEAmEr8xKEmRBHwwhzzFgBRrLwrTckVp1H7c+IHOP+AStp1FnWg==" -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ("AZURE\jbteststorage0", $securePassword)
+
+        # Mount the drive
+        $driveLetter = "Z"
+        $rootPath = "\\jbteststorage0.file.core.windows.net\jbteststorage0"
+        
+        Write-Verbose "Attempting to mount drive $driveLetter"
+        
+        # Check if the drive is already mounted
+        if (!(Test-Path "${driveLetter}:")) {
+            New-PSDrive -Name $driveLetter -PSProvider FileSystem -Root $rootPath -Credential $credential -Persist 
+-ErrorAction Stop
+            Write-Host "Drive ${driveLetter}: has been successfully mounted."
+        } else {
+            Write-Host "Drive ${driveLetter}: is already mounted."
+        }
+
+        # Verify the mounted drive
+        $mountedDrive = Get-PSDrive -Name $driveLetter -ErrorAction SilentlyContinue
+        if ($mountedDrive) {
+            Write-Verbose "Mounted drive details:"
+            Write-Verbose "  Name: $($mountedDrive.Name)"
+            Write-Verbose "  Root: $($mountedDrive.Root)"
+            Write-Verbose "  Used space: $($mountedDrive.Used)"
+            Write-Verbose "  Free space: $($mountedDrive.Free)"
+        } else {
+            Write-Warning "Drive $driveLetter is not visible as a PSDrive. It may not have mounted correctly."
+        }
+    } else {
+        throw "Unable to reach the Azure storage account via port 445 on interface $($nic.InterfaceAlias). Check to 
+make sure your organization or ISP is not blocking port 445, or use Azure P2S VPN, Azure S2S VPN, or Express Route to 
+tunnel SMB traffic over a different port."
+    }
+}
+catch {
+    Write-Error "An error occurred: $_"
+    Write-Verbose "Error details: $($_.Exception.Message)"
+    Write-Verbose "Stack trace: $($_.ScriptStackTrace)"
+}
+finally {
+    Write-Verbose "Script completed at $(Get-Date)"
+    Stop-Transcript
+
+    Write-Host "`nScript execution completed. Log file saved to: $logFile"
+    Write-Host "Press Enter to exit..."
+    Read-Host
+} : An error occurred: Specified interface 'Ethernet 4' not found or not in a valid state.
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException
+# Enable verbose output
+$VerbosePreference = "Continue"
+
+# Start logging
+$logFile = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\1My
+Scripts\Mount-AzureStorage\AzureFileShareMount_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+Start-Transcript -Path $logFile -Append
+
+try {
+    Write-Verbose "Script started at $(Get-Date)"
+
+    # Specify the network interface to use
+    $interfaceToUse = "Ethernet 4"
+    Write-Verbose "Specified interface: $interfaceToUse"
+
+    # Get all network adapters
+    $allAdapters = Get-NetAdapter
+    Write-Verbose "All network adapters:"
+    $allAdapters | ForEach-Object { Write-Verbose "  $($_.Name) - $($_.Status)" }
+
+    # Get the specified network interface
+    $nic = Get-NetIPConfiguration | Where-Object {
+        $_.InterfaceAlias -eq $interfaceToUse -and
+        $_.IPv4DefaultGateway -ne $null -and
+        $_.NetAdapter.Status -eq "Up"
+    }
+
+    if (-not $nic) {
+        throw "Specified interface '$interfaceToUse' not found or not in a valid state."
+    }
+
+    Write-Verbose "Selected interface details:"
+    Write-Verbose "  Name: $($nic.InterfaceAlias)"
+    Write-Verbose "  IP Address: $($nic.IPv4Address.IPAddress)"
+    Write-Verbose "  Default Gateway: $($nic.IPv4DefaultGateway.NextHop)"
+
+    Write-Host "Testing connection on interface $($nic.InterfaceAlias)..."
+
+    # Test the connection through the specified network interface
+    $connectTestResult = Test-NetConnection -ComputerName jbteststorage0.file.core.windows.net -Port 445
+-InterfaceAlias $nic.InterfaceAlias -WarningAction SilentlyContinue
+
+    Write-Verbose "Connection test result:"
+    Write-Verbose "  TCP test succeeded: $($connectTestResult.TcpTestSucceeded)"
+    Write-Verbose "  Ping succeeded: $($connectTestResult.PingSucceeded)"
+    Write-Verbose "  Name resolution succeeded: $($connectTestResult.NameResolutionSucceeded)"
+
+    if ($connectTestResult.TcpTestSucceeded) {
+        Write-Host "Connection to jbteststorage0.file.core.windows.net on port 445 succeeded through interface
+$($nic.InterfaceAlias)."
+
+        # Save the password so the drive will persist on reboot
+        $securePassword = ConvertTo-SecureString
+"sxmBaMKjIQJ9NKzWvnaf9fxXhScxN+9btj5xEAmEr8xKEmRBHwwhzzFgBRrLwrTckVp1H7c+IHOP+AStp1FnWg==" -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ("AZURE\jbteststorage0", $securePassword)
+
+        # Mount the drive
+        $driveLetter = "Z"
+        $rootPath = "\\jbteststorage0.file.core.windows.net\jbteststorage0"
+
+        Write-Verbose "Attempting to mount drive $driveLetter"
+
+        # Check if the drive is already mounted
+        if (!(Test-Path "${driveLetter}:")) {
+            New-PSDrive -Name $driveLetter -PSProvider FileSystem -Root $rootPath -Credential $credential -Persist
+-ErrorAction Stop
+            Write-Host "Drive ${driveLetter}: has been successfully mounted."
+        } else {
+            Write-Host "Drive ${driveLetter}: is already mounted."
+        }
+
+        # Verify the mounted drive
+        $mountedDrive = Get-PSDrive -Name $driveLetter -ErrorAction SilentlyContinue
+        if ($mountedDrive) {
+            Write-Verbose "Mounted drive details:"
+            Write-Verbose "  Name: $($mountedDrive.Name)"
+            Write-Verbose "  Root: $($mountedDrive.Root)"
+            Write-Verbose "  Used space: $($mountedDrive.Used)"
+            Write-Verbose "  Free space: $($mountedDrive.Free)"
+        } else {
+            Write-Warning "Drive $driveLetter is not visible as a PSDrive. It may not have mounted correctly."
+        }
+    } else {
+        throw "Unable to reach the Azure storage account via port 445 on interface $($nic.InterfaceAlias). Check to
+make sure your organization or ISP is not blocking port 445, or use Azure P2S VPN, Azure S2S VPN, or Express Route to
+tunnel SMB traffic over a different port."
+    }
+}
+catch {
+    Write-Error "An error occurred: $_"
+    Write-Verbose "Error details: $($_.Exception.Message)"
+    Write-Verbose "Stack trace: $($_.ScriptStackTrace)"
+}
+finally {
+    Write-Verbose "Script completed at $(Get-Date)"
+    Stop-Transcript
+
+    Write-Host "`nScript execution completed. Log file saved to: $logFile"
+    Write-Host "Press Enter to exit..."
+    Read-Host
+} : An error occurred: Specified interface 'Ethernet 4' not found or not in a valid state.
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException
+
+VERBOSE: Error details: Specified interface 'Ethernet 4' not found or not in a valid state.
+VERBOSE: Stack trace: at <ScriptBlock>, <No file>: line 28
+VERBOSE: Script completed at 01/27/2025 17:08:01
+**********************
+Windows PowerShell transcript end
+End time: 20250127170801
+**********************
