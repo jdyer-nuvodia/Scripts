@@ -157,7 +157,7 @@ $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName
 $nic.IpConfigurations[0].PublicIpAddress = $publicIp
 Set-AzNetworkInterface -NetworkInterface $nic
 
-# Check if VM exists
+# Check if VM exists, create if it doesn't
 $vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction Stop
 if (-not $vm) {
     Write-Host "Creating VM $vmName"
@@ -206,48 +206,51 @@ if (-not $vm) {
         -DestinationAddressPrefix * `
         -DestinationPortRange 10443
     $nsg | Set-AzNetworkSecurityGroup
+} else {
+    Write-Host "VM $vmName already exists"
+}
 
-    # Set up Azure Automation account
-    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction Stop
-    if (-not $automationAccount) {
-        Write-Host "Creating Azure Automation account $automationAccountName"
-        $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $location
-    } else {
-        Write-Host "Azure Automation account $automationAccountName already exists"
-    }
+# Set up Azure Automation account
+$automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction Stop
+if (-not $automationAccount) {
+    Write-Host "Creating Azure Automation account $automationAccountName"
+    $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $location
+} else {
+    Write-Host "Azure Automation account $automationAccountName already exists"
+}
 
-    # Create the runbook
-    New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
+# Create the runbook
+New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
-    # Download the runbook content
-    $headers = @{
-        "x-ms-version" = "2022-04-11"
-    }
-    $downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
-    Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -Headers $headers -OutFile $downloadPath
+# Download the runbook content
+$headers = @{
+    "x-ms-version" = "2022-04-11"
+}
+$downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
+Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -Headers $headers -OutFile $downloadPath
 
-    # Import the runbook content from the downloaded file
-    Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
+# Import the runbook content from the downloaded file
+Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
-    # Publish the runbook
-    Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
+# Publish the runbook
+Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
-    # Define the schedule parameters
-    $scheduleName = "AutoShutdownSchedule"
-    $startTime = (Get-Date).AddMinutes(5) # Start in 5 minutes
+# Define the schedule parameters
+$scheduleName = "AutoShutdownSchedule"
+$startTime = (Get-Date).AddMinutes(5) # Start in 5 minutes
 
-    # Create a new schedule
-    Write-Host "Creating schedule $scheduleName"
-    New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime
+# Create a new schedule
+Write-Host "Creating schedule $scheduleName"
+New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime
 
-    # Register the runbook with the schedule
-    Write-Host "Registering runbook $runbookName with schedule $scheduleName"
-    Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ScheduleName $scheduleName -ResourceGroupName $resourceGroup
+# Register the runbook with the schedule
+Write-Host "Registering runbook $runbookName with schedule $scheduleName"
+Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ScheduleName $scheduleName -ResourceGroupName $resourceGroup
 
-    Write-Host "Auto-shutdown schedule created successfully."
+Write-Host "Auto-shutdown schedule created successfully."
 
-    # Create PowerShell script for AD DS installation and configuration
-    $script = @'
+# Create PowerShell script for AD DS installation and configuration
+$script = @'
 # Install AD DS role
 Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
 
@@ -277,20 +280,17 @@ for ($i = 1; $i -le 10; $i++) {
 }
 '@
 
-    # Execute the PowerShell script on the VM using RunCommand
-    Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -Name $vmName -CommandId "RunPowerShellScript" -ScriptString $script
+# Execute the PowerShell script on the VM using RunCommand
+Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -Name $vmName -CommandId "RunPowerShellScript" -ScriptString $script
 
-    # Ensure VNet exists before updating DNS servers
-    $vnet = Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName -ErrorAction Stop
-    if ($vnet -ne $null) {
-        Write-Host "Updating VNet DNS servers"
-        $vnet.DhcpOptions.DnsServers.Add("10.0.1.4")
-        $vnet | Set-AzVirtualNetwork
-    } else {
-        Write-Error "VNet $vnetName not found."
-    }
-
-    Write-Host "Domain Controller setup complete. The VM will restart to finish the AD DS installation and create test users."
+# Ensure VNet exists before updating DNS servers
+$vnet = Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName -ErrorAction Stop
+if ($vnet -ne $null) {
+    Write-Host "Updating VNet DNS servers"
+    $vnet.DhcpOptions.DnsServers.Add("10.0.1.4")
+    $vnet | Set-AzVirtualNetwork
 } else {
-    Write-Host "VM $vmName already exists"
+    Write-Error "VNet $vnetName not found."
 }
+
+Write-Host "Domain Controller setup complete. The VM will restart to finish the AD DS installation and create test users."
