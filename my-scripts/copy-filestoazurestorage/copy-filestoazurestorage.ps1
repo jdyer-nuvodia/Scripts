@@ -2,7 +2,7 @@
 $storageAccountName = "jbteststorage0"
 $storageAccountKey = 's+gZISuRt6q2Ugxc9MyumGmVjGalAmwHo3+6yr6XD3+887P+0Zq5WOWyoDWhuV2zkpPwEQ+c8Z2Z+ASttP+eIQ=='
 $fileShareName = "jbteststorage0"
-$localDirectoryPath = "C:/Users/jdyer/OneDrive - Nuvodia/Documents/WindowsPowerShell/Scripts"
+$localDirectoryPath = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts"
 $destinationPath = "scripts"
 $subscriptionId = "2d9a0b3b-de9d-4acf-baad-af240553bcc7"  # Optional, specify if you have multiple subscriptions
 

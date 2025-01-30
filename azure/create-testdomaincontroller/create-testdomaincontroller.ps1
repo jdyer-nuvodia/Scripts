@@ -195,7 +195,7 @@ workflow $runbookName {
     # Publish the runbook
     Write-Host "Creating runbook $runbookName"
     $runbook = New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow -Description "Auto-shutdown runbook for VMs" -LogProgress $true -LogVerbose $true
-    Set-AzAutomationRunbookContent -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Content $runbookScript
+    $runbook | Set-AzAutomationRunbookDefinition -Content $runbookScript
     Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup
 
     # Schedule the runbook
