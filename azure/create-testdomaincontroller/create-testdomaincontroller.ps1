@@ -230,20 +230,23 @@ if (-not $vm) {
         Write-Host "Azure Automation account $automationAccountName already exists"
     }
 
-    # Create and publish the runbook using the file in the storage account
-    Write-Host "Creating runbook $runbookName"
-    $runbookFilePath = "$subdirectoryName/$runbookFileName"
-    $runbookContent = Get-Content -Path $tempRunbookFilePath
-    New-AzAutomationRunbook -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Content $runbookContent
-    Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
+    # Create the runbook
+    New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
+
+    # Set the runbook content
+    $runbookContent = Get-Content -Path $tempRunbookFilePath -Raw
+    Set-AzAutomationRunbookContent -AutomationAccountName $automationAccountName -Name $runbookName -Content $runbookContent
+
+    # Publish the runbook
+    Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName
 
     # Define the schedule parameters
     $scheduleName = "AutoShutdownSchedule"
-    $startTime = (Get-Date).AddMinutes(1) # Start in 1 minute
+    $startTime = (Get-Date).AddMinutes(5) # Start in 5 minutes
 
     # Create a new schedule
     Write-Host "Creating schedule $scheduleName"
-    New-AzAutomationSchedule -Name $scheduleName -StartTime $startTime -OneTime -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
+    New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime
 
     # Register the runbook with the schedule
     Write-Host "Registering runbook $runbookName with schedule $scheduleName"
