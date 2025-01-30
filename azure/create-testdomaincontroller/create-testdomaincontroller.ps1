@@ -13,6 +13,9 @@ $nsgName = "JB-TEST-NSG"
 $automationAccountName = "JB-TEST-Automation"
 $runbookName = "AutoShutdownRunbook"
 
+# Import Az.Automation module
+Import-Module Az.Automation
+
 # Function to wait for VM creation
 function Wait-ForVM {
     param (
@@ -191,7 +194,7 @@ workflow $runbookName {
 
     # Publish the runbook
     Write-Host "Creating runbook $runbookName"
-    $runbook = New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow -Description "Auto-shutdown runbook for VMs" -LogProgress -LogVerbose
+    $runbook = New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow -Description "Auto-shutdown runbook for VMs" -LogProgress $true -LogVerbose $true
     Set-AzAutomationRunbookContent -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Content $runbookScript
     Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup
 
