@@ -124,12 +124,12 @@ if (-not $existingSubnet) {
 }
 
 # Check if Network Security Group exists, create if it doesn't
-$nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName -ErrorAction Stop
-if (-not $nsg) {
+try {
+    $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName -ErrorAction Stop
+    Write-Host "Network Security Group $nsgName already exists"
+} catch {
     Write-Host "Creating Network Security Group $nsgName"
     $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name $nsgName
-} else {
-    Write-Host "Network Security Group $nsgName already exists"
 }
 
 # Check if Network Interface exists
