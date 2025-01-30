@@ -1,3 +1,6 @@
+# Set ErrorActionPreference to Stop to halt script execution on the first error
+$ErrorActionPreference = "Stop"
+
 # Variables
 $resourceGroup = "JB-TEST-RG"
 $location = "westus"
