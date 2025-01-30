@@ -227,7 +227,16 @@ try {
     Write-Host "Azure Automation account $automationAccountName already exists"
 } catch {
     Write-Host "Creating Azure Automation account $automationAccountName"
-    $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $location
+    
+    # Ensure the location is valid for Azure Automation
+    $validLocations = @("East US", "West US", "West US 2", "Central US", "North Central US", "South Central US", "East US 2", "Canada Central", "Canada East", "North Europe", "West Europe", "Germany Central", "Germany Northeast", "Switzerland North", "Switzerland West", "Norway East", "Norway West", "UK South", "UK West", "France Central", "France South", "Australia East", "Australia Southeast", "Australia Central", "Australia Central 2", "Southeast Asia", "East Asia", "Japan East", "Japan West", "Korea Central", "Korea South", "India Central", "India South", "India West", "South Africa North", "South Africa West", "Brazil South", "US Gov Virginia", "US Gov Arizona", "US Gov Texas", "US DoD Central", "US DoD East", "China East", "China East 2", "China North", "China North 2")
+    
+    if ($validLocations -contains $location) {
+        $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $location
+    } else {
+        Write-Error "Location $location is not valid for Azure Automation account."
+        exit
+    }
 }
 
 # Create the runbook
