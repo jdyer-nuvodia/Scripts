@@ -86,10 +86,12 @@ Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
 # Delete the existing runbook file if it exists
 $remoteFilePath = "$subdirectoryName/$runbookFileName"
-try {
+$fileExists = Get-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -ErrorAction SilentlyContinue
+
+if ($fileExists) {
     Remove-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -Force
     Write-Host "Existing runbook file deleted."
-} catch {
+} else {
     Write-Host "No existing runbook file to delete."
 }
 
