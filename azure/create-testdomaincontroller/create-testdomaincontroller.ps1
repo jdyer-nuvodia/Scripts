@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 # Variables
 $resourceGroup = "JB-TEST-RG"
 $location = "westus"
-$automationLocation = "westus 2" # New variable for the automation account location
+$automationLocation = "westus2" # Updated variable for the automation account location
 $vnetName = "JB-TEST-VNET"
 $subnetName = "JB-TEST-SUBNET1"
 $vmName = "JB-TEST-DC01"
@@ -187,6 +187,9 @@ try {
 
     # Set boot diagnostics to use the specified storage account
     $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -StorageAccountName $storageAccountName -ResourceGroupName $resourceGroup
+
+    # Enable Trusted Launch features
+    $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType TrustedLaunch -UefiSettings @( {"SecureBootEnabled"=$true; "VTpmEnabled"=$true } )
 
     # Create the VM with Azure Hybrid Benefit
     New-AzVM -ResourceGroupName $resourceGroup -Location $location -VM $vmConfig -LicenseType "Windows_Server"
