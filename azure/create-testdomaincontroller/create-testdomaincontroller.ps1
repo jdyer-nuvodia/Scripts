@@ -68,9 +68,15 @@ if (-not $fileShare) {
     Write-Host "File share $fileShareName already exists"
 }
 
-# Create subdirectory in the file share
-$subdirectory = $fileShare.GetDirectoryReference($subdirectoryName)
-$subdirectory.CreateIfNotExists()
+# Create subdirectory in the file share if it doesn't exist
+$cloudFileShare = Get-AzStorageShare -Context $storageAccountContext -Name $fileShareName
+$cloudFileDirectory = Get-AzStorageFileDirectory -ShareName $fileShareName -Path $subdirectoryName -Context $storageAccountContext -ErrorAction SilentlyContinue
+if (-not $cloudFileDirectory) {
+    Write-Host "Creating subdirectory $subdirectoryName"
+    New-AzStorageFileDirectory -ShareName $fileShareName -Path $subdirectoryName -Context $storageAccountContext
+} else {
+    Write-Host "Subdirectory $subdirectoryName already exists"
+}
 
 # Write the runbook content to a file in the subdirectory
 $runbookContent = @"
@@ -87,8 +93,8 @@ workflow $runbookName {
 }
 "@
 
-$runbookFile = $subdirectory.GetFileReference($runbookFileName)
-$runbookFile.UploadText($runbookContent)
+$cloudFilePath = "$subdirectoryName/$runbookFileName"
+Set-AzStorageFileContent -ShareName $fileShareName -Source $runbookContent -Path $cloudFilePath -Context $storageAccountContext
 
 Write-Host "Runbook content written to file share successfully."
 
@@ -219,7 +225,8 @@ if (-not $vm) {
 
     # Create and publish the runbook using the file in the storage account
     Write-Host "Creating runbook $runbookName"
-    $runbookContent = Get-AzStorageFileContent -ShareName $fileShareName -Path "$subdirectoryName/$runbookFileName" -Context $storageAccountContext
+    $runbookFilePath = "$subdirectoryName/$runbookFileName"
+    $runbookContent = Get-Content -Path $runbookFilePath
     New-AzAutomationRunbook -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Content $runbookContent
     Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
