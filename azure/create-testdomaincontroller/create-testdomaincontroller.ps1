@@ -210,13 +210,13 @@ try {
     $nsg | Set-AzNetworkSecurityGroup
 }
 
-# Set up Azure Automation account
-$automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction Stop
-if (-not $automationAccount) {
+# Check if Azure Automation account exists, create if it doesn't
+try {
+    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction Stop
+    Write-Host "Azure Automation account $automationAccountName already exists"
+} catch {
     Write-Host "Creating Azure Automation account $automationAccountName"
     $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $location
-} else {
-    Write-Host "Azure Automation account $automationAccountName already exists"
 }
 
 # Create the runbook
