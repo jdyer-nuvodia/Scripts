@@ -218,12 +218,18 @@ if (-not $vm) {
     # Create the runbook
     New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
-    # Import the runbook content from the uploaded file
-    Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -OutFile $tempRunbookFilePath
-    Import-AzAutomationRunbook -Path $tempRunbookFilePath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
+    # Download the runbook content
+    $headers = @{
+        "x-ms-version" = "2022-04-11"
+    }
+    $downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
+    Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -Headers $headers -OutFile $downloadPath
+
+    # Import the runbook content from the downloaded file
+    Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
     # Publish the runbook
-    Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName
+    Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
     # Define the schedule parameters
     $scheduleName = "AutoShutdownSchedule"
