@@ -89,7 +89,7 @@ $remoteFilePath = "$subdirectoryName/$runbookFileName"
 $fileExists = Get-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -ErrorAction SilentlyContinue
 
 if ($fileExists) {
-    Remove-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -Force
+    Remove-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath
     Write-Host "Existing runbook file deleted."
 } else {
     Write-Host "No existing runbook file to delete."
