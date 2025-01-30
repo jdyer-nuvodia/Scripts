@@ -158,8 +158,10 @@ $nic.IpConfigurations[0].PublicIpAddress = $publicIp
 Set-AzNetworkInterface -NetworkInterface $nic
 
 # Check if VM exists, create if it doesn't
-$vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction Stop
-if (-not $vm) {
+try {
+    $vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction Stop
+    Write-Host "VM $vmName already exists"
+} catch {
     Write-Host "Creating VM $vmName"
 
     # Create VM Configuration
@@ -206,8 +208,6 @@ if (-not $vm) {
         -DestinationAddressPrefix * `
         -DestinationPortRange 10443
     $nsg | Set-AzNetworkSecurityGroup
-} else {
-    Write-Host "VM $vmName already exists"
 }
 
 # Set up Azure Automation account
