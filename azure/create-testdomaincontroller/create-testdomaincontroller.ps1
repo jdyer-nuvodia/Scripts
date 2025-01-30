@@ -12,6 +12,7 @@ $storageAccountName = "jbteststorage0"
 $fileShareName = "runbooks"
 $subdirectoryName = "AutoShutdownRunbook"
 $runbookFileName = "runbook.ps1"
+$tempRunbookFilePath = "C:\Temp\$runbookFileName"
 $nsgName = "JB-TEST-NSG"
 $automationAccountName = "JB-TEST-Automation"
 $runbookName = "AutoShutdownRunbook"
@@ -68,9 +69,8 @@ if (-not $fileShare) {
     Write-Host "File share $fileShareName already exists"
 }
 
-# Create subdirectory in the file share if it doesn't exist
-$cloudFileShare = Get-AzStorageShare -Context $storageAccountContext -Name $fileShareName
-$cloudFileDirectory = Get-AzStorageFileDirectory -ShareName $fileShareName -Path $subdirectoryName -Context $storageAccountContext -ErrorAction SilentlyContinue
+# Create subdirectory in the file share
+$cloudFileDirectory = Get-AzStorageFile -ShareName $fileShareName -Path $subdirectoryName -Context $storageAccountContext -ErrorAction SilentlyContinue
 if (-not $cloudFileDirectory) {
     Write-Host "Creating subdirectory $subdirectoryName"
     New-AzStorageFileDirectory -ShareName $fileShareName -Path $subdirectoryName -Context $storageAccountContext
@@ -78,7 +78,7 @@ if (-not $cloudFileDirectory) {
     Write-Host "Subdirectory $subdirectoryName already exists"
 }
 
-# Write the runbook content to a file in the subdirectory
+# Write the runbook content to a temporary file
 $runbookContent = @"
 workflow $runbookName {
     param (
@@ -92,11 +92,16 @@ workflow $runbookName {
     Stop-AzVM -ResourceGroupName \$resourceGroupName -Name \$vmName -Force
 }
 "@
+Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
+# Upload the runbook file to the file share
 $cloudFilePath = "$subdirectoryName/$runbookFileName"
-Set-AzStorageFileContent -ShareName $fileShareName -Source $runbookContent -Path $cloudFilePath -Context $storageAccountContext
+Set-AzStorageFileContent -ShareName $fileShareName -Source $tempRunbookFilePath -Path $cloudFilePath -Context $storageAccountContext
 
 Write-Host "Runbook content written to file share successfully."
+
+# Clean up the temporary file
+Remove-Item -Path $tempRunbookFilePath
 
 # Check if virtual network exists, create if it doesn't
 $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
@@ -226,7 +231,7 @@ if (-not $vm) {
     # Create and publish the runbook using the file in the storage account
     Write-Host "Creating runbook $runbookName"
     $runbookFilePath = "$subdirectoryName/$runbookFileName"
-    $runbookContent = Get-Content -Path $runbookFilePath
+    $runbookContent = Get-Content -Path $tempRunbookFilePath
     New-AzAutomationRunbook -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Content $runbookContent
     Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
