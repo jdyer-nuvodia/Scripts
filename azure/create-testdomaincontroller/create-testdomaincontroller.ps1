@@ -99,7 +99,8 @@ Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 # Upload the runbook file to the file share
 $fileClient = $subdirectoryClient.GetFileClient($runbookFileName)
 $fileClient.Create($runbookContent.Length)
-$fileClient.UploadRange([System.IO.File]::OpenRead($tempRunbookFilePath), 0)
+$fileStream = [System.IO.File]::OpenRead($tempRunbookFilePath)
+$fileClient.Upload($fileStream)
 
 Write-Host "Runbook content written to file share successfully."
 
