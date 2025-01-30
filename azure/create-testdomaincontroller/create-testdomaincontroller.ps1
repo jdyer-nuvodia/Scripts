@@ -97,23 +97,12 @@ workflow $runbookName {
 Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
 # Upload the runbook file to the file share
-$fileClient = $subdirectoryClient.GetFileClient($runbookFileName)
-$fileStream = [System.IO.File]::OpenRead($tempRunbookFilePath)
-$fileClient.Create($fileStream.Length)
-
-# Ensure the file stream is read from the beginning
-$fileStream.Seek(0, [System.IO.SeekOrigin]::Begin) | Out-Null
-$fileClient.UploadRange(
-    [Azure.Storage.Files.Shares.Models.ShareFileRangeWriteType]::Update,
-    0,
-    $fileStream,
-    $fileStream.Length
-)
+$remoteFilePath = "$subdirectoryName/$runbookFileName"
+Set-AzStorageFileContent -Context $storageAccountContext -ShareName $fileShareName -Source $tempRunbookFilePath -Path $remoteFilePath
 
 Write-Host "Runbook content written to file share successfully."
 
 # Clean up the temporary file
-$fileStream.Close()
 Remove-Item -Path $tempRunbookFilePath
 
 # Check if virtual network exists, create if it doesn't
