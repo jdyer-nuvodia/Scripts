@@ -100,7 +100,15 @@ Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 $fileClient = $subdirectoryClient.GetFileClient($runbookFileName)
 $fileStream = [System.IO.File]::OpenRead($tempRunbookFilePath)
 $fileClient.Create($fileStream.Length)
-$fileClient.UploadRange([Azure.Storage.Files.Shares.Models.ShareFileRangeWriteType]::Update, 0, $fileStream)
+
+# Ensure the file stream is read from the beginning
+$fileStream.Seek(0, [System.IO.SeekOrigin]::Begin) | Out-Null
+$fileClient.UploadRange(
+    [Azure.Storage.Files.Shares.Models.ShareFileRangeWriteType]::Update,
+    0,
+    $fileStream,
+    $fileStream.Length
+)
 
 Write-Host "Runbook content written to file share successfully."
 
