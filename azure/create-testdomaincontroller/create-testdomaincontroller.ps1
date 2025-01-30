@@ -132,15 +132,15 @@ try {
     $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name $nsgName
 }
 
-# Check if Network Interface exists
+# Check if Network Interface exists, create if it doesn't
 $nicName = "$($vmName)VMNic"
-$nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName -ErrorAction Stop
-if (-not $nic) {
+try {
+    $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName -ErrorAction Stop
+    Write-Host "Network interface $nicName already exists"
+} catch {
     Write-Host "Creating network interface $nicName"
     $subnetId = (Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName).Subnets[0].Id
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroup -Location $location -SubnetId $subnetId
-} else {
-    Write-Host "Network interface $nicName already exists"
 }
 
 # Check if Public IP exists
