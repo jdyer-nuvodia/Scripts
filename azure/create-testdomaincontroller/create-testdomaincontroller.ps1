@@ -84,8 +84,16 @@ workflow $runbookName {
 "@
 Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
-# Upload the runbook file to the file share
+# Delete the existing runbook file if it exists
 $remoteFilePath = "$subdirectoryName/$runbookFileName"
+try {
+    Remove-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -Force
+    Write-Host "Existing runbook file deleted."
+} catch {
+    Write-Host "No existing runbook file to delete."
+}
+
+# Upload the new runbook file to the file share
 Set-AzStorageFileContent -Context $storageAccountContext -ShareName $fileShareName -Source $tempRunbookFilePath -Path $remoteFilePath
 
 Write-Host "Runbook content written to file share successfully."
