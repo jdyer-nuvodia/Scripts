@@ -143,13 +143,13 @@ try {
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroup -Location $location -SubnetId $subnetId
 }
 
-# Check if Public IP exists
-$publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction Stop
-if (-not $publicIp) {
+# Check if Public IP exists, create if it doesn't
+try {
+    $publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction Stop
+    Write-Host "Public IP address $publicIpName already exists"
+} catch {
     Write-Host "Creating public IP address $publicIpName"
     $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroup -Location $location -AllocationMethod Static -Sku Standard
-} else {
-    Write-Host "Public IP address $publicIpName already exists"
 }
 
 # Connect the public IP to the VMNic
