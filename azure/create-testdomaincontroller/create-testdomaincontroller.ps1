@@ -94,6 +94,13 @@ workflow $runbookName {
     Stop-AzVM -ResourceGroupName \$resourceGroupName -Name \$vmName -Force
 }
 "@
+
+# Ensure the directory exists
+if (-not (Test-Path -Path "C:\Temp")) {
+    New-Item -ItemType Directory -Path "C:\Temp"
+}
+
+# Write the runbook content to the temporary file
 Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
 # Upload the runbook file to the file share
@@ -101,6 +108,38 @@ $remoteFilePath = "$subdirectoryName/$runbookFileName"
 Set-AzStorageFileContent -Context $storageAccountContext -ShareName $fileShareName -Source $tempRunbookFilePath -Path $remoteFilePath
 
 Write-Host "Runbook content written to file share successfully."
+
+# Set up Azure Automation account
+if (-not (Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction SilentlyContinue)) {
+    Write-Host "Creating Azure Automation account $automationAccountName"
+    New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $location
+} else {
+    Write-Host "Azure Automation account $automationAccountName already exists"
+}
+
+# Create the runbook
+New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
+
+# Set the runbook content
+$runbookContent = Get-Content -Path $tempRunbookFilePath -Raw
+Set-AzAutomationRunbookContent -AutomationAccountName $automationAccountName -Name $runbookName -Content $runbookContent
+
+# Publish the runbook
+Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName
+
+# Define the schedule parameters
+$scheduleName = "AutoShutdownSchedule"
+$startTime = (Get-Date).AddMinutes(5) # Start in 5 minutes
+
+# Create a new schedule
+Write-Host "Creating schedule $scheduleName"
+New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime
+
+# Register the runbook with the schedule
+Write-Host "Registering runbook $runbookName with schedule $scheduleName"
+Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ScheduleName $scheduleName -ResourceGroupName $resourceGroup
+
+Write-Host "Auto-shutdown schedule created successfully."
 
 # Clean up the temporary file
 Remove-Item -Path $tempRunbookFilePath
@@ -233,9 +272,12 @@ if (-not $vm) {
     # Create the runbook
     New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
-    # Set the runbook content
+    # Get the runbook content from the uploaded file
     $runbookContent = Get-Content -Path $tempRunbookFilePath -Raw
-    Set-AzAutomationRunbookContent -AutomationAccountName $automationAccountName -Name $runbookName -Content $runbookContent
+
+    # Set the runbook content
+    $runbookUri = "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath"
+    Import-AzAutomationRunbook -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Name $runbookName -Type PowerShellWorkflow -Uri $runbookUri
 
     # Publish the runbook
     Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName
