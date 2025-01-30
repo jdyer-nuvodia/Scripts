@@ -9,12 +9,16 @@ $adminPassword = "TS=pGxB~8m^A~WH^[yB8"
 $domainName = "JB-TEST.local"
 $publicIpName = "$vmName-PublicIP"
 $storageAccountName = "jbteststorage0"
+$fileShareName = "runbooks"
+$subdirectoryName = "AutoShutdownRunbook"
+$runbookFileName = "runbook.ps1"
 $nsgName = "JB-TEST-NSG"
 $automationAccountName = "JB-TEST-Automation"
 $runbookName = "AutoShutdownRunbook"
 
-# Import Az.Automation module
+# Import Az.Automation and Az.Storage modules
 Import-Module Az.Automation
+Import-Module Az.Storage
 
 # Function to wait for VM creation
 function Wait-ForVM {
@@ -51,6 +55,42 @@ if (-not $storageAccount) {
 } else {
     Write-Host "Storage account $storageAccountName already exists"
 }
+
+# Get the storage account context
+$storageAccountContext = $storageAccount.Context
+
+# Check if file share exists, create if it doesn't
+$fileShare = Get-AzStorageShare -Context $storageAccountContext -Name $fileShareName -ErrorAction SilentlyContinue
+if (-not $fileShare) {
+    Write-Host "Creating file share $fileShareName"
+    $fileShare = New-AzStorageShare -Context $storageAccountContext -Name $fileShareName
+} else {
+    Write-Host "File share $fileShareName already exists"
+}
+
+# Create subdirectory in the file share
+$subdirectory = $fileShare.GetDirectoryReference($subdirectoryName)
+$subdirectory.CreateIfNotExists()
+
+# Write the runbook content to a file in the subdirectory
+$runbookContent = @"
+workflow $runbookName {
+    param (
+        [string] \$resourceGroupName,
+        [string] \$vmName
+    )
+
+    \$connection = Get-AutomationConnection -Name AzureRunAsConnection
+    Add-AzAccount -ServicePrincipal -TenantId \$connection.TenantId -ApplicationId \$connection.ApplicationId -CertificateThumbprint \$connection.CertificateThumbprint
+
+    Stop-AzVM -ResourceGroupName \$resourceGroupName -Name \$vmName -Force
+}
+"@
+
+$runbookFile = $subdirectory.GetFileReference($runbookFileName)
+$runbookFile.UploadText($runbookContent)
+
+Write-Host "Runbook content written to file share successfully."
 
 # Check if virtual network exists, create if it doesn't
 $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
@@ -177,31 +217,23 @@ if (-not $vm) {
         Write-Host "Azure Automation account $automationAccountName already exists"
     }
 
-    # Create the runbook for auto-shutdown
-    $runbookScript = @"
-workflow $runbookName {
-    param (
-        [string] \$resourceGroupName,
-        [string] \$vmName
-    )
-
-    \$connection = Get-AutomationConnection -Name AzureRunAsConnection
-    Add-AzAccount -ServicePrincipal -TenantId \$connection.TenantId -ApplicationId \$connection.ApplicationId -CertificateThumbprint \$connection.CertificateThumbprint
-
-    Stop-AzVM -ResourceGroupName \$resourceGroupName -Name \$vmName -Force
-}
-"@
-
-    # Publish the runbook
+    # Create and publish the runbook using the file in the storage account
     Write-Host "Creating runbook $runbookName"
-    $runbook = New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow -Description "Auto-shutdown runbook for VMs" -LogProgress $true -LogVerbose $true
-    Set-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Content $runbookScript
-    Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup
+    $runbookContent = Get-AzStorageFileContent -ShareName $fileShareName -Path "$subdirectoryName/$runbookFileName" -Context $storageAccountContext
+    New-AzAutomationRunbook -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Content $runbookContent
+    Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
-    # Schedule the runbook
-    Write-Host "Scheduling runbook $runbookName"
-    $schedule = New-AzAutomationSchedule -AutomationAccountName $automationAccountName -ResourceGroupName $resourceGroup -Name "DailyShutdownSchedule" -StartTime (Get-Date).Date.AddHours(21) -DayInterval 1 -Description "Daily shutdown schedule"
-    Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -ResourceGroupName $resourceGroup -RunbookName $runbookName -ScheduleName $schedule.Name -Parameters @{ "resourceGroupName" = $resourceGroup; "vmName" = $vmName }
+    # Define the schedule parameters
+    $scheduleName = "AutoShutdownSchedule"
+    $startTime = (Get-Date).AddMinutes(1) # Start in 1 minute
+
+    # Create a new schedule
+    Write-Host "Creating schedule $scheduleName"
+    New-AzAutomationSchedule -Name $scheduleName -StartTime $startTime -OneTime -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
+
+    # Register the runbook with the schedule
+    Write-Host "Registering runbook $runbookName with schedule $scheduleName"
+    Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ScheduleName $scheduleName -ResourceGroupName $resourceGroup
 
     Write-Host "Auto-shutdown schedule created successfully."
 
