@@ -219,7 +219,8 @@ if (-not $vm) {
     New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
     # Import the runbook content from the uploaded file
-    Import-AzAutomationRunbook -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Name $runbookName -Type PowerShellWorkflow -ContentLinkUri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath"
+    Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -OutFile $tempRunbookFilePath
+    Import-AzAutomationRunbook -Path $tempRunbookFilePath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
     # Publish the runbook
     Publish-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName
