@@ -60,23 +60,25 @@ if (-not $storageAccount) {
 # Get the storage account context
 $storageAccountContext = $storageAccount.Context
 
-# Check if file share exists, create if it doesn't
-$fileShare = Get-AzStorageShare -Context $storageAccountContext -Name $fileShareName -ErrorAction SilentlyContinue
-if (-not $fileShare) {
-    Write-Host "Creating file share $fileShareName"
-    $fileShare = New-AzStorageShare -Context $storageAccountContext -Name $fileShareName
-} else {
-    Write-Host "File share $fileShareName already exists"
-}
+# Get the storage account key
+$storageAccountKey = (Get-AzStorageAccountKey -ResourceGroupName $resourceGroup -Name $storageAccountName).Value[0]
 
-# Create subdirectory in the file share
-$cloudFileDirectory = Get-AzStorageFile -ShareName $fileShareName -Path $subdirectoryName -Context $storageAccountContext -ErrorAction SilentlyContinue
-if (-not $cloudFileDirectory) {
-    Write-Host "Creating subdirectory $subdirectoryName"
-    New-AzStorageFileDirectory -ShareName $fileShareName -Path $subdirectoryName -Context $storageAccountContext
-} else {
-    Write-Host "Subdirectory $subdirectoryName already exists"
-}
+# Create the file service client
+$connectionString = "DefaultEndpointsProtocol=https;AccountName=$storageAccountName;AccountKey=$storageAccountKey;EndpointSuffix=core.windows.net"
+$fileServiceClient = [Azure.Storage.Files.Shares.ShareServiceClient]::new($connectionString)
+
+# Get the file share client
+$fileShareClient = $fileServiceClient.GetShareClient($fileShareName)
+
+# Create the file share if it doesn't exist
+$fileShareClient.CreateIfNotExists()
+
+# Get the root directory client
+$rootDirectoryClient = $fileShareClient.GetRootDirectoryClient()
+
+# Create the subdirectory if it doesn't exist
+$subdirectoryClient = $rootDirectoryClient.GetSubdirectoryClient($subdirectoryName)
+$subdirectoryClient.CreateIfNotExists()
 
 # Write the runbook content to a temporary file
 $runbookContent = @"
@@ -95,8 +97,9 @@ workflow $runbookName {
 Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
 # Upload the runbook file to the file share
-$cloudFilePath = "$subdirectoryName/$runbookFileName"
-Set-AzStorageFileContent -ShareName $fileShareName -Source $tempRunbookFilePath -Path $cloudFilePath -Context $storageAccountContext
+$fileClient = $subdirectoryClient.GetFileClient($runbookFileName)
+$fileClient.Create($runbookContent.Length)
+$fileClient.UploadRange([System.IO.File]::OpenRead($tempRunbookFilePath), 0)
 
 Write-Host "Runbook content written to file share successfully."
 
