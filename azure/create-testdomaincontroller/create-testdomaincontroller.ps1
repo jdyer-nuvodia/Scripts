@@ -189,7 +189,7 @@ try {
     $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -StorageAccountName $storageAccountName -ResourceGroupName $resourceGroup
 
     # Enable Trusted Launch features
-    $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType TrustedLaunch -UefiSettings @( {"SecureBootEnabled"=$true; "VTpmEnabled"=$true } )
+    $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType TrustedLaunch -UefiSettings @{ SecureBootEnabled = $true; VTpmEnabled = $true }
 
     # Create the VM with Azure Hybrid Benefit
     New-AzVM -ResourceGroupName $resourceGroup -Location $location -VM $vmConfig -LicenseType "Windows_Server"
