@@ -39,8 +39,12 @@ function Get-LargestFolders {
         }
     } | Sort-Object SizeGB -Descending | Select-Object -First $limit
 
-    $folders | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -Append -FilePath $outputFile
-    $folders | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+    if ($folders.Count -gt 0) {
+        $folders | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -Append -FilePath $outputFile
+        $folders | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+    } else {
+        Show-Progress "No folders found in the path: $path"
+    }
     
     return $folders
 }
@@ -133,8 +137,12 @@ if ($deepestFolder -ne $null) {
 }
 
 # Output the results in table format to the log file and console
-$results | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -FilePath $outputFile -Append
-$results | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+if ($results.Count -gt 0) {
+    $results | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -FilePath $outputFile -Append
+    $results | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+} else {
+    Show-Progress "No results to display."
+}
 
 # Output the location of the log file
 Write-Host "The log can be found at $outputFile."
