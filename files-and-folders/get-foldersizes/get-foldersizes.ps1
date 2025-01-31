@@ -1,5 +1,5 @@
 $driveLetter = "C:\"
-$outputFile = "output.txt"
+$outputFile = "C:\temp\output.txt"
 
 # Function to check if PowerShell is running as administrator
 function Test-Administrator {
@@ -34,10 +34,9 @@ function Get-LargestFolders {
         }
     } | Sort-Object SizeGB -Descending | Select-Object -First $limit
 
-    foreach ($folder in $folders) {
-        Show-Progress "Folder: $($folder.FolderName), Size: $($folder.SizeGB) GB"
-    }
-
+    $folders | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -Append -FilePath $outputFile
+    $folders | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+    
     return $folders
 }
 
