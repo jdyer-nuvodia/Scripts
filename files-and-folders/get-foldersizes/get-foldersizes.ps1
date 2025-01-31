@@ -1,6 +1,13 @@
 $driveLetter = "C:\"
 $outputFile = "output.txt"
 
+# Function to check if PowerShell is running as administrator
+function Test-Administrator {
+    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 # Function to display progress
 function Show-Progress {
     param (
@@ -53,6 +60,13 @@ function Get-LargestFile {
         Show-Progress "Largest file found: $($largestFile.FileName) with size $($largestFile.SizeGB) GB"
     }
     return $largestFile
+}
+
+# Check if the script is running with administrator privileges
+if (-not (Test-Administrator)) {
+    Show-Progress "Restarting PowerShell as administrator..."
+    Start-Process powershell -ArgumentList "-File `"$PSCommandPath`"" -Verb RunAs
+    exit
 }
 
 # Initial path
