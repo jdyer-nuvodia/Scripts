@@ -138,8 +138,12 @@ if ($deepestFolder -ne $null -and $deepestFolder.FolderName -ne "") {
 
 # Output the results in table format to the log file and console
 if ($results.Count -gt 0) {
-    $results | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -FilePath $outputFile -Append
-    $results | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+    $results | ForEach-Object {
+        $_ | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+    } | Out-File -FilePath $outputFile -Append
+    $results | ForEach-Object {
+        $_ | Format-Table FolderName, SizeGB, IsHidden -AutoSize
+    }
 } else {
     Show-Progress "No results to display."
 }
