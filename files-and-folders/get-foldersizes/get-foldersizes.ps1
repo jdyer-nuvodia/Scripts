@@ -107,7 +107,7 @@ while ($true) {
     }
 }
 
-if ($deepestFolder -ne $null) {
+if ($deepestFolder -ne $null -and $deepestFolder.FolderName -ne "") {
     Show-Progress "Deepest folder path: $($deepestFolder.FolderName) with size $($deepestFolder.SizeGB) GB"
     try {
         $largestFile = Get-LargestFile -path $deepestFolder.FolderName
@@ -129,7 +129,7 @@ Show-Progress "Script execution ended at $(Get-Date)"
 # Display the results in table format
 $results = @()
 
-if ($deepestFolder -ne $null) {
+if ($deepestFolder -ne $null -and $deepestFolder.FolderName -ne "") {
     $results += $deepestFolder
     if ($largestFile -ne $null) {
         $results += $largestFile
