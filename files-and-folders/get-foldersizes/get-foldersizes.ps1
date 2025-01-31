@@ -120,7 +120,8 @@ if ($deepestFolder -ne $null) {
     }
 }
 
-$results | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -Append -FilePath $outputFile
+# Output the results in table format to the log file and console
+$results | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -FilePath $outputFile -Append
 $results | Format-Table FolderName, SizeGB, IsHidden -AutoSize
 
 # Output the location of the log file
