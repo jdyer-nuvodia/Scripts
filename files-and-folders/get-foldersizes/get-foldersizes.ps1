@@ -5,7 +5,7 @@ function Get-FolderSizes {
     )
 
     # Get the size of directories under the starting path
-    Get-ChildItem -Path $startingPath -Directory -Force | ForEach-Object {
+    $folders = Get-ChildItem -Path $startingPath -Directory -Force | ForEach-Object {
         $size = (Get-ChildItem $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
         [PSCustomObject]@{
             FolderName = $_.FullName
@@ -13,6 +13,11 @@ function Get-FolderSizes {
             IsHidden = $_.Attributes.HasFlag([System.IO.FileAttributes]::Hidden)
         }
     } | Sort-Object SizeGB -Descending | Select-Object -First 3
+
+    # Display the results
+    $folders | Format-Table -AutoSize
+
+    return $folders
 }
 
 # Define the function to get the largest folder and analyze it
