@@ -1,6 +1,11 @@
 $driveLetter = "C:\"
 $outputFile = "C:\temp\output.txt"
 
+# Create the output directory if it doesn't exist
+if (-not (Test-Path -Path (Split-Path -Path $outputFile))) {
+    New-Item -ItemType Directory -Path (Split-Path -Path $outputFile) | Out-Null
+}
+
 # Function to check if PowerShell is running as administrator
 function Test-Administrator {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -71,12 +76,20 @@ if (-not (Test-Administrator)) {
 # Initial path
 $currentPath = $driveLetter
 $deepestFolder = $null
+$visitedPaths = @()
 
 # Start of the script execution
 Show-Progress "Script execution started at $(Get-Date)"
 
 # Drill down through the largest subfolder until there are no more folders
 while ($true) {
+    if ($visitedPaths -contains $currentPath) {
+        Show-Progress "Loop detected! Stopping further analysis."
+        break
+    }
+
+    $visitedPaths += $currentPath
+
     try {
         $largestFolders = Get-LargestFolders -path $currentPath -limit 3
         if ($null -eq $largestFolders -or $largestFolders.Count -eq 0) {
