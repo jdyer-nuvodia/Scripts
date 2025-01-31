@@ -25,8 +25,8 @@ function Get-LargestFolders {
     )
     Show-Progress "Analyzing folders in path: $path"
     
-    $folders = Get-ChildItem -Path $path -Directory -Force | ForEach-Object {
-        $size = (Get-ChildItem $_.FullName -Recurse -File -Force | Measure-Object -Property Length -Sum).Sum
+    $folders = Get-ChildItem -Path $path -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $size = (Get-ChildItem $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
         [PSCustomObject]@{
             FolderName = $_.FullName
             SizeGB = [Math]::Round($size / 1GB, 2)
@@ -48,7 +48,7 @@ function Get-LargestFile {
     )
     Show-Progress "Analyzing files in path: $path"
     
-    $largestFile = Get-ChildItem -Path $path -File -Recurse -Force | ForEach-Object {
+    $largestFile = Get-ChildItem -Path $path -File -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object {
         [PSCustomObject]@{
             FileName = $_.FullName
             SizeGB = [Math]::Round($_.Length / 1GB, 2)
@@ -110,5 +110,21 @@ if ($deepestFolder -ne $null) {
 # End of the script execution
 Show-Progress "Script execution ended at $(Get-Date)"
 
+# Display the results in table format
+$results = @()
+
+if ($deepestFolder -ne $null) {
+    $results += $deepestFolder
+    if ($largestFile -ne $null) {
+        $results += $largestFile
+    }
+}
+
+$results | Format-Table -AutoSize | Out-File -Append -FilePath $outputFile
+
 # Output the location of the log file
 Write-Host "The log can be found at $outputFile."
+
+# Pause at the end to prevent the window from closing
+Write-Host "Press any key to exit..."
+[System.Console]::ReadKey() | Out-Null
