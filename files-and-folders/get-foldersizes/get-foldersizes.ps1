@@ -1,17 +1,11 @@
-# Define the starting path
-$startingPath = 'C:\'
-
-function Get-LargestFolders {
+# Define the function to get folder sizes
+function Get-FolderSizes {
     param (
-        [string]$path
+        [string]$startingPath
     )
 
-    $folders = Get-ChildItem -Path $path -Directory -Force -ErrorAction SilentlyContinue
-    if ($folders.Count -eq 0) {
-        return
-    }
-
-    $largestFolders = $folders | ForEach-Object {
+    # Get the size of directories under the starting path
+    Get-ChildItem -Path $startingPath -Directory -Force | ForEach-Object {
         $size = (Get-ChildItem $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
         [PSCustomObject]@{
             FolderName = $_.FullName
@@ -19,22 +13,28 @@ function Get-LargestFolders {
             IsHidden = $_.Attributes.HasFlag([System.IO.FileAttributes]::Hidden)
         }
     } | Sort-Object SizeGB -Descending | Select-Object -First 3
+}
 
-    Write-Output $largestFolders
+# Define the function to get the largest folder and analyze it
+function AnalyzeLargestFolder {
+    param (
+        [string]$startingPath
+    )
 
-    $largestFolder = $largestFolders | Select-Object -First 1
-    if ($largestFolder) {
-        Process-LargestFolder -path $largestFolder.FolderName
+    # Get the largest folder
+    $largestFolder = Get-FolderSizes -startingPath $startingPath | Select-Object -First 1
+
+    if ($largestFolder -ne $null) {
+        Write-Host "Analyzing largest folder: $($largestFolder.FolderName)"
+        # Run the Get-FolderSizes function on the largest folder
+        Get-FolderSizes -startingPath $largestFolder.FolderName
+    } else {
+        Write-Host "No folders found in the specified path."
     }
 }
 
-function Process-LargestFolder {
-    param (
-        [string]$path
-    )
+# Define the starting path
+$startingPath = 'C:\'
 
-    Get-LargestFolders -path $path
-}
-
-# Start from the specified starting path
-Get-LargestFolders -path $startingPath
+# Call the function to analyze the largest folder
+AnalyzeLargestFolder -startingPath $startingPath
