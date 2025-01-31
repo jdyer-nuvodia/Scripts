@@ -120,7 +120,8 @@ if ($deepestFolder -ne $null) {
     }
 }
 
-$results | Format-Table -AutoSize | Out-File -Append -FilePath $outputFile
+$results | Format-Table FolderName, SizeGB, IsHidden -AutoSize | Out-File -Append -FilePath $outputFile
+$results | Format-Table FolderName, SizeGB, IsHidden -AutoSize
 
 # Output the location of the log file
 Write-Host "The log can be found at $outputFile."
