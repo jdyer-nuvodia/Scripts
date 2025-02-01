@@ -30,7 +30,7 @@ function AnalyzeLargestFolder {
     $largestFolder = Get-FolderSizes -startingPath $startingPath | Select-Object -First 1
 
     if ($largestFolder -ne $null) {
-        Write-Host "Analyzing largest folder: $($largestFolder.FolderName)"
+        Write-Host "`nAnalyzing largest folder: $($largestFolder.FolderName)`n"
         # Run the Get-FolderSizes function on the largest folder
         Get-FolderSizes -startingPath $largestFolder.FolderName
     } else {
