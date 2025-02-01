@@ -1,3 +1,6 @@
+# Global variables
+$startingDirectory = 'C:\'
+
 # Define the function to get folder sizes
 function Get-FolderSizes {
     param (
@@ -36,15 +39,18 @@ function AnalyzeLargestFolder {
     $largestFolder = $folders | Select-Object -First 1
 
     if ($largestFolder -ne $null -and (Get-ChildItem -Path $largestFolder.FolderName -Directory -Force | Measure-Object).Count -gt 0) {
-        # Recursively analyze the largest folder
-        AnalyzeLargestFolder -startingPath $largestFolder.FolderName
+        return $largestFolder.FolderName
     } else {
         Write-Host "No more subdirectories to analyze in the path: $startingPath"
+        return $null
     }
 }
 
-# Define the starting path
-$startingPath = 'C:\'
-
 # Call the function to analyze the largest folder recursively
-AnalyzeLargestFolder -startingPath $startingPath
+$path2 = AnalyzeLargestFolder -startingPath $startingDirectory
+if ($path2) {
+    $path3 = AnalyzeLargestFolder -startingPath $path2
+    if ($path3) {
+        AnalyzeLargestFolder -startingPath $path3
+    }
+}
