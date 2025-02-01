@@ -35,11 +35,11 @@ function AnalyzeLargestFolder {
     # Get the largest folder
     $largestFolder = $folders | Select-Object -First 1
 
-    if ($largestFolder -ne $null) {
+    if ($largestFolder -ne $null -and (Get-ChildItem -Path $largestFolder.FolderName -Directory -Force | Measure-Object).Count -gt 0) {
         # Recursively analyze the largest folder
         AnalyzeLargestFolder -startingPath $largestFolder.FolderName
     } else {
-        Write-Host "No folders found in the specified path."
+        Write-Host "No more subdirectories to analyze in the path: $startingPath"
     }
 }
 
