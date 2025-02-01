@@ -26,7 +26,7 @@ function Get-FolderSizes {
     return $folders
 }
 
-# Define the function to analyze the largest folder recursively
+# Define the function to analyze the largest folder
 function AnalyzeLargestFolder {
     param (
         [string]$startingPath
@@ -46,7 +46,7 @@ function AnalyzeLargestFolder {
     }
 }
 
-# Call the function to analyze the largest folder recursively
+# Call the function to analyze the largest folder
 $path2 = AnalyzeLargestFolder -startingPath $startingDirectory
 if ($path2) {
     $path3 = AnalyzeLargestFolder -startingPath $path2
