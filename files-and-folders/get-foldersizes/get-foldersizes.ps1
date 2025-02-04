@@ -15,7 +15,7 @@ function Get-FolderSizes {
             $folderSize = (Get-ChildItem -Path $folder.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
             [PSCustomObject]@{
                 Folder = $folder.FullName
-                SizeGB = [math]::round($folderSize / 1GB, 2)
+                SizeGB = [math]::round($folderSize / 1GB)
             }
         } catch {
             Write-Warning "Access to the path '$($folder.FullName)' is denied."
