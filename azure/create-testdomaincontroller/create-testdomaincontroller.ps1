@@ -242,6 +242,15 @@ try {
     $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $automationLocation
 }
 
+# Check if the runbook already exists, delete if it does
+try {
+    $existingRunbook = Get-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup
+    Write-Host "Runbook $runbookName already exists. Deleting it."
+    Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Force
+} catch {
+    Write-Host "Runbook $runbookName does not exist. Proceeding to create a new one."
+}
+
 # Create the runbook
 New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
