@@ -7,8 +7,7 @@ Write-Host "Analyzing folders in: $Path"
 
 function Get-FolderSizes {
     param (
-        [string]$FolderPath,
-        [int]$Depth
+        [string]$FolderPath
     )
 
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
@@ -16,26 +15,17 @@ function Get-FolderSizes {
 
     foreach ($folder in $folders) {
         try {
-            Start-Job -ScriptBlock {
-                param ($folder)
-                $folderSize = [long]0
-                $items = Get-ChildItem -Path $folder.FullName -Recurse -File -ErrorAction SilentlyContinue
-                foreach ($item in $items) {
-                    $folderSize += $item.Length
-                }
-                [PSCustomObject]@{
-                    Folder = $folder.FullName
-                    SizeGB = [math]::round($folderSize / 1GB)
-                }
-            } -ArgumentList $folder
+            # Using Robocopy to get the folder size
+            $robocopyResult = robocopy $folder.FullName NULL /L /S /BYTES /NJH /NJS /NC /NDL /FP
+            $folderSize = ($robocopyResult -match '^\s+\d+\s+\d+\s+\d+\s+(\d+)\s') | ForEach-Object { [int64]$matches[1] }
+            $folderSizes += [PSCustomObject]@{
+                Folder = $folder.FullName
+                SizeGB = [math]::round($folderSize / 1GB)
+            }
         } catch {
             Write-Warning "Access to the path '$($folder.FullName)' is denied."
         }
     }
-
-    $jobs = Get-Job | Wait-Job | Receive-Job
-    $folderSizes += $jobs
-
     return $folderSizes
 }
 
@@ -43,7 +33,7 @@ function Get-LargestFile {
     param (
         [string]$FolderPath
     )
-    
+
     try {
         $largestFile = Get-ChildItem -Path $FolderPath -Recurse -File -ErrorAction SilentlyContinue | Sort-Object -Property Length -Descending | Select-Object -First 1
         return $largestFile
@@ -57,7 +47,7 @@ $currentPath = $Path
 $currentDepth = 0
 
 while ($currentDepth -le $MaxDepth) {
-    $folderSizes = Get-FolderSizes -FolderPath $currentPath -Depth $currentDepth
+    $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
     if ($folderSizes.Count -eq 0) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
