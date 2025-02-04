@@ -104,6 +104,10 @@ Write-Host "Runbook content written to file share successfully."
 # Clean up the temporary file
 Remove-Item -Path $tempRunbookFilePath
 
+# Generate a SAS token for the file share
+$policy = New-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $null -Permission r -StartTime (Get-Date).AddMinutes(-5) -ExpiryTime (Get-Date).AddHours(1)
+$sasToken = New-AzStorageShareSASToken -Context $storageAccountContext -ShareName $fileShareName -Policy $policy
+
 # Check if virtual network exists, create if it doesn't
 $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
 if (-not $virtualNetwork) {
@@ -254,13 +258,11 @@ try {
 # Create the runbook
 New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
-# Download the runbook content
-$headers = @{
-    "x-ms-version" = "2020-08-04"
-}
+# Download the runbook content using SAS token
 $downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
+$sasUri = "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath?$sasToken"
 try {
-    Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -Headers $headers -OutFile $downloadPath
+    Invoke-WebRequest -Uri $sasUri -OutFile $downloadPath
     Write-Host "Runbook content downloaded successfully."
 } catch {
     Write-Error "Failed to download runbook content. Error: $_"
