@@ -20,6 +20,7 @@ $tempRunbookFilePath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
 $nsgName = "JB-TEST-NSG"
 $automationAccountName = "JB-TEST-Automation"
 $runbookName = "AutoShutdownRunbook"
+$policyName = "RunbookAccessPolicy"  # Define a policy name for the SAS token
 
 # Import Az.Automation and Az.Storage modules
 Import-Module Az.Automation
@@ -105,8 +106,8 @@ Write-Host "Runbook content written to file share successfully."
 Remove-Item -Path $tempRunbookFilePath
 
 # Generate a SAS token for the file share
-$policy = New-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $null -Permission r -StartTime (Get-Date).AddMinutes(-5) -ExpiryTime (Get-Date).AddHours(1)
-$sasToken = New-AzStorageShareSASToken -Context $storageAccountContext -ShareName $fileShareName -Policy $policy
+$policy = New-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName -Permission r -StartTime (Get-Date).AddMinutes(-5) -ExpiryTime (Get-Date).AddHours(1)
+$sasToken = New-AzStorageShareSASToken -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName
 
 # Check if virtual network exists, create if it doesn't
 $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
