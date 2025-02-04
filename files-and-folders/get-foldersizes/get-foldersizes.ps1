@@ -7,25 +7,30 @@ Write-Host "Analyzing folders in: $Path"
 
 function Get-FolderSizes {
     param (
-        [string]$FolderPath
+        [string]$FolderPath,
+        [int]$Depth
     )
+
+    if ($Depth -gt $MaxDepth) {
+        return @()
+    }
 
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
     $folderSizes = @()
 
     foreach ($folder in $folders) {
         try {
-            # Using Robocopy to get the folder size
-            $robocopyResult = robocopy $folder.FullName NULL /L /S /BYTES /NJH /NJS /NC /NDL /FP
-            $folderSize = ($robocopyResult -match '^\s+\d+\s+\d+\s+\d+\s+(\d+)\s') | ForEach-Object { [int64]$matches[1] }
+            # Calculate folder size using Measure-Object
+            $folderSize = Get-ChildItem -Path $folder.FullName -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
             $folderSizes += [PSCustomObject]@{
                 Folder = $folder.FullName
-                SizeGB = [math]::round($folderSize / 1GB)
+                SizeGB = [math]::round($folderSize.Sum / 1GB)
             }
         } catch {
             Write-Warning "Access to the path '$($folder.FullName)' is denied."
         }
     }
+
     return $folderSizes
 }
 
@@ -47,7 +52,7 @@ $currentPath = $Path
 $currentDepth = 0
 
 while ($currentDepth -le $MaxDepth) {
-    $folderSizes = Get-FolderSizes -FolderPath $currentPath
+    $folderSizes = Get-FolderSizes -FolderPath $currentPath -Depth $currentDepth
 
     if ($folderSizes.Count -eq 0) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
