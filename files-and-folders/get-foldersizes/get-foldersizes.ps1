@@ -8,7 +8,6 @@ param (
 Write-Host "Analyzing folders in: $Path"
 
 function Get-FolderSizes {
-    [CmdletBinding()]
     param (
         [string]$FolderPath,
         [int]$CurrentDepth = 0
@@ -18,41 +17,42 @@ function Get-FolderSizes {
         return $null
     }
 
-    $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue | Out-Null
-    $results = New-Object System.Collections.Generic.List[PSObject]
-
+    $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
+    $folderSizes = @()
+    $processedCount = 0
+    
     foreach ($folder in $folders) {
         try {
-            $null = $files = @([System.IO.Directory]::EnumerateFiles($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories))
-            $null = $subfolders = @([System.IO.Directory]::EnumerateDirectories($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories))
+            $files = [System.IO.Directory]::EnumerateFiles($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories)
+            $subfolders = [System.IO.Directory]::EnumerateDirectories($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories)
             $folderSize = 0
             foreach ($file in $files) {
-                $folderSize += (Get-Item $file -ErrorAction SilentlyContinue).Length
+                $folderSize += (Get-Item $file).Length
             }
-            $null = $results.Add([PSCustomObject]@{
+            $folderSizes += [PSCustomObject]@{
                 Folder = $folder.FullName
                 SizeGB = [math]::round($folderSize / 1GB, 2)
                 TotalSubfolders = $subfolders.Count
                 TotalFiles = $files.Count
-            })
+            }
+            $processedCount++
+            Write-Host "Processed $processedCount folders..." -NoNewline -ForegroundColor Gray
+            Write-Host "`r" -NoNewline
         } catch {
             Write-Warning "Access to the path '$($folder.FullName)' is denied."
         }
     }
-
-    Write-Output $results
+    Write-Host "Completed processing $processedCount folders."
+    return $folderSizes
 }
 
 function Get-LargestFile {
-    [CmdletBinding()]
     param (
         [string]$FolderPath
     )
 
     try {
-        $largestFile = Get-ChildItem -Path $FolderPath -Recurse -File -ErrorAction SilentlyContinue | 
-            Sort-Object -Property Length -Descending | 
-            Select-Object -First 1
+        $largestFile = Get-ChildItem -Path $FolderPath -Recurse -File -ErrorAction SilentlyContinue | Sort-Object -Property Length -Descending | Select-Object -First 1
         return $largestFile
     } catch {
         Write-Warning "Access to the path '$FolderPath' is denied."
@@ -63,26 +63,26 @@ function Get-LargestFile {
 $currentPath = $Path
 
 while ($true) {
-    $folderSizes = Get-FolderSizes -FolderPath $currentPath | Out-Null
+    $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
-    if ($null -eq $folderSizes -or $folderSizes.Count -eq 0) {
+    if ($folderSizes.Count -eq 0) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
         if ($null -ne $largestFile) {
-            Write-Host "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB, 2)) GB"
+            Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB, 2)) GB"
         } else {
-            Write-Host "No files found in $currentPath"
+            Write-Output "No files found in $currentPath"
         }
         break
     }
 
     # Display the top 3 largest folders
     $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
-    foreach ($folder in $topFolders) {
-        Write-Host "Folder: $($folder.Folder), Size: $($folder.SizeGB) GB, Total Subfolders: $($folder.TotalSubfolders), Total Files: $($folder.TotalFiles)"
+    $topFolders | ForEach-Object {
+        Write-Output "Folder: $($_.Folder), Size: $($_.SizeGB) GB, Total Subfolders: $($_.TotalSubfolders), Total Files: $($_.TotalFiles)"
     }
 
     # Descend into the largest folder
     $largestFolder = $topFolders | Select-Object -First 1
-    Write-Host "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB, Total Subfolders: $($largestFolder.TotalSubfolders), Total Files: $($largestFolder.TotalFiles)"
+    Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB, Total Subfolders: $($largestFolder.TotalSubfolders), Total Files: $($largestFolder.TotalFiles)"
     $currentPath = $largestFolder.Folder
 }
