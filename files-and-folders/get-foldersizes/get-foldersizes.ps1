@@ -4,6 +4,7 @@ param (
 
 Write-Host "Analyzing folders in: $Path"
 
+# Function to get folder sizes
 function Get-FolderSizes {
     param (
         [string]$FolderPath
@@ -27,6 +28,7 @@ function Get-FolderSizes {
     return $folderSizes
 }
 
+# Function to get the largest file
 function Get-LargestFile {
     param (
         [string]$FolderPath
@@ -43,6 +45,7 @@ function Get-LargestFile {
 
 $currentPath = $Path
 
+# Start the analysis loop
 while ($true) {
     $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
@@ -56,6 +59,7 @@ while ($true) {
         break
     }
 
+    # Find the largest folder and continue the loop
     $largestFolder = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 1
     Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB"
     $currentPath = $largestFolder.Folder
