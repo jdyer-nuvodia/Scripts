@@ -1,6 +1,6 @@
 param (
     [string]$Path = "C:\",
-    [int]$MaxDepth = 2  # Limit the depth of recursion
+    [int]$MaxDepth = 10  # Increased depth to allow deeper recursion
 )
 
 Write-Host "Analyzing folders in: $Path"
@@ -44,9 +44,8 @@ function Get-LargestFile {
 }
 
 $currentPath = $Path
-$currentDepth = 0
 
-while ($currentDepth -le $MaxDepth) {
+while ($true) {
     $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
     if ($folderSizes.Count -eq 0) {
@@ -67,5 +66,4 @@ while ($currentDepth -le $MaxDepth) {
     $largestFolder = $topFolders | Select-Object -First 1
     Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB"
     $currentPath = $largestFolder.Folder
-    $currentDepth++
 }
