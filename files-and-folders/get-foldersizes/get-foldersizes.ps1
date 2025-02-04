@@ -1,6 +1,6 @@
 param (
     [string]$Path = "C:\",
-    [int]$MaxDepth = 10  # Increased depth to allow deeper recursion
+    [int]$MaxDepth = 10
 )
 
 Write-Host "Analyzing folders in: $Path"
@@ -18,37 +18,23 @@ function Get-FolderSizes {
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
     $folderSizes = @()
 
-    $jobs = @()
     foreach ($folder in $folders) {
-        $job = Start-Job -ScriptBlock {
-            param ($folder)
-            try {
-                $files = [System.IO.Directory]::EnumerateFiles($folder, '*', [System.IO.SearchOption]::AllDirectories)
-                $subfolders = [System.IO.Directory]::EnumerateDirectories($folder, '*', [System.IO.SearchOption]::AllDirectories)
-                $folderSize = 0
-                foreach ($file in $files) {
-                    $folderSize += (Get-Item $file).Length
-                }
-                return [PSCustomObject]@{
-                    Folder = $folder
-                    SizeGB = [math]::round($folderSize / 1GB, 2)  # Rounded to 2 decimal places
-                    TotalSubfolders = $subfolders.Count
-                    TotalFiles = $files.Count
-                }
-            } catch {
-                Write-Warning "Access to the path '$folder' is denied."
-                return $null
+        try {
+            $files = [System.IO.Directory]::EnumerateFiles($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories)
+            $subfolders = [System.IO.Directory]::EnumerateDirectories($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories)
+            $folderSize = 0
+            foreach ($file in $files) {
+                $folderSize += (Get-Item $file).Length
             }
-        } -ArgumentList $folder.FullName
-        $jobs += $job
-    }
-
-    $jobs | ForEach-Object {
-        $result = Receive-Job -Job $_ -Wait
-        if ($result -ne $null) {
-            $folderSizes += $result
+            $folderSizes += [PSCustomObject]@{
+                Folder = $folder.FullName
+                SizeGB = [math]::round($folderSize / 1GB, 2)
+                TotalSubfolders = $subfolders.Count
+                TotalFiles = $files.Count
+            }
+        } catch {
+            Write-Warning "Access to the path '$folder' is denied."
         }
-        Remove-Job -Job $_
     }
 
     return $folderSizes
