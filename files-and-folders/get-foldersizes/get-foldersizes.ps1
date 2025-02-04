@@ -27,12 +27,13 @@ function Get-FolderSizes {
             foreach ($file in $files) {
                 $folderSize += (Get-Item $file).Length
             }
-            [PSCustomObject]@{
+            $folderInfo = [PSCustomObject]@{
                 Folder = $folder.FullName
                 SizeGB = [math]::round($folderSize / 1GB, 2)
                 TotalSubfolders = $subfolders.Count
                 TotalFiles = $files.Count
             }
+            Write-Output $folderInfo
         } catch {
             Write-Warning "Access to the path '$folder' is denied."
         }
@@ -58,7 +59,7 @@ $currentPath = $Path
 while ($true) {
     $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
-    if ($folderSizes.Count -eq 0) {
+    if (!$folderSizes) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
         if ($null -ne $largestFile) {
             Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB, 2)) GB"
