@@ -49,7 +49,7 @@ while ($true) {
     if ($folderSizes.Count -eq 0) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
         if ($null -ne $largestFile) {
-            Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB))GB"
+            Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB)) GB"
         } else {
             Write-Output "No files found in $currentPath"
         }
@@ -57,6 +57,6 @@ while ($true) {
     }
 
     $largestFolder = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 1
-    Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB)GB"
+    Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB"
     $currentPath = $largestFolder.Folder
 }
