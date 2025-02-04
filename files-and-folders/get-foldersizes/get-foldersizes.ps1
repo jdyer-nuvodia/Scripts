@@ -13,17 +13,30 @@ function Get-FolderSizes {
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
     $folderSizes = @()
 
+    $jobs = @()
     foreach ($folder in $folders) {
-        try {
-            # Calculate folder size using Measure-Object in a more efficient manner
-            $folderSize = Get-ChildItem -Path $folder.FullName -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
-            $folderSizes += [PSCustomObject]@{
-                Folder = $folder.FullName
-                SizeGB = [math]::round($folderSize.Sum / 1GB, 2)  # Rounded to 2 decimal places
+        $job = Start-Job -ScriptBlock {
+            param ($folder)
+            try {
+                $folderSize = Get-ChildItem -Path $folder -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
+                return [PSCustomObject]@{
+                    Folder = $folder
+                    SizeGB = [math]::round($folderSize.Sum / 1GB, 2)  # Rounded to 2 decimal places
+                }
+            } catch {
+                Write-Warning "Access to the path '$folder' is denied."
+                return $null
             }
-        } catch {
-            Write-Warning "Access to the path '$($folder.FullName)' is denied."
+        } -ArgumentList $folder.FullName
+        $jobs += $job
+    }
+
+    $jobs | ForEach-Object {
+        $result = Receive-Job -Job $_ -Wait
+        if ($result -ne $null) {
+            $folderSizes += $result
         }
+        Remove-Job -Job $_
     }
 
     return $folderSizes
