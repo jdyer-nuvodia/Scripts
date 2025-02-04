@@ -7,8 +7,13 @@ Write-Host "Analyzing folders in: $Path"
 
 function Get-FolderSizes {
     param (
-        [string]$FolderPath
+        [string]$FolderPath,
+        [int]$CurrentDepth = 0
     )
+
+    if ($CurrentDepth -ge $MaxDepth) {
+        return @()
+    }
 
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
     $folderSizes = @()
@@ -16,18 +21,25 @@ function Get-FolderSizes {
     $jobs = @()
     foreach ($folder in $folders) {
         $job = Start-Job -ScriptBlock {
-            param ($folder)
+            param ($folder, $currentDepth)
             try {
-                $folderSize = Get-ChildItem -Path $folder -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
+                $files = [System.IO.Directory]::EnumerateFiles($folder, '*', [System.IO.SearchOption]::AllDirectories)
+                $folders = [System.IO.Directory]::EnumerateDirectories($folder, '*', [System.IO.SearchOption]::AllDirectories)
+                $folderSize = 0
+                foreach ($file in $files) {
+                    $folderSize += (Get-Item $file).Length
+                }
                 return [PSCustomObject]@{
                     Folder = $folder
-                    SizeGB = [math]::round($folderSize.Sum / 1GB, 2)  # Rounded to 2 decimal places
+                    SizeGB = [math]::round($folderSize / 1GB, 2)  # Rounded to 2 decimal places
+                    SubfolderCount = ($folders.Count + 1)  # Include the current folder
+                    FileCount = $files.Count
                 }
             } catch {
                 Write-Warning "Access to the path '$folder' is denied."
                 return $null
             }
-        } -ArgumentList $folder.FullName
+        } -ArgumentList $folder.FullName, ($CurrentDepth + 1)
         $jobs += $job
     }
 
@@ -73,10 +85,10 @@ while ($true) {
 
     # Display the top 3 largest folders
     $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
-    $topFolders | Format-Table -Property Folder, SizeGB -AutoSize
+    $topFolders | Format-Table -Property Folder, SizeGB, SubfolderCount, FileCount -AutoSize
 
     # Descend into the largest folder
     $largestFolder = $topFolders | Select-Object -First 1
-    Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB"
+    Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB, Subfolders: $($largestFolder.SubfolderCount), Files: $($largestFolder.FileCount)"
     $currentPath = $largestFolder.Folder
 }
