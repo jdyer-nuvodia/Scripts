@@ -15,7 +15,7 @@ function Get-FolderSizes {
             $folderSize = (Get-ChildItem -Path $folder.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
             [PSCustomObject]@{
                 Folder = $folder.FullName
-                SizeMB = [math]::round($folderSize / 1MB, 2)
+                SizeGB = [math]::round($folderSize / 1GB, 2)
             }
         } catch {
             Write-Warning "Access to the path '$($folder.FullName)' is denied."
@@ -26,5 +26,5 @@ function Get-FolderSizes {
 # Collect the folder sizes into a variable
 $folderSizes = Get-FolderSizes -FolderPath $Path
 
-# Display the results as a table
-$folderSizes | Format-Table -Property Folder, SizeMB -AutoSize
+# Select the top 3 largest folders and display the results as a table
+$folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3 | Format-Table -Property Folder, SizeGB -AutoSize
