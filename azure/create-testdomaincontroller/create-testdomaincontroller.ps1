@@ -256,7 +256,7 @@ New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $run
 
 # Download the runbook content
 $headers = @{
-    "x-ms-version" = "2022-04-11"
+    "x-ms-version" = "2020-08-04"
 }
 $downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
 try {
