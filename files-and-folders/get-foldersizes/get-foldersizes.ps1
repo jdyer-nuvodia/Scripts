@@ -19,7 +19,7 @@ function Get-FolderSizes {
             $folderSize = Get-ChildItem -Path $folder.FullName -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
             $folderSizes += [PSCustomObject]@{
                 Folder = $folder.FullName
-                SizeGB = [math]::round($folderSize.Sum / 1GB)
+                SizeGB = [math]::round($folderSize.Sum / 1GB, 2)  # Rounded to 2 decimal places
             }
         } catch {
             Write-Warning "Access to the path '$($folder.FullName)' is denied."
@@ -51,7 +51,7 @@ while ($true) {
     if ($folderSizes.Count -eq 0) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
         if ($null -ne $largestFile) {
-            Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB)) GB"
+            Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB, 2)) GB"
         } else {
             Write-Output "No files found in $currentPath"
         }
