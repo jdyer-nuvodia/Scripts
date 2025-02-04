@@ -1,35 +1,51 @@
 # create-testdomaincontroller.ps1
-# Updated script with a newer valid x-ms-version set via New-AzStorageContext to avoid InvalidHeaderValue errors.
+# Updated script with explanations, contexts, and comments to help clarify each step.
 
-# Set ErrorActionPreference to Stop to halt script execution on the first error
+# ==========================================================================================
+# 1. SET ERROR PREFERENCES
+# ==========================================================================================
+# Halt script execution on the first error encountered to prevent partial/configuration
+# that doesn't fully succeed.
 $ErrorActionPreference = "Stop"
 
-# Variables
+# ==========================================================================================
+# 2. DEFINE VARIABLES
+# ==========================================================================================
+# These variables store basic configuration details, such as resource names and credentials.
+# Adjust them to match your environment and requirements.
 $resourceGroup       = "JB-TEST-RG"
 $location            = "westus"
-$automationLocation  = "westus2" # Updated variable for the automation account location
-$vnetName            = "JB-TEST-VNET"
+$automationLocation  = "westus2"       # Location where the Azure Automation account will be created
+$vnetName            = "JB-TEST-VNET"  # Virtual Network name
 $subnetName          = "JB-TEST-SUBNET1"
-$vmName              = "JB-TEST-DC01"
-$adminUsername       = "jbadmin"
-$adminPassword       = "TS=pGxB~8m^A~WH^[yB8"
-$domainName          = "JB-TEST.local"
-$publicIpName        = "$vmName-PublicIP"
-$storageAccountName  = "jbteststorage0"
-$fileShareName       = "runbooks"
+$vmName              = "JB-TEST-DC01"  # VM name (Domain Controller)
+$adminUsername       = "jbadmin"       # Administrator username for the VM
+$adminPassword       = "TS=pGxB~8m^A~WH^[yB8"  # Administrator password
+$domainName          = "JB-TEST.local"       # Domain name for the AD DS environment
+$publicIpName        = "$vmName-PublicIP"     # Public IP name for the domain controller
+$storageAccountName  = "jbteststorage0"       # Existing or new Storage account name
+$fileShareName       = "runbooks"             # Fileshare container for storing runbook
 $subdirectoryName    = "AutoShutdownRunbook"
 $runbookFileName     = "runbook.ps1"
 $tempRunbookFilePath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
-$nsgName             = "JB-TEST-NSG"
-$automationAccountName = "JB-TEST-Automation"
-$runbookName         = "AutoShutdownRunbook"
-$policyName          = "RunbookAccessPolicy"  # Define a policy name for the SAS token
+$nsgName             = "JB-TEST-NSG"          # Name for the Network Security Group
+$automationAccountName = "JB-TEST-Automation" # Azure Automation account name
+$runbookName         = "AutoShutdownRunbook"  # Name of the runbook
+$policyName          = "RunbookAccessPolicy"  # Stored Access Policy name for generating SAS tokens
 
-# Import Az.Automation and Az.Storage modules
+# ==========================================================================================
+# 3. IMPORT REQUIRED MODULES
+# ==========================================================================================
+# Az.Automation and Az.Storage modules provide PowerShell commands for Azure Automation
+# and Azure Storage interactions. Ensure these modules are installed or upgrade them if
+# you encounter any parameter errors (e.g., the -ApiVersion parameter).
 Import-Module Az.Automation
 Import-Module Az.Storage
 
-# Function to wait for VM creation
+# ==========================================================================================
+# 4. SUPPORTING FUNCTION
+# ==========================================================================================
+# This function waits until a VM appears in the Azure resource group or times out.
 function Wait-ForVM {
     param (
         [string]$ResourceGroupName,
@@ -48,33 +64,53 @@ function Wait-ForVM {
     return $false
 }
 
-# Check if resource group exists
-if (-not (Get-AzResourceGroup -Name $resourceGroup)) {
-    Write-Host "Creating resource group $resourceGroup"
+# ==========================================================================================
+# 5. CREATE OR CONFIRM RESOURCE GROUP
+# ==========================================================================================
+# The resource group holds all your Azure resources. This checks if one exists already
+# or creates it if needed.
+if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction SilentlyContinue)) {
+    Write-Host "Creating resource group $resourceGroup..."
     New-AzResourceGroup -Name $resourceGroup -Location $location
 } else {
-    Write-Host "Resource group $resourceGroup already exists"
+    Write-Host "Resource group $resourceGroup already exists."
 }
 
-# Check if storage account exists, create if it doesn't
+# ==========================================================================================
+# 6. CREATE OR CONFIRM STORAGE ACCOUNT
+# ==========================================================================================
+# Check if the storage account exists; if not, create it. 
 $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction SilentlyContinue
 if (-not $storageAccount) {
-    Write-Host "Creating storage account $storageAccountName"
+    Write-Host "Creating storage account $storageAccountName..."
     $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -Location $location -SkuName Standard_LRS
 } else {
-    Write-Host "Storage account $storageAccountName already exists"
+    Write-Host "Storage account $storageAccountName already exists."
 }
 
-# Retrieve the storage key and create a storage context with a valid x-ms-version
+# ==========================================================================================
+# 7. CREATE STORAGE CONTEXT (UPDATING x-ms-version)
+# ==========================================================================================
+# Retrieve the storage account key and create a storage context. If your Az.Storage module
+# doesn't support the -ApiVersion parameter, consider upgrading the module or remove it.
 $storageKey = (Get-AzStorageAccountKey -ResourceGroupName $resourceGroup -Name $storageAccountName)[0].Value
-$storageAccountContext = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $storageKey -Protocol 'HTTPS' -ApiVersion '2021-08-06'
+try {
+    $storageAccountContext = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $storageKey -Protocol 'HTTPS' -ApiVersion '2021-08-06'
+} catch {
+    Write-Host "Your Az.Storage module might not support -ApiVersion. Falling back to default."
+    $storageAccountContext = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $storageKey -Protocol 'HTTPS'
+}
 
-# Ensure the directory exists for temp files
+# Create a Temp directory if it doesn't exist for runbook files
 if (-not (Test-Path -Path "C:\Temp")) {
     New-Item -ItemType Directory -Path "C:\Temp"
 }
 
-# Write the runbook content to a temporary file
+# ==========================================================================================
+# 8. CREATE RUNBOOK CONTENT
+# ==========================================================================================
+# This snippet is the PowerShell runbook that automatically stops a VM. We write it to a temp
+# file, then upload it to the Azure file share.
 $runbookContent = @"
 workflow $runbookName {
     param (
@@ -88,12 +124,13 @@ workflow $runbookName {
     Stop-AzVM -ResourceGroupName \$resourceGroupName -Name \$vmName -Force
 }
 "@
+
+# Write the runbook content to a temporary file
 Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
-# Check for an existing runbook file in the share
+# Check if a runbook file already exists and remove it
 $remoteFilePath = "$subdirectoryName/$runbookFileName"
 $fileExists = Get-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -ErrorAction SilentlyContinue
-
 if ($fileExists) {
     Remove-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath
     Write-Host "Existing runbook file deleted."
@@ -108,88 +145,102 @@ Write-Host "Runbook content written to file share successfully."
 # Clean up the temporary file
 Remove-Item -Path $tempRunbookFilePath
 
-# Check if the stored access policy already exists, create if it doesn't
+# ==========================================================================================
+# 9. CREATE OR CONFIRM STORED ACCESS POLICY & GENERATE SAS
+# ==========================================================================================
+# A stored access policy can be used to generate a SAS token for controlled read/write
+# access to resources.
 try {
     $policy = Get-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName
     Write-Host "Stored access policy $policyName already exists."
 } catch {
-    Write-Host "Creating stored access policy $policyName."
+    Write-Host "Creating stored access policy $policyName..."
     $policy = New-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName -Permission r -StartTime (Get-Date).AddMinutes(-5) -ExpiryTime (Get-Date).AddHours(1)
 }
 
-# Generate a SAS token for the file share
+# Generate a Shared Access Signature token that references the stored access policy
 $sasToken = New-AzStorageShareSASToken -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName
 
-# Check if virtual network exists, create if it doesn't
+# ==========================================================================================
+# 10. CREATE OR CONFIRM VIRTUAL NETWORK & SUBNET
+# ==========================================================================================
+# The virtual network must already exist or will be created; then we ensure a subnet is
+# present for the VM.
 $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
 if (-not $virtualNetwork) {
-    Write-Host "Creating virtual network $vnetName"
-    $vnet = @{
+    Write-Host "Creating virtual network $vnetName..."
+    $vnetParams = @{
         ResourceGroupName = $resourceGroup
         Location          = $location
         Name              = $vnetName
         AddressPrefix     = "10.0.0.0/16"
     }
-    New-AzVirtualNetwork @vnet
-
-    # Retrieve the created virtual network object
+    New-AzVirtualNetwork @vnetParams
     $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
 } else {
-    Write-Host "Virtual network $vnetName already exists"
+    Write-Host "Virtual network $vnetName already exists."
 }
 
-# Check if the subnet already exists before adding it
-$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName
+$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction SilentlyContinue
 if (-not $existingSubnet) {
-    Write-Host "Adding subnet $subnetName to virtual network $vnetName"
+    Write-Host "Adding subnet $subnetName to virtual network $vnetName..."
     Add-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -AddressPrefix "10.0.1.0/24" -Name $subnetName | Out-Null
     Set-AzVirtualNetwork -VirtualNetwork $virtualNetwork | Out-Null
 } else {
-    Write-Host "Subnet $subnetName already exists in virtual network $vnetName"
+    Write-Host "Subnet $subnetName already exists in virtual network $vnetName."
 }
 
-# Check if Network Security Group exists, create if it doesn't
+# ==========================================================================================
+# 11. CREATE OR CONFIRM NETWORK SECURITY GROUP
+# ==========================================================================================
 try {
     $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName
-    Write-Host "Network Security Group $nsgName already exists"
+    Write-Host "Network Security Group $nsgName already exists."
 } catch {
-    Write-Host "Creating Network Security Group $nsgName"
+    Write-Host "Creating Network Security Group $nsgName..."
     $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name $nsgName
 }
 
-# Check if Network Interface exists, create if it doesn't
-$nicName = "$($vmName)VMNic"
+# ==========================================================================================
+# 12. CREATE OR CONFIRM NETWORK INTERFACE & PUBLIC IP
+# ==========================================================================================
+$nicName = "$($vmName)VMNic"   # NIC name is generally VM name + "VMNic"
 try {
     $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName
-    Write-Host "Network interface $nicName already exists"
+    Write-Host "Network interface $nicName already exists."
 } catch {
-    Write-Host "Creating network interface $nicName"
+    Write-Host "Creating network interface $nicName..."
     $subnetId = (Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName).Subnets[0].Id
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroup -Location $location -SubnetId $subnetId
 }
 
-# Check if Public IP exists, create if it doesn't
 try {
     $publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName
-    Write-Host "Public IP address $publicIpName already exists"
+    Write-Host "Public IP address $publicIpName already exists."
 } catch {
-    Write-Host "Creating public IP address $publicIpName"
+    Write-Host "Creating public IP address $publicIpName..."
     $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroup -Location $location -AllocationMethod Static -Sku Standard
 }
 
-# Connect the public IP to the VMNic
+# Attach the public IP to the NIC
 $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic"
 $nic.IpConfigurations[0].PublicIpAddress = $publicIp
-Set-AzNetworkInterface -NetworkInterface $nic
+Set-AzNetworkInterface -NetworkInterface $nic | Out-Null
 
-# Check if VM exists, create if it doesn't
+# ==========================================================================================
+# 13. CREATE OR CONFIRM VM
+# ==========================================================================================
+# This section creates the VM if it doesn't exist and configures it with Windows, labs, etc.
 try {
-    $vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName
-    Write-Host "VM $vmName already exists"
+    $vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction SilentlyContinue
+    if ($vm) {
+        Write-Host "VM $vmName already exists."
+    } else {
+        throw "NotFound"
+    }
 } catch {
-    Write-Host "Creating VM $vmName"
-
-    # Create VM Configuration
+    Write-Host "Creating VM $vmName..."
+    # Build the VM configuration
     $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_B2s"
     $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows `
         -ComputerName $vmName `
@@ -198,10 +249,10 @@ try {
     $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
     $vmConfig = Set-AzVMOSDisk -VM $vmConfig -Windows -Caching ReadWrite -CreateOption FromImage -DiskSizeInGB 128 -Name "$($vmName)OSDisk"
 
-    # Set boot diagnostics to use the specified storage account
+    # Enable boot diagnostics referencing the storage account
     $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -StorageAccountName $storageAccountName -ResourceGroupName $resourceGroup
 
-    # Enable Trusted Launch features
+    # Enable Trusted Launch features for improved security posture
     $vmConfig.SecurityProfile = @{
         SecurityType = "TrustedLaunch"
         UefiSettings = @{
@@ -210,31 +261,33 @@ try {
         }
     }
 
-    # Create the VM with Azure Hybrid Benefit
-    New-AzVM -ResourceGroupName $resourceGroup -Location $location -VM $vmConfig -LicenseType "Windows_Server"
+    # Create the VM with Azure Hybrid Benefit for licensing
+    New-AzVM -ResourceGroupName $resourceGroup -Location $location -VM $vmConfig -LicenseType "Windows_Server" | Out-Null
 
-    # Wait for the VM to be created
+    # Wait until the VM is fully created
     if (Wait-ForVM -ResourceGroupName $resourceGroup -VMName $vmName) {
         Write-Host "VM $vmName created successfully."
     } else {
-        Write-Error "Failed to create VM $vmName."
+        Write-Error "Failed to create VM $vmName within the specified time."
         exit
     }
 
-    # Change RDP port to 10443
+    # Change RDP port to 10443 (example of customizing firewall ports)
     $portvalue = 10443
     $scriptBlock = {
-        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "PortNumber" -Value $using:portvalue
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "PortNumber" -Value $using:portvalue
         New-NetFirewallRule -DisplayName 'RDPPORTLatest-TCP-In' -Profile 'Public' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $using:portvalue
         New-NetFirewallRule -DisplayName 'RDPPORTLatest-UDP-In' -Profile 'Public' -Direction Inbound -Action Allow -Protocol UDP -LocalPort $using:portvalue
         Restart-Service -Name TermService -Force
     }
+
+    # Execute the script within the new VM
     Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -VMName $vmName -CommandId 'RunPowerShellScript' -ScriptString $scriptBlock
 
-    # Update NSG to allow traffic on port 10443
+    # Create a new rule in the NSG to allow traffic on port 10443
     Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
         -Name "Allow_RDP_10443" `
-        -Description "Allow RDP" `
+        -Description "Allow RDP on port 10443" `
         -Access Allow `
         -Protocol Tcp `
         -Direction Inbound `
@@ -242,34 +295,47 @@ try {
         -SourceAddressPrefix * `
         -SourcePortRange * `
         -DestinationAddressPrefix * `
-        -DestinationPortRange 10443
-    $nsg | Set-AzNetworkSecurityGroup
+        -DestinationPortRange 10443 | Out-Null
+    $nsg | Set-AzNetworkSecurityGroup | Out-Null
 }
 
-# Check if Azure Automation account exists, create if it doesn't
+# ==========================================================================================
+# 14. CREATE OR CONFIRM AZURE AUTOMATION ACCOUNT & RUNBOOK
+# ==========================================================================================
+# Azure Automation can schedule runbooks to automatically manage resource states. 
 try {
-    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName
-    Write-Host "Azure Automation account $automationAccountName already exists"
+    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction SilentlyContinue
+    if ($automationAccount) {
+        Write-Host "Azure Automation account $automationAccountName already exists."
+    } else {
+        throw "NotFound"
+    }
 } catch {
-    Write-Host "Creating Azure Automation account $automationAccountName"
+    Write-Host "Creating Azure Automation account $automationAccountName..."
     $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $automationLocation
 }
 
-# Check if the runbook already exists, delete if it does
+# Remove existing runbook if it exists, then create a new placeholder
 try {
-    $existingRunbook = Get-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup
-    Write-Host "Runbook $runbookName already exists. Deleting it."
-    Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Force
+    $existingRunbook = Get-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
+    if ($existingRunbook) {
+        Write-Host "Runbook $runbookName already exists. Deleting it..."
+        Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Force
+    } else {
+        Write-Host "Runbook $runbookName does not exist. Proceeding..."
+    }
 } catch {
-    Write-Host "Runbook $runbookName does not exist. Proceeding to create a new one."
+    Write-Host "Runbook $runbookName does not exist. Proceeding..."
 }
+New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow | Out-Null
 
-# Create the runbook (empty placeholder first)
-New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
-
-# Download the runbook content using SAS token
+# ==========================================================================================
+# 15. DOWNLOAD RUNBOOK CONTENT AND IMPORT TO AUTOMATION
+# ==========================================================================================
+# Create a local file path and use Invoke-WebRequest with the SAS token to retrieve runbook from the file share
 $downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
 $sasUri = "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath?$sasToken"
+
 try {
     Invoke-WebRequest -Uri $sasUri -OutFile $downloadPath
     Write-Host "Runbook content downloaded successfully."
@@ -281,24 +347,29 @@ try {
 # Import the runbook content from the downloaded file
 Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
-# Publish the runbook
+# Publish the runbook so it’s ready to run or schedule
 Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Force
+Write-Host "Runbook $runbookName published successfully."
 
-# Define the schedule parameters
+# ==========================================================================================
+# 16. CREATE SCHEDULE & REGISTER RUNBOOK
+# ==========================================================================================
+# Example: create a one-time schedule that starts 5 minutes from now for demonstration.
 $scheduleName = "AutoShutdownSchedule"
-$startTime = (Get-Date).AddMinutes(5) # Start in 5 minutes
+$startTime = (Get-Date).AddMinutes(5)
 
-# Create a new schedule (one-time for demonstration)
-Write-Host "Creating schedule $scheduleName"
-New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime
+Write-Host "Creating schedule $scheduleName..."
+New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime | Out-Null
 
-# Register the runbook with the schedule
-Write-Host "Registering runbook $runbookName with schedule $scheduleName"
+Write-Host "Registering runbook $runbookName with schedule $scheduleName..."
 Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ScheduleName $scheduleName -ResourceGroupName $resourceGroup
-
 Write-Host "Auto-shutdown schedule created successfully."
 
-# Create PowerShell script for AD DS installation and configuration
+# ==========================================================================================
+# 17. INSTALL AND CONFIGURE AD DS ON THE VM
+# ==========================================================================================
+# The following script installs Windows feature AD-Domain-Services, promotes the server
+# to a domain controller, and creates test users.
 $script = @'
 # Install AD DS role
 Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
@@ -321,25 +392,28 @@ Install-ADDSForest `
 # Wait for AD DS installation to complete
 Start-Sleep -Seconds 300
 
-# Create 10 test users in the domain
+# Create 10 test users in the domain as an example
 for ($i = 1; $i -le 10; $i++) {
     $username = "TestUser$i"
     $password = "TestPassword123!"
-    New-ADUser -Name $username -AccountPassword (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires $true -Enabled $true
+    New-ADUser -Name $username -AccountPassword (ConvertTo-SecureString $password -AsPlainText -Force) `
+               -PasswordNeverExpires $true -Enabled $true
 }
 '@
 
-# Execute the PowerShell script on the VM using RunCommand
 Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -Name $vmName -CommandId "RunPowerShellScript" -ScriptString $script
 
-# Ensure VNet exists before updating DNS servers
+# ==========================================================================================
+# 18. UPDATE DNS SETTINGS IN THE VNET
+# ==========================================================================================
+# After creating a domain, we typically set the DC as the DNS server for the VNet if needed.
 $vnet = Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName
-if ($vnet -ne $null) {
-    Write-Host "Updating VNet DNS servers"
+if ($vnet) {
+    Write-Host "Updating $vnetName DNS servers to point to Domain Controller (10.0.1.4 by default)."
     $vnet.DhcpOptions.DnsServers.Add("10.0.1.4")
     $vnet | Set-AzVirtualNetwork
 } else {
-    Write-Error "VNet $vnetName not found."
+    Write-Error "VNet $vnetName not found; cannot update DNS servers."
 }
 
-Write-Host "Domain Controller setup complete. The VM will restart to finish the AD DS installation and create test users."
+Write-Host "Domain Controller setup complete. The VM will restart to finish AD DS installation and create test users."
