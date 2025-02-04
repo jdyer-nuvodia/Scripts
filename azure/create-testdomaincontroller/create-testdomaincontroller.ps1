@@ -45,7 +45,7 @@ function Wait-ForVM {
 }
 
 # Check if resource group exists
-if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction Stop)) {
+if (-not (Get-AzResourceGroup -Name $resourceGroup)) {
     Write-Host "Creating resource group $resourceGroup"
     New-AzResourceGroup -Name $resourceGroup -Location $location
 } else {
@@ -53,7 +53,7 @@ if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction Stop)) {
 }
 
 # Check if storage account exists, create if it doesn't
-$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction Stop
+$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName
 if (-not $storageAccount) {
     Write-Host "Creating storage account $storageAccountName"
     $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -Location $location -SkuName Standard_LRS
@@ -87,7 +87,7 @@ Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
 # Delete the existing runbook file if it exists
 $remoteFilePath = "$subdirectoryName/$runbookFileName"
-$fileExists = Get-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -ErrorAction SilentlyContinue
+$fileExists = Get-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath
 
 if ($fileExists) {
     Remove-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath
@@ -105,7 +105,7 @@ Write-Host "Runbook content written to file share successfully."
 Remove-Item -Path $tempRunbookFilePath
 
 # Check if virtual network exists, create if it doesn't
-$virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction Stop
+$virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
 if (-not $virtualNetwork) {
     Write-Host "Creating virtual network $vnetName"
     $vnet = @{
@@ -123,7 +123,7 @@ if (-not $virtualNetwork) {
 }
 
 # Check if the subnet already exists before adding it
-$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction Stop
+$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName
 if (-not $existingSubnet) {
     Write-Host "Adding subnet $subnetName to virtual network $vnetName"
     Add-AzVirtualNetworkSubnetConfig `
@@ -139,7 +139,7 @@ if (-not $existingSubnet) {
 
 # Check if Network Security Group exists, create if it doesn't
 try {
-    $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName -ErrorAction Stop
+    $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName
     Write-Host "Network Security Group $nsgName already exists"
 } catch {
     Write-Host "Creating Network Security Group $nsgName"
@@ -149,7 +149,7 @@ try {
 # Check if Network Interface exists, create if it doesn't
 $nicName = "$($vmName)VMNic"
 try {
-    $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName -ErrorAction Stop
+    $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName
     Write-Host "Network interface $nicName already exists"
 } catch {
     Write-Host "Creating network interface $nicName"
@@ -159,7 +159,7 @@ try {
 
 # Check if Public IP exists, create if it doesn't
 try {
-    $publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction Stop
+    $publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName
     Write-Host "Public IP address $publicIpName already exists"
 } catch {
     Write-Host "Creating public IP address $publicIpName"
@@ -167,13 +167,13 @@ try {
 }
 
 # Connect the public IP to the VMNic
-$nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic" -ErrorAction Stop
+$nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic"
 $nic.IpConfigurations[0].PublicIpAddress = $publicIp
 Set-AzNetworkInterface -NetworkInterface $nic
 
 # Check if VM exists, create if it doesn't
 try {
-    $vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction Stop
+    $vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName
     Write-Host "VM $vmName already exists"
 } catch {
     Write-Host "Creating VM $vmName"
@@ -235,7 +235,7 @@ try {
 
 # Check if Azure Automation account exists, create if it doesn't
 try {
-    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -ErrorAction Stop
+    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName
     Write-Host "Azure Automation account $automationAccountName already exists"
 } catch {
     Write-Host "Creating Azure Automation account $automationAccountName"
@@ -250,7 +250,13 @@ $headers = @{
     "x-ms-version" = "2022-04-11"
 }
 $downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
-Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -Headers $headers -OutFile $downloadPath
+try {
+    Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -Headers $headers -OutFile $downloadPath
+    Write-Host "Runbook content downloaded successfully."
+} catch {
+    Write-Error "Failed to download runbook content. Error: $_"
+    exit
+}
 
 # Import the runbook content from the downloaded file
 Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
@@ -307,7 +313,7 @@ for ($i = 1; $i -le 10; $i++) {
 Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -Name $vmName -CommandId "RunPowerShellScript" -ScriptString $script
 
 # Ensure VNet exists before updating DNS servers
-$vnet = Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName -ErrorAction Stop
+$vnet = Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName
 if ($vnet -ne $null) {
     Write-Host "Updating VNet DNS servers"
     $vnet.DhcpOptions.DnsServers.Add("10.0.1.4")
