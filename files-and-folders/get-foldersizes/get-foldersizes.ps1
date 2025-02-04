@@ -14,11 +14,12 @@ function Get-FolderSizes {
     )
 
     if ($CurrentDepth -ge $MaxDepth) {
-        return
+        return $null
     }
 
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
 
+    $folderSizes = @()
     foreach ($folder in $folders) {
         try {
             $files = [System.IO.Directory]::EnumerateFiles($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories)
@@ -27,17 +28,18 @@ function Get-FolderSizes {
             foreach ($file in $files) {
                 $folderSize += (Get-Item $file).Length
             }
-            $folderInfo = [PSCustomObject]@{
+            $folderSizes += [PSCustomObject]@{
                 Folder = $folder.FullName
                 SizeGB = [math]::round($folderSize / 1GB, 2)
                 TotalSubfolders = $subfolders.Count
                 TotalFiles = $files.Count
             }
-            Write-Output $folderInfo
         } catch {
-            Write-Warning "Access to the path '$folder' is denied."
+            Write-Warning "Access to the path '$($folder.FullName)' is denied."
         }
     }
+
+    return ,$folderSizes  # Comma operator to return array without outputting it
 }
 
 function Get-LargestFile {
@@ -59,7 +61,7 @@ $currentPath = $Path
 while ($true) {
     $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
-    if (!$folderSizes) {
+    if ($folderSizes.Count -eq 0) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
         if ($null -ne $largestFile) {
             Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB, 2)) GB"
