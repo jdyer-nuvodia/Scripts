@@ -105,8 +105,16 @@ Write-Host "Runbook content written to file share successfully."
 # Clean up the temporary file
 Remove-Item -Path $tempRunbookFilePath
 
+# Check if the stored access policy already exists, create if it doesn't
+try {
+    $policy = Get-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName
+    Write-Host "Stored access policy $policyName already exists."
+} catch {
+    Write-Host "Creating stored access policy $policyName."
+    $policy = New-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName -Permission r -StartTime (Get-Date).AddMinutes(-5) -ExpiryTime (Get-Date).AddHours(1)
+}
+
 # Generate a SAS token for the file share
-$policy = New-AzStorageShareStoredAccessPolicy -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName -Permission r -StartTime (Get-Date).AddMinutes(-5) -ExpiryTime (Get-Date).AddHours(1)
 $sasToken = New-AzStorageShareSASToken -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName
 
 # Check if virtual network exists, create if it doesn't
