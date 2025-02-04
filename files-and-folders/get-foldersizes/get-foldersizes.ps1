@@ -61,6 +61,11 @@ function Get-LargestFile {
     }
 }
 
+function Write-TableLine {
+    param([int]$Length = 100)
+    Write-Host ("-" * $Length)
+}
+
 $currentPath = $Path
 
 while ($true) {
@@ -76,14 +81,26 @@ while ($true) {
         break
     }
 
-    # Display the top 3 largest folders
+    # Display the top 3 largest folders in a table format
+    Write-Host "`nTop 3 Largest Folders in: $currentPath`n"
+    Write-TableLine
+    $format = "{0,-50} | {1,10} | {2,15} | {3,12}"
+    Write-Host ($format -f "Folder Path", "Size (GB)", "Subfolders", "Files")
+    Write-TableLine
+
     $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
-    $topFolders | ForEach-Object {
-        Write-Output "Folder: $($_.Folder), Size: $($_.SizeGB) GB, Total Subfolders: $($_.TotalSubfolders), Total Files: $($_.TotalFiles)"
+    foreach ($folder in $topFolders) {
+        Write-Host ($format -f 
+            ($folder.Folder.Length -gt 47 ? "..." + $folder.Folder.Substring($folder.Folder.Length - 44) : $folder.Folder),
+            $folder.SizeGB,
+            $folder.TotalSubfolders,
+            $folder.TotalFiles
+        )
     }
+    Write-TableLine
 
     # Descend into the largest folder
     $largestFolder = $topFolders | Select-Object -First 1
-    Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB, Total Subfolders: $($largestFolder.TotalSubfolders), Total Files: $($largestFolder.TotalFiles)"
+    Write-Host "`nDescending into: $($largestFolder.Folder)`n"
     $currentPath = $largestFolder.Folder
 }
