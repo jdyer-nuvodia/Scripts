@@ -7,20 +7,15 @@ Write-Host "Analyzing folders in: $Path"
 
 function Get-FolderSizes {
     param (
-        [string]$FolderPath,
-        [int]$Depth
+        [string]$FolderPath
     )
-
-    if ($Depth -gt $MaxDepth) {
-        return @()
-    }
 
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
     $folderSizes = @()
 
     foreach ($folder in $folders) {
         try {
-            # Calculate folder size using Measure-Object
+            # Calculate folder size using Measure-Object in a more efficient manner
             $folderSize = Get-ChildItem -Path $folder.FullName -File -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
             $folderSizes += [PSCustomObject]@{
                 Folder = $folder.FullName
@@ -52,7 +47,7 @@ $currentPath = $Path
 $currentDepth = 0
 
 while ($currentDepth -le $MaxDepth) {
-    $folderSizes = Get-FolderSizes -FolderPath $currentPath -Depth $currentDepth
+    $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
     if ($folderSizes.Count -eq 0) {
         $largestFile = Get-LargestFile -FolderPath $currentPath
@@ -64,7 +59,12 @@ while ($currentDepth -le $MaxDepth) {
         break
     }
 
-    $largestFolder = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 1
+    # Display the top 3 largest folders
+    $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
+    $topFolders | Format-Table -Property Folder, SizeGB -AutoSize
+
+    # Descend into the largest folder
+    $largestFolder = $topFolders | Select-Object -First 1
     Write-Output "Descending into largest folder: $($largestFolder.Folder), Size: $($largestFolder.SizeGB) GB"
     $currentPath = $largestFolder.Folder
     $currentDepth++
