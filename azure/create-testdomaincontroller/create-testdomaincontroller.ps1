@@ -243,7 +243,7 @@ try {
 }
 
 # Create the runbook
-New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow -Force
+New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
 # Download the runbook content
 $headers = @{
@@ -253,7 +253,7 @@ $downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
 Invoke-WebRequest -Uri "https://$storageAccountName.file.core.windows.net/$fileShareName/$remoteFilePath" -Headers $headers -OutFile $downloadPath
 
 # Import the runbook content from the downloaded file
-Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Force
+Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
 
 # Publish the runbook
 Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Force
