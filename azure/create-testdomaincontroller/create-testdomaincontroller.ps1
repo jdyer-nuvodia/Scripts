@@ -1,26 +1,29 @@
+# create-testdomaincontroller.ps1
+# Updated script with a newer valid x-ms-version set via New-AzStorageContext to avoid InvalidHeaderValue errors.
+
 # Set ErrorActionPreference to Stop to halt script execution on the first error
 $ErrorActionPreference = "Stop"
 
 # Variables
-$resourceGroup = "JB-TEST-RG"
-$location = "westus"
-$automationLocation = "westus2" # Updated variable for the automation account location
-$vnetName = "JB-TEST-VNET"
-$subnetName = "JB-TEST-SUBNET1"
-$vmName = "JB-TEST-DC01"
-$adminUsername = "jbadmin"
-$adminPassword = "TS=pGxB~8m^A~WH^[yB8"
-$domainName = "JB-TEST.local"
-$publicIpName = "$vmName-PublicIP"
-$storageAccountName = "jbteststorage0"
-$fileShareName = "runbooks"
-$subdirectoryName = "AutoShutdownRunbook"
-$runbookFileName = "runbook.ps1"
+$resourceGroup       = "JB-TEST-RG"
+$location            = "westus"
+$automationLocation  = "westus2" # Updated variable for the automation account location
+$vnetName            = "JB-TEST-VNET"
+$subnetName          = "JB-TEST-SUBNET1"
+$vmName              = "JB-TEST-DC01"
+$adminUsername       = "jbadmin"
+$adminPassword       = "TS=pGxB~8m^A~WH^[yB8"
+$domainName          = "JB-TEST.local"
+$publicIpName        = "$vmName-PublicIP"
+$storageAccountName  = "jbteststorage0"
+$fileShareName       = "runbooks"
+$subdirectoryName    = "AutoShutdownRunbook"
+$runbookFileName     = "runbook.ps1"
 $tempRunbookFilePath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
-$nsgName = "JB-TEST-NSG"
+$nsgName             = "JB-TEST-NSG"
 $automationAccountName = "JB-TEST-Automation"
-$runbookName = "AutoShutdownRunbook"
-$policyName = "RunbookAccessPolicy"  # Define a policy name for the SAS token
+$runbookName         = "AutoShutdownRunbook"
+$policyName          = "RunbookAccessPolicy"  # Define a policy name for the SAS token
 
 # Import Az.Automation and Az.Storage modules
 Import-Module Az.Automation
@@ -54,7 +57,7 @@ if (-not (Get-AzResourceGroup -Name $resourceGroup)) {
 }
 
 # Check if storage account exists, create if it doesn't
-$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName
+$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction SilentlyContinue
 if (-not $storageAccount) {
     Write-Host "Creating storage account $storageAccountName"
     $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -Location $location -SkuName Standard_LRS
@@ -62,10 +65,11 @@ if (-not $storageAccount) {
     Write-Host "Storage account $storageAccountName already exists"
 }
 
-# Get the storage account context
-$storageAccountContext = $storageAccount.Context
+# Retrieve the storage key and create a storage context with a valid x-ms-version
+$storageKey = (Get-AzStorageAccountKey -ResourceGroupName $resourceGroup -Name $storageAccountName)[0].Value
+$storageAccountContext = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $storageKey -Protocol 'HTTPS' -ApiVersion '2021-08-06'
 
-# Ensure the directory exists
+# Ensure the directory exists for temp files
 if (-not (Test-Path -Path "C:\Temp")) {
     New-Item -ItemType Directory -Path "C:\Temp"
 }
@@ -86,9 +90,9 @@ workflow $runbookName {
 "@
 Set-Content -Path $tempRunbookFilePath -Value $runbookContent
 
-# Delete the existing runbook file if it exists
+# Check for an existing runbook file in the share
 $remoteFilePath = "$subdirectoryName/$runbookFileName"
-$fileExists = Get-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath
+$fileExists = Get-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath -ErrorAction SilentlyContinue
 
 if ($fileExists) {
     Remove-AzStorageFile -Context $storageAccountContext -ShareName $fileShareName -Path $remoteFilePath
@@ -99,7 +103,6 @@ if ($fileExists) {
 
 # Upload the new runbook file to the file share
 Set-AzStorageFileContent -Context $storageAccountContext -ShareName $fileShareName -Source $tempRunbookFilePath -Path $remoteFilePath
-
 Write-Host "Runbook content written to file share successfully."
 
 # Clean up the temporary file
@@ -118,14 +121,14 @@ try {
 $sasToken = New-AzStorageShareSASToken -Context $storageAccountContext -ShareName $fileShareName -Policy $policyName
 
 # Check if virtual network exists, create if it doesn't
-$virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
+$virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
 if (-not $virtualNetwork) {
     Write-Host "Creating virtual network $vnetName"
     $vnet = @{
         ResourceGroupName = $resourceGroup
-        Location = $location
-        Name = $vnetName
-        AddressPrefix = "10.0.0.0/16"
+        Location          = $location
+        Name              = $vnetName
+        AddressPrefix     = "10.0.0.0/16"
     }
     New-AzVirtualNetwork @vnet
 
@@ -139,12 +142,7 @@ if (-not $virtualNetwork) {
 $existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName
 if (-not $existingSubnet) {
     Write-Host "Adding subnet $subnetName to virtual network $vnetName"
-    Add-AzVirtualNetworkSubnetConfig `
-        -VirtualNetwork $virtualNetwork `
-        -AddressPrefix "10.0.1.0/24" `
-        -Name $subnetName | Out-Null
-
-    # Apply changes to the virtual network
+    Add-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -AddressPrefix "10.0.1.0/24" -Name $subnetName | Out-Null
     Set-AzVirtualNetwork -VirtualNetwork $virtualNetwork | Out-Null
 } else {
     Write-Host "Subnet $subnetName already exists in virtual network $vnetName"
@@ -193,7 +191,9 @@ try {
 
     # Create VM Configuration
     $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_B2s"
-    $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential (New-Object System.Management.Automation.PSCredential($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)))
+    $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows `
+        -ComputerName $vmName `
+        -Credential (New-Object System.Management.Automation.PSCredential($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)))
     $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2025-datacenter-core-g2" -Version "latest"
     $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
     $vmConfig = Set-AzVMOSDisk -VM $vmConfig -Windows -Caching ReadWrite -CreateOption FromImage -DiskSizeInGB 128 -Name "$($vmName)OSDisk"
@@ -206,7 +206,7 @@ try {
         SecurityType = "TrustedLaunch"
         UefiSettings = @{
             SecureBootEnabled = $true
-            VTpmEnabled = $true
+            VTpmEnabled       = $true
         }
     }
 
@@ -264,7 +264,7 @@ try {
     Write-Host "Runbook $runbookName does not exist. Proceeding to create a new one."
 }
 
-# Create the runbook
+# Create the runbook (empty placeholder first)
 New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow
 
 # Download the runbook content using SAS token
@@ -288,7 +288,7 @@ Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup
 $scheduleName = "AutoShutdownSchedule"
 $startTime = (Get-Date).AddMinutes(5) # Start in 5 minutes
 
-# Create a new schedule
+# Create a new schedule (one-time for demonstration)
 Write-Host "Creating schedule $scheduleName"
 New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime
 
@@ -309,14 +309,14 @@ Install-ADDSForest `
     -CreateDnsDelegation:$false `
     -DatabasePath "C:\Windows\NTDS" `
     -DomainMode "WinThreshold" `
-    -DomainName "$domainName" `
+    -DomainName "JB-TEST.local" `
     -ForestMode "WinThreshold" `
     -InstallDns:$true `
     -LogPath "C:\Windows\NTDS" `
     -NoRebootOnCompletion:$false `
     -SysvolPath "C:\Windows\SYSVOL" `
     -Force:$true `
-    -SafeModeAdministratorPassword (ConvertTo-SecureString '$adminPassword' -AsPlainText -Force)
+    -SafeModeAdministratorPassword (ConvertTo-SecureString 'TS=pGxB~8m^A~WH^[yB8' -AsPlainText -Force)
 
 # Wait for AD DS installation to complete
 Start-Sleep -Seconds 300
