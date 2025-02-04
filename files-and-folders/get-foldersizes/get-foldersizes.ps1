@@ -1,3 +1,5 @@
+# get-foldersizes.ps1
+
 param (
     [string]$Path = "C:\",
     [int]$MaxDepth = 10
@@ -12,11 +14,10 @@ function Get-FolderSizes {
     )
 
     if ($CurrentDepth -ge $MaxDepth) {
-        return @()
+        return
     }
 
     $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
-    $folderSizes = @()
 
     foreach ($folder in $folders) {
         try {
@@ -26,7 +27,7 @@ function Get-FolderSizes {
             foreach ($file in $files) {
                 $folderSize += (Get-Item $file).Length
             }
-            $folderSizes += [PSCustomObject]@{
+            [PSCustomObject]@{
                 Folder = $folder.FullName
                 SizeGB = [math]::round($folderSize / 1GB, 2)
                 TotalSubfolders = $subfolders.Count
@@ -36,8 +37,6 @@ function Get-FolderSizes {
             Write-Warning "Access to the path '$folder' is denied."
         }
     }
-
-    return $folderSizes
 }
 
 function Get-LargestFile {
@@ -71,7 +70,9 @@ while ($true) {
 
     # Display the top 3 largest folders
     $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
-    $topFolders | Format-Table -Property Folder, SizeGB, TotalSubfolders, TotalFiles -AutoSize
+    $topFolders | ForEach-Object {
+        Write-Output "Folder: $($_.Folder), Size: $($_.SizeGB) GB, Total Subfolders: $($_.TotalSubfolders), Total Files: $($_.TotalFiles)"
+    }
 
     # Descend into the largest folder
     $largestFolder = $topFolders | Select-Object -First 1
