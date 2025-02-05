@@ -1,6 +1,6 @@
 # get-foldersizes.ps1
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 00:46:57 UTC
+# Created: 2025-02-05 00:55:03 UTC
 # Purpose: Ultra-fast directory scanner including system directories (read-only)
 
 param (
@@ -14,6 +14,25 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" `"$Path`"" -Verb RunAs
     Exit
 }
+
+# Setup transcript logging with UTF8 encoding for proper table formatting
+$transcriptPath = "C:\temp"
+if (-not (Test-Path $transcriptPath)) {
+    New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
+}
+$transcriptFile = Join-Path $transcriptPath "FolderScan_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+Start-Transcript -Path $transcriptFile -Force -UseMinimalHeader
+
+# Add script header to transcript
+Write-Host "======================================================"
+Write-Host "Folder Size Scanner - Execution Log"
+Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
+Write-Host "User: $env:USERNAME"
+Write-Host "Computer: $env:COMPUTERNAME"
+Write-Host "Target Path: $Path"
+Write-Host "======================================================"
+Write-Host ""
 
 # Remove existing type if it exists
 Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
@@ -242,3 +261,8 @@ while ($true) {
 }
 
 Write-Host "`nScript completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Script completed (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
+Write-Host "`nTranscript log file can be found here: $transcriptFile"
+Write-Host "======================================================"
+
+Stop-Transcript
