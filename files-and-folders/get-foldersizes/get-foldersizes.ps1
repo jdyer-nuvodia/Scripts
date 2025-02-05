@@ -159,4 +159,65 @@ function Get-FolderSizes {
     }
 }
 
-[Rest of the script remains the same as previous version]
+function Write-TableLine {
+    param([int]$Length = 150)
+    Write-Host ("-" * $Length)
+}
+
+function Format-FileSize {
+    param (
+        [double]$SizeInBytes
+    )
+    if ($SizeInBytes -ge 1GB) {
+        return "$([math]::round($SizeInBytes / 1GB, 2)) GB"
+    } elseif ($SizeInBytes -ge 1MB) {
+        return "$([math]::round($SizeInBytes / 1MB, 2)) MB"
+    } else {
+        return "$([math]::round($SizeInBytes / 1KB, 2)) KB"
+    }
+}
+
+$currentPath = $Path
+
+while ($true) {
+    $folderSizes = Get-FolderSizes -FolderPath $currentPath
+
+    if ($null -eq $folderSizes -or $folderSizes.Count -eq 0) {
+        Write-Host "`nReached end of directory tree at: $currentPath"
+        break
+    }
+
+    # Display the top 3 largest folders in a table format
+    Write-Host "`nTop 3 Largest Folders in: $currentPath`n"
+    Write-TableLine
+    $format = "{0,-50} | {1,10} | {2,15} | {3,12} | {4,-50}"
+    Write-Host ($format -f "Folder Path", "Size (GB)", "Subfolders", "Files", "Largest File (in this directory)")
+    Write-TableLine
+
+    $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
+    foreach ($folder in $topFolders) {
+        $largestFileInfo = if ($folder.LargestFile) {
+            if ($folder.LargestFile.SizeGB -ge 1) {
+                "$($folder.LargestFile.Name) ($($folder.LargestFile.SizeGB) GB)"
+            } else {
+                "$($folder.LargestFile.Name) ($($folder.LargestFile.SizeMB) MB)"
+            }
+        } else {
+            "No files"
+        }
+        
+        Write-Host ($format -f 
+            ($folder.Folder.Length -gt 47 ? "..." + $folder.Folder.Substring($folder.Folder.Length - 44) : $folder.Folder),
+            $folder.SizeGB,
+            $folder.TotalSubfolders,
+            $folder.TotalFiles,
+            ($largestFileInfo.Length -gt 47 ? "..." + $largestFileInfo.Substring($largestFileInfo.Length - 44) : $largestFileInfo)
+        )
+    }
+    Write-TableLine
+
+    # Descend into the largest folder
+    $largestFolder = $topFolders | Select-Object -First 1
+    Write-Host "`nDescending into: $($largestFolder.Folder)`n"
+    $currentPath = $largestFolder.Folder
+}
