@@ -1,8 +1,8 @@
 # Script: Rename-ScriptToFolderName.ps1
-# Version: 1.0
+# Version: 1.1
 # Description: Renames PowerShell scripts to match their parent folder names
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 22:49:51
+# Last Modified: 2025-02-05 23:19:53
 #
 # .SYNOPSIS
 #   Renames PowerShell scripts to match their parent folder names
@@ -53,14 +53,18 @@ function Rename-ScriptFile {
     try {
         # Get folder name
         $folderName = Split-Path -Path $FolderPath -Leaf
+        Write-Host "`nProcessing folder: $FolderPath" -ForegroundColor Cyan
+        Write-Host "Folder name: $folderName" -ForegroundColor Gray
         
         # Get all .ps1 files in the folder
         $psFiles = Get-ChildItem -Path $FolderPath -Filter "*.ps1" -File
         
         if ($psFiles.Count -eq 0) {
-            Write-Verbose "No PowerShell scripts found in: $FolderPath"
+            Write-Host "  No PowerShell scripts found in this folder" -ForegroundColor Yellow
             return
         }
+        
+        Write-Host "  Found $($psFiles.Count) PowerShell script(s)" -ForegroundColor Gray
         
         if ($psFiles.Count -eq 1) {
             $psFile = $psFiles[0]
@@ -68,41 +72,40 @@ function Rename-ScriptFile {
             
             # Skip if name already matches
             if ($psFile.Name -eq $newName) {
-                Write-Verbose "Script '$($psFile.Name)' already matches folder name"
+                Write-Host "  Script '$($psFile.Name)' already matches folder name" -ForegroundColor Yellow
                 return
             }
             
             # Rename the file
             $newPath = Join-Path -Path $FolderPath -ChildPath $newName
             if ($PSCmdlet.ShouldProcess($psFile.FullName, "Rename to '$newName'")) {
-                Rename-Item -Path $psFile.FullName -NewName $newName
-                Write-Host "Renamed '$($psFile.Name)' to '$newName'" -ForegroundColor Green
+                Write-Host "  Renaming '$($psFile.Name)' to '$newName'" -ForegroundColor Gray
+                Rename-Item -Path $psFile.FullName -NewName $newName -Force
+                Write-Host "  Successfully renamed to '$newName'" -ForegroundColor Green
             }
         }
         else {
             # Multiple .ps1 files found - prompt for action
-            Write-Host "`nMultiple PowerShell scripts found in: $FolderPath" -ForegroundColor Yellow
-            Write-Host "Files found:" -ForegroundColor Yellow
-            $psFiles | ForEach-Object { Write-Host "  - $($_.Name)" }
+            Write-Host "`n  Multiple PowerShell scripts found:" -ForegroundColor Yellow
+            for ($i = 0; $i -lt $psFiles.Count; $i++) {
+                Write-Host "    [$i] $($psFiles[$i].Name)"
+            }
             
-            $choice = Read-Host "`nDo you want to rename one of these files to '$folderName.ps1'? (y/n)"
+            $choice = Read-Host "`n  Do you want to rename one of these files to '$folderName.ps1'? (y/n)"
             if ($choice -eq 'y') {
-                for ($i = 0; $i -lt $psFiles.Count; $i++) {
-                    Write-Host "[$i] $($psFiles[$i].Name)"
-                }
-                
-                $fileChoice = Read-Host "`nEnter the number of the file to rename"
+                $fileChoice = Read-Host "  Enter the number of the file to rename"
                 if ($fileChoice -match '^\d+$' -and [int]$fileChoice -lt $psFiles.Count) {
                     $selectedFile = $psFiles[[int]$fileChoice]
                     $newName = "$folderName.ps1"
                     
                     if ($PSCmdlet.ShouldProcess($selectedFile.FullName, "Rename to '$newName'")) {
-                        Rename-Item -Path $selectedFile.FullName -NewName $newName
-                        Write-Host "Renamed '$($selectedFile.Name)' to '$newName'" -ForegroundColor Green
+                        Write-Host "  Renaming '$($selectedFile.Name)' to '$newName'" -ForegroundColor Gray
+                        Rename-Item -Path $selectedFile.FullName -NewName $newName -Force
+                        Write-Host "  Successfully renamed to '$newName'" -ForegroundColor Green
                     }
                 }
                 else {
-                    Write-Warning "Invalid selection, skipping folder"
+                    Write-Warning "  Invalid selection, skipping folder"
                 }
             }
         }
@@ -120,27 +123,31 @@ try {
     }
     
     Write-Host "Starting script rename process..." -ForegroundColor Cyan
-    Write-Verbose "Processing path: $Path"
-    Write-Verbose "Recursive mode: $Recursive"
+    Write-Host "Processing path: $Path" -ForegroundColor Gray
+    Write-Host "Recursive mode: $Recursive" -ForegroundColor Gray
     
-    # Get folders to process
+    # Initialize folders collection
     $folders = @()
-    if ($Recursive) {
-        Write-Verbose "Getting all subfolders recursively..."
-        $folders = Get-ChildItem -Path $Path -Directory -Recurse
-        Write-Host "Found $($folders.Count) subfolders to process" -ForegroundColor Cyan
+    
+    # Get the root folder
+    if ((Get-Item -Path $Path).PSIsContainer) {
+        $folders += Get-Item -Path $Path
     }
+    
+    # Add subfolders if recursive
+    if ($Recursive) {
+        Write-Host "Getting all subfolders recursively..." -ForegroundColor Gray
+        $subFolders = Get-ChildItem -Path $Path -Directory -Recurse
+        $folders += $subFolders
+        Write-Host "Found $($subFolders.Count) subfolder(s)" -ForegroundColor Gray
+    }
+    
+    # Sort folders by depth (deepest first) to handle nested folders properly
+    $folders = $folders | Sort-Object { ($_.FullName -split '\\').Count } -Descending
     
     # Process each folder
     foreach ($folder in $folders) {
-        Write-Host "`nProcessing folder: $($folder.FullName)" -ForegroundColor Cyan
         Rename-ScriptFile -FolderPath $folder.FullName
-    }
-    
-    # Process the root folder
-    if ((Get-Item -Path $Path).PSIsContainer) {
-        Write-Host "`nProcessing root folder: $Path" -ForegroundColor Cyan
-        Rename-ScriptFile -FolderPath $Path
     }
     
     Write-Host "`nScript rename process completed successfully." -ForegroundColor Green
