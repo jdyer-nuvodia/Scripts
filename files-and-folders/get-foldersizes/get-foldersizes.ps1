@@ -1,12 +1,11 @@
 # get-foldersizes.ps1
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 00:32:45 UTC
+# Last Modified: 2025-02-05 00:34:15 UTC
 # Purpose: High-performance directory scanner for finding largest folders and files (read-only)
 
 param (
     [string]$Path = "C:\",
-    [int]$MaxDepth = 10,
-    [int]$ThrottleLimit = 50 # Number of concurrent operations
+    [int]$MaxDepth = 10
 )
 
 # Check for elevated privileges and restart if necessary
@@ -18,29 +17,6 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Set global error action preference
 $ErrorActionPreference = 'SilentlyContinue'
-
-# Import required assemblies for faster file operations
-Add-Type -TypeDefinition @"
-    using System;
-    using System.IO;
-    public class FastFileInfo
-    {
-        public static long GetDirectorySize(string path)
-        {
-            long size = 0;
-            try
-            {
-                var di = new DirectoryInfo(path);
-                foreach (var fi in di.GetFiles("*", SearchOption.AllDirectories))
-                {
-                    size += fi.Length;
-                }
-            }
-            catch { }
-            return size;
-        }
-    }
-"@
 
 Write-Host "Analyzing folders in: $Path (Read-only scan - Optimized)"
 Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
@@ -69,46 +45,63 @@ function Get-FolderSizes {
 
         # Get all subdirectories
         $folders = @(Get-ChildItem -Path $FolderPath -Directory -Force)
-        $folderSizes = [System.Collections.Concurrent.ConcurrentBag[object]]::new()
+        $folderSizes = @()
         $totalItems = $folders.Count
         Write-Host "`nFound $totalItems subfolders to process..."
         $processedCount = 0
 
-        # Process folders in parallel
-        $folders | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
-            try {
-                # Get immediate files in the current directory
-                $currentFiles = Get-ChildItem -Path $_.FullName -File -Force
-                $largestCurrentFile = $currentFiles | Sort-Object -Property Length -Descending | Select-Object -First 1
+        # Process folders with improved performance
+        $jobs = foreach ($folder in $folders) {
+            Start-ThreadJob -ThrottleLimit 20 -ArgumentList $folder -ScriptBlock {
+                param($folderItem)
+                try {
+                    # Get immediate files in the current directory
+                    $currentFiles = Get-ChildItem -Path $folderItem.FullName -File -Force
+                    $largestCurrentFile = $currentFiles | Sort-Object -Property Length -Descending | Select-Object -First 1
 
-                # Calculate directory size using optimized method
-                $folderSize = [FastFileInfo]::GetDirectorySize($_.FullName)
-                
-                $folderInfo = [PSCustomObject]@{
-                    Folder = $_.FullName
-                    SizeGB = [math]::round($folderSize / 1GB, 2)
-                    TotalSubfolders = (Get-ChildItem -Path $_.FullName -Directory -Recurse -Force | Measure-Object).Count
-                    TotalFiles = (Get-ChildItem -Path $_.FullName -File -Recurse -Force | Measure-Object).Count
-                    LargestFile = if ($largestCurrentFile) {
-                        [PSCustomObject]@{
-                            Name = $largestCurrentFile.Name
-                            Path = $largestCurrentFile.FullName
-                            SizeGB = [math]::round($largestCurrentFile.Length / 1GB, 2)
-                            SizeMB = [math]::round($largestCurrentFile.Length / 1MB, 2)
-                        }
-                    } else { $null }
+                    # Get recursive information
+                    $allFiles = Get-ChildItem -Path $folderItem.FullName -File -Recurse -Force
+                    $subfolders = Get-ChildItem -Path $folderItem.FullName -Directory -Recurse -Force
+                    $folderSize = ($allFiles | Measure-Object -Property Length -Sum).Sum
+
+                    [PSCustomObject]@{
+                        Folder = $folderItem.FullName
+                        SizeGB = [math]::round($folderSize / 1GB, 2)
+                        TotalSubfolders = ($subfolders | Measure-Object).Count
+                        TotalFiles = ($allFiles | Measure-Object).Count
+                        LargestFile = if ($largestCurrentFile) {
+                            [PSCustomObject]@{
+                                Name = $largestCurrentFile.Name
+                                Path = $largestCurrentFile.FullName
+                                SizeGB = [math]::round($largestCurrentFile.Length / 1GB, 2)
+                                SizeMB = [math]::round($largestCurrentFile.Length / 1MB, 2)
+                            }
+                        } else { $null }
+                    }
                 }
-                $using:folderSizes.Add($folderInfo)
-                $using:processedCount++
-                Write-Host "`rProcessed $($using:processedCount) of $($using:totalItems) folders..." -NoNewline
-            }
-            catch {
-                Write-Warning "Cannot access path '$($_.FullName)'. Error: $($_.Exception.Message)"
+                catch {
+                    Write-Warning "Cannot access path '$($folderItem.FullName)'. Error: $($_.Exception.Message)"
+                    return $null
+                }
             }
         }
 
+        # Collect results
+        $folderSizes = @()
+        while ($jobs) {
+            $completed = $jobs | Wait-Job -Any
+            $result = $completed | Receive-Job
+            if ($result) {
+                $folderSizes += $result
+            }
+            $completed | Remove-Job
+            $jobs = @($jobs | Where-Object { $_ -ne $completed })
+            $processedCount++
+            Write-Host "`rProcessed $processedCount of $totalItems folders..." -NoNewline
+        }
+
         Write-Host "`nCompleted processing $processedCount folders."
-        return @($folderSizes)
+        return $folderSizes
     }
     catch {
         Write-Warning "Error processing directory '$FolderPath'. Error: $($_.Exception.Message)"
