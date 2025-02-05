@@ -1,8 +1,8 @@
 # Script: Test-NetworkConnectivity.ps1
-# Version: 2.5
+# Version: 2.6
 # Description: Extended ping test with network configuration logging and continuous mode
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 23:51:04
+# Created: 2025-02-05 23:55:27
 
 # Use script block to contain all code
 $scriptBlock = {
@@ -25,9 +25,11 @@ $scriptBlock = {
     $global:totalTime = 0
     $global:minTime = [int]::MaxValue
     $global:maxTime = 0
+    $global:interrupted = $false
 
     # Trap Ctrl+C and ensure graceful exit
-    trap {
+    trap [System.Management.Automation.PipelineStoppedException] {
+        $global:interrupted = $true
         Write-Host "`nScript interrupted by user. Writing final statistics..." -ForegroundColor Yellow
         
         if ($global:logFile) {
@@ -51,6 +53,7 @@ Log file size: $(Get-FormattedSize (Get-Item $global:logFile).Length)
 "@
                 # Force the statistics to be written to the log file
                 $finalStats | Out-File -FilePath $global:logFile -Append -Force
+                [System.IO.File]::WriteAllLines($global:logFile, (Get-Content $global:logFile))
 
                 # Add clear message about log file location
                 Write-Host "`n==================================================" -ForegroundColor Yellow
@@ -65,12 +68,14 @@ Log file size: $(Get-FormattedSize (Get-Item $global:logFile).Length)
                 Write-Host "Error writing final statistics: $_" -ForegroundColor Red
             }
             finally {
-                # Ensure we flush any remaining content
-                [System.IO.File]::WriteAllLines($global:logFile, (Get-Content $global:logFile))
+                # Ensure we flush any remaining content and close file handles
+                if ($global:logFile) {
+                    $null = [System.IO.File]::OpenWrite($global:logFile).Close()
+                }
             }
         }
-        # Continue with exit
-        break
+        # Exit the script cleanly
+        exit
     }
 
     function Write-LogMessage {
@@ -150,7 +155,7 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
         # Start ping test
         Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $global:logFile -ForegroundColor Cyan
         
-        while ($true) {
+        while (!$global:interrupted) {
             $pingResult = Test-Connection -ComputerName $Target -Count 1 -ErrorAction SilentlyContinue
             $global:sent++
             
