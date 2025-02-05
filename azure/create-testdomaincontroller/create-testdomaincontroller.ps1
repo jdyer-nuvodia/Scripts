@@ -26,7 +26,7 @@ Write-Log "Script execution started"
 Write-Log "Initializing variables and checking prerequisites..."
 
 # Variables
-$resourceGroup       = "JB-TEST-RG"
+$resourceGroup       = "JB-TEST-RG2"
 $location           = "westus2"
 $vnetName           = "JB-TEST-VNET"
 $subnetName         = "JB-TEST-SUBNET1"
