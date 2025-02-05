@@ -1,131 +1,340 @@
-# get-foldersizes.ps1
+# create-testdomaincontroller.ps1
+# Updated script to use SAS token for secure access to the runbook blob
 
-param (
-    [string]$Path = "C:\",
-    [int]$MaxDepth = 10
-)
+# Set ErrorActionPreference to Stop to halt script execution on the first error
+$ErrorActionPreference = "Stop"
 
-$ErrorActionPreference = 'SilentlyContinue'
+# Variables
+$resourceGroup       = "JB-TEST-RG"
+$location            = "westus"
+$automationLocation  = "westus2"
+$vnetName            = "JB-TEST-VNET"
+$subnetName          = "JB-TEST-SUBNET1"
+$vmName              = "JB-TEST-DC01"
+$adminUsername       = "jbadmin"
+$adminPassword       = "TS=pGxB~8m^A~WH^[yB8"
+$domainName          = "JB-TEST.local"
+$publicIpName        = "$vmName-PublicIP"
+$storageAccountName  = "jbteststorage0"
+$containerName       = "runbooks"
+$blobName            = "AutoShutdownRunbook.ps1"
+$tempRunbookFilePath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
+$nsgName             = "JB-TEST-NSG"
+$automationAccountName = "JB-TEST-Automation"
+$runbookName         = "AutoShutdownRunbook"
 
-# Create a global variable to track the largest file
-$script:largestFileInfo = $null
+# Import Az.Automation and Az.Storage modules
+Import-Module Az.Automation
+Import-Module Az.Storage
 
-Write-Host "Analyzing folders in: $Path"
-
-function Get-FolderSize {
+# Function to wait for VM creation
+function Wait-ForVM {
     param (
-        [string]$folderPath
+        [string]$ResourceGroupName,
+        [string]$VMName,
+        [int]$Timeout = 600
+    )
+    $timer = 0
+    while ($timer -lt $Timeout) {
+        $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction Stop
+        if ($vm) {
+            return $true
+        }
+        Start-Sleep -Seconds 10
+        $timer += 10
+    }
+    return $false
+}
+
+# Check if resource group exists
+if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction SilentlyContinue)) {
+    Write-Host "Creating resource group $resourceGroup"
+    New-AzResourceGroup -Name $resourceGroup -Location $location
+} else {
+    Write-Host "Resource group $resourceGroup already exists"
+}
+
+# Check if storage account exists, create if it doesn't
+$storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction SilentlyContinue
+if (-not $storageAccount) {
+    Write-Host "Creating storage account $storageAccountName"
+    $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -Location $location -SkuName Standard_LRS
+} else {
+    Write-Host "Storage account $storageAccountName already exists"
+}
+
+# Retrieve the storage key and create a storage context
+$storageKey = (Get-AzStorageAccountKey -ResourceGroupName $resourceGroup -Name $storageAccountName)[0].Value
+$storageAccountContext = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $storageKey -Protocol 'HTTPS'
+
+# Ensure the container exists
+$container = Get-AzStorageContainer -Name $containerName -Context $storageAccountContext -ErrorAction SilentlyContinue
+if (-not $container) {
+    Write-Host "Creating container $containerName"
+    $container = New-AzStorageContainer -Name $containerName -Context $storageAccountContext
+} else {
+    Write-Host "Container $containerName already exists"
+}
+
+# Ensure the directory exists for temp files
+if (-not (Test-Path -Path "C:\Temp")) {
+    New-Item -ItemType Directory -Path "C:\Temp"
+}
+
+# Write the runbook content to a temporary file
+$runbookContent = @"
+workflow $runbookName {
+    param (
+        [string] \$resourceGroupName,
+        [string] \$vmName
     )
 
-    try {
-        $size = 0
-        $files = Get-ChildItem -Path $folderPath -File -Recurse -Force
-        foreach ($file in $files) {
-            $size += $file.Length
-        }
-        return $size
+    \$connection = Get-AutomationConnection -Name AzureRunAsConnection
+    Add-AzAccount -ServicePrincipal -TenantId \$connection.TenantId -ApplicationId \$connection.ApplicationId -CertificateThumbprint \$connection.CertificateThumbprint
+
+    Stop-AzVM -ResourceGroupName \$resourceGroupName -Name \$vmName -Force
+}
+"@
+Set-Content -Path $tempRunbookFilePath -Value $runbookContent
+
+# Upload the new runbook file to the blob container
+Set-AzStorageBlobContent -Context $storageAccountContext -Container $containerName -File $tempRunbookFilePath -Blob $blobName -Force
+Write-Host "Runbook content written to blob container successfully."
+
+# Clean up the temporary file
+Remove-Item -Path $tempRunbookFilePath
+
+# Generate a SAS token for the blob with read permission
+$sasToken = New-AzStorageBlobSASToken -Context $storageAccountContext -Container $containerName -Blob $blobName -Permission r -ExpiryTime (Get-Date).AddHours(1)
+
+# Check if virtual network exists, create if it doesn't
+$virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
+if (-not $virtualNetwork) {
+    Write-Host "Creating virtual network $vnetName"
+    $vnet = @{
+        ResourceGroupName = $resourceGroup
+        Location = $location
+        Name = $vnetName
+        AddressPrefix = "10.0.0.0/16"
     }
-    catch {
-        return 0
-    }
+    New-AzVirtualNetwork @vnet
+
+    # Retrieve the created virtual network object
+    $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup
+} else {
+    Write-Host "Virtual network $vnetName already exists"
 }
 
-function Get-FolderSizes {
-    param (
-        [string]$FolderPath,
-        [int]$CurrentDepth = 0
-    )
+# Check if the subnet already exists before adding it
+$existingSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction SilentlyContinue
+if (-not $existingSubnet) {
+    Write-Host "Adding subnet $subnetName to virtual network $vnetName"
+    Add-AzVirtualNetworkSubnetConfig `
+        -VirtualNetwork $virtualNetwork `
+        -AddressPrefix "10.0.1.0/24" `
+        -Name $subnetName | Out-Null
 
-    if ($CurrentDepth -ge $MaxDepth) {
-        return $null
-    }
-
-    $folders = Get-ChildItem -Path $FolderPath -Directory -Force
-    $folderSizes = @()
-    $totalItems = ($folders | Measure-Object).Count
-    Write-Host "Found $totalItems folders to process..."
-    $processedCount = 0
-    
-    foreach ($folder in $folders) {
-        try {
-            # Get all files in the current folder and subfolders
-            $files = Get-ChildItem -Path $folder.FullName -File -Recurse -Force
-            $subfolders = Get-ChildItem -Path $folder.FullName -Directory -Recurse -Force
-            
-            # Calculate total size
-            $folderSize = ($files | Measure-Object -Property Length -Sum).Sum
-            
-            # Track largest file
-            $largestFile = $files | Sort-Object Length -Descending | Select-Object -First 1
-            if ($null -ne $largestFile -and ($null -eq $script:largestFileInfo -or $largestFile.Length -gt $script:largestFileInfo.Length)) {
-                $script:largestFileInfo = $largestFile
-            }
-
-            $folderSizes += [PSCustomObject]@{
-                Folder = $folder.FullName
-                SizeGB = [math]::round(($folderSize / 1GB), 2)
-                TotalSubfolders = ($subfolders | Measure-Object).Count
-                TotalFiles = ($files | Measure-Object).Count
-            }
-            $processedCount++
-            Write-Host "`rProcessed $processedCount of $totalItems folders..." -NoNewline
-        }
-        catch {
-            Write-Warning "Access to the path '$($folder.FullName)' is denied."
-        }
-    }
-    Write-Host "`nCompleted processing $processedCount folders."
-    return $folderSizes
+    # Apply changes to the virtual network
+    Set-AzVirtualNetwork -VirtualNetwork $virtualNetwork | Out-Null
+} else {
+    Write-Host "Subnet $subnetName already exists in virtual network $vnetName"
 }
 
-function Write-TableLine {
-    param([int]$Length = 100)
-    Write-Host ("-" * $Length)
+# Check if Network Security Group exists, create if it doesn't
+try {
+    $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName
+    Write-Host "Network Security Group $nsgName already exists"
+} catch {
+    Write-Host "Creating Network Security Group $nsgName"
+    $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name $nsgName
 }
 
-$currentPath = $Path
+# Check if Network Interface exists, create if it doesn't
+$nicName = "$($vmName)VMNic"
+try {
+    $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName
+    Write-Host "Network interface $nicName already exists"
+} catch {
+    Write-Host "Creating network interface $nicName"
+    $subnetId = (Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName).Subnets[0].Id
+    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroup -Location $location -SubnetId $subnetId
+}
 
-while ($true) {
-    $folderSizes = Get-FolderSizes -FolderPath $currentPath
+# Check if Public IP exists, create if it doesn't
+try {
+    $publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName
+    Write-Host "Public IP address $publicIpName already exists"
+} catch {
+    Write-Host "Creating public IP address $publicIpName"
+    $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroup -Location $location -AllocationMethod Static -Sku Standard
+}
 
-    if ($null -eq $folderSizes -or $folderSizes.Count -eq 0) {
-        if ($null -ne $script:largestFileInfo) {
-            Write-Output "`nLargest file found:"
-            Write-Output "Path: $($script:largestFileInfo.FullName)"
-            Write-Output "Size: $([math]::round($script:largestFileInfo.Length / 1GB, 2)) GB"
-        } else {
-            Write-Output "No files found in any of the scanned directories"
+# Connect the public IP to the VMNic
+$nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic"
+$nic.IpConfigurations[0].PublicIpAddress = $publicIp
+Set-AzNetworkInterface -NetworkInterface $nic | Out-Null
+
+# Check if VM exists, create if it doesn't
+try {
+    $vm = Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -ErrorAction SilentlyContinue
+    if ($vm) {
+        Write-Host "VM $vmName already exists"
+    } else {
+        throw "NotFound"
+    }
+} catch {
+    Write-Host "Creating VM $vmName"
+
+    # Create VM Configuration
+    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_B2s"
+    $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows `
+        -ComputerName $vmName `
+        -Credential (New-Object System.Management.Automation.PSCredential($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)))
+    $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2025-datacenter-core-g2" -Version "latest"
+    $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
+    $vmConfig = Set-AzVMOSDisk -VM $vmConfig -Windows -Caching ReadWrite -CreateOption FromImage -DiskSizeInGB 128 -Name "$($vmName)OSDisk"
+
+    # Set boot diagnostics to use the specified storage account
+    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -StorageAccountName $storageAccountName -ResourceGroupName $resourceGroup
+
+    # Enable Trusted Launch features
+    $vmConfig.SecurityProfile = @{
+        SecurityType = "TrustedLaunch"
+        UefiSettings = @{
+            SecureBootEnabled = $true
+            VTpmEnabled       = $true
         }
-        break
     }
 
-    # Display the top 3 largest folders in a table format
-    Write-Host "`nTop 3 Largest Folders in: $currentPath`n"
-    Write-TableLine
-    $format = "{0,-50} | {1,10} | {2,15} | {3,12}"
-    Write-Host ($format -f "Folder Path", "Size (GB)", "Subfolders", "Files")
-    Write-TableLine
+    # Create the VM with Azure Hybrid Benefit
+    New-AzVM -ResourceGroupName $resourceGroup -Location $location -VM $vmConfig -LicenseType "Windows_Server" | Out-Null
 
-    $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
-    foreach ($folder in $topFolders) {
-        Write-Host ($format -f 
-            ($folder.Folder.Length -gt 47 ? "..." + $folder.Folder.Substring($folder.Folder.Length - 44) : $folder.Folder),
-            $folder.SizeGB,
-            $folder.TotalSubfolders,
-            $folder.TotalFiles
-        )
-    }
-    Write-TableLine
-
-    # If we've found any files, display the current largest file
-    if ($null -ne $script:largestFileInfo) {
-        Write-Host "`nCurrent largest file:"
-        Write-Host "Path: $($script:largestFileInfo.FullName)"
-        Write-Host "Size: $([math]::round($script:largestFileInfo.Length / 1GB, 2)) GB`n"
+    # Wait for the VM to be created
+    if (Wait-ForVM -ResourceGroupName $resourceGroup -VMName $vmName) {
+        Write-Host "VM $vmName created successfully."
+    } else {
+        Write-Error "Failed to create VM $vmName."
+        exit
     }
 
-    # Descend into the largest folder
-    $largestFolder = $topFolders | Select-Object -First 1
-    Write-Host "`nDescending into: $($largestFolder.Folder)`n"
-    $currentPath = $largestFolder.Folder
+    # Change RDP port to 10443
+    $portvalue = 10443
+    $scriptBlock = {
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "PortNumber" -Value $using:portvalue
+        New-NetFirewallRule -DisplayName 'RDPPORTLatest-TCP-In' -Profile 'Public' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $using:portvalue
+        New-NetFirewallRule -DisplayName 'RDPPORTLatest-UDP-In' -Profile 'Public' -Direction Inbound -Action Allow -Protocol UDP -LocalPort $using:portvalue
+        Restart-Service -Name TermService -Force
+    }
+    Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -VMName $vmName -CommandId 'RunPowerShellScript' -ScriptString $scriptBlock
+
+    # Update NSG to allow traffic on port 10443
+    Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
+        -Name "Allow_RDP_10443" `
+        -Description "Allow RDP" `
+        -Access Allow `
+        -Protocol Tcp `
+        -Direction Inbound `
+        -Priority 1001 `
+        -SourceAddressPrefix * `
+        -SourcePortRange * `
+        -DestinationAddressPrefix * `
+        -DestinationPortRange 10443 | Out-Null
+    $nsg | Set-AzNetworkSecurityGroup | Out-Null
 }
+
+# Check if Azure Automation account exists, create if it doesn't
+try {
+    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName
+    Write-Host "Azure Automation account $automationAccountName already exists"
+} catch {
+    Write-Host "Creating Azure Automation account $automationAccountName"
+    $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup -Name $automationAccountName -Location $automationLocation
+}
+
+# Check if the runbook already exists, delete if it does
+try {
+    $existingRunbook = Get-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup
+    Write-Host "Runbook $runbookName already exists. Deleting it."
+    Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Force
+} catch {
+    Write-Host "Runbook $runbookName does not exist. Proceeding to create a new one."
+}
+
+# Create the runbook (empty placeholder first)
+New-AzAutomationRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ResourceGroupName $resourceGroup -Type PowerShellWorkflow | Out-Null
+
+# Download the runbook content using SAS token
+$downloadPath = "C:\Temp\$([System.Guid]::NewGuid().ToString()).ps1"
+$sasUri = "https://$storageAccountName.blob.core.windows.net/$containerName/$blobName?$sasToken"
+try {
+    Invoke-WebRequest -Uri $sasUri -OutFile $downloadPath
+    Write-Host "Runbook content downloaded successfully."
+} catch {
+    Write-Error "Failed to download runbook content. Error: $_"
+    exit
+}
+
+# Import the runbook content from the downloaded file
+Import-AzAutomationRunbook -Path $downloadPath -Name $runbookName -Type PowerShellWorkflow -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName
+
+# Publish the runbook
+Publish-AzAutomationRunbook -Name $runbookName -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName -Force
+
+# Define the schedule parameters
+$scheduleName = "AutoShutdownSchedule"
+$startTime = (Get-Date).AddMinutes(5) # Start in 5 minutes
+
+# Create a new schedule (one-time for demonstration)
+Write-Host "Creating schedule $scheduleName"
+New-AzAutomationSchedule -AutomationAccountName $automationAccountName -Name $scheduleName -StartTime $startTime -OneTime | Out-Null
+
+# Register the runbook with the schedule
+Write-Host "Registering runbook $runbookName with schedule $scheduleName"
+Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName -Name $runbookName -ScheduleName $scheduleName -ResourceGroupName $resourceGroup
+Write-Host "Auto-shutdown schedule created successfully."
+
+# Create PowerShell script for AD DS installation and configuration
+$script = @'
+# Install AD DS role
+Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+
+# Promote to Domain Controller
+Import-Module ADDSDeployment
+Install-ADDSForest `
+    -CreateDnsDelegation:$false `
+    -DatabasePath "C:\Windows\NTDS" `
+    -DomainMode "WinThreshold" `
+    -DomainName "JB-TEST.local" `
+    -ForestMode "WinThreshold" `
+    -InstallDns:$true `
+    -LogPath "C:\Windows\NTDS" `
+    -NoRebootOnCompletion:$false `
+    -SysvolPath "C:\Windows\SYSVOL" `
+    -Force:$true `
+    -SafeModeAdministratorPassword (ConvertTo-SecureString 'TS=pGxB~8m^A~WH^[yB8' -AsPlainText -Force)
+
+# Wait for AD DS installation to complete
+Start-Sleep -Seconds 300
+
+# Create 10 test users in the domain
+for ($i = 1; $i -le 10; $i++) {
+    $username = "TestUser$i"
+    $password = "TestPassword123!"
+    New-ADUser -Name $username -AccountPassword (ConvertTo-SecureString $password -AsPlainText -Force) -PasswordNeverExpires $true -Enabled $true
+}
+'@
+
+# Execute the PowerShell script on the VM using RunCommand
+Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup -Name $vmName -CommandId "RunPowerShellScript" -ScriptString $script
+
+# Ensure VNet exists before updating DNS servers
+$vnet = Get-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName
+if ($vnet -ne $null) {
+    Write-Host "Updating VNet DNS servers"
+    $vnet.DhcpOptions.DnsServers.Add("10.0.1.4")
+    $vnet | Set-AzVirtualNetwork
+} else {
+    Write-Error "VNet $vnetName not found."
+}
+
+Write-Host "Domain Controller setup complete. The VM will restart to finish the AD DS installation and create test users."
