@@ -1,8 +1,8 @@
 # Script: Test-NetworkConnectivity.ps1
-# Version: 2.4
+# Version: 2.5
 # Description: Extended ping test with network configuration logging and continuous mode
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 23:47:53
+# Created: 2025-02-05 23:51:04
 
 # Use script block to contain all code
 $scriptBlock = {
@@ -28,14 +28,15 @@ $scriptBlock = {
 
     # Trap Ctrl+C and ensure graceful exit
     trap {
+        Write-Host "`nScript interrupted by user. Writing final statistics..." -ForegroundColor Yellow
+        
         if ($global:logFile) {
-            Write-Host "`nScript interrupted by user. Writing final statistics..." -ForegroundColor Yellow
-            
-            # Calculate final statistics
-            $packetLoss = if ($global:sent -gt 0) { 100 - ($global:received / $global:sent * 100) } else { 0 }
-            $avgTime = if ($global:received -gt 0) { $global:totalTime / $global:received } else { 0 }
-            
-            $finalStats = @"
+            try {
+                # Calculate final statistics
+                $packetLoss = if ($global:sent -gt 0) { 100 - ($global:received / $global:sent * 100) } else { 0 }
+                $avgTime = if ($global:received -gt 0) { $global:totalTime / $global:received } else { 0 }
+                
+                $finalStats = @"
 
 ========================================
 Final Statistics (Script Interrupted):
@@ -48,19 +49,28 @@ Test completed (Interrupted): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Log file size: $(Get-FormattedSize (Get-Item $global:logFile).Length)
 ========================================
 "@
-            Add-Content -Path $global:logFile -Value $finalStats
-            Write-Host $finalStats -ForegroundColor Cyan
+                # Force the statistics to be written to the log file
+                $finalStats | Out-File -FilePath $global:logFile -Append -Force
 
-            # Add clear message about log file location
-            Write-Host "`n==================================================" -ForegroundColor Yellow
-            Write-Host "Log file has been saved:" -ForegroundColor Yellow
-            Write-Host "Name: $(Split-Path $global:logFile -Leaf)" -ForegroundColor Yellow
-            Write-Host "Location: $(Split-Path $global:logFile)" -ForegroundColor Yellow
-            Write-Host "Full Path: $global:logFile" -ForegroundColor Yellow
-            Write-Host "Size: $(Get-FormattedSize (Get-Item $global:logFile).Length)" -ForegroundColor Yellow
-            Write-Host "==================================================" -ForegroundColor Yellow
+                # Add clear message about log file location
+                Write-Host "`n==================================================" -ForegroundColor Yellow
+                Write-Host "Log file has been saved:" -ForegroundColor Yellow
+                Write-Host "Name: $(Split-Path $global:logFile -Leaf)" -ForegroundColor Yellow
+                Write-Host "Location: $(Split-Path $global:logFile)" -ForegroundColor Yellow
+                Write-Host "Full Path: $global:logFile" -ForegroundColor Yellow
+                Write-Host "Size: $(Get-FormattedSize (Get-Item $global:logFile).Length)" -ForegroundColor Yellow
+                Write-Host "==================================================" -ForegroundColor Yellow
+            }
+            catch {
+                Write-Host "Error writing final statistics: $_" -ForegroundColor Red
+            }
+            finally {
+                # Ensure we flush any remaining content
+                [System.IO.File]::WriteAllLines($global:logFile, (Get-Content $global:logFile))
+            }
         }
-        exit
+        # Continue with exit
+        break
     }
 
     function Write-LogMessage {
@@ -206,7 +216,7 @@ Test completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Log file size: $(Get-FormattedSize (Get-Item $global:logFile).Length)
 ========================================
 "@
-        Add-Content -Path $global:logFile -Value $finalStats
+        Add-Content -Path $global:logFile -Value $finalStats -Force
         Write-Host $finalStats -ForegroundColor Cyan
 
         # Add clear message about log file location
