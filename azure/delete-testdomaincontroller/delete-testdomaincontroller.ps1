@@ -1,100 +1,143 @@
-# Variables (ensure these match the ones used in the setup script)
-$resourceGroup = "JB-TEST-RG"
-$vmName = "JB-TEST-DC01"
-$bastionName = "$vmName-bastion"
-$nsgName = "$vmName" + "NSG"
-$nicName = "$vmName" + "VMNic"
-$publicIpName = "$vmName" + "PublicIP"
-$vnetName = "JB-TEST-VNET"
+# Script: Delete-TestDomainController.ps1
+# Version: 1.0
+# Description: Deletes Azure resources created by Create-TestDomainController.ps1
+# Author: jdyer-nuvodia
+# Last Modified: 2025-02-05 22:42:09
+#
+# .SYNOPSIS
+#   Confirms and deletes Azure resources created for test domain controller
+#
+# .DESCRIPTION
+#   This script safely removes Azure resources that were created by Create-TestDomainController.ps1.
+#   It includes confirmation prompts for each resource and deletes them in the correct order
+#   to prevent dependency conflicts.
+#
+# .PARAMETER ResourceGroupName
+#   The name of the resource group containing the test domain controller resources
+#
+# .PARAMETER Confirm
+#   If specified, prompts for confirmation before deleting each resource
+#
+# .EXAMPLE
+#   # Delete resources with confirmation for each
+#   .\Delete-TestDomainController.ps1 -ResourceGroupName "rg-testdc" -Confirm
+#
+# .EXAMPLE
+#   # Delete all resources with single confirmation
+#   .\Delete-TestDomainController.ps1 -ResourceGroupName "rg-testdc"
+#
+# .NOTES
+#   - Requires Azure PowerShell module (Az)
+#   - Requires appropriate Azure permissions
+#   - Will delete: VM, NIC, Public IP, NSG, VNet, Storage Account, Resource Group
+#
 
-# Function to prompt for deletion
-function Confirm-Deletion {
-    param (
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$ResourceGroupName,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$Confirm
+)
+
+# Function to prompt for confirmation
+function Get-UserConfirmation {
+    param(
         [string]$Resource
     )
-    $choice = Read-Host -Prompt "Are you sure you want to delete $Resource? (y/n)"
-    if ($choice -eq 'y' -or $choice -eq 'Y') {
-        return $true
-    } else {
-        Write-Host "Skipping $Resource deletion"
-        return $false
+    
+    if ($Confirm) {
+        $choice = Read-Host "Are you sure you want to delete $Resource? (y/n)"
+        return $choice -eq 'y'
     }
+    return $true
 }
 
-# Delete specific resources created by the setup script
-
-# Delete the VM and associated resources
-if (Confirm-Deletion -Resource "VM and associated resources ($vmName)") {
-    Write-Host "Deleting VM and associated resources..."
-    Remove-AzVM -ResourceGroupName $resourceGroup -Name $vmName -Force
-}
-
-# Delete any OS disk that contains $vmName
-$osDisks = Get-AzDisk -ResourceGroupName $resourceGroup | Where-Object { $_.Name -like "*$vmName*" }
-foreach ($osDisk in $osDisks) {
-    if (Confirm-Deletion -Resource "OS disk ($($osDisk.Name))") {
-        Write-Host "Deleting OS disk $($osDisk.Name)..."
-        Remove-AzDisk -ResourceGroupName $resourceGroup -DiskName $osDisk.Name -Force
-    }
-}
-
-# Delete the VM's network interface
-if (Confirm-Deletion -Resource "network interface ($nicName)") {
-    Write-Host "Deleting network interface $nicName..."
-    Remove-AzNetworkInterface -ResourceGroupName $resourceGroup -Name $nicName -Force
-}
-
-# Delete the VM's public IP address
-if (Confirm-Deletion -Resource "public IP address ($publicIpName)") {
-    Write-Host "Deleting public IP address $publicIpName..."
-    Remove-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -Force
-}
-
-# Delete the network security group
-if (Confirm-Deletion -Resource "network security group ($nsgName)") {
-    Write-Host "Deleting network security group $nsgName..."
-    Remove-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName -Force
-}
-
-# Delete the bastion host
-if (Confirm-Deletion -Resource "bastion host ($bastionName)") {
-    Write-Host "Deleting bastion host $bastionName..."
-    Remove-AzBastion -ResourceGroupName $resourceGroup -Name $bastionName -Force
-}
-
-# Delete the virtual network
-if (Confirm-Deletion -Resource "virtual network ($vnetName)") {
-    Write-Host "Deleting virtual network $vnetName..."
-    Remove-AzVirtualNetwork -ResourceGroupName $resourceGroup -Name $vnetName -Force
-}
-
-# Option to delete all remaining resources in the resource group
-$remainingResources = Get-AzResource -ResourceGroupName $resourceGroup
-if ($remainingResources.Count -gt 0) {
-    Write-Host "`nThe following resources remain in the resource group:"
-    foreach ($resource in $remainingResources) {
-        Write-Host "- Name: $($resource.Name), Type: $($resource.ResourceType)"
+try {
+    # Check if Azure PowerShell module is installed
+    if (!(Get-Module -ListAvailable -Name Az)) {
+        throw "Azure PowerShell module is not installed. Please install it using: Install-Module -Name Az"
     }
 
-    if (Confirm-Deletion -Resource "all remaining resources in resource group '$resourceGroup'") {
-        foreach ($resource in $remainingResources) {
-            Write-Host "Deleting resource: $($resource.Name) of type: $($resource.ResourceType)..."
-            Remove-AzResource -ResourceId $resource.ResourceId -Force
+    # Check if resource group exists
+    $resourceGroup = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
+    if (!$resourceGroup) {
+        throw "Resource group '$ResourceGroupName' not found."
+    }
+
+    Write-Host "`nPreparing to delete resources in resource group: $ResourceGroupName" -ForegroundColor Yellow
+    Write-Host "This will delete ALL resources created by Create-TestDomainController.ps1" -ForegroundColor Red
+    Write-Host "Including: VM, NIC, Public IP, NSG, VNet, Storage Account, and Resource Group`n" -ForegroundColor Red
+
+    if ($PSCmdlet.ShouldProcess($ResourceGroupName, "Delete all resources")) {
+        # Get VM details
+        $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+        if ($vm) {
+            Write-Host "Found VM: $($vm.Name)" -ForegroundColor Cyan
+            
+            # Stop VM if running
+            $vmStatus = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $vm.Name -Status
+            if ($vmStatus.Statuses.Code -contains "PowerState/running") {
+                Write-Host "Stopping VM..." -ForegroundColor Yellow
+                Stop-AzVM -ResourceGroupName $ResourceGroupName -Name $vm.Name -Force
+            }
+
+            # Delete VM
+            if (Get-UserConfirmation -Resource "VM: $($vm.Name)") {
+                Write-Host "Deleting VM..." -ForegroundColor Yellow
+                Remove-AzVM -ResourceGroupName $ResourceGroupName -Name $vm.Name -Force
+            }
+
+            # Get and delete NIC
+            $nic = Get-AzNetworkInterface -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+            if ($nic -and (Get-UserConfirmation -Resource "Network Interface: $($nic.Name)")) {
+                Write-Host "Deleting Network Interface..." -ForegroundColor Yellow
+                Remove-AzNetworkInterface -ResourceGroupName $ResourceGroupName -Name $nic.Name -Force
+            }
+
+            # Get and delete Public IP
+            $pip = Get-AzPublicIpAddress -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+            if ($pip -and (Get-UserConfirmation -Resource "Public IP: $($pip.Name)")) {
+                Write-Host "Deleting Public IP..." -ForegroundColor Yellow
+                Remove-AzPublicIpAddress -ResourceGroupName $ResourceGroupName -Name $pip.Name -Force
+            }
         }
-        Write-Host "All remaining resources deleted."
-    } else {
-        Write-Host "Skipped deleting remaining resources."
+
+        # Get and delete NSG
+        $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+        if ($nsg -and (Get-UserConfirmation -Resource "Network Security Group: $($nsg.Name)")) {
+            Write-Host "Deleting Network Security Group..." -ForegroundColor Yellow
+            Remove-AzNetworkSecurityGroup -ResourceGroupName $ResourceGroupName -Name $nsg.Name -Force
+        }
+
+        # Get and delete VNet
+        $vnet = Get-AzVirtualNetwork -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+        if ($vnet -and (Get-UserConfirmation -Resource "Virtual Network: $($vnet.Name)")) {
+            Write-Host "Deleting Virtual Network..." -ForegroundColor Yellow
+            Remove-AzVirtualNetwork -ResourceGroupName $ResourceGroupName -Name $vnet.Name -Force
+        }
+
+        # Get and delete Storage Account
+        $storageAccounts = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+        foreach ($sa in $storageAccounts) {
+            if (Get-UserConfirmation -Resource "Storage Account: $($sa.StorageAccountName)") {
+                Write-Host "Deleting Storage Account: $($sa.StorageAccountName)..." -ForegroundColor Yellow
+                Remove-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $sa.StorageAccountName -Force
+            }
+        }
+
+        # Finally, delete the Resource Group
+        if (Get-UserConfirmation -Resource "Resource Group: $ResourceGroupName") {
+            Write-Host "Deleting Resource Group..." -ForegroundColor Yellow
+            Remove-AzResourceGroup -Name $ResourceGroupName -Force
+        }
+
+        Write-Host "`nResource deletion completed successfully." -ForegroundColor Green
     }
-} else {
-    Write-Host "`nNo remaining resources found in resource group '$resourceGroup'."
 }
-
-# Option to delete the entire resource group
-if (Confirm-Deletion -Resource "the entire resource group '$resourceGroup'") {
-    Write-Host "Deleting resource group: $resourceGroup..."
-    Remove-AzResourceGroup -Name $resourceGroup -Force
-} else {
-    Write-Host "Skipped deleting resource group '$resourceGroup'."
+catch {
+    Write-Error "Error occurred during resource deletion: $_"
+    Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
+    exit 1
 }
-
-Write-Host "`nCleanup process complete."
