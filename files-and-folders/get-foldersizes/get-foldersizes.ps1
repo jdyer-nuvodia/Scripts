@@ -1,5 +1,8 @@
 # get-foldersizes.ps1
 
+# Set global error action preference
+$ErrorActionPreference = 'SilentlyContinue'
+
 param (
     [string]$Path = "C:\",
     [int]$MaxDepth = 10
@@ -17,7 +20,7 @@ function Get-FolderSizes {
         return $null
     }
 
-    $folders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
+    $folders = Get-ChildItem -Path $FolderPath -Directory
     $folderSizes = @()
     $totalItems = ($folders | Measure-Object).Count
     Write-Host "Found $totalItems folders to process..."
@@ -51,7 +54,7 @@ function Get-LargestFile {
     )
 
     try {
-        $largestFile = Get-ChildItem -Path $FolderPath -Recurse -File -ErrorAction SilentlyContinue | 
+        $largestFile = Get-ChildItem -Path $FolderPath -Recurse -File | 
             Sort-Object -Property Length -Descending | 
             Select-Object -First 1
         return $largestFile
