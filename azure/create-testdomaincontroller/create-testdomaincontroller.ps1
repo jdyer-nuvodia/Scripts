@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: create-testdomaincontroller.ps1
-# Created: 2025-02-05 01:16:45 UTC
+# Created: 2025-02-05 01:27:32 UTC
 # Author: jdyer-nuvodia
 # Purpose: Creates a test domain controller in Azure with automated shutdown
-# Version: 1.3
+# Version: 1.4
 # =============================================================================
 
 # Enable strict mode and stop on errors
@@ -334,25 +334,27 @@ try {
                                          -ScriptString $scriptBlock `
                                          -ErrorAction Stop
 
-        Write-Log "Updating NSG rules for custom RDP port..."
-		$rdpRule = Get-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg -Name "Allow_RDP_10443" -ErrorAction SilentlyContinue
-		if (-not $rdpRule) {
-			Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
-										  -Name "Allow_RDP_10443" `
-										  -Description "Allow RDP" `
-										  -Access Allow `
-										  -Protocol Tcp `
-										  -Direction Inbound `
-										  -Priority 1001 `
-										  -SourceAddressPrefix * `
-										  -SourcePortRange * `
-										  -DestinationAddressPrefix * `
-										  -DestinationPortRange 10443 | Out-Null
-			$nsg | Set-AzNetworkSecurityGroup -ErrorAction Stop | Out-Null
-			Write-Log "NSG rule created successfully"
-		} else {
-			Write-Log "Reusing existing NSG rule Allow_RDP_10443"
-}
+        Write-Log "Checking NSG rules for custom RDP port..."
+        $rdpRule = Get-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg -Name "Allow_RDP_10443" -ErrorAction SilentlyContinue
+        if (-not $rdpRule) {
+            Write-Log "Creating new NSG rule Allow_RDP_10443"
+            Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
+                                          -Name "Allow_RDP_10443" `
+                                          -Description "Allow RDP" `
+                                          -Access Allow `
+                                          -Protocol Tcp `
+                                          -Direction Inbound `
+                                          -Priority 1001 `
+                                          -SourceAddressPrefix * `
+                                          -SourcePortRange * `
+                                          -DestinationAddressPrefix * `
+                                          -DestinationPortRange 10443 | Out-Null
+            $nsg | Set-AzNetworkSecurityGroup -ErrorAction Stop | Out-Null
+            Write-Log "NSG rule created successfully"
+        } else {
+            Write-Log "Reusing existing NSG rule Allow_RDP_10443"
+        }
+    }
     catch {
         Write-Log "ERROR: VM creation failed. Error: $_"
         throw
