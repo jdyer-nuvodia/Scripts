@@ -1,4 +1,12 @@
 # get-foldersizes.ps1
+# Author: jdyer-nuvodia
+# Last Modified: 2025-02-05 00:27:33 UTC
+# Purpose: Scan directories and files to find largest folders and files without modifying any permissions
+
+param (
+    [string]$Path = "C:\",
+    [int]$MaxDepth = 10
+)
 
 # Check for elevated privileges and restart if necessary
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -7,84 +15,11 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Exit
 }
 
-param (
-    [string]$Path = "C:\",
-    [int]$MaxDepth = 10
-)
-
 # Set global error action preference
 $ErrorActionPreference = 'SilentlyContinue'
 
-# Enable required privileges
-$privilege = @"
-using System;
-using System.Runtime.InteropServices;
-
-public class Privileges {
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool AdjustTokenPrivileges(IntPtr TokenHandle, 
-        bool DisableAllPrivileges, 
-        ref TOKEN_PRIVILEGES NewState, 
-        uint BufferLength, 
-        IntPtr PreviousState, 
-        IntPtr ReturnLength);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool LookupPrivilegeValue(string lpSystemName, 
-        string lpName, 
-        ref LUID lpLuid);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern bool OpenProcessToken(IntPtr ProcessHandle, 
-        uint DesiredAccess, 
-        out IntPtr TokenHandle);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct LUID {
-        public uint LowPart;
-        public int HighPart;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct TOKEN_PRIVILEGES {
-        public uint PrivilegeCount;
-        public LUID Luid;
-        public uint Attributes;
-    }
-
-    public const uint SE_PRIVILEGE_ENABLED = 0x00000002;
-    public const uint TOKEN_ADJUST_PRIVILEGES = 0x00000020;
-    public const uint TOKEN_QUERY = 0x00000008;
-
-    public static bool EnablePrivilege(string privilegeName) {
-        IntPtr tokenHandle;
-        if (!OpenProcessToken(System.Diagnostics.Process.GetCurrentProcess().Handle, 
-            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out tokenHandle)) {
-            return false;
-        }
-
-        TOKEN_PRIVILEGES tokenPrivileges;
-        tokenPrivileges.PrivilegeCount = 1;
-        tokenPrivileges.Luid = new LUID();
-        tokenPrivileges.Attributes = SE_PRIVILEGE_ENABLED;
-
-        if (!LookupPrivilegeValue(null, privilegeName, ref tokenPrivileges.Luid)) {
-            return false;
-        }
-
-        return AdjustTokenPrivileges(tokenHandle, false, ref tokenPrivileges, 0, IntPtr.Zero, IntPtr.Zero);
-    }
-}
-"@
-
-Add-Type $privilege
-
-# Enable backup privileges to access all directories
-[Privileges]::EnablePrivilege("SeBackupPrivilege")
-[Privileges]::EnablePrivilege("SeRestorePrivilege")
-[Privileges]::EnablePrivilege("SeTakeOwnershipPrivilege")
-
-Write-Host "Analyzing folders in: $Path with elevated privileges"
+Write-Host "Analyzing folders in: $Path (Read-only scan)"
+Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
 function Get-FolderSizes {
     param (
@@ -95,10 +30,6 @@ function Get-FolderSizes {
     if ($CurrentDepth -ge $MaxDepth) {
         return $null
     }
-
-    # Create a backup token for accessing protected directories
-    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $context = $identity.Impersonate()
 
     try {
         # Get largest file in current directory first
@@ -146,16 +77,15 @@ function Get-FolderSizes {
                 $processedCount++
                 Write-Host "`rProcessed $processedCount of $totalItems folders..." -NoNewline
             } catch {
-                Write-Warning "Access to the path '$($folder.FullName)' is denied despite elevated privileges. Error: $($_.Exception.Message)"
+                Write-Warning "Cannot access path '$($folder.FullName)'. Error: $($_.Exception.Message)"
             }
         }
         Write-Host "`nCompleted processing $processedCount folders."
         return $folderSizes
     }
-    finally {
-        if ($context) {
-            $context.Undo()
-        }
+    catch {
+        Write-Warning "Error processing directory '$FolderPath'. Error: $($_.Exception.Message)"
+        return $null
     }
 }
 
@@ -221,3 +151,5 @@ while ($true) {
     Write-Host "`nDescending into: $($largestFolder.Folder)`n"
     $currentPath = $largestFolder.Folder
 }
+
+Write-Host "`nScript completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
