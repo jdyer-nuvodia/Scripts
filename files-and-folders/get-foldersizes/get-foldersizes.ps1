@@ -20,10 +20,21 @@ function Get-FolderSizes {
         return $null
     }
 
+    # Get largest file in current directory first
+    $currentFiles = Get-ChildItem -Path $FolderPath -File
+    $largestCurrentFile = $currentFiles | Sort-Object -Property Length -Descending | Select-Object -First 1
+    if ($largestCurrentFile) {
+        Write-Host "`nLargest file in $FolderPath :"
+        Write-Host "Name: $($largestCurrentFile.Name)"
+        Write-Host "Size: $([math]::round($largestCurrentFile.Length / 1GB, 2)) GB ($([math]::round($largestCurrentFile.Length / 1MB, 2)) MB)"
+    } else {
+        Write-Host "`nNo files found directly in $FolderPath"
+    }
+
     $folders = Get-ChildItem -Path $FolderPath -Directory
     $folderSizes = @()
     $totalItems = ($folders | Measure-Object).Count
-    Write-Host "Found $totalItems folders to process..."
+    Write-Host "`nFound $totalItems subfolders to process..."
     $processedCount = 0
     
     foreach ($folder in $folders) {
@@ -66,19 +77,26 @@ function Write-TableLine {
     Write-Host ("-" * $Length)
 }
 
+function Format-FileSize {
+    param (
+        [double]$SizeInBytes
+    )
+    if ($SizeInBytes -ge 1GB) {
+        return "$([math]::round($SizeInBytes / 1GB, 2)) GB"
+    } elseif ($SizeInBytes -ge 1MB) {
+        return "$([math]::round($SizeInBytes / 1MB, 2)) MB"
+    } else {
+        return "$([math]::round($SizeInBytes / 1KB, 2)) KB"
+    }
+}
+
 $currentPath = $Path
 
 while ($true) {
     $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
     if ($null -eq $folderSizes -or $folderSizes.Count -eq 0) {
-        $currentFiles = Get-ChildItem -Path $currentPath -File
-        $largestFile = $currentFiles | Sort-Object -Property Length -Descending | Select-Object -First 1
-        if ($null -ne $largestFile) {
-            Write-Output "Largest file in current directory: $($largestFile.Name), Size: $([math]::round($largestFile.Length / 1GB, 2)) GB ($([math]::round($largestFile.Length / 1MB, 2)) MB)"
-        } else {
-            Write-Output "No files found in $currentPath"
-        }
+        Write-Host "`nReached end of directory tree at: $currentPath"
         break
     }
 
