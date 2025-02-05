@@ -1,7 +1,7 @@
 # get-foldersizes.ps1
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 00:36:43 UTC
-# Purpose: High-performance directory scanner for finding largest folders and files (read-only)
+# Created: 2025-02-05 00:38:37 UTC
+# Purpose: Ultra-fast directory scanner for large directories (read-only)
 
 param (
     [string]$Path = "C:\",
@@ -15,10 +15,73 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Exit
 }
 
-# Set global error action preference
+# Add .NET methods for high-performance file operations
+Add-Type @"
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+
+public class FastFileScanner {
+    public class FolderInfo {
+        public string Path { get; set; }
+        public long Size { get; set; }
+        public int FileCount { get; set; }
+        public int SubfolderCount { get; set; }
+        public FileInfo LargestFile { get; set; }
+    }
+
+    public static FolderInfo ScanDirectory(string path) {
+        try {
+            var di = new DirectoryInfo(path);
+            var files = di.GetFiles("*", SearchOption.TopDirectoryOnly);
+            var largestFile = files.OrderByDescending(f => f.Length).FirstOrDefault();
+            
+            return new FolderInfo {
+                Path = path,
+                Size = files.Sum(f => f.Length),
+                FileCount = files.Length,
+                SubfolderCount = di.GetDirectories("*", SearchOption.TopDirectoryOnly).Length,
+                LargestFile = largestFile
+            };
+        }
+        catch (Exception) {
+            return null;
+        }
+    }
+
+    public static long GetRecursiveSize(string path) {
+        try {
+            return Directory.GetFiles(path, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length);
+        }
+        catch (Exception) {
+            return 0;
+        }
+    }
+
+    public static int GetRecursiveFileCount(string path) {
+        try {
+            return Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length;
+        }
+        catch (Exception) {
+            return 0;
+        }
+    }
+
+    public static int GetRecursiveSubfolderCount(string path) {
+        try {
+            return Directory.GetDirectories(path, "*", SearchOption.AllDirectories).Length;
+        }
+        catch (Exception) {
+            return 0;
+        }
+    }
+}
+"@
+
 $ErrorActionPreference = 'SilentlyContinue'
 
-Write-Host "Analyzing folders in: $Path (Read-only scan - Optimized)"
+Write-Host "Ultra-fast folder analysis starting at: $Path"
 Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
 function Format-SizeWithPadding {
@@ -35,80 +98,70 @@ function Get-FolderSizes {
         [int]$CurrentDepth = 0
     )
 
-    if ($CurrentDepth -ge $MaxDepth) {
-        return $null
-    }
+    if ($CurrentDepth -ge $MaxDepth) { return $null }
 
     try {
-        # Get largest file in current directory first (optimized)
-        $largestCurrentFile = Get-ChildItem -Path $FolderPath -File -Force | 
-            Sort-Object -Property Length -Descending | 
-            Select-Object -First 1
-
-        if ($largestCurrentFile) {
+        # Scan current directory
+        $currentInfo = [FastFileScanner]::ScanDirectory($FolderPath)
+        if ($currentInfo.LargestFile) {
             Write-Host "`nLargest file in $FolderPath :"
-            Write-Host "Name: $($largestCurrentFile.Name)"
-            Write-Host "Size: $(Format-SizeWithPadding ($largestCurrentFile.Length / 1GB)) GB ($(Format-SizeWithPadding ($largestCurrentFile.Length / 1MB)) MB)"
+            Write-Host "Name: $($currentInfo.LargestFile.Name)"
+            Write-Host "Size: $(Format-SizeWithPadding ($currentInfo.LargestFile.Length / 1GB)) GB"
         }
 
-        # Get all subdirectories
-        $folders = @(Get-ChildItem -Path $FolderPath -Directory -Force)
+        # Get subdirectories using .NET directly
+        $subDirs = [System.IO.Directory]::GetDirectories($FolderPath)
+        Write-Host "`nFound $($subDirs.Count) subfolders to process..."
+
+        # Process directories in batches of 50 for better performance
+        $batchSize = 50
         $folderSizes = @()
-        $totalItems = $folders.Count
-        Write-Host "`nFound $totalItems subfolders to process..."
         $processedCount = 0
+        $totalDirs = $subDirs.Count
 
-        # Process folders with improved performance
-        $jobs = foreach ($folder in $folders) {
-            Start-ThreadJob -ThrottleLimit 20 -ArgumentList $folder -ScriptBlock {
-                param($folderItem)
-                try {
-                    # Get immediate files in the current directory
-                    $currentFiles = Get-ChildItem -Path $folderItem.FullName -File -Force
-                    $largestCurrentFile = $currentFiles | Sort-Object -Property Length -Descending | Select-Object -First 1
+        for ($i = 0; $i -lt $subDirs.Count; $i += $batchSize) {
+            $batch = $subDirs | Select-Object -Skip $i -First $batchSize
+            $jobs = @()
 
-                    # Get recursive information
-                    $allFiles = Get-ChildItem -Path $folderItem.FullName -File -Recurse -Force
-                    $subfolders = Get-ChildItem -Path $folderItem.FullName -Directory -Recurse -Force
-                    $folderSize = ($allFiles | Measure-Object -Property Length -Sum).Sum
+            foreach ($dir in $batch) {
+                $jobs += Start-ThreadJob -ThrottleLimit 50 -ArgumentList $dir -ScriptBlock {
+                    param($folderPath)
+                    try {
+                        $info = [FastFileScanner]::ScanDirectory($folderPath)
+                        $recursiveSize = [FastFileScanner]::GetRecursiveSize($folderPath)
+                        $recursiveFiles = [FastFileScanner]::GetRecursiveFileCount($folderPath)
+                        $recursiveFolders = [FastFileScanner]::GetRecursiveSubfolderCount($folderPath)
 
-                    [PSCustomObject]@{
-                        Folder = $folderItem.FullName
-                        SizeGB = $folderSize / 1GB  # Store raw value for proper formatting later
-                        TotalSubfolders = ($subfolders | Measure-Object).Count
-                        TotalFiles = ($allFiles | Measure-Object).Count
-                        LargestFile = if ($largestCurrentFile) {
-                            [PSCustomObject]@{
-                                Name = $largestCurrentFile.Name
-                                Path = $largestCurrentFile.FullName
-                                SizeGB = $largestCurrentFile.Length / 1GB
-                                SizeMB = $largestCurrentFile.Length / 1MB
-                            }
-                        } else { $null }
+                        return [PSCustomObject]@{
+                            Folder = $folderPath
+                            SizeGB = $recursiveSize / 1GB
+                            TotalSubfolders = $recursiveFolders
+                            TotalFiles = $recursiveFiles
+                            LargestFile = if ($info.LargestFile) {
+                                [PSCustomObject]@{
+                                    Name = $info.LargestFile.Name
+                                    Path = $info.LargestFile.FullName
+                                    SizeGB = $info.LargestFile.Length / 1GB
+                                    SizeMB = $info.LargestFile.Length / 1MB
+                                }
+                            } else { $null }
+                        }
+                    }
+                    catch {
+                        return $null
                     }
                 }
-                catch {
-                    Write-Warning "Cannot access path '$($folderItem.FullName)'. Error: $($_.Exception.Message)"
-                    return $null
-                }
             }
+
+            # Wait for batch completion
+            $results = $jobs | Wait-Job | Receive-Job
+            $jobs | Remove-Job
+            $folderSizes += @($results | Where-Object { $_ -ne $null })
+            $processedCount += $batch.Count
+            Write-Host "`rProcessed $processedCount of $totalDirs folders..." -NoNewline
         }
 
-        # Collect results
-        $folderSizes = @()
-        while ($jobs) {
-            $completed = $jobs | Wait-Job -Any
-            $result = $completed | Receive-Job
-            if ($result) {
-                $folderSizes += $result
-            }
-            $completed | Remove-Job
-            $jobs = @($jobs | Where-Object { $_ -ne $completed })
-            $processedCount++
-            Write-Host "`rProcessed $processedCount of $totalItems folders..." -NoNewline
-        }
-
-        Write-Host "`nCompleted processing $processedCount folders."
+        Write-Host "`nCompleted processing all folders."
         return $folderSizes
     }
     catch {
