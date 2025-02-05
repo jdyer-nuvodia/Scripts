@@ -335,20 +335,24 @@ try {
                                          -ErrorAction Stop
 
         Write-Log "Updating NSG rules for custom RDP port..."
-        Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
-                                      -Name "Allow_RDP_10443" `
-                                      -Description "Allow RDP" `
-                                      -Access Allow `
-                                      -Protocol Tcp `
-                                      -Direction Inbound `
-                                      -Priority 1001 `
-                                      -SourceAddressPrefix * `
-                                      -SourcePortRange * `
-                                      -DestinationAddressPrefix * `
-                                      -DestinationPortRange 10443 | Out-Null
-        $nsg | Set-AzNetworkSecurityGroup -ErrorAction Stop | Out-Null
-        Write-Log "NSG rules updated successfully"
-    }
+		$rdpRule = Get-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg -Name "Allow_RDP_10443" -ErrorAction SilentlyContinue
+		if (-not $rdpRule) {
+			Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
+										  -Name "Allow_RDP_10443" `
+										  -Description "Allow RDP" `
+										  -Access Allow `
+										  -Protocol Tcp `
+										  -Direction Inbound `
+										  -Priority 1001 `
+										  -SourceAddressPrefix * `
+										  -SourcePortRange * `
+										  -DestinationAddressPrefix * `
+										  -DestinationPortRange 10443 | Out-Null
+			$nsg | Set-AzNetworkSecurityGroup -ErrorAction Stop | Out-Null
+			Write-Log "NSG rule created successfully"
+		} else {
+			Write-Log "Reusing existing NSG rule Allow_RDP_10443"
+}
     catch {
         Write-Log "ERROR: VM creation failed. Error: $_"
         throw
