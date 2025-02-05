@@ -1,6 +1,6 @@
 # get-foldersizes.ps1
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 00:34:15 UTC
+# Created: 2025-02-05 00:36:43 UTC
 # Purpose: High-performance directory scanner for finding largest folders and files (read-only)
 
 param (
@@ -21,6 +21,14 @@ $ErrorActionPreference = 'SilentlyContinue'
 Write-Host "Analyzing folders in: $Path (Read-only scan - Optimized)"
 Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
+function Format-SizeWithPadding {
+    param (
+        [double]$Size,
+        [int]$DecimalPlaces = 2
+    )
+    return "{0:F$DecimalPlaces}" -f $Size
+}
+
 function Get-FolderSizes {
     param (
         [string]$FolderPath,
@@ -40,7 +48,7 @@ function Get-FolderSizes {
         if ($largestCurrentFile) {
             Write-Host "`nLargest file in $FolderPath :"
             Write-Host "Name: $($largestCurrentFile.Name)"
-            Write-Host "Size: $([math]::round($largestCurrentFile.Length / 1GB, 2)) GB ($([math]::round($largestCurrentFile.Length / 1MB, 2)) MB)"
+            Write-Host "Size: $(Format-SizeWithPadding ($largestCurrentFile.Length / 1GB)) GB ($(Format-SizeWithPadding ($largestCurrentFile.Length / 1MB)) MB)"
         }
 
         # Get all subdirectories
@@ -66,15 +74,15 @@ function Get-FolderSizes {
 
                     [PSCustomObject]@{
                         Folder = $folderItem.FullName
-                        SizeGB = [math]::round($folderSize / 1GB, 2)
+                        SizeGB = $folderSize / 1GB  # Store raw value for proper formatting later
                         TotalSubfolders = ($subfolders | Measure-Object).Count
                         TotalFiles = ($allFiles | Measure-Object).Count
                         LargestFile = if ($largestCurrentFile) {
                             [PSCustomObject]@{
                                 Name = $largestCurrentFile.Name
                                 Path = $largestCurrentFile.FullName
-                                SizeGB = [math]::round($largestCurrentFile.Length / 1GB, 2)
-                                SizeMB = [math]::round($largestCurrentFile.Length / 1MB, 2)
+                                SizeGB = $largestCurrentFile.Length / 1GB
+                                SizeMB = $largestCurrentFile.Length / 1MB
                             }
                         } else { $null }
                     }
@@ -114,19 +122,6 @@ function Write-TableLine {
     Write-Host ("-" * $Length)
 }
 
-function Format-FileSize {
-    param (
-        [double]$SizeInBytes
-    )
-    if ($SizeInBytes -ge 1GB) {
-        return "$([math]::round($SizeInBytes / 1GB, 2)) GB"
-    } elseif ($SizeInBytes -ge 1MB) {
-        return "$([math]::round($SizeInBytes / 1MB, 2)) MB"
-    } else {
-        return "$([math]::round($SizeInBytes / 1KB, 2)) KB"
-    }
-}
-
 $currentPath = $Path
 
 while ($true) {
@@ -148,9 +143,9 @@ while ($true) {
     foreach ($folder in $topFolders) {
         $largestFileInfo = if ($folder.LargestFile) {
             if ($folder.LargestFile.SizeGB -ge 1) {
-                "$($folder.LargestFile.Name) ($($folder.LargestFile.SizeGB) GB)"
+                "$($folder.LargestFile.Name) ($(Format-SizeWithPadding $folder.LargestFile.SizeGB) GB)"
             } else {
-                "$($folder.LargestFile.Name) ($($folder.LargestFile.SizeMB) MB)"
+                "$($folder.LargestFile.Name) ($(Format-SizeWithPadding $folder.LargestFile.SizeMB) MB)"
             }
         } else {
             "No files"
@@ -158,7 +153,7 @@ while ($true) {
         
         Write-Host ($format -f 
             ($folder.Folder.Length -gt 47 ? "..." + $folder.Folder.Substring($folder.Folder.Length - 44) : $folder.Folder),
-            $folder.SizeGB,
+            (Format-SizeWithPadding $folder.SizeGB),
             $folder.TotalSubfolders,
             $folder.TotalFiles,
             ($largestFileInfo.Length -gt 47 ? "..." + $largestFileInfo.Substring($largestFileInfo.Length - 44) : $largestFileInfo)
