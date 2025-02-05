@@ -1,5 +1,7 @@
 # get-foldersizes.ps1
 
+#Powershell # Remove the first '#' to be able to run this from a command prompt.
+
 param (
     [string]$Path = "C:\",
     [int]$MaxDepth = 10
