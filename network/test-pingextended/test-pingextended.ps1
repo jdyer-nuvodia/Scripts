@@ -1,38 +1,64 @@
-# Set the target IP address or hostname
-$target = "8.8.8.8"
+# Script: Test-PingExtended.ps1
+# Version: 2.2
+# Description: Extended ping test with network configuration logging and continuous mode
+# Author: jdyer-nuvodia
+# Created: 2025-02-05 23:37:02
+#
+[CmdletBinding()]
+param(
+    [Parameter(Position=0)]
+    [string]$Target = "8.8.8.8",
+    
+    [Parameter(Position=1)]
+    [int]$Count = 0,  # 0 means continuous
+    
+    [Parameter()]
+    [string]$OutputPath = "C:\PingLogs"  # Changed default path
+)
 
-# Set the output file name
-$outputFile = "ping_results.txt"
-
-# Get the current date and time
-$startTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-
-# Write the header to the output file
-"Ping results for $target starting at $startTimestamp" | Out-File -FilePath $outputFile
-"" | Out-File -FilePath $outputFile -Append
-
-Write-Host "Starting continuous ping to $target"
-Write-Host "Results are being saved to $outputFile"
-Write-Host "Press Ctrl+C to stop the script"
-
-$pingCount = 0
-
-while ($true) {
-    $pingCount++
-    $currentTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
-    $pingOutput = ping -n 1 $target
-
-    if ($pingOutput -match "Reply from") {
-        $pingResult = ($pingOutput -match "Reply from.*" | Out-String).Trim()
-        $line = "[$currentTimestamp] Ping ${pingCount}: $pingResult"
-        Write-Host $line -ForegroundColor Green
-        $line | Out-File -FilePath $outputFile -Append
-    } else {
-        $line = "[$currentTimestamp] Ping ${pingCount}: Request timed out."
-        Write-Host $line -ForegroundColor Red
-        $line | Out-File -FilePath $outputFile -Append
+# Create output directory if it doesn't exist
+if (!(Test-Path -Path $OutputPath)) {
+    try {
+        New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
+        Write-Host "Created output directory: $OutputPath" -ForegroundColor Yellow
     }
+    catch {
+        Write-Error "Failed to create output directory: $_"
+        exit 1
+    }
+}
 
-    "" | Out-File -FilePath $outputFile -Append
-    Start-Sleep -Seconds 1
+# Rest of the script remains the same until the finally block...
+
+finally {
+    if ($logFile) {
+        # Log final statistics
+        $packetLoss = if ($sent -gt 0) { 100 - ($received / $sent * 100) } else { 0 }
+        $avgTime = if ($received -gt 0) { $totalTime / $received } else { 0 }
+        
+        $finalStats = @"
+
+========================================
+Final Statistics:
+========================================
+Test Duration: $((Get-Date) - (Get-Item $logFile).CreationTime)
+Packets: Sent = $sent, Received = $received, Lost = $($sent - $received) ($($packetLoss.ToString('N2'))% loss)
+Round Trip Times: Min = $($minTime)ms, Max = $($maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
+========================================
+Test completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Log file size: $(Get-FormattedSize (Get-Item $logFile).Length)
+========================================
+"@
+        Add-Content -Path $logFile -Value $finalStats
+        Write-Host $finalStats -ForegroundColor Cyan
+
+        # Add clear message about log file location
+        Write-Host "`n==================================================" -ForegroundColor Green
+        Write-Host "Log file has been created:" -ForegroundColor Green
+        Write-Host "Name: $(Split-Path $logFile -Leaf)" -ForegroundColor Yellow
+        Write-Host "Location: $(Split-Path $logFile)" -ForegroundColor Yellow
+        Write-Host "Full Path: $logFile" -ForegroundColor Yellow
+        Write-Host "Size: $(Get-FormattedSize (Get-Item $logFile).Length)" -ForegroundColor Yellow
+        Write-Host "==================================================" -ForegroundColor Green
+    }
 }
