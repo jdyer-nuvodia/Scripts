@@ -1,8 +1,8 @@
 # Script: Rename-FolderCase.ps1
-# Version: 1.1
+# Version: 1.2
 # Description: Renames folders to proper PowerShell case convention (Verb-Noun)
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 22:25:10
+# Last Modified: 2025-02-05 22:27:39
 #
 # .SYNOPSIS
 #   Renames folders to follow PowerShell case conventions (PascalCase with hyphens).
@@ -53,9 +53,16 @@ param(
     [switch]$Recursive
 )
 
+# Enable verbose output
+$VerbosePreference = "Continue"
+
+Write-Host "Script started - Processing path: $Path" -ForegroundColor Cyan
+Write-Verbose "Recursive mode: $Recursive"
+
 function Convert-ToPascalCase {
     param([string]$text)
     
+    Write-Verbose "Converting to PascalCase: $text"
     # Split by common delimiters
     $words = $text -split '[-_\s]'
     
@@ -68,6 +75,7 @@ function Convert-ToPascalCase {
     
     # Rejoin with hyphens for PowerShell convention
     $result = $words -join '-'
+    Write-Verbose "Converted to: $result"
     return $result
 }
 
@@ -76,82 +84,107 @@ function Rename-FolderWithCase {
         [string]$folderPath
     )
     
+    Write-Verbose "Processing folder: $folderPath"
+    
     try {
-        $folder = Get-Item -LiteralPath $folderPath
-        $parentPath = Split-Path -Path $folderPath -Parent
-        $currentName = Split-Path -Path $folderPath -Leaf
-        
-        # Skip if it's a file
-        if (!$folder.PSIsContainer) {
+        if (!(Test-Path -LiteralPath $folderPath)) {
+            Write-Warning "Path not found: $folderPath"
             return
         }
 
+        $folder = Get-Item -LiteralPath $folderPath
+        if (!$folder.PSIsContainer) {
+            Write-Verbose "Skipping non-folder item: $folderPath"
+            return
+        }
+
+        $parentPath = Split-Path -Path $folderPath -Parent
+        $currentName = Split-Path -Path $folderPath -Leaf
+        
+        Write-Verbose "Current folder name: $currentName"
+        
         # Convert name to proper case
         $newName = Convert-ToPascalCase -text $currentName
         
         # Skip if name wouldn't change
         if ($newName -eq $currentName) {
-            Write-Verbose "Skipping '$currentName' - already in correct case"
+            Write-Host "Skipping '$currentName' - already in correct case" -ForegroundColor Yellow
             return
         }
         
         $newPath = Join-Path -Path $parentPath -ChildPath $newName
+        Write-Verbose "New path will be: $newPath"
         
         # Handle case where only case is different (needs temp rename)
         if ($newPath.ToLower() -eq $folderPath.ToLower()) {
             $tempPath = Join-Path -Path $parentPath -ChildPath "_temp_$newName"
             
             if ($PSCmdlet.ShouldProcess($folderPath, "Rename to temp folder '$tempPath'")) {
-                Rename-Item -LiteralPath $folderPath -NewName "_temp_$newName"
-                Write-Verbose "Temporary rename: '$folderPath' -> '$tempPath'"
-            }
-            
-            if ($PSCmdlet.ShouldProcess($tempPath, "Rename to final name '$newPath'")) {
-                Rename-Item -LiteralPath $tempPath -NewName $newName
-                Write-Host "Renamed: '$currentName' -> '$newName'" -ForegroundColor Green
+                Write-Host "Renaming '$folderPath' to temporary name..." -ForegroundColor Gray
+                Rename-Item -LiteralPath $folderPath -NewName "_temp_$newName" -ErrorAction Stop
+                Write-Verbose "Temporary rename successful"
+                
+                Write-Host "Renaming to final name..." -ForegroundColor Gray
+                Rename-Item -LiteralPath $tempPath -NewName $newName -ErrorAction Stop
+                Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
             }
         }
         else {
             if ($PSCmdlet.ShouldProcess($folderPath, "Rename to '$newPath'")) {
-                Rename-Item -LiteralPath $folderPath -NewName $newName
-                Write-Host "Renamed: '$currentName' -> '$newName'" -ForegroundColor Green
+                Write-Host "Renaming '$currentName' to '$newName'..." -ForegroundColor Gray
+                Rename-Item -LiteralPath $folderPath -NewName $newName -ErrorAction Stop
+                Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
             }
         }
     }
     catch {
-        Write-Error "Error renaming folder '$folderPath': $_"
+        Write-Error "Error processing folder '$folderPath': $_"
+        Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     }
 }
 
 try {
+    Write-Host "`nStarting folder case correction process..." -ForegroundColor Cyan
+    
     # Verify path exists
     if (!(Test-Path -Path $Path)) {
         throw "Path '$Path' does not exist."
     }
     
+    Write-Host "Getting list of folders to process..." -ForegroundColor Cyan
     # Get folders to process
     $folders = @()
     if ($Recursive) {
+        Write-Verbose "Getting all subfolders recursively..."
         $folders = Get-ChildItem -Path $Path -Directory -Recurse
+        Write-Host "Found $($folders.Count) subfolders" -ForegroundColor Cyan
     }
     else {
+        Write-Verbose "Getting immediate subfolders only..."
         $folders = Get-ChildItem -Path $Path -Directory
+        Write-Host "Found $($folders.Count) folders" -ForegroundColor Cyan
     }
     
     # Process folders in reverse order (deepest first) to handle nested folders
+    Write-Host "Processing folders from deepest to shallowest..." -ForegroundColor Cyan
     $folders = $folders | Sort-Object -Property FullName -Descending
     
     # Process each folder
     foreach ($folder in $folders) {
+        Write-Host "`nProcessing folder: $($folder.FullName)" -ForegroundColor Cyan
         Rename-FolderWithCase -folderPath $folder.FullName
     }
     
     # Process the root folder if it's a directory
     if ((Get-Item -Path $Path).PSIsContainer) {
+        Write-Host "`nProcessing root folder: $Path" -ForegroundColor Cyan
         Rename-FolderWithCase -folderPath $Path
     }
+    
+    Write-Host "`nFolder case correction process completed successfully." -ForegroundColor Green
 }
 catch {
     Write-Error "Script error: $_"
+    Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     exit 1
 }
