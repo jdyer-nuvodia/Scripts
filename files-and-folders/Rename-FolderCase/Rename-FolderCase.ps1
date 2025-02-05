@@ -1,8 +1,8 @@
 # Script: Rename-FolderCase.ps1
-# Version: 1.2
-# Description: Renames folders to proper PowerShell case convention (Verb-Noun)
+# Version: 1.4
+# Description: Renames folders to proper PowerShell case convention (PascalCase with hyphens)
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 22:27:39
+# Last Modified: 2025-02-05 22:33:29
 #
 # .SYNOPSIS
 #   Renames folders to follow PowerShell case conventions (PascalCase with hyphens).
@@ -63,6 +63,7 @@ function Convert-ToPascalCase {
     param([string]$text)
     
     Write-Verbose "Converting to PascalCase: $text"
+    
     # Split by common delimiters
     $words = $text -split '[-_\s]'
     
@@ -84,57 +85,47 @@ function Rename-FolderWithCase {
         [string]$folderPath
     )
     
-    Write-Verbose "Processing folder: $folderPath"
-    
     try {
-        if (!(Test-Path -LiteralPath $folderPath)) {
-            Write-Warning "Path not found: $folderPath"
-            return
-        }
-
         $folder = Get-Item -LiteralPath $folderPath
-        if (!$folder.PSIsContainer) {
-            Write-Verbose "Skipping non-folder item: $folderPath"
-            return
-        }
-
         $parentPath = Split-Path -Path $folderPath -Parent
         $currentName = Split-Path -Path $folderPath -Leaf
         
-        Write-Verbose "Current folder name: $currentName"
-        
+        # Skip if it's a file
+        if (!$folder.PSIsContainer) {
+            return
+        }
+
         # Convert name to proper case
         $newName = Convert-ToPascalCase -text $currentName
         
-        # Skip if name wouldn't change
-        if ($newName -eq $currentName) {
-            Write-Host "Skipping '$currentName' - already in correct case" -ForegroundColor Yellow
-            return
-        }
-        
-        $newPath = Join-Path -Path $parentPath -ChildPath $newName
-        Write-Verbose "New path will be: $newPath"
-        
-        # Handle case where only case is different (needs temp rename)
-        if ($newPath.ToLower() -eq $folderPath.ToLower()) {
-            $tempPath = Join-Path -Path $parentPath -ChildPath "_temp_$newName"
+        # Compare with exact case - Using case-sensitive comparison
+        if ($currentName -cne $newName) {
+            Write-Host "Renaming '$currentName' to '$newName'" -ForegroundColor Cyan
+            $newPath = Join-Path -Path $parentPath -ChildPath $newName
             
-            if ($PSCmdlet.ShouldProcess($folderPath, "Rename to temp folder '$tempPath'")) {
-                Write-Host "Renaming '$folderPath' to temporary name..." -ForegroundColor Gray
-                Rename-Item -LiteralPath $folderPath -NewName "_temp_$newName" -ErrorAction Stop
-                Write-Verbose "Temporary rename successful"
+            # Handle case where only case is different (needs temp rename)
+            if ($newPath.ToLower() -eq $folderPath.ToLower()) {
+                $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8)
+                $tempPath = Join-Path -Path $parentPath -ChildPath $tempName
                 
-                Write-Host "Renaming to final name..." -ForegroundColor Gray
-                Rename-Item -LiteralPath $tempPath -NewName $newName -ErrorAction Stop
-                Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
+                if ($PSCmdlet.ShouldProcess($folderPath, "Rename to temp folder '$tempPath'")) {
+                    Write-Verbose "Temporary rename: '$folderPath' -> '$tempPath'"
+                    Rename-Item -LiteralPath $folderPath -NewName $tempName -ErrorAction Stop
+                    
+                    Write-Verbose "Final rename: '$tempPath' -> '$newPath'"
+                    Rename-Item -LiteralPath $tempPath -NewName $newName -ErrorAction Stop
+                    Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
+                }
+            }
+            else {
+                if ($PSCmdlet.ShouldProcess($folderPath, "Rename to '$newPath'")) {
+                    Rename-Item -LiteralPath $folderPath -NewName $newName -ErrorAction Stop
+                    Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
+                }
             }
         }
         else {
-            if ($PSCmdlet.ShouldProcess($folderPath, "Rename to '$newPath'")) {
-                Write-Host "Renaming '$currentName' to '$newName'..." -ForegroundColor Gray
-                Rename-Item -LiteralPath $folderPath -NewName $newName -ErrorAction Stop
-                Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
-            }
+            Write-Verbose "Skipping '$currentName' - already in correct case"
         }
     }
     catch {
