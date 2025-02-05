@@ -1,12 +1,12 @@
 # get-foldersizes.ps1
 
-# Set global error action preference
-$ErrorActionPreference = 'SilentlyContinue'
-
 param (
     [string]$Path = "C:\",
     [int]$MaxDepth = 10
 )
+
+# Set global error action preference
+$ErrorActionPreference = 'SilentlyContinue'
 
 Write-Host "Analyzing folders in: $Path"
 
