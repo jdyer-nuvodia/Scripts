@@ -1,8 +1,45 @@
 # Script: Rename-FolderCase.ps1
-# Version: 1.0
+# Version: 1.1
 # Description: Renames folders to proper PowerShell case convention (Verb-Noun)
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 22:06:01
+# Last Modified: 2025-02-05 22:25:10
+#
+# .SYNOPSIS
+#   Renames folders to follow PowerShell case conventions (PascalCase with hyphens).
+#
+# .DESCRIPTION
+#   This script renames folders to follow proper PowerShell naming conventions,
+#   converting names to PascalCase with hyphens (e.g., "test-folder" becomes "Test-Folder").
+#   It can process single folders or operate recursively, includes safety checks,
+#   and supports WhatIf operations for testing before making changes.
+#
+# .PARAMETER Path
+#   The path to the folder or directory to process
+#
+# .PARAMETER Recursive
+#   If specified, processes all subfolders in the specified path
+#
+# .EXAMPLE
+#   # Rename a single folder
+#   .\Rename-FolderCase.ps1 -Path "C:\Scripts\test-mailboxexistence"
+#
+# .EXAMPLE
+#   # Rename folder and all subfolders
+#   .\Rename-FolderCase.ps1 -Path "C:\Scripts" -Recursive
+#
+# .EXAMPLE
+#   # Test what would happen without making changes
+#   .\Rename-FolderCase.ps1 -Path "C:\Scripts" -Recursive -WhatIf
+#
+# .EXAMPLE
+#   # Show detailed progress with verbose output
+#   .\Rename-FolderCase.ps1 -Path "C:\Scripts" -Recursive -Verbose
+#
+# .NOTES
+#   - Requires appropriate permissions to rename folders
+#   - Uses temporary renaming for case-only changes
+#   - Processes folders from deepest to shallowest when using recursive option
+#
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param(
@@ -13,10 +50,7 @@ param(
     [string]$Path,
 
     [Parameter(Mandatory=$false)]
-    [switch]$Recursive,
-
-    [Parameter(Mandatory=$false)]
-    [switch]$WhatIf
+    [switch]$Recursive
 )
 
 function Convert-ToPascalCase {
