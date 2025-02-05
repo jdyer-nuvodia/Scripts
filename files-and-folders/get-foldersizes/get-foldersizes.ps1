@@ -5,10 +5,8 @@ param (
     [int]$MaxDepth = 10
 )
 
+# Set global error action preference
 $ErrorActionPreference = 'SilentlyContinue'
-
-# Create a global variable to track the largest file
-$script:largestFileInfo = $null
 
 Write-Host "Analyzing folders in: $Path"
 
@@ -22,8 +20,7 @@ function Get-FolderSizes {
         return $null
     }
 
-    # Try to get folders with basic access first
-    $folders = Get-ChildItem -Path $FolderPath -Directory -Force
+    $folders = Get-ChildItem -Path $FolderPath -Directory
     $folderSizes = @()
     $totalItems = ($folders | Measure-Object).Count
     Write-Host "Found $totalItems folders to process..."
@@ -31,45 +28,15 @@ function Get-FolderSizes {
     
     foreach ($folder in $folders) {
         try {
-            # Use robocopy to get file sizes (more reliable with permissions)
-            $robocopyOutput = robocopy $folder.FullName NULL /L /XJ /R:0 /W:0 /NP /E /BYTES /NFL /NDL /NJH /MT:64
-            $folderSize = 0
-            $fileCount = 0
-            $largestFileSize = 0
-            $largestFilePath = $null
-
-            # Process robocopy output
-            $robocopyOutput | ForEach-Object {
-                if ($_ -match '^\s*(\d+)\s+(.*)$') {
-                    $fileSize = [long]$matches[1]
-                    $filePath = $matches[2].Trim()
-                    $folderSize += $fileSize
-                    $fileCount++
-
-                    # Track largest file
-                    if ($fileSize -gt $largestFileSize) {
-                        $largestFileSize = $fileSize
-                        $largestFilePath = Join-Path $folder.FullName $filePath
-                    }
-                }
-            }
-
-            # Update global largest file if needed
-            if ($largestFileSize -gt 0 -and ($null -eq $script:largestFileInfo -or $largestFileSize -gt $script:largestFileInfo.Length)) {
-                $script:largestFileInfo = [PSCustomObject]@{
-                    FullName = $largestFilePath
-                    Length = $largestFileSize
-                }
-            }
-
-            # Get subfolder count using alternative method
-            $subFolderCount = (Get-ChildItem -Path $folder.FullName -Directory -Force -Recurse | Measure-Object).Count
-
+            $files = @([System.IO.Directory]::EnumerateFiles($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories))
+            $subfolders = @([System.IO.Directory]::EnumerateDirectories($folder.FullName, '*', [System.IO.SearchOption]::AllDirectories))
+            $folderSize = ($files | ForEach-Object { (Get-Item $_).Length } | Measure-Object -Sum).Sum
+            
             $folderSizes += [PSCustomObject]@{
                 Folder = $folder.FullName
                 SizeGB = [math]::round($folderSize / 1GB, 2)
-                TotalSubfolders = $subFolderCount
-                TotalFiles = $fileCount
+                TotalSubfolders = ($subfolders | Measure-Object).Count
+                TotalFiles = ($files | Measure-Object).Count
             }
             $processedCount++
             Write-Host "`rProcessed $processedCount of $totalItems folders..." -NoNewline
@@ -79,6 +46,22 @@ function Get-FolderSizes {
     }
     Write-Host "`nCompleted processing $processedCount folders."
     return $folderSizes
+}
+
+function Get-LargestFile {
+    param (
+        [string]$FolderPath
+    )
+
+    try {
+        $largestFile = Get-ChildItem -Path $FolderPath -Recurse -File | 
+            Sort-Object -Property Length -Descending | 
+            Select-Object -First 1
+        return $largestFile
+    } catch {
+        Write-Warning "Access to the path '$FolderPath' is denied."
+        return $null
+    }
 }
 
 function Write-TableLine {
@@ -92,12 +75,11 @@ while ($true) {
     $folderSizes = Get-FolderSizes -FolderPath $currentPath
 
     if ($null -eq $folderSizes -or $folderSizes.Count -eq 0) {
-        if ($null -ne $script:largestFileInfo) {
-            Write-Output "`nLargest file found:"
-            Write-Output "Path: $($script:largestFileInfo.FullName)"
-            Write-Output "Size: $([math]::round($script:largestFileInfo.Length / 1GB, 2)) GB"
+        $largestFile = Get-LargestFile -FolderPath $currentPath
+        if ($null -ne $largestFile) {
+            Write-Output "Largest file: $($largestFile.FullName), Size: $([math]::round($largestFile.Length / 1GB, 2)) GB"
         } else {
-            Write-Output "No files found in any of the scanned directories"
+            Write-Output "No files found in $currentPath"
         }
         break
     }
@@ -119,13 +101,6 @@ while ($true) {
         )
     }
     Write-TableLine
-
-    # If we've found any files, display the current largest file
-    if ($null -ne $script:largestFileInfo) {
-        Write-Host "`nCurrent largest file:"
-        Write-Host "Path: $($script:largestFileInfo.FullName)"
-        Write-Host "Size: $([math]::round($script:largestFileInfo.Length / 1GB, 2)) GB`n"
-    }
 
     # Descend into the largest folder
     $largestFolder = $topFolders | Select-Object -First 1
