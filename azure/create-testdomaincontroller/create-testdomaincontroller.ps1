@@ -3,6 +3,12 @@
 # Created: 2025-02-05 01:27:32 UTC
 # Author: jdyer-nuvodia
 # Purpose: Creates a test domain controller in Azure with automated shutdown
+#
+# Repository Information:
+#   Repo: jdyer-nuvodia/Scripts
+#   Repo ID: 924269019
+#   Language Composition: PowerShell (100%)
+#
 # Version: 1.6
 # =============================================================================
 
@@ -21,8 +27,7 @@ Write-Log "Initializing variables and checking prerequisites..."
 
 # Variables
 $resourceGroup       = "JB-TEST-RG"
-$location           = "westus"
-$automationLocation = "westus2"
+$location           = "westus2"
 $vnetName           = "JB-TEST-VNET"
 $subnetName         = "JB-TEST-SUBNET1"
 $vmName             = "JB-TEST-DC01"
@@ -378,7 +383,7 @@ try {
         Write-Log "Creating new Automation Account $automationAccountName"
         $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup `
                                                    -Name $automationAccountName `
-                                                   -Location $automationLocation `
+                                                   -Location $location `
                                                    -ErrorAction Stop
     } else {
         Write-Log "Reusing existing Automation Account $automationAccountName"
@@ -458,30 +463,50 @@ try {
         Remove-Item -Path $downloadPath -ErrorAction SilentlyContinue
     }
 
-    # Create and register schedule using UTC time with a 10-minute buffer
-    Write-Log "Creating automation schedule..."
-    $scheduleName = "AutoShutdownSchedule"
-    $startTime = (Get-Date).ToUniversalTime().AddMinutes(10)
-    
+    # Daily Automation Schedule Creation for 9pm MST (Phoenix)
+    # Phoenix is fixed as UTC-7 (no daylight savings)
+    Write-Log "Creating daily automation schedule..."
+    $nowUtc = (Get-Date).ToUniversalTime()
+    $phxOffsetHours = -7
+    $nowPhx = $nowUtc.AddHours($phxOffsetHours)
+
+    # Get 9pm today in Phoenix time
+    $today9pmPhx = Get-Date -Year $nowPhx.Year -Month $nowPhx.Month -Day $nowPhx.Day -Hour 21 -Minute 0 -Second 0
+
+    if ($nowPhx -ge $today9pmPhx) {
+        # If it's already past 9pm in Phoenix, schedule for tomorrow
+        $next9pmPhx = $today9pmPhx.AddDays(1)
+    } else {
+        $next9pmPhx = $today9pmPhx
+    }
+
+    # Convert next 9pm Phoenix time (UTC-7) to UTC
+    $startTimeUtc = $next9pmPhx.AddHours(-$phxOffsetHours)
+
+    Write-Log "Calculated next daily shutdown time (UTC): $($startTimeUtc.ToString('yyyy-MM-dd HH:mm:ss'))"
+
+    $scheduleName = "DailyAutoShutdownSchedule"
     try {
         $schedule = New-AzAutomationSchedule -AutomationAccountName $automationAccountName `
-                                           -Name $scheduleName `
-                                           -StartTime $startTime `
-                                           -OneTime `
-                                           -ResourceGroupName $resourceGroup `
-                                           -ErrorAction Stop
-        Write-Log "Schedule created successfully for $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) UTC"
+                                             -Name $scheduleName `
+                                             -StartTime $startTimeUtc `
+                                             -ExpiryTime ($startTimeUtc.AddYears(5)) `
+                                             -Interval 1 `
+                                             -Frequency Day `
+                                             -ResourceGroupName $resourceGroup `
+                                             -ErrorAction Stop
+        Write-Log "Schedule '$scheduleName' created successfully for daily execution at 9pm MST (Phoenix)."
     
         Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName `
-                                            -Name $runbookName `
-                                            -ScheduleName $scheduleName `
-                                            -ResourceGroupName $resourceGroup `
-                                            -Parameters @{"resourceGroupName"=$resourceGroup; "vmName"=$vmName} `
-                                            -ErrorAction Stop
-        Write-Log "Runbook scheduled successfully"
+                                              -Name $runbookName `
+                                              -ScheduleName $scheduleName `
+                                              -ResourceGroupName $resourceGroup `
+                                              -Parameters @{ "resourceGroupName" = $resourceGroup; "vmName" = $vmName } `
+                                              -ErrorAction Stop
+        Write-Log "Runbook '$runbookName' scheduled successfully to shut down the VM daily at 9pm MST (Phoenix)."
     }
     catch {
-        Write-Log "ERROR: Failed to create or register schedule. Error: $_"
+        Write-Log "ERROR: Failed to create or register the daily schedule. Error: $_"
         exit 1
     }
     
@@ -498,7 +523,7 @@ try {
     Write-Log "Admin Username: $adminUsername"
     Write-Log "Resource Group: $resourceGroup"
     Write-Log "Location: $location"
-    Write-Log "`nNOTE: The VM will automatically shut down in approximately 5 minutes."
+    Write-Log "`nNOTE: The VM will automatically shut down daily at 9pm MST (Phoenix)."
     Write-Log "===================="
 
 } catch {
