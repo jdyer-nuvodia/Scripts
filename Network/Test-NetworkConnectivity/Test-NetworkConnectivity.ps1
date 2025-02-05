@@ -1,8 +1,8 @@
 # Script: Test-NetworkConnectivity.ps1
-# Version: 2.2
+# Version: 2.4
 # Description: Extended ping test with network configuration logging and continuous mode
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 23:43:52
+# Created: 2025-02-05 23:47:53
 
 # Use script block to contain all code
 $scriptBlock = {
@@ -17,6 +17,51 @@ $scriptBlock = {
         [Parameter()]
         [string]$OutputPath = "C:\PingLogs"  # Changed default path
     )
+
+    # Initialize global variables for trap access
+    $global:logFile = $null
+    $global:sent = 0
+    $global:received = 0
+    $global:totalTime = 0
+    $global:minTime = [int]::MaxValue
+    $global:maxTime = 0
+
+    # Trap Ctrl+C and ensure graceful exit
+    trap {
+        if ($global:logFile) {
+            Write-Host "`nScript interrupted by user. Writing final statistics..." -ForegroundColor Yellow
+            
+            # Calculate final statistics
+            $packetLoss = if ($global:sent -gt 0) { 100 - ($global:received / $global:sent * 100) } else { 0 }
+            $avgTime = if ($global:received -gt 0) { $global:totalTime / $global:received } else { 0 }
+            
+            $finalStats = @"
+
+========================================
+Final Statistics (Script Interrupted):
+========================================
+Test Duration: $((Get-Date) - (Get-Item $global:logFile).CreationTime)
+Packets: Sent = $global:sent, Received = $global:received, Lost = $($global:sent - $global:received) ($($packetLoss.ToString('N2'))% loss)
+Round Trip Times: Min = $($global:minTime)ms, Max = $($global:maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
+========================================
+Test completed (Interrupted): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Log file size: $(Get-FormattedSize (Get-Item $global:logFile).Length)
+========================================
+"@
+            Add-Content -Path $global:logFile -Value $finalStats
+            Write-Host $finalStats -ForegroundColor Cyan
+
+            # Add clear message about log file location
+            Write-Host "`n==================================================" -ForegroundColor Yellow
+            Write-Host "Log file has been saved:" -ForegroundColor Yellow
+            Write-Host "Name: $(Split-Path $global:logFile -Leaf)" -ForegroundColor Yellow
+            Write-Host "Location: $(Split-Path $global:logFile)" -ForegroundColor Yellow
+            Write-Host "Full Path: $global:logFile" -ForegroundColor Yellow
+            Write-Host "Size: $(Get-FormattedSize (Get-Item $global:logFile).Length)" -ForegroundColor Yellow
+            Write-Host "==================================================" -ForegroundColor Yellow
+        }
+        exit
+    }
 
     function Write-LogMessage {
         param(
@@ -64,7 +109,7 @@ $scriptBlock = {
         $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
         $computerName = $env:COMPUTERNAME
         $fileName = "PingTest_${computerName}_${timestamp}.log"
-        $logFile = Join-Path $OutputPath $fileName
+        $global:logFile = Join-Path $OutputPath $fileName
         
         # Create log file with header
         $header = @"
@@ -78,72 +123,65 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
 ========================================
 
 "@
-        Set-Content -Path $logFile -Value $header
+        Set-Content -Path $global:logFile -Value $header
         
-        Write-Host "Starting network test - Results will be saved to: $logFile" -ForegroundColor Cyan
+        Write-Host "Starting network test - Results will be saved to: $global:logFile" -ForegroundColor Cyan
         Write-Host "Press Ctrl+C to stop continuous mode" -ForegroundColor Yellow
         
         # Get and log network configuration
-        Write-LogMessage -Message "Getting network configuration..." -FilePath $logFile
-        Write-LogMessage -Message "`nNETWORK CONFIGURATION:" -FilePath $logFile
-        Write-LogMessage -Message "----------------------------------------" -FilePath $logFile
+        Write-LogMessage -Message "Getting network configuration..." -FilePath $global:logFile
+        Write-LogMessage -Message "`nNETWORK CONFIGURATION:" -FilePath $global:logFile
+        Write-LogMessage -Message "----------------------------------------" -FilePath $global:logFile
         
         $ipConfig = ipconfig /all
-        Add-Content -Path $logFile -Value $ipConfig
-        Write-LogMessage -Message "----------------------------------------`n" -FilePath $logFile
-        
-        # Initialize statistics
-        $sent = 0
-        $received = 0
-        $totalTime = 0
-        $minTime = [int]::MaxValue
-        $maxTime = 0
+        Add-Content -Path $global:logFile -Value $ipConfig
+        Write-LogMessage -Message "----------------------------------------`n" -FilePath $global:logFile
         
         # Start ping test
-        Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $logFile -ForegroundColor Cyan
+        Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $global:logFile -ForegroundColor Cyan
         
         while ($true) {
             $pingResult = Test-Connection -ComputerName $Target -Count 1 -ErrorAction SilentlyContinue
-            $sent++
+            $global:sent++
             
             $currentTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
             
             if ($pingResult) {
-                $received++
+                $global:received++
                 $responseTime = $pingResult.ResponseTime
-                $totalTime += $responseTime
-                $minTime = [Math]::Min($minTime, $responseTime)
-                $maxTime = [Math]::Max($maxTime, $responseTime)
+                $global:totalTime += $responseTime
+                $global:minTime = [Math]::Min($global:minTime, $responseTime)
+                $global:maxTime = [Math]::Max($global:maxTime, $responseTime)
                 
                 $result = "Reply from $($pingResult.Address): time=${responseTime}ms size=$($pingResult.ReplySize)bytes"
-                Write-LogMessage -Message $result -FilePath $logFile -NoConsole
+                Write-LogMessage -Message $result -FilePath $global:logFile -NoConsole
                 Write-Host "[$currentTime] $result" -ForegroundColor Green
             }
             else {
                 $result = "Request timed out."
-                Write-LogMessage -Message $result -FilePath $logFile -NoConsole
+                Write-LogMessage -Message $result -FilePath $global:logFile -NoConsole
                 Write-Host "[$currentTime] $result" -ForegroundColor Red
             }
             
             # Update statistics every 10 pings
-            if ($sent % 10 -eq 0) {
-                $packetLoss = 100 - ($received / $sent * 100)
-                $avgTime = if ($received -gt 0) { $totalTime / $received } else { 0 }
+            if ($global:sent % 10 -eq 0) {
+                $packetLoss = 100 - ($global:received / $global:sent * 100)
+                $avgTime = if ($global:received -gt 0) { $global:totalTime / $global:received } else { 0 }
                 
                 $stats = @"
 
 Current Statistics:
 ----------------
-Packets: Sent = $sent, Received = $received, Lost = $($sent - $received) ($($packetLoss.ToString('N2'))% loss)
-Round Trip Times: Min = $($minTime)ms, Max = $($maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
+Packets: Sent = $global:sent, Received = $global:received, Lost = $($global:sent - $global:received) ($($packetLoss.ToString('N2'))% loss)
+Round Trip Times: Min = $($global:minTime)ms, Max = $($global:maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
 
 "@
-                Write-LogMessage -Message $stats -FilePath $logFile
+                Write-LogMessage -Message $stats -FilePath $global:logFile
                 Write-Host $stats -ForegroundColor Cyan
             }
             
             # Check if we should stop
-            if ($Count -gt 0 -and $sent -ge $Count) {
+            if ($Count -gt 0 -and $global:sent -ge $Count) {
                 break
             }
             
@@ -152,40 +190,40 @@ Round Trip Times: Min = $($minTime)ms, Max = $($maxTime)ms, Avg = $($avgTime.ToS
         }
 
         # Log final statistics
-        $packetLoss = if ($sent -gt 0) { 100 - ($received / $sent * 100) } else { 0 }
-        $avgTime = if ($received -gt 0) { $totalTime / $received } else { 0 }
+        $packetLoss = if ($global:sent -gt 0) { 100 - ($global:received / $global:sent * 100) } else { 0 }
+        $avgTime = if ($global:received -gt 0) { $global:totalTime / $global:received } else { 0 }
         
         $finalStats = @"
 
 ========================================
 Final Statistics:
 ========================================
-Test Duration: $((Get-Date) - (Get-Item $logFile).CreationTime)
-Packets: Sent = $sent, Received = $received, Lost = $($sent - $received) ($($packetLoss.ToString('N2'))% loss)
-Round Trip Times: Min = $($minTime)ms, Max = $($maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
+Test Duration: $((Get-Date) - (Get-Item $global:logFile).CreationTime)
+Packets: Sent = $global:sent, Received = $global:received, Lost = $($global:sent - $global:received) ($($packetLoss.ToString('N2'))% loss)
+Round Trip Times: Min = $($global:minTime)ms, Max = $($global:maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
 ========================================
 Test completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Log file size: $(Get-FormattedSize (Get-Item $logFile).Length)
+Log file size: $(Get-FormattedSize (Get-Item $global:logFile).Length)
 ========================================
 "@
-        Add-Content -Path $logFile -Value $finalStats
+        Add-Content -Path $global:logFile -Value $finalStats
         Write-Host $finalStats -ForegroundColor Cyan
 
         # Add clear message about log file location
         Write-Host "`n==================================================" -ForegroundColor Green
         Write-Host "Log file has been created:" -ForegroundColor Green
-        Write-Host "Name: $(Split-Path $logFile -Leaf)" -ForegroundColor Yellow
-        Write-Host "Location: $(Split-Path $logFile)" -ForegroundColor Yellow
-        Write-Host "Full Path: $logFile" -ForegroundColor Yellow
-        Write-Host "Size: $(Get-FormattedSize (Get-Item $logFile).Length)" -ForegroundColor Yellow
+        Write-Host "Name: $(Split-Path $global:logFile -Leaf)" -ForegroundColor Yellow
+        Write-Host "Location: $(Split-Path $global:logFile)" -ForegroundColor Yellow
+        Write-Host "Full Path: $global:logFile" -ForegroundColor Yellow
+        Write-Host "Size: $(Get-FormattedSize (Get-Item $global:logFile).Length)" -ForegroundColor Yellow
         Write-Host "==================================================" -ForegroundColor Green
     }
     catch {
         Write-Error "Error during ping test: $_"
         Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
-        if ($logFile) {
-            Write-LogMessage -Message "ERROR: $_" -FilePath $logFile
-            Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $logFile
+        if ($global:logFile) {
+            Write-LogMessage -Message "ERROR: $_" -FilePath $global:logFile
+            Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $global:logFile
         }
     }
 }
