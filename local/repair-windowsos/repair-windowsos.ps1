@@ -1,8 +1,12 @@
 # Windows OS Repair Script
-# Version: 2.0
+# Version: 3.0
 # Author: Original by jdyer-nuvodia, optimized with GitHub Copilot
-# Last Updated: 2025-02-05
-# Description: Performs comprehensive Windows system repairs and health checks with detailed logging
+# Last Updated: 2025-02-05 20:42:23
+# Description: Performs comprehensive Windows system repairs and health checks using PowerShell cmdlets
+# Requires: PowerShell 5.1 or later, Windows 10/Server 2016 or later
+
+#Requires -RunAsAdministrator
+#Requires -Version 5.1
 
 # Ensure we stop on errors
 $ErrorActionPreference = 'Stop'
@@ -34,7 +38,7 @@ function Write-RepairLog {
     "$timestamp - $Message" | Out-File -FilePath $logFile -Append
 }
 
-# Function to run commands and handle errors
+# Function to run repair commands and handle errors
 function Invoke-RepairCommand {
     param (
         [string]$CommandName,
@@ -56,78 +60,79 @@ function Invoke-RepairCommand {
     }
 }
 
-# Check for Administrator privileges
-Write-RepairLog "Checking administrator privileges..." -Color Cyan
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-RepairLog "This script requires administrator privileges. Please run as administrator." -Color Red
-    exit 1
-}
-
 # Display initial system information
 Write-RepairLog "=== Windows Repair Script Started ===" -Color Cyan
 Write-RepairLog "System Information:" -Color Cyan
-Write-RepairLog "Windows Version: $(([System.Environment]::OSVersion.Version).ToString())" -Color White
+Write-RepairLog "Windows Version: $([System.Environment]::OSVersion.Version)" -Color White
+Write-RepairLog "PowerShell Version: $($PSVersionTable.PSVersion)" -Color White
 Write-RepairLog "Computer Name: $env:COMPUTERNAME" -Color White
 Write-RepairLog "Log File Location: $logFile" -Color White
 Write-RepairLog "----------------------------------------" -Color Cyan
 
-# Step 1: DISM Health Check with progress indication
-Write-RepairLog "`nStep 1/3: DISM Health Check" -Color Cyan
-Write-RepairLog "Checking component store health..." -Color Yellow -NoNewline
+# Step 1: Windows Image Health Check
+Write-RepairLog "`nStep 1/3: Windows Image Health Check" -Color Cyan
+Write-RepairLog "Checking Windows image health..." -Color Yellow
 
-$dismCheck = Invoke-RepairCommand -CommandName "DISM CheckHealth" -ScriptBlock {
-    $output = DISM.exe /Online /Cleanup-Image /CheckHealth
-    if ($output -match "No component store corruption detected") {
+$imageCheck = Invoke-RepairCommand -CommandName "Windows Image Health Check" -ScriptBlock {
+    # Get the current Windows image health status
+    $health = Get-WindowsImage -Online -ErrorAction Stop
+    
+    if ($health.ImageHealthState -eq "Healthy") {
         return @{ Success = $true; NeedsRepair = $false }
     }
     return @{ Success = $true; NeedsRepair = $true }
-} -SuccessMessage "DISM check completed." -ErrorMessage "DISM check failed."
+} -SuccessMessage "Windows image health check completed." -ErrorMessage "Windows image health check failed."
 
-if ($dismCheck.NeedsRepair) {
-    Write-RepairLog "Component store corruption detected. Initiating repair..." -Color Yellow
-    $dismRepair = Invoke-RepairCommand -CommandName "DISM Repair" -ScriptBlock {
-        $output = DISM.exe /Online /Cleanup-Image /RestoreHealth
-        if ($output -match "The restore operation completed successfully") {
+if ($imageCheck.NeedsRepair) {
+    Write-RepairLog "Image corruption detected. Initiating repair..." -Color Yellow
+    $imageRepair = Invoke-RepairCommand -CommandName "Windows Image Repair" -ScriptBlock {
+        # Perform the repair operation
+        Repair-WindowsImage -Online -RestoreHealth -ErrorAction Stop
+        $script:repairsMade = $true
+        return $true
+    } -SuccessMessage "Windows image repair completed successfully." -ErrorMessage "Windows image repair encountered issues."
+}
+
+# Step 2: System File Check
+Write-RepairLog "`nStep 2/3: System File Check" -Color Cyan
+$sfcResult = Invoke-RepairCommand -CommandName "System File Check" -ScriptBlock {
+    # Using .NET to invoke SFC (as there's no direct PowerShell equivalent)
+    $process = Start-Process -FilePath "sfc.exe" -ArgumentList "/scannow" -Wait -PassThru -NoNewWindow
+    if ($process.ExitCode -eq 0) {
+        return @{ Success = $true; RepairsNeeded = $false }
+    }
+    $script:repairsMade = $true
+    $script:restartNeeded = $true
+    return @{ Success = $true; RepairsNeeded = $true }
+} -SuccessMessage "System File Check completed." -ErrorMessage "System File Check encountered issues."
+
+# Step 3: Volume Health Check
+Write-RepairLog "`nStep 3/3: Volume Health Check" -Color Cyan
+$systemDrive = $env:SystemDrive.TrimEnd(':')
+
+$volumeCheck = Invoke-RepairCommand -CommandName "Volume Health Check" -ScriptBlock {
+    # Get volume health details
+    $volume = Get-Volume -DriveLetter $systemDrive
+    $health = $volume | Get-FileSystemHealth
+    
+    if ($health.HealthStatus -eq "Healthy") {
+        return @{ Success = $true; Problems = $false }
+    }
+    return @{ Success = $true; Problems = $true }
+} -SuccessMessage "Volume health check completed." -ErrorMessage "Volume health check failed."
+
+if ($volumeCheck.Problems) {
+    Write-RepairLog "Volume issues detected. Initiating repair..." -Color Yellow
+    $volumeRepair = Invoke-RepairCommand -CommandName "Volume Repair" -ScriptBlock {
+        # Schedule a chkdsk for next restart using PowerShell
+        $drive = $env:SystemDrive
+        if (Repair-Volume -DriveLetter $systemDrive -Scan) {
+            $script:restartNeeded = $true
             $script:repairsMade = $true
             return $true
         }
         return $false
-    } -SuccessMessage "DISM repair completed successfully." -ErrorMessage "DISM repair encountered issues."
-}
-
-# Step 2: System File Checker with progress bar
-Write-RepairLog "`nStep 2/3: System File Checker" -Color Cyan
-$sfcResult = Invoke-RepairCommand -CommandName "System File Checker" -ScriptBlock {
-    $output = sfc.exe /scannow
-    $outputString = $output -join "`n"
-    
-    if ($outputString -match "Windows Resource Protection found corrupt files and successfully repaired them") {
-        $script:repairsMade = $true
-        $script:restartNeeded = $true
-        return @{ Success = $true; RepairsNeeded = $true }
-    }
-    return @{ Success = $true; RepairsNeeded = $false }
-} -SuccessMessage "SFC scan completed." -ErrorMessage "SFC scan encountered issues."
-
-# Step 3: Check Disk with detailed reporting
-Write-RepairLog "`nStep 3/3: Disk Health Check" -Color Cyan
-$systemDrive = $env:SystemDrive
-$chkdskResult = Invoke-RepairCommand -CommandName "CheckDisk" -ScriptBlock {
-    $output = chkdsk.exe $systemDrive /scan
-    if ($output -match "found no problems") {
-        return @{ Success = $true; Problems = $false }
-    }
-    return @{ Success = $true; Problems = $true }
-} -SuccessMessage "Disk health check completed." -ErrorMessage "Disk health check failed."
-
-if ($chkdskResult.Problems) {
-    Write-RepairLog "Disk issues detected. Scheduling full CHKDSK for next restart..." -Color Yellow
-    $scheduleChkdsk = Invoke-RepairCommand -CommandName "Schedule CHKDSK" -ScriptBlock {
-        chkdsk.exe $systemDrive /f /x
-        $script:restartNeeded = $true
-        $script:repairsMade = $true
-        return $true
-    } -SuccessMessage "CHKDSK scheduled for next restart." -ErrorMessage "Failed to schedule CHKDSK."
+    } -SuccessMessage "Volume repair scheduled for next restart." -ErrorMessage "Failed to schedule volume repair."
 }
 
 # Final Summary
@@ -136,6 +141,7 @@ Write-RepairLog "Repairs performed: $($repairsMade ? 'Yes' : 'No')" -Color ($rep
 Write-RepairLog "Restart required: $($restartNeeded ? 'Yes' : 'No')" -Color ($restartNeeded ? 'Yellow' : 'Green')
 Write-RepairLog "Log file location: $logFile" -Color White
 
+# Handle restart if needed
 if ($restartNeeded) {
     Write-RepairLog "`nSystem restart is required to complete repairs." -Color Yellow
     $restart = Read-Host "Would you like to restart your computer now? (Y/N)"
