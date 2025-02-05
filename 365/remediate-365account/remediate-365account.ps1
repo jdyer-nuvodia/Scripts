@@ -1,176 +1,317 @@
-#This script will allow you to execute a recommended set of steps to fully re-secure and remediate a known breached account in Office 365.
-#It peroms the following actions:
-# Reset password.
-# Revokes all sign-ins.
-# Remove mailbox delegates.
-# Remove mailforwarding rules to external domains.
-# Remove all inbox rules created in the last seven days.
-# Remove global mailforwarding property on mailbox.
-# Enable MFA on the user's account.
-# Set password complexity on the account to be high.
-# Produce Audit Log for the admin to review.
+#Requires -Version 5.1
+#Requires -Modules Microsoft.Graph
 
-# Install and Import required modules
-Install-Module Microsoft.Graph -Scope CurrentUser
-Import-Module Microsoft.Graph
-
-# Connect to Microsoft Graph
-Connect-MgGraph -Scopes "User.ReadWrite.All", "Directory.ReadWrite.All", "AuditLog.Read.All, MailboxSettings.ReadWrite"
-
-$upn = Write-Host "Enter the email address of the compromised account."
+<#
+.SYNOPSIS
+    Remediates a compromised Office 365 account by performing security-related actions.
+.DESCRIPTION
+    This script performs a comprehensive set of actions to secure a compromised Office 365 account:
+    - Resets password and enforces complexity
+    - Revokes all active sign-in sessions
+    - Removes mailbox delegates
+    - Removes external mail forwarding rules
+    - Removes recent inbox rules
+    - Removes global mailbox forwarding
+    - Enables MFA (if client uses it)
+    - Generates audit logs
+.PARAMETER UserPrincipalName
+    The email address (UPN) of the compromised account to remediate.
+.PARAMETER TranscriptPath
+    Optional. The path where the transcript log will be saved. Defaults to current directory.
+.EXAMPLE
+    .\remediate-365account.ps1 -UserPrincipalName "user@domain.com"
+#>
 
 [CmdletBinding()]
 Param(
-    [Parameter(Mandatory=$True,Position=0)][ValidateNotNullOrEmpty()]
-		[string]$upn
-		
-	#[Parameter(Mandatory=$False)]
-    #    [date]$startDate,
-    
-    #[Parameter(Mandatory=$False)]
-    #    [date]$endDate,
-    
-    #[Parameter(Mandatory=$False)]
-    #    [string]$fromFile	
+    [Parameter(Mandatory=$true, Position=0)]
+    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
+    [string]$UserPrincipalName,
+
+    [Parameter(Mandatory=$false)]
+    [string]$TranscriptPath = $PSScriptRoot
 )
 
-#Get the username of the user from the UPN.
-$userName = $upn -split "@"
+# Initialize error handling
+$ErrorActionPreference = 'Stop'
+$VerbosePreference = 'Continue'
 
-#Set transcript path and start transcription.
-$transcriptpath = ".\" + $userName[0] + "RemediationTranscript" + (Get-Date).ToString('yyyy-MM-dd') + ".txt"
-Start-Transcript -Path $transcriptpath
-
-#Notify the user the remediation is about to begin.
-Write-Output "You are about to remediate this account: $upn"
-
-# Load "System.Web" assembly in PowerShell console
-[Reflection.Assembly]::LoadWithPartialName("System.Web")
-
-
-function Reset-Password($upn) {
-    $newPassword = ([System.Web.Security.Membership]::GeneratePassword(16,2))
-    $params = @{
-        passwordProfile = @{
-            forceChangePasswordNextSignIn = $true
-            password = $newPassword
-        }
-    }
-    Update-MgUser -UserId $upn -BodyParameter $params
-    Write-Output "Password reset for $upn. New password: $newPassword"
+function Initialize-RemediationEnvironment {
+    [CmdletBinding()]
+    param()
     
-    Update-MgUser -UserId $upn -PasswordPolicies "DisablePasswordExpiration"
-    Write-Output "Strong password requirement set for $upn."
-}
-
-
-function Logout-AllSessions($upn) {
-	# Get the user's Object ID
-	$objectId = (Get-MgUser -Filter "UserPrincipalName eq '$upn'").Id
-
-	if ($objectId) {
-		# Revoke all sign-in sessions for the user
-		Invoke-MgRevokeSignInSession -UserId $objectId
-
-		Write-Host "All sign-in sessions for the user with UPN $upn have been revoked."
-	} else {
-		Write-Host "User not found. Please check the UPN and try again."
-	}
-}
-
-
-function Remove-MailboxDelegates($upn) {
-    Write-Output "Removing mailbox delegate permissions for $upn"
-    $delegates = Get-MgUserMailboxPermission -UserId $upn
-    foreach ($delegate in $delegates) {
-        if ($delegate.GrantedToV2.User.UserPrincipalName -ne $upn) {
-            echo $delegate
-			Remove-MgUserMailboxPermission -UserId $upn -MailboxPermissionId $delegate.Id
+    try {
+        # Check if Microsoft.Graph module is installed
+        if (-not (Get-Module -ListAvailable -Name Microsoft.Graph)) {
+            Write-Verbose "Installing Microsoft.Graph module..."
+            Install-Module Microsoft.Graph -Scope CurrentUser -Force
         }
+
+        # Import the module
+        Import-Module Microsoft.Graph -ErrorAction Stop
+
+        # Connect to Microsoft Graph with required scopes
+        $requiredScopes = @(
+            "User.ReadWrite.All",
+            "Directory.ReadWrite.All",
+            "AuditLog.Read.All",
+            "MailboxSettings.ReadWrite"
+        )
+        
+        Connect-MgGraph -Scopes $requiredScopes
+        
+        Write-Verbose "Successfully initialized remediation environment"
     }
-    Write-Output "Mailbox delegate permissions removed for $upn"
+    catch {
+        throw "Failed to initialize environment: $_"
+    }
 }
 
-function Remove-RecentMailRules($upn) {
-    Write-Output "Removing mail rules created in the last 7 days for $upn"
-    $sevenDaysAgo = (Get-Date).AddDays(-7)
-    $recentRules = Get-MgUserMailFolder -UserId $upn -MailFolderId Inbox | 
-                   Get-MgUserMailFolderMessageRule | 
-                   Where-Object {$_.CreatedDateTime -gt $sevenDaysAgo}
+function Reset-UserPassword {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
     
-    foreach ($rule in $recentRules) {
-        Remove-MgUserMailFolderMessageRule -UserId $upn -MailFolderId Inbox -MessageRuleId $rule.Id
-    }
-    Write-Output "Removed $(($recentRules | Measure-Object).Count) rules created in the last 7 days"
-}
-
-
-function Disable-MailforwardingRulesToExternalDomains($upn) {
-    Write-Output "Disabling mailforwarding rules to external domains for $upn"
-    $rules = Get-MgUserMailFolder -UserId $upn -MailFolderId Inbox | Get-MgUserMailFolderMessageRule
-    foreach ($rule in $rules) {
-        if ($rule.Actions.ForwardTo -or $rule.Actions.ForwardAsAttachmentTo -or $rule.Actions.RedirectTo) {
-            Update-MgUserMailFolderMessageRule -UserId $upn -MailFolderId Inbox -MessageRuleId $rule.Id -Enabled:$false
-        }
-    }
-    Write-Output "Mailforwarding rules disabled for $upn"
-}
-
-
-function Remove-MailboxForwarding($upn) {
-    Write-Output "Removing mailbox forwarding for $upn"
-    $params = @{
-        "@odata.type" = "#microsoft.graph.mailboxSettings"
-        automaticRepliesSetting = @{
-            status = "Disabled"
-        }
-    }
-    Update-MgUserMailboxSetting -UserId $upn -BodyParameter $params
-    Write-Output "Mailbox forwarding removed for $upn"
-}
-
-
-function Enable-MFA($upn) {
-    $useMFA = Read-Host "Does the client use MFA? (Yes/No)"
-    
-    if ($useMFA -eq "Yes") {
-        Write-Output "Enabling MFA for $upn"
+    try {
+        # Load System.Web assembly for password generation
+        Add-Type -AssemblyName System.Web
+        
+        $newPassword = [System.Web.Security.Membership]::GeneratePassword(16,2)
         $params = @{
-            "@odata.type" = "#microsoft.graph.authenticationMethodsPolicy"
-            authenticationMethodConfigurations = @(
-                @{
-                    "@odata.type" = "#microsoft.graph.microsoftAuthenticatorAuthenticationMethodConfiguration"
-                    state = "enabled"
-                }
-            )
+            passwordProfile = @{
+                forceChangePasswordNextSignIn = $true
+                password = $newPassword
+            }
         }
-        Update-MgPolicyAuthenticationMethodPolicy -BodyParameter $params
-        Write-Output "MFA enabled for $upn"
-    } else {
-        Write-Output "MFA not enabled. Client does not use MFA."
+        
+        Update-MgUser -UserId $UserPrincipalName -BodyParameter $params
+        Update-MgUser -UserId $UserPrincipalName -PasswordPolicies "DisablePasswordExpiration"
+        
+        # Save password to secure file
+        $securePassword = ConvertTo-SecureString $newPassword -AsPlainText -Force
+        $passwordFilePath = Join-Path $TranscriptPath "NewPassword_$((Get-Date).ToString('yyyyMMdd_HHmmss')).txt"
+        $securePassword | ConvertFrom-SecureString | Out-File $passwordFilePath
+        
+        Write-Verbose "Password reset successful. New password saved to: $passwordFilePath"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to reset password: $_"
+        return $false
     }
 }
 
-
-function Get-AuditLog($upn) {
-    Write-Output "Retrieving audit log for $upn"
-    $startDate = (Get-Date).AddDays(-7)
-    $endDate = Get-Date
-    $auditLogs = Get-MgAuditLogDirectoryAudit -Filter "activityDateTime ge $startDate and activityDateTime le $endDate and initiatedBy/user/userPrincipalName eq '$upn'"
-    $auditLogPath = ".\" + $upn.Split("@")[0] + "AuditLog" + (Get-Date).ToString('yyyy-MM-dd') + ".csv"
-    $auditLogs | Export-Csv -Path $auditLogPath
-    Write-Output "Audit log exported to $auditLogPath"
+function Remove-AllUserSessions {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
+    
+    try {
+        $user = Get-MgUser -Filter "UserPrincipalName eq '$UserPrincipalName'" -ErrorAction Stop
+        if ($user) {
+            Invoke-MgRevokeSignInSession -UserId $user.Id
+            Write-Verbose "Successfully revoked all sign-in sessions"
+            return $true
+        }
+        return $false
+    }
+    catch {
+        Write-Error "Failed to revoke sessions: $_"
+        return $false
+    }
 }
 
+function Remove-MailboxDelegates {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
+    
+    try {
+        $delegates = Get-MgUserMailboxPermission -UserId $UserPrincipalName
+        $removedCount = 0
+        
+        foreach ($delegate in $delegates) {
+            if ($delegate.GrantedToV2.User.UserPrincipalName -ne $UserPrincipalName) {
+                Remove-MgUserMailboxPermission -UserId $UserPrincipalName -MailboxPermissionId $delegate.Id
+                $removedCount++
+            }
+        }
+        
+        Write-Verbose "Removed $removedCount delegate permissions"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to remove delegates: $_"
+        return $false
+    }
+}
 
-Reset-Password $upn
-Logout-AllSessions $upn
-Remove-MailboxDelegates $upn
-Remove-RecentMailRules $upn
-Disable-MailforwardingRulesToExternalDomains $upn
-Remove-MailboxForwarding $upn
-Enable-MFA $upn
-Get-AuditLog $upn
+function Remove-RecentMailRules {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
+    
+    try {
+        $sevenDaysAgo = (Get-Date).AddDays(-7)
+        $recentRules = Get-MgUserMailFolder -UserId $UserPrincipalName -MailFolderId Inbox | 
+                      Get-MgUserMailFolderMessageRule | 
+                      Where-Object {$_.CreatedDateTime -gt $sevenDaysAgo}
+        
+        foreach ($rule in $recentRules) {
+            Remove-MgUserMailFolderMessageRule -UserId $UserPrincipalName -MailFolderId Inbox -MessageRuleId $rule.Id
+        }
+        
+        Write-Verbose "Removed $($recentRules.Count) recent mail rules"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to remove recent mail rules: $_"
+        return $false
+    }
+}
 
-Stop-Transcript
-Write-Output "Remediation complete for $upn"
+function Disable-ExternalForwarding {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
+    
+    try {
+        # Disable mailbox forwarding
+        $params = @{
+            "@odata.type" = "#microsoft.graph.mailboxSettings"
+            automaticRepliesSetting = @{
+                status = "Disabled"
+            }
+        }
+        Update-MgUserMailboxSetting -UserId $UserPrincipalName -BodyParameter $params
+        
+        # Disable forwarding rules
+        $rules = Get-MgUserMailFolder -UserId $UserPrincipalName -MailFolderId Inbox | 
+                Get-MgUserMailFolderMessageRule
+        
+        foreach ($rule in $rules) {
+            if ($rule.Actions.ForwardTo -or $rule.Actions.ForwardAsAttachmentTo -or $rule.Actions.RedirectTo) {
+                Update-MgUserMailFolderMessageRule -UserId $UserPrincipalName -MailFolderId Inbox -MessageRuleId $rule.Id -Enabled:$false
+            }
+        }
+        
+        Write-Verbose "External forwarding disabled"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to disable external forwarding: $_"
+        return $false
+    }
+}
+
+function Enable-UserMFA {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
+    
+    try {
+        $useMFA = Read-Host "Does the client use MFA? (Y/N)"
+        if ($useMFA -eq 'Y') {
+            $params = @{
+                "@odata.type" = "#microsoft.graph.authenticationMethodsPolicy"
+                authenticationMethodConfigurations = @(
+                    @{
+                        "@odata.type" = "#microsoft.graph.microsoftAuthenticatorAuthenticationMethodConfiguration"
+                        state = "enabled"
+                    }
+                )
+            }
+            Update-MgPolicyAuthenticationMethodPolicy -BodyParameter $params
+            Write-Verbose "MFA enabled successfully"
+            return $true
+        }
+        Write-Verbose "MFA not enabled per client request"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to configure MFA: $_"
+        return $false
+    }
+}
+
+function Export-UserAuditLog {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$UserPrincipalName
+    )
+    
+    try {
+        $startDate = (Get-Date).AddDays(-7)
+        $endDate = Get-Date
+        
+        $auditLogs = Get-MgAuditLogDirectoryAudit -Filter "activityDateTime ge $startDate and activityDateTime le $endDate and initiatedBy/user/userPrincipalName eq '$UserPrincipalName'"
+        
+        $auditLogPath = Join-Path $TranscriptPath "AuditLog_$((Get-Date).ToString('yyyyMMdd_HHmmss')).csv"
+        $auditLogs | Export-Csv -Path $auditLogPath -NoTypeInformation
+        
+        Write-Verbose "Audit log exported to: $auditLogPath"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to export audit log: $_"
+        return $false
+    }
+}
+
+# Main execution block
+try {
+    # Start transcript
+    $transcriptFile = Join-Path $TranscriptPath "Remediation_$((Get-Date).ToString('yyyyMMdd_HHmmss')).log"
+    Start-Transcript -Path $transcriptFile
+    
+    Write-Host "Starting remediation for account: $UserPrincipalName" -ForegroundColor Green
+    
+    # Initialize environment
+    Initialize-RemediationEnvironment
+    
+    # Execute remediation steps
+    $steps = @(
+        @{ Name = "Reset Password"; Function = { Reset-UserPassword $UserPrincipalName } },
+        @{ Name = "Remove Sessions"; Function = { Remove-AllUserSessions $UserPrincipalName } },
+        @{ Name = "Remove Delegates"; Function = { Remove-MailboxDelegates $UserPrincipalName } },
+        @{ Name = "Remove Recent Rules"; Function = { Remove-RecentMailRules $UserPrincipalName } },
+        @{ Name = "Disable Forwarding"; Function = { Disable-ExternalForwarding $UserPrincipalName } },
+        @{ Name = "Enable MFA"; Function = { Enable-UserMFA $UserPrincipalName } },
+        @{ Name = "Export Audit Log"; Function = { Export-UserAuditLog $UserPrincipalName } }
+    )
+    
+    $results = @()
+    foreach ($step in $steps) {
+        Write-Host "`nExecuting: $($step.Name)" -ForegroundColor Cyan
+        $success = & $step.Function
+        $results += [PSCustomObject]@{
+            Step = $step.Name
+            Status = if ($success) { "Success" } else { "Failed" }
+        }
+    }
+    
+    # Display summary
+    Write-Host "`nRemediation Summary:" -ForegroundColor Yellow
+    $results | Format-Table -AutoSize
+    
+}
+catch {
+    Write-Error "Remediation failed: $_"
+}
+finally {
+    Stop-Transcript
+    Write-Host "`nRemediation process completed. Check transcript at: $transcriptFile" -ForegroundColor Green
+}
