@@ -1,8 +1,7 @@
 # get-foldersizes.ps1
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 00:41:11 UTC
-# Current User: jdyer-nuvodia
-# Purpose: Ultra-fast directory scanner for large directories including system folders (read-only)
+# Created: 2025-02-05 00:46:57 UTC
+# Purpose: Ultra-fast directory scanner including system directories (read-only)
 
 param (
     [string]$Path = "C:\",
@@ -16,106 +15,83 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Exit
 }
 
-# Add .NET methods for high-performance file operations with system directory handling
-Add-Type @"
+# Remove existing type if it exists
+Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
+
+# Add .NET methods with unique type name
+$typeName = "FastFileScanner_" + (Get-Random)
+Add-Type -TypeDefinition @"
 using System;
 using System.IO;
 using System.Linq;
-using System.Security.Principal;
-using System.Security.AccessControl;
+using System.Security;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
-public class FastFileScanner {
-    public class FolderInfo {
-        public string Path { get; set; }
-        public long Size { get; set; }
-        public int FileCount { get; set; }
-        public int SubfolderCount { get; set; }
-        public FileInfo LargestFile { get; set; }
-    }
+public class $typeName {
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool GetDiskFreeSpaceEx(string lpDirectoryName,
+        out ulong lpFreeBytesAvailable,
+        out ulong lpTotalNumberOfBytes,
+        out ulong lpTotalNumberOfFreeBytes);
 
-    public static FolderInfo ScanDirectory(string path) {
-        try {
-            var di = new DirectoryInfo(path);
-            var files = new List<FileInfo>();
-            
-            try {
-                files.AddRange(di.GetFiles("*", SearchOption.TopDirectoryOnly));
-            }
-            catch (UnauthorizedAccessException) {
-                // Try alternate method for system directories
-                foreach (string file in Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly)) {
-                    try {
-                        files.Add(new FileInfo(file));
-                    }
-                    catch { }
-                }
-            }
-
-            var largestFile = files.OrderByDescending(f => f.Length).FirstOrDefault();
-            var size = files.Sum(f => f.Length);
-
-            int subFolderCount = 0;
-            try {
-                subFolderCount = di.GetDirectories("*", SearchOption.TopDirectoryOnly).Length;
-            }
-            catch {
-                subFolderCount = Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly).Length;
-            }
-
-            return new FolderInfo {
-                Path = path,
-                Size = size,
-                FileCount = files.Count,
-                SubfolderCount = subFolderCount,
-                LargestFile = largestFile
-            };
-        }
-        catch (Exception) {
-            return null;
-        }
-    }
-
-    public static long GetRecursiveSize(string path) {
+    public static long GetDirectorySize(string path) {
         long size = 0;
-        try {
-            foreach (string file in Directory.GetFiles(path, "*", SearchOption.AllDirectories)) {
-                try {
-                    size += new FileInfo(file).Length;
+        var stack = new Stack<string>();
+        stack.Push(path);
+
+        while (stack.Count > 0) {
+            string dir = stack.Pop();
+            try {
+                size += Directory.GetFiles(dir).Sum(f => {
+                    try { return new FileInfo(f).Length; }
+                    catch { return 0; }
+                });
+
+                foreach (var subDir in Directory.GetDirectories(dir)) {
+                    stack.Push(subDir);
                 }
-                catch { }
             }
+            catch (UnauthorizedAccessException) { }
+            catch (SecurityException) { }
+            catch (IOException) { }
         }
-        catch { }
         return size;
     }
 
-    public static int GetRecursiveFileCount(string path) {
-        int count = 0;
-        try {
-            foreach (string file in Directory.GetFiles(path, "*", SearchOption.AllDirectories)) {
-                try {
-                    count++;
+    public static Tuple<int, int> GetDirectoryCounts(string path) {
+        int files = 0;
+        int folders = 0;
+        var stack = new Stack<string>();
+        stack.Push(path);
+
+        while (stack.Count > 0) {
+            string dir = stack.Pop();
+            try {
+                files += Directory.GetFiles(dir).Length;
+                var subDirs = Directory.GetDirectories(dir);
+                folders += subDirs.Length;
+                foreach (var subDir in subDirs) {
+                    stack.Push(subDir);
                 }
-                catch { }
             }
+            catch (UnauthorizedAccessException) { }
+            catch (SecurityException) { }
+            catch (IOException) { }
         }
-        catch { }
-        return count;
+        return new Tuple<int, int>(files, folders);
     }
 
-    public static int GetRecursiveSubfolderCount(string path) {
-        int count = 0;
+    public static FileInfo GetLargestFile(string path) {
         try {
-            foreach (string dir in Directory.GetDirectories(path, "*", SearchOption.AllDirectories)) {
-                try {
-                    count++;
-                }
-                catch { }
-            }
+            return new DirectoryInfo(path)
+                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(f => f.Length)
+                .FirstOrDefault();
         }
-        catch { }
-        return count;
+        catch {
+            return null;
+        }
     }
 }
 "@
@@ -142,53 +118,57 @@ function Get-FolderSizes {
     if ($CurrentDepth -ge $MaxDepth) { return $null }
 
     try {
-        # Scan current directory
-        $currentInfo = [FastFileScanner]::ScanDirectory($FolderPath)
-        if ($currentInfo.LargestFile) {
-            Write-Host "`nLargest file in $FolderPath :"
-            Write-Host "Name: $($currentInfo.LargestFile.Name)"
-            Write-Host "Size: $(Format-SizeWithPadding ($currentInfo.LargestFile.Length / 1GB)) GB"
+        # Get all subdirectories
+        $folders = @(Get-ChildItem -Path $FolderPath -Directory -Force -ErrorAction SilentlyContinue)
+        if (-not $folders) {
+            $folders = @([System.IO.Directory]::GetDirectories($FolderPath))
         }
 
-        # Get subdirectories using .NET directly
-        $subDirs = [System.IO.Directory]::GetDirectories($FolderPath)
-        Write-Host "`nFound $($subDirs.Count) subfolders to process..."
+        # Get largest file in current directory
+        $largestFile = & { Invoke-Expression "[$typeName]::GetLargestFile('$FolderPath')" }
+        if ($largestFile) {
+            Write-Host "`nLargest file in $FolderPath :"
+            Write-Host "Name: $($largestFile.Name)"
+            Write-Host "Size: $(Format-SizeWithPadding ($largestFile.Length / 1GB)) GB"
+        }
 
-        # Process directories in batches of 50 for better performance
-        $batchSize = 50
+        Write-Host "`nFound $($folders.Count) subfolders to process..."
         $folderSizes = @()
         $processedCount = 0
-        $totalDirs = $subDirs.Count
+        $totalDirs = $folders.Count
 
-        for ($i = 0; $i -lt $subDirs.Count; $i += $batchSize) {
-            $batch = $subDirs | Select-Object -Skip $i -First $batchSize
+        # Process in smaller batches
+        $batchSize = 10
+        for ($i = 0; $i -lt $folders.Count; $i += $batchSize) {
+            $batch = $folders | Select-Object -Skip $i -First $batchSize
             $jobs = @()
 
             foreach ($dir in $batch) {
-                $jobs += Start-ThreadJob -ThrottleLimit 50 -ArgumentList $dir -ScriptBlock {
-                    param($folderPath)
+                $dirPath = $dir.FullName ?? $dir
+                $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $typeName -ScriptBlock {
+                    param($path, $className)
                     try {
-                        $info = [FastFileScanner]::ScanDirectory($folderPath)
-                        $recursiveSize = [FastFileScanner]::GetRecursiveSize($folderPath)
-                        $recursiveFiles = [FastFileScanner]::GetRecursiveFileCount($folderPath)
-                        $recursiveFolders = [FastFileScanner]::GetRecursiveSubfolderCount($folderPath)
+                        $size = Invoke-Expression "[$className]::GetDirectorySize('$path')"
+                        $counts = Invoke-Expression "[$className]::GetDirectoryCounts('$path')"
+                        $largestFile = Invoke-Expression "[$className]::GetLargestFile('$path')"
 
                         return [PSCustomObject]@{
-                            Folder = $folderPath
-                            SizeGB = $recursiveSize / 1GB
-                            TotalSubfolders = $recursiveFolders
-                            TotalFiles = $recursiveFiles
-                            LargestFile = if ($info.LargestFile) {
+                            Folder = $path
+                            SizeGB = $size / 1GB
+                            TotalFiles = $counts.Item1
+                            TotalSubfolders = $counts.Item2
+                            LargestFile = if ($largestFile) {
                                 [PSCustomObject]@{
-                                    Name = $info.LargestFile.Name
-                                    Path = $info.LargestFile.FullName
-                                    SizeGB = $info.LargestFile.Length / 1GB
-                                    SizeMB = $info.LargestFile.Length / 1MB
+                                    Name = $largestFile.Name
+                                    Path = $largestFile.FullName
+                                    SizeGB = $largestFile.Length / 1GB
+                                    SizeMB = $largestFile.Length / 1MB
                                 }
                             } else { $null }
                         }
                     }
                     catch {
+                        Write-Warning "Error processing $path : $_"
                         return $null
                     }
                 }
@@ -196,7 +176,7 @@ function Get-FolderSizes {
 
             # Wait for batch completion
             $results = $jobs | Wait-Job | Receive-Job
-            $jobs | Remove-Job
+            $jobs | Remove-Job -Force
             $folderSizes += @($results | Where-Object { $_ -ne $null })
             $processedCount += $batch.Count
             Write-Host "`rProcessed $processedCount of $totalDirs folders..." -NoNewline
