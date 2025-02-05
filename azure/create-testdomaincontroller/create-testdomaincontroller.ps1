@@ -1,5 +1,4 @@
 # create-testdomaincontroller.ps1
-# Updated script to use SAS token for secure access to the runbook blob
 
 # Set ErrorActionPreference to Stop to halt script execution on the first error
 $ErrorActionPreference = "Stop"
