@@ -1,7 +1,8 @@
 # get-foldersizes.ps1
 # Author: jdyer-nuvodia
-# Created: 2025-02-05 00:38:37 UTC
-# Purpose: Ultra-fast directory scanner for large directories (read-only)
+# Created: 2025-02-05 00:41:11 UTC
+# Current User: jdyer-nuvodia
+# Purpose: Ultra-fast directory scanner for large directories including system folders (read-only)
 
 param (
     [string]$Path = "C:\",
@@ -15,11 +16,13 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Exit
 }
 
-# Add .NET methods for high-performance file operations
+# Add .NET methods for high-performance file operations with system directory handling
 Add-Type @"
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Principal;
+using System.Security.AccessControl;
 using System.Collections.Generic;
 
 public class FastFileScanner {
@@ -34,14 +37,37 @@ public class FastFileScanner {
     public static FolderInfo ScanDirectory(string path) {
         try {
             var di = new DirectoryInfo(path);
-            var files = di.GetFiles("*", SearchOption.TopDirectoryOnly);
-            var largestFile = files.OrderByDescending(f => f.Length).FirstOrDefault();
+            var files = new List<FileInfo>();
             
+            try {
+                files.AddRange(di.GetFiles("*", SearchOption.TopDirectoryOnly));
+            }
+            catch (UnauthorizedAccessException) {
+                // Try alternate method for system directories
+                foreach (string file in Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly)) {
+                    try {
+                        files.Add(new FileInfo(file));
+                    }
+                    catch { }
+                }
+            }
+
+            var largestFile = files.OrderByDescending(f => f.Length).FirstOrDefault();
+            var size = files.Sum(f => f.Length);
+
+            int subFolderCount = 0;
+            try {
+                subFolderCount = di.GetDirectories("*", SearchOption.TopDirectoryOnly).Length;
+            }
+            catch {
+                subFolderCount = Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly).Length;
+            }
+
             return new FolderInfo {
                 Path = path,
-                Size = files.Sum(f => f.Length),
-                FileCount = files.Length,
-                SubfolderCount = di.GetDirectories("*", SearchOption.TopDirectoryOnly).Length,
+                Size = size,
+                FileCount = files.Count,
+                SubfolderCount = subFolderCount,
                 LargestFile = largestFile
             };
         }
@@ -51,30 +77,45 @@ public class FastFileScanner {
     }
 
     public static long GetRecursiveSize(string path) {
+        long size = 0;
         try {
-            return Directory.GetFiles(path, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length);
+            foreach (string file in Directory.GetFiles(path, "*", SearchOption.AllDirectories)) {
+                try {
+                    size += new FileInfo(file).Length;
+                }
+                catch { }
+            }
         }
-        catch (Exception) {
-            return 0;
-        }
+        catch { }
+        return size;
     }
 
     public static int GetRecursiveFileCount(string path) {
+        int count = 0;
         try {
-            return Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length;
+            foreach (string file in Directory.GetFiles(path, "*", SearchOption.AllDirectories)) {
+                try {
+                    count++;
+                }
+                catch { }
+            }
         }
-        catch (Exception) {
-            return 0;
-        }
+        catch { }
+        return count;
     }
 
     public static int GetRecursiveSubfolderCount(string path) {
+        int count = 0;
         try {
-            return Directory.GetDirectories(path, "*", SearchOption.AllDirectories).Length;
+            foreach (string dir in Directory.GetDirectories(path, "*", SearchOption.AllDirectories)) {
+                try {
+                    count++;
+                }
+                catch { }
+            }
         }
-        catch (Exception) {
-            return 0;
-        }
+        catch { }
+        return count;
     }
 }
 "@
