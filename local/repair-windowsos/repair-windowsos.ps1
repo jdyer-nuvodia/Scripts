@@ -1,14 +1,15 @@
 # Windows OS Repair Script
-# Version: 3.0
+# Version: 3.1
 # Author: Original by jdyer-nuvodia, optimized with GitHub Copilot
-# Last Updated: 2025-02-05 20:42:23
+# Last Updated: 2025-02-05 21:46:40
 # Description: Performs comprehensive Windows system repairs and health checks using PowerShell cmdlets
 # Requires: PowerShell 5.1 or later, Windows 10/Server 2016 or later
 
 #Requires -RunAsAdministrator
 #Requires -Version 5.1
 
-# Ensure we stop on errors
+# Ensure we stop on errors immediately
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Script Variables
@@ -55,8 +56,9 @@ function Invoke-RepairCommand {
     }
     catch {
         Write-RepairLog "Error in $CommandName : $_" -Color Red
+        Write-RepairLog "Stack Trace: $($_.ScriptStackTrace)" -Color Red
         Write-RepairLog $ErrorMessage -Color Red
-        return $false
+        throw  # Re-throw the error to stop script execution
     }
 }
 
@@ -74,10 +76,11 @@ Write-RepairLog "`nStep 1/3: Windows Image Health Check" -Color Cyan
 Write-RepairLog "Checking Windows image health..." -Color Yellow
 
 $imageCheck = Invoke-RepairCommand -CommandName "Windows Image Health Check" -ScriptBlock {
-    # Get the current Windows image health status
-    $health = Get-WindowsImage -Online -ErrorAction Stop
+    # Using DISM PowerShell module commands
+    $componentState = Get-WindowsOptionalFeature -Online | 
+        Where-Object { $_.State -eq 'Disabled' -or $_.State -eq 'EnablePending' -or $_.State -eq 'DisablePending' }
     
-    if ($health.ImageHealthState -eq "Healthy") {
+    if ($null -eq $componentState) {
         return @{ Success = $true; NeedsRepair = $false }
     }
     return @{ Success = $true; NeedsRepair = $true }
@@ -86,23 +89,24 @@ $imageCheck = Invoke-RepairCommand -CommandName "Windows Image Health Check" -Sc
 if ($imageCheck.NeedsRepair) {
     Write-RepairLog "Image corruption detected. Initiating repair..." -Color Yellow
     $imageRepair = Invoke-RepairCommand -CommandName "Windows Image Repair" -ScriptBlock {
-        # Perform the repair operation
-        Repair-WindowsImage -Online -RestoreHealth -ErrorAction Stop
-        $script:repairsMade = $true
-        return $true
+        # Using DISM PowerShell module commands
+        $repair = Repair-WindowsImage -Online -RestoreHealth -NoRestart
+        if ($repair.ImageHealthState -eq "Healthy") {
+            $script:repairsMade = $true
+            return $true
+        }
+        throw "Image repair failed to restore health"
     } -SuccessMessage "Windows image repair completed successfully." -ErrorMessage "Windows image repair encountered issues."
 }
 
 # Step 2: System File Check
 Write-RepairLog "`nStep 2/3: System File Check" -Color Cyan
 $sfcResult = Invoke-RepairCommand -CommandName "System File Check" -ScriptBlock {
-    # Using .NET to invoke SFC (as there's no direct PowerShell equivalent)
     $process = Start-Process -FilePath "sfc.exe" -ArgumentList "/scannow" -Wait -PassThru -NoNewWindow
-    if ($process.ExitCode -eq 0) {
-        return @{ Success = $true; RepairsNeeded = $false }
+    if ($process.ExitCode -ne 0) {
+        throw "SFC returned error code: $($process.ExitCode)"
     }
     $script:repairsMade = $true
-    $script:restartNeeded = $true
     return @{ Success = $true; RepairsNeeded = $true }
 } -SuccessMessage "System File Check completed." -ErrorMessage "System File Check encountered issues."
 
@@ -112,10 +116,10 @@ $systemDrive = $env:SystemDrive.TrimEnd(':')
 
 $volumeCheck = Invoke-RepairCommand -CommandName "Volume Health Check" -ScriptBlock {
     # Get volume health details
-    $volume = Get-Volume -DriveLetter $systemDrive
-    $health = $volume | Get-FileSystemHealth
+    $volume = Get-Volume -DriveLetter $systemDrive -ErrorAction Stop
     
-    if ($health.HealthStatus -eq "Healthy") {
+    # Check for basic volume health indicators
+    if ($volume.HealthStatus -eq "Healthy" -and $volume.OperationalStatus -eq "OK") {
         return @{ Success = $true; Problems = $false }
     }
     return @{ Success = $true; Problems = $true }
@@ -124,14 +128,13 @@ $volumeCheck = Invoke-RepairCommand -CommandName "Volume Health Check" -ScriptBl
 if ($volumeCheck.Problems) {
     Write-RepairLog "Volume issues detected. Initiating repair..." -Color Yellow
     $volumeRepair = Invoke-RepairCommand -CommandName "Volume Repair" -ScriptBlock {
-        # Schedule a chkdsk for next restart using PowerShell
-        $drive = $env:SystemDrive
-        if (Repair-Volume -DriveLetter $systemDrive -Scan) {
-            $script:restartNeeded = $true
-            $script:repairsMade = $true
-            return $true
+        $result = Repair-Volume -DriveLetter $systemDrive -Scan -ErrorAction Stop
+        if (-not $result) {
+            throw "Volume repair scan failed"
         }
-        return $false
+        $script:restartNeeded = $true
+        $script:repairsMade = $true
+        return $true
     } -SuccessMessage "Volume repair scheduled for next restart." -ErrorMessage "Failed to schedule volume repair."
 }
 
