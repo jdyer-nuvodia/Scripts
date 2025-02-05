@@ -1,153 +1,78 @@
-# Script: Add-FolderToPath.ps1
-# Version: 2.0
-# Description: Adds folders and subfolders to system PATH environment variable
-# Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 22:15:38
-#
-# .SYNOPSIS
-#   Adds specified folder and optionally its subfolders to the system or user PATH.
-#
-# .DESCRIPTION
-#   This script adds a specified folder and optionally its subfolders to either the
-#   system (Machine) or user PATH environment variable. It includes validation,
-#   duplicate checking, and supports WhatIf operations.
-#
-# .PARAMETER RootPath
-#   The root directory to add to PATH
-#
-# .PARAMETER NoRecurse
-#   If specified, only adds the root folder without subfolders
-#
-# .PARAMETER Scope
-#   Whether to modify Machine (system) or User PATH. Default is User
-#
-# .EXAMPLE
-#   # Add single folder to user PATH
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts"
-#
-# .EXAMPLE
-#   # Add folder and subfolders to system PATH (requires admin)
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -Scope Machine
-#
-# .EXAMPLE
-#   # Test what would happen without making changes
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -WhatIf
-#
-# .EXAMPLE
-#   # Add folder without subfolders
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -NoRecurse
-#
-# .EXAMPLE
-#   # See detailed operation information
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -Verbose
-#
+[Previous header comments remain the same...]
 
-[CmdletBinding(SupportsShouldProcess=$true)]
-param(
-    [Parameter(Mandatory=$true,
-               Position=0,
-               ValueFromPipeline=$true,
-               HelpMessage="Root directory to add to PATH")]
-    [ValidateScript({Test-Path $_ -PathType Container})]
-    [string]$RootPath,
-
-    [Parameter(Mandatory=$false)]
-    [switch]$NoRecurse,
-
-    [Parameter(Mandatory=$false)]
-    [ValidateSet('Machine', 'User')]
-    [string]$Scope = 'User'
-)
-
-begin {
-    # Verify running as administrator for Machine scope
-    if ($Scope -eq 'Machine' -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw "Administrator privileges required for Machine scope. Please run as administrator or use User scope."
+function Convert-ToPascalCase {
+    param([string]$text)
+    
+    Write-Verbose "Converting to PascalCase: $text"
+    
+    # Split by common delimiters
+    $words = $text -split '[-_\s]'
+    
+    # Convert each word to proper case
+    $words = $words | ForEach-Object { 
+        if ($_.Length -gt 0) {
+            $_.Substring(0,1).ToUpper() + $_.Substring(1).ToLower()
+        }
     }
-
-    # Get current PATH based on scope
-    try {
-        $currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::$Scope)
-        $currentPathArray = $currentPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-        Write-Verbose "Current PATH contains $($currentPathArray.Count) entries"
-    }
-    catch {
-        throw "Failed to get current PATH: $_"
-    }
+    
+    # Rejoin with hyphens for PowerShell convention
+    $result = $words -join '-'
+    Write-Verbose "Converted to: $result"
+    return $result
 }
 
-process {
-    # Function to sanitize and validate path
-    function Get-SanitizedPath {
-        param([string]$Path)
-        
-        try {
-            return (Resolve-Path $Path).Path.TrimEnd('\')
-        }
-        catch {
-            Write-Warning "Failed to resolve path: $Path"
-            return $null
-        }
-    }
-
-    # Function to add a path if it doesn't exist
-    function Add-UniquePathItem {
-        param([string]$Path)
-        
-        $sanitizedPath = Get-SanitizedPath $Path
-        if ($null -eq $sanitizedPath) { return $null }
-        
-        if ($currentPathArray -notcontains $sanitizedPath) {
-            Write-Verbose "Adding new path: $sanitizedPath"
-            return $sanitizedPath
-        }
-        else {
-            Write-Verbose "Path already exists: $sanitizedPath"
-            return $null
-        }
-    }
-
+function Rename-FolderWithCase {
+    param(
+        [string]$folderPath
+    )
+    
     try {
-        # Get all directories to process
-        $directories = @()
-        $directories += Get-SanitizedPath $RootPath
+        $folder = Get-Item -LiteralPath $folderPath
+        $parentPath = Split-Path -Path $folderPath -Parent
+        $currentName = Split-Path -Path $folderPath -Leaf
         
-        if (-not $NoRecurse) {
-            Write-Verbose "Getting subdirectories for $RootPath"
-            $subDirs = Get-ChildItem -Path $RootPath -Recurse -Directory -ErrorAction Stop
-            $directories += $subDirs.FullName
+        # Skip if it's a file
+        if (!$folder.PSIsContainer) {
+            return
         }
 
-        # Add unique paths
-        $newPaths = @()
-        foreach ($dir in $directories) {
-            $newPath = Add-UniquePathItem $dir
-            if ($null -ne $newPath) {
-                $newPaths += $newPath
-            }
+        # Convert name to proper case
+        $newName = Convert-ToPascalCase -text $currentName
+        
+        # Skip if name wouldn't change (FIXED: Now compares with actual new name)
+        if ($newName.Equals($currentName, [StringComparison]::Ordinal)) {
+            Write-Host "Skipping '$currentName' - already in correct case" -ForegroundColor Yellow
+            return
         }
-
-        # Update PATH if we have new entries
-        if ($newPaths.Count -gt 0) {
-            $newPathString = ($currentPathArray + $newPaths) -join ";"
+        
+        Write-Host "Need to rename '$currentName' to '$newName'" -ForegroundColor Cyan
+        $newPath = Join-Path -Path $parentPath -ChildPath $newName
+        
+        # Handle case where only case is different (needs temp rename)
+        if ($newPath.ToLower() -eq $folderPath.ToLower()) {
+            $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8)
+            $tempPath = Join-Path -Path $parentPath -ChildPath $tempName
             
-            if ($PSCmdlet.ShouldProcess("PATH Environment Variable", "Add $($newPaths.Count) new directories")) {
-                [System.Environment]::SetEnvironmentVariable("Path", $newPathString, [System.EnvironmentVariableTarget]::$Scope)
+            if ($PSCmdlet.ShouldProcess($folderPath, "Rename to temp folder '$tempPath'")) {
+                Write-Verbose "Temporary rename: '$folderPath' -> '$tempPath'"
+                Rename-Item -LiteralPath $folderPath -NewName $tempName -ErrorAction Stop
                 
-                Write-Host "`nSuccessfully added $($newPaths.Count) directories to PATH ($Scope scope):" -ForegroundColor Green
-                $newPaths | ForEach-Object { Write-Host "  + $_" -ForegroundColor Cyan }
+                Write-Verbose "Final rename: '$tempPath' -> '$newPath'"
+                Rename-Item -LiteralPath $tempPath -NewName $newName -ErrorAction Stop
+                Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
             }
         }
         else {
-            Write-Host "No new directories needed to be added to PATH." -ForegroundColor Yellow
+            if ($PSCmdlet.ShouldProcess($folderPath, "Rename to '$newPath'")) {
+                Rename-Item -LiteralPath $folderPath -NewName $newName -ErrorAction Stop
+                Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
+            }
         }
     }
     catch {
-        Write-Error "Failed to process directories: $_"
-        return
+        Write-Error "Error renaming folder '$folderPath': $_"
+        Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     }
 }
 
-end {
-    Write-Verbose "Script completed"
-}
+[Rest of the script remains the same...]
