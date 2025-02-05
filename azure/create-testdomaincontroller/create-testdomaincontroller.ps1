@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: create-testdomaincontroller.ps1
-# Created: 2025-02-05 00:57:20 UTC
+# Created: 2025-02-05 01:16:45 UTC
 # Author: jdyer-nuvodia
 # Purpose: Creates a test domain controller in Azure with automated shutdown
-# Version: 1.2
+# Version: 1.3
 # =============================================================================
 
 # Enable strict mode and stop on errors
@@ -90,19 +90,19 @@ try {
     exit 1
 }
 
-# Storage Account Creation/Validation
+# Storage Account Creation/Validation with reuse
 try {
     Write-Log "Checking storage account..."
     $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroup -Name $storageAccountName -ErrorAction SilentlyContinue
     
     if (-not $storageAccount) {
-        Write-Log "Creating storage account $storageAccountName"
+        Write-Log "Creating new storage account $storageAccountName"
         $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup `
                                              -Name $storageAccountName `
                                              -Location $location `
                                              -SkuName Standard_LRS
     } else {
-        Write-Log "Storage account $storageAccountName already exists"
+        Write-Log "Reusing existing storage account $storageAccountName"
     }
 
     Write-Log "Creating storage context..."
@@ -112,11 +112,12 @@ try {
                                                 -Protocol 'HTTPS'
 
     Write-Log "Checking container..."
-    if (-not (Get-AzStorageContainer -Name $containerName -Context $storageAccountContext -ErrorAction SilentlyContinue)) {
-        Write-Log "Creating container $containerName"
+    $container = Get-AzStorageContainer -Name $containerName -Context $storageAccountContext -ErrorAction SilentlyContinue
+    if (-not $container) {
+        Write-Log "Creating new container $containerName"
         New-AzStorageContainer -Name $containerName -Context $storageAccountContext -ErrorAction Stop
     } else {
-        Write-Log "Container $containerName already exists"
+        Write-Log "Reusing existing container $containerName"
     }
 } catch {
     Write-Log "ERROR: Storage account setup failed. Error: $_"
@@ -168,14 +169,14 @@ workflow $runbookName {
     exit 1
 }
 
-# Network Configuration
+# Network Configuration with reuse
 try {
     Write-Log "Configuring network components..."
     
     # Virtual Network
     $virtualNetwork = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue
     if (-not $virtualNetwork) {
-        Write-Log "Creating virtual network $vnetName"
+        Write-Log "Creating new virtual network $vnetName"
         $vnet = @{
             ResourceGroupName = $resourceGroup
             Location = $location
@@ -184,50 +185,64 @@ try {
         }
         $virtualNetwork = New-AzVirtualNetwork @vnet -ErrorAction Stop
     } else {
-        Write-Log "Virtual network $vnetName already exists"
+        Write-Log "Reusing existing virtual network $vnetName"
     }
 
     # Subnet Configuration
     $subnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction SilentlyContinue
     if (-not $subnet) {
-        Write-Log "Creating subnet $subnetName in virtual network $vnetName"
+        Write-Log "Creating new subnet $subnetName"
         Add-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork `
                                         -AddressPrefix "10.0.1.0/24" `
                                         -Name $subnetName | Out-Null
         $virtualNetwork | Set-AzVirtualNetwork -ErrorAction Stop | Out-Null
     } else {
-        Write-Log "Subnet $subnetName already exists in virtual network $vnetName"
+        Write-Log "Reusing existing subnet $subnetName"
     }
 
     # Network Security Group
-    Write-Log "Creating Network Security Group $nsgName"
-    $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup `
-                                     -Location $location `
-                                     -Name $nsgName
-    Write-Log "Network Security Group created successfully"
+    $nsg = Get-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Name $nsgName -ErrorAction SilentlyContinue
+    if (-not $nsg) {
+        Write-Log "Creating new Network Security Group $nsgName"
+        $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup `
+                                         -Location $location `
+                                         -Name $nsgName
+    } else {
+        Write-Log "Reusing existing Network Security Group $nsgName"
+    }
 
     # Network Interface
-    Write-Log "Creating network interface $($vmName)VMNic"
-    $nic = New-AzNetworkInterface -Name "$($vmName)VMNic" `
-                                 -ResourceGroupName $resourceGroup `
-                                 -Location $location `
-                                 -SubnetId $virtualNetwork.Subnets[0].Id
-    Write-Log "Network interface created successfully"
-
-    # Public IP
-    Write-Log "Creating public IP address $publicIpName"
-    $publicIp = New-AzPublicIpAddress -Name $publicIpName `
+    $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic" -ErrorAction SilentlyContinue
+    if (-not $nic) {
+        Write-Log "Creating new network interface $($vmName)VMNic"
+        $nic = New-AzNetworkInterface -Name "$($vmName)VMNic" `
                                      -ResourceGroupName $resourceGroup `
                                      -Location $location `
-                                     -AllocationMethod Static `
-                                     -Sku Standard
-    Write-Log "Public IP address created successfully"
+                                     -SubnetId $virtualNetwork.Subnets[0].Id
+    } else {
+        Write-Log "Reusing existing network interface $($vmName)VMNic"
+    }
 
-    Write-Log "Connecting public IP to network interface..."
-    $nic = Get-AzNetworkInterface -ResourceGroupName $resourceGroup -Name "$($vmName)VMNic"
-    $nic.IpConfigurations[0].PublicIpAddress = $publicIp
-    Set-AzNetworkInterface -NetworkInterface $nic | Out-Null
-    Write-Log "Network interface updated successfully"
+    # Public IP
+    $publicIp = Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName -ErrorAction SilentlyContinue
+    if (-not $publicIp) {
+        Write-Log "Creating new public IP address $publicIpName"
+        $publicIp = New-AzPublicIpAddress -Name $publicIpName `
+                                         -ResourceGroupName $resourceGroup `
+                                         -Location $location `
+                                         -AllocationMethod Static `
+                                         -Sku Standard
+    } else {
+        Write-Log "Reusing existing public IP address $publicIpName"
+    }
+
+    # Only update NIC if it's new or needs the public IP updated
+    if (-not $nic.IpConfigurations[0].PublicIpAddress -or 
+        $nic.IpConfigurations[0].PublicIpAddress.Id -ne $publicIp.Id) {
+        Write-Log "Updating network interface with public IP..."
+        $nic.IpConfigurations[0].PublicIpAddress = $publicIp
+        Set-AzNetworkInterface -NetworkInterface $nic | Out-Null
+    }
 
 } catch {
     Write-Log "ERROR: Network configuration failed. Error: $_"
@@ -344,100 +359,97 @@ catch {
     exit 1
 }
 
-# Azure Automation Account Configuration
+# Azure Automation Account Configuration with reuse
 try {
     Write-Log "Configuring Azure Automation account..."
     
-    # Function to validate automation prerequisites
-    function Test-AutomationPrerequisites {
-        param(
-            [string]$ResourceGroupName,
-            [string]$AutomationAccountName
-        )
-        return Get-AzAutomationAccount -ResourceGroupName $ResourceGroupName `
-                                     -Name $AutomationAccountName `
-                                     -ErrorAction SilentlyContinue
+    # Check if automation account exists
+    $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup `
+                                               -Name $automationAccountName `
+                                               -ErrorAction SilentlyContinue
+    
+    if (-not $automationAccount) {
+        Write-Log "Creating new Automation Account $automationAccountName"
+        $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup `
+                                                   -Name $automationAccountName `
+                                                   -Location $automationLocation `
+                                                   -ErrorAction Stop
+    } else {
+        Write-Log "Reusing existing Automation Account $automationAccountName"
     }
 
-    Write-Log "Validating Automation Account prerequisites..."
-    if (-not (Test-AutomationPrerequisites -ResourceGroupName $resourceGroup -AutomationAccountName $automationAccountName)) {
-        Write-Log "Automation account does not exist. Will create new one."
-        try {
-            $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup `
-                                                       -Name $automationAccountName `
-                                                       -Location $automationLocation `
-                                                       -ErrorAction Stop
-            Write-Log "Automation account created successfully"
-        } catch {
-            Write-Log "ERROR: Failed to create Automation account. Error: $_"
-            throw
-        }
-    }
-
-    # Import runbook from blob storage
-    Write-Log "Checking for existing runbook..."
+    # Check for existing runbook but only update if content is different
     $existingRunbook = Get-AzAutomationRunbook -AutomationAccountName $automationAccountName `
                                               -Name $runbookName `
                                               -ResourceGroupName $resourceGroup `
                                               -ErrorAction SilentlyContinue
 
+    $shouldUpdateRunbook = $true
     if ($existingRunbook) {
-        Write-Log "Removing existing runbook $runbookName"
-        Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                                  -Name $runbookName `
-                                  -ResourceGroupName $resourceGroup `
-                                  -Force `
-                                  -ErrorAction Stop
+        Write-Log "Existing runbook found. Checking if update is needed..."
+        $exportPath = "C:\Temp\ExistingRunbook.ps1"
+        Export-AzAutomationRunbook -ResourceGroupName $resourceGroup `
+                                 -AutomationAccountName $automationAccountName `
+                                 -Name $runbookName `
+                                 -OutputFolder (Split-Path $exportPath) `
+                                 -Slot "Published" `
+                                 -ErrorAction SilentlyContinue
+
+        if (Test-Path $exportPath) {
+            $existingContent = Get-Content $exportPath -Raw
+            $newContent = Get-AzStorageBlobContent -Container $containerName `
+                                                 -Blob $blobName `
+                                                 -Context $storageAccountContext `
+                                                 -Force `
+                                                 -AsString
+            if ($existingContent -eq $newContent) {
+                Write-Log "Runbook content is unchanged. Skipping update."
+                $shouldUpdateRunbook = $false
+            }
+            Remove-Item $exportPath -Force
+        }
     }
 
-    Write-Log "Creating new runbook..."
-    New-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                           -Name $runbookName `
-                           -ResourceGroupName $resourceGroup `
-                           -Type PowerShellWorkflow `
-                           -ErrorAction Stop | Out-Null
+    if ($shouldUpdateRunbook) {
+        Write-Log "Updating runbook content..."
+        if ($existingRunbook) {
+            Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName `
+                                     -Name $runbookName `
+                                     -ResourceGroupName $resourceGroup `
+                                     -Force `
+                                     -ErrorAction Stop
+        }
 
-    Write-Log "Importing runbook content..."
-    $maxAttempts = 3
-    $attempt = 1
-    $success = $false
+        # Create and import new runbook
+        New-AzAutomationRunbook -AutomationAccountName $automationAccountName `
+                               -Name $runbookName `
+                               -ResourceGroupName $resourceGroup `
+                               -Type PowerShellWorkflow `
+                               -ErrorAction Stop | Out-Null
 
-    while (-not $success -and $attempt -le $maxAttempts) {
-        Write-Log "Attempting to download blob content (Attempt $attempt of $maxAttempts)..."
-        try {
-            $downloadPath = "C:\Temp\$runbookName.ps1"
-            Get-AzStorageBlobContent -Container $containerName `
-                                   -Blob $blobName `
-                                   -Destination $downloadPath `
-                                   -Context $storageAccountContext `
+        # Import updated content
+        $downloadPath = "C:\Temp\$runbookName.ps1"
+        Get-AzStorageBlobContent -Container $containerName `
+                               -Blob $blobName `
+                               -Destination $downloadPath `
+                               -Context $storageAccountContext `
+                               -ErrorAction Stop
+
+        Import-AzAutomationRunbook -Path $downloadPath `
+                                  -Name $runbookName `
+                                  -Type PowerShellWorkflow `
+                                  -ResourceGroupName $resourceGroup `
+                                  -AutomationAccountName $automationAccountName `
+                                  -Force `
+                                  -ErrorAction Stop
+
+        Write-Log "Publishing updated runbook..."
+        Publish-AzAutomationRunbook -Name $runbookName `
+                                   -ResourceGroupName $resourceGroup `
+                                   -AutomationAccountName $automationAccountName `
                                    -ErrorAction Stop
 
-            Write-Log "Successfully downloaded blob content"
-            
-            Import-AzAutomationRunbook -Path $downloadPath `
-                                      -Name $runbookName `
-                                      -Type PowerShellWorkflow `
-                                      -ResourceGroupName $resourceGroup `
-                                      -AutomationAccountName $automationAccountName `
-                                      -Force `
-                                      -ErrorAction Stop
-
-            Write-Log "Publishing runbook..."
-            Publish-AzAutomationRunbook -Name $runbookName `
-                                       -ResourceGroupName $resourceGroup `
-                                       -AutomationAccountName $automationAccountName `
-                                       -ErrorAction Stop
-
-            $success = $true
-            Remove-Item -Path $downloadPath -ErrorAction SilentlyContinue
-        } catch {
-            if ($attempt -eq $maxAttempts) {
-                Write-Log "ERROR: Failed to import or publish runbook. Error: $_"
-                throw
-            }
-            $attempt++
-            Start-Sleep -Seconds 5
-        }
+        Remove-Item -Path $downloadPath -ErrorAction SilentlyContinue
     }
 
     # Create and register schedule
