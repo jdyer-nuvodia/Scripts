@@ -3,7 +3,7 @@
 # Created: 2025-02-05 01:27:32 UTC
 # Author: jdyer-nuvodia
 # Purpose: Creates a test domain controller in Azure with automated shutdown
-# Version: 1.4
+# Version: 1.6
 # =============================================================================
 
 # Enable strict mode and stop on errors
@@ -33,7 +33,7 @@ $publicIpName       = "$vmName-PublicIP"
 $storageAccountName = "jbteststorage0"
 $containerName      = "runbooks"
 $blobName           = "AutoShutdownRunbook.ps1"
-$nsgName           = "JB-TEST-NSG"
+$nsgName            = "JB-TEST-NSG"
 $automationAccountName = "JB-TEST-Automation"
 $runbookName        = "AutoShutdownRunbook"
 
@@ -458,25 +458,33 @@ try {
         Remove-Item -Path $downloadPath -ErrorAction SilentlyContinue
     }
 
-    # Create and register schedule
+    # Create and register schedule using UTC time with a 10-minute buffer
     Write-Log "Creating automation schedule..."
     $scheduleName = "AutoShutdownSchedule"
-    $startTime = (Get-Date).AddMinutes(5)
+    $startTime = (Get-Date).ToUniversalTime().AddMinutes(10)
     
-    New-AzAutomationSchedule -AutomationAccountName $automationAccountName `
-                            -Name $scheduleName `
-                            -StartTime $startTime `
-                            -OneTime `
-                            -ResourceGroupName $resourceGroup `
-                            -ErrorAction Stop | Out-Null
-
-    Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName `
-                                         -Name $runbookName `
-                                         -ScheduleName $scheduleName `
-                                         -ResourceGroupName $resourceGroup `
-                                         -Parameters @{"resourceGroupName"=$resourceGroup; "vmName"=$vmName} `
-                                         -ErrorAction Stop
-
+    try {
+        $schedule = New-AzAutomationSchedule -AutomationAccountName $automationAccountName `
+                                           -Name $scheduleName `
+                                           -StartTime $startTime `
+                                           -OneTime `
+                                           -ResourceGroupName $resourceGroup `
+                                           -ErrorAction Stop
+        Write-Log "Schedule created successfully for $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) UTC"
+    
+        Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName `
+                                            -Name $runbookName `
+                                            -ScheduleName $scheduleName `
+                                            -ResourceGroupName $resourceGroup `
+                                            -Parameters @{"resourceGroupName"=$resourceGroup; "vmName"=$vmName} `
+                                            -ErrorAction Stop
+        Write-Log "Runbook scheduled successfully"
+    }
+    catch {
+        Write-Log "ERROR: Failed to create or register schedule. Error: $_"
+        exit 1
+    }
+    
     # Output Configuration Summary
     $publicIpAddress = (Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName).IpAddress
     
