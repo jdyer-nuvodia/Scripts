@@ -1,8 +1,9 @@
 # Script: Test-NetworkConnectivity.ps1
-# Version: 2.13
+# Version: 2.14
 # Description: Extended ping test with network configuration logging and continuous mode
 # Author: jdyer-nuvodia
-# Created: 2025-02-06 17:32:15
+# Last Modified: 2025-02-06 21:24:00
+# Modified By: jdyer-nuvodia
 
 [CmdletBinding()]
 param(
@@ -160,7 +161,18 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
                 $script:minTime = [Math]::Min($script:minTime, $responseTime)
                 $script:maxTime = [Math]::Max($script:maxTime, $responseTime)
                 
-                $result = "Reply from $($pingResult.IPV4Address): time=${responseTime}ms"
+                # Get the IP address from the ping result
+                $ipAddress = if ($pingResult.Address) {
+                    $pingResult.Address
+                } elseif ($pingResult.IPV4Address) {
+                    $pingResult.IPV4Address
+                } elseif ($pingResult.IPAddress) {
+                    $pingResult.IPAddress
+                } else {
+                    $Target
+                }
+                
+                $result = "Reply from $ipAddress`: time=${responseTime}ms"
                 Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
                 Write-Host "[$currentTime] $result" -ForegroundColor Green
             }
