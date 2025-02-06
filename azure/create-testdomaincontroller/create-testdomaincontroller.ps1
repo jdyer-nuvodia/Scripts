@@ -9,7 +9,7 @@
 #   Repo ID: 924269019
 #   Language Composition: PowerShell (100%)
 #
-# Version: 1.6
+# Version: 1.7
 # =============================================================================
 
 # Enable strict mode and stop on errors
@@ -113,8 +113,8 @@ try {
     Write-Log "Creating storage context..."
     $storageKey = (Get-AzStorageAccountKey -ResourceGroupName $resourceGroup -Name $storageAccountName)[0].Value
     $storageAccountContext = New-AzStorageContext -StorageAccountName $storageAccountName `
-                                                -StorageAccountKey $storageKey `
-                                                -Protocol 'HTTPS'
+                                                 -StorageAccountKey $storageKey `
+                                                 -Protocol 'HTTPS'
 
     Write-Log "Checking container..."
     $container = Get-AzStorageContainer -Name $containerName -Context $storageAccountContext -ErrorAction SilentlyContinue
@@ -201,6 +201,7 @@ try {
                                         -AddressPrefix "10.0.1.0/24" `
                                         -Name $subnetName | Out-Null
         $virtualNetwork | Set-AzVirtualNetwork -ErrorAction Stop | Out-Null
+        $subnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction Stop
     } else {
         Write-Log "Reusing existing subnet $subnetName"
     }
@@ -223,7 +224,7 @@ try {
         $nic = New-AzNetworkInterface -Name "$($vmName)VMNic" `
                                      -ResourceGroupName $resourceGroup `
                                      -Location $location `
-                                     -SubnetId $virtualNetwork.Subnets[0].Id
+                                     -SubnetId $subnet.Id
     } else {
         Write-Log "Reusing existing network interface $($vmName)VMNic"
     }
@@ -447,12 +448,12 @@ try {
                                -ErrorAction Stop
 
         Import-AzAutomationRunbook -Path $downloadPath `
-                                  -Name $runbookName `
-                                  -Type PowerShellWorkflow `
-                                  -ResourceGroupName $resourceGroup `
-                                  -AutomationAccountName $automationAccountName `
-                                  -Force `
-                                  -ErrorAction Stop
+                                   -Name $runbookName `
+                                   -Type PowerShellWorkflow `
+                                   -ResourceGroupName $resourceGroup `
+                                   -AutomationAccountName $automationAccountName `
+                                   -Force `
+                                   -ErrorAction Stop
 
         Write-Log "Publishing updated runbook..."
         Publish-AzAutomationRunbook -Name $runbookName `
