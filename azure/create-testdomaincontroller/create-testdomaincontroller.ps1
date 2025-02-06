@@ -9,7 +9,7 @@
 #   Repo ID: 924269019
 #   Language Composition: PowerShell (100%)
 #
-# Version: 1.7
+# Version: 1.8
 # =============================================================================
 
 # Enable strict mode and stop on errors
@@ -38,7 +38,7 @@ $publicIpName       = "$vmName-PUBIP"
 $storageAccountName = "jbteststorage0"
 $containerName      = "runbooks"
 $blobName           = "AutoShutdownRunbook.ps1"
-$nsgName            = "JB-TEST-NSG"
+$nsgName           = "JB-TEST-NSG"
 $automationAccountName = "JB-TEST-AUTOMATION"
 $runbookName        = "AutoShutdownRunbook"
 
@@ -350,7 +350,7 @@ try {
                                         -Access Allow `
                                         -Protocol Tcp `
                                         -Direction Inbound `
-                                        -Priority 1001 `
+										-Priority 1001 `
                                         -SourceAddressPrefix * `
                                         -SourcePortRange * `
                                         -DestinationAddressPrefix * `
@@ -377,43 +377,43 @@ try {
     
     # Check if automation account exists
     $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup `
-                                             -Name $automationAccountName `
-                                             -ErrorAction SilentlyContinue
+                                              -Name $automationAccountName `
+                                              -ErrorAction SilentlyContinue
     
     if (-not $automationAccount) {
         Write-Log "Creating new Automation Account $automationAccountName"
         $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup `
-                                                 -Name $automationAccountName `
-                                                 -Location $location `
-                                                 -ErrorAction Stop
+                                                  -Name $automationAccountName `
+                                                  -Location $location `
+                                                  -ErrorAction Stop
     } else {
         Write-Log "Reusing existing Automation Account $automationAccountName"
     }
 
     # Check for existing runbook but only update if content is different
     $existingRunbook = Get-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                                            -Name $runbookName `
-                                            -ResourceGroupName $resourceGroup `
-                                            -ErrorAction SilentlyContinue
+                                             -Name $runbookName `
+                                             -ResourceGroupName $resourceGroup `
+                                             -ErrorAction SilentlyContinue
 
     $shouldUpdateRunbook = $true
     if ($existingRunbook) {
         Write-Log "Existing runbook found. Checking if update is needed..."
         $exportPath = "C:\Temp\ExistingRunbook.ps1"
         Export-AzAutomationRunbook -ResourceGroupName $resourceGroup `
-                               -AutomationAccountName $automationAccountName `
-                               -Name $runbookName `
-                               -OutputFolder (Split-Path $exportPath) `
-                               -Slot "Published" `
-                               -ErrorAction SilentlyContinue
+                                -AutomationAccountName $automationAccountName `
+                                -Name $runbookName `
+                                -OutputFolder (Split-Path $exportPath) `
+                                -Slot "Published" `
+                                -ErrorAction SilentlyContinue
 
         if (Test-Path $exportPath) {
             $existingContent = Get-Content $exportPath -Raw
             $newContent = Get-AzStorageBlobContent -Container $containerName `
-                                               -Blob $blobName `
-                                               -Context $storageAccountContext `
-                                               -Force `
-                                               -AsString
+                                                -Blob $blobName `
+                                                -Context $storageAccountContext `
+                                                -Force `
+                                                -AsString
             if ($existingContent -eq $newContent) {
                 Write-Log "Runbook content is unchanged. Skipping update."
                 $shouldUpdateRunbook = $false
@@ -426,26 +426,26 @@ try {
         Write-Log "Updating runbook content..."
         if ($existingRunbook) {
             Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                                   -Name $runbookName `
-                                   -ResourceGroupName $resourceGroup `
-                                   -Force `
-                                   -ErrorAction Stop
+                                    -Name $runbookName `
+                                    -ResourceGroupName $resourceGroup `
+                                    -Force `
+                                    -ErrorAction Stop
         }
 
         # Create and import new runbook
         New-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                             -Name $runbookName `
-                             -ResourceGroupName $resourceGroup `
-                             -Type PowerShellWorkflow `
-                             -ErrorAction Stop | Out-Null
+                              -Name $runbookName `
+                              -ResourceGroupName $resourceGroup `
+                              -Type PowerShellWorkflow `
+                              -ErrorAction Stop | Out-Null
 
         # Import updated content
         $downloadPath = "C:\Temp\$runbookName.ps1"
         Get-AzStorageBlobContent -Container $containerName `
-                             -Blob $blobName `
-                             -Destination $downloadPath `
-                             -Context $storageAccountContext `
-                             -ErrorAction Stop
+                              -Blob $blobName `
+                              -Destination $downloadPath `
+                              -Context $storageAccountContext `
+                              -ErrorAction Stop
 
         Import-AzAutomationRunbook -Path $downloadPath `
                                 -Name $runbookName `
@@ -457,9 +457,9 @@ try {
 
         Write-Log "Publishing updated runbook..."
         Publish-AzAutomationRunbook -Name $runbookName `
-                                 -ResourceGroupName $resourceGroup `
-                                 -AutomationAccountName $automationAccountName `
-                                 -ErrorAction Stop
+                                  -ResourceGroupName $resourceGroup `
+                                  -AutomationAccountName $automationAccountName `
+                                  -ErrorAction Stop
 
         Remove-Item -Path $downloadPath -ErrorAction SilentlyContinue
     }
@@ -489,21 +489,20 @@ try {
     $scheduleName = "DailyAutoShutdownSchedule"
     try {
         $schedule = New-AzAutomationSchedule -AutomationAccountName $automationAccountName `
-                                         -Name $scheduleName `
-                                         -StartTime $startTimeUtc `
-                                         -ExpiryTime ($startTimeUtc.AddYears(5)) `
-                                         -Interval 1 `
-                                         -Frequency Day `
-                                         -ResourceGroupName $resourceGroup `
-                                         -ErrorAction Stop
+                                          -Name $scheduleName `
+                                          -StartTime $startTimeUtc `
+                                          -ExpiryTime ($startTimeUtc.AddYears(5)) `
+                                          -Frequency Day `
+                                          -ResourceGroupName $resourceGroup `
+                                          -ErrorAction Stop
         Write-Log "Schedule '$scheduleName' created successfully for daily execution at 9pm MST (Phoenix)."
     
         Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName `
-                                          -Name $runbookName `
-                                          -ScheduleName $scheduleName `
-                                          -ResourceGroupName $resourceGroup `
-                                          -Parameters @{ "resourceGroupName" = $resourceGroup; "vmName" = $vmName } `
-                                          -ErrorAction Stop
+                                           -Name $runbookName `
+                                           -ScheduleName $scheduleName `
+                                           -ResourceGroupName $resourceGroup `
+                                           -Parameters @{ "resourceGroupName" = $resourceGroup; "vmName" = $vmName } `
+                                           -ErrorAction Stop
         Write-Log "Runbook '$runbookName' scheduled successfully to shut down the VM daily at 9pm MST (Phoenix)."
     }
     catch {
