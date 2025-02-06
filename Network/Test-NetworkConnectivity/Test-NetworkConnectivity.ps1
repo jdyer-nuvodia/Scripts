@@ -1,8 +1,8 @@
 # Script: Test-NetworkConnectivity.ps1
-# Version: 2.9
+# Version: 2.10
 # Description: Extended ping test with network configuration logging and continuous mode
 # Author: jdyer-nuvodia
-# Created: 2025-02-06 17:23:57
+# Created: 2025-02-06 17:25:54
 
 [CmdletBinding()]
 param(
@@ -99,16 +99,15 @@ function Get-FormattedSize {
     return "$Size Bytes"
 }
 
-# Set up cleanup actions for Ctrl+C
-$PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
-$null = [Console]::CancelKeyPress.Register({
-    param($sender, $e)
-    $global:interrupted = $true
-    $e.Cancel = $true
-    Write-Host "`nScript interrupted by user. Writing final statistics..." -ForegroundColor Yellow
-    Write-FinalStatistics -Interrupted
+# Set up trap for Ctrl+C
+trap {
+    if ($global:logFile) {
+        $global:interrupted = $true
+        Write-Host "`nScript interrupted by user. Writing final statistics..." -ForegroundColor Yellow
+        Write-FinalStatistics -Interrupted
+    }
     exit
-})
+}
 
 try {
     # Create output directory if it doesn't exist
@@ -212,10 +211,5 @@ catch {
     if ($global:logFile) {
         Write-LogMessage -Message "ERROR: $_" -FilePath $global:logFile
         Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $global:logFile
-    }
-}
-finally {
-    if ($global:interrupted) {
-        Write-FinalStatistics -Interrupted
     }
 }
