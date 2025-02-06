@@ -1,8 +1,12 @@
 # Script: Test-NetworkConnectivity.ps1
-# Version: 2.10
+# Version: 2.11
 # Description: Extended ping test with network configuration logging and continuous mode
 # Author: jdyer-nuvodia
-# Created: 2025-02-06 17:25:54
+# Created: 2025-02-06 17:28:50
+
+# Enable strict mode for better error handling
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 [CmdletBinding()]
 param(
@@ -17,52 +21,54 @@ param(
 )
 
 # Initialize global variables
-$global:logFile = $null
-$global:sent = 0
-$global:received = 0
-$global:totalTime = 0
-$global:minTime = [int]::MaxValue
-$global:maxTime = 0
-$global:interrupted = $false
+$script:logFile = $null
+$script:sent = 0
+$script:received = 0
+$script:totalTime = 0
+$script:minTime = [int]::MaxValue
+$script:maxTime = 0
+$script:interrupted = $false
 
 # Function to handle cleanup and final statistics
 function Write-FinalStatistics {
     param([switch]$Interrupted)
     
-    if ($global:logFile) {
+    if ($script:logFile) {
         try {
-            $packetLoss = if ($global:sent -gt 0) { 100 - ($global:received / $global:sent * 100) } else { 0 }
-            $avgTime = if ($global:received -gt 0) { $global:totalTime / $global:received } else { 0 }
+            $packetLoss = if ($script:sent -gt 0) { 100 - ($script:received / $script:sent * 100) } else { 0 }
+            $avgTime = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
             
             $finalStats = @"
 
 ========================================
 Final Statistics $(if($Interrupted){"(Script Interrupted)"}):
 ========================================
-Test Duration: $((Get-Date) - (Get-Item $global:logFile).CreationTime)
-Packets: Sent = $global:sent, Received = $global:received, Lost = $($global:sent - $global:received) ($($packetLoss.ToString('N2'))% loss)
-Round Trip Times: Min = $($global:minTime)ms, Max = $($global:maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
+Test Duration: $((Get-Date) - (Get-Item $script:logFile).CreationTime)
+Packets: Sent = $script:sent, Received = $script:received, Lost = $($script:sent - $script:received) ($($packetLoss.ToString('N2'))% loss)
+Round Trip Times: Min = $($script:minTime)ms, Max = $($script:maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
 ========================================
 Test completed$(if($Interrupted){" (Interrupted)"}): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Log file size: $(Get-FormattedSize (Get-Item $global:logFile).Length)
+Log file size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
 ========================================
 "@
             # Force write the final statistics
-            $finalStats | Out-File -FilePath $global:logFile -Append -Force
+            $finalStats | Out-File -FilePath $script:logFile -Append -Force
             
             Write-Host $finalStats -ForegroundColor $(if($Interrupted){"Yellow"}else{"Cyan"})
             
             # Add clear message about log file location
             Write-Host "`n==================================================" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
             Write-Host "Log file has been saved:" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
-            Write-Host "Name: $(Split-Path $global:logFile -Leaf)" -ForegroundColor Yellow
-            Write-Host "Location: $(Split-Path $global:logFile)" -ForegroundColor Yellow
-            Write-Host "Full Path: $global:logFile" -ForegroundColor Yellow
-            Write-Host "Size: $(Get-FormattedSize (Get-Item $global:logFile).Length)" -ForegroundColor Yellow
+            Write-Host "Name: $(Split-Path $script:logFile -Leaf)" -ForegroundColor Yellow
+            Write-Host "Location: $(Split-Path $script:logFile)" -ForegroundColor Yellow
+            Write-Host "Full Path: $script:logFile" -ForegroundColor Yellow
+            Write-Host "Size: $(Get-FormattedSize (Get-Item $script:logFile).Length)" -ForegroundColor Yellow
             Write-Host "==================================================" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
 
-            # Ensure file is flushed
-            $null = [System.IO.File]::WriteAllText($global:logFile, (Get-Content $global:logFile -Raw))
+            # Ensure file is flushed and closed properly
+            $streamWriter = [System.IO.StreamWriter]::new($script:logFile, $true)
+            $streamWriter.WriteLine($finalStats)
+            $streamWriter.Close()
         }
         catch {
             Write-Host "Error writing final statistics: $_" -ForegroundColor Red
@@ -81,8 +87,15 @@ function Write-LogMessage {
     # Add timestamp to message
     $timestampedMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
     
-    # Write to file
-    Add-Content -Path $FilePath -Value $timestampedMessage
+    # Write to file using StreamWriter for better control
+    try {
+        $streamWriter = [System.IO.StreamWriter]::new($FilePath, $true)
+        $streamWriter.WriteLine($timestampedMessage)
+        $streamWriter.Close()
+    }
+    catch {
+        Write-Warning "Failed to write to log file: $_"
+    }
     
     # Write to console if not suppressed
     if (!$NoConsole) {
@@ -99,14 +112,18 @@ function Get-FormattedSize {
     return "$Size Bytes"
 }
 
-# Set up trap for Ctrl+C
-trap {
-    if ($global:logFile) {
-        $global:interrupted = $true
-        Write-Host "`nScript interrupted by user. Writing final statistics..." -ForegroundColor Yellow
-        Write-FinalStatistics -Interrupted
+# Create an event job to handle Ctrl+C
+$job = Start-Job -ScriptBlock {
+    $host.UI.RawUI.FlushInputBuffer()
+    while ($true) {
+        if ([Console]::KeyAvailable) {
+            $key = [Console]::ReadKey($true)
+            if ($key.Key -eq [ConsoleKey]::C -and $key.Modifiers -eq [ConsoleModifiers]::Control) {
+                return $true
+            }
+        }
+        Start-Sleep -Milliseconds 100
     }
-    exit
 }
 
 try {
@@ -120,7 +137,7 @@ try {
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $computerName = $env:COMPUTERNAME
     $fileName = "PingTest_${computerName}_${timestamp}.log"
-    $global:logFile = Join-Path $OutputPath $fileName
+    $script:logFile = Join-Path $OutputPath $fileName
     
     # Create log file with header
     $header = @"
@@ -134,82 +151,99 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
 ========================================
 
 "@
-    Set-Content -Path $global:logFile -Value $header
+    Set-Content -Path $script:logFile -Value $header -Force
     
-    Write-Host "Starting network test - Results will be saved to: $global:logFile" -ForegroundColor Cyan
+    Write-Host "Starting network test - Results will be saved to: $script:logFile" -ForegroundColor Cyan
     Write-Host "Press Ctrl+C to stop continuous mode" -ForegroundColor Yellow
     
     # Get and log network configuration
-    Write-LogMessage -Message "Getting network configuration..." -FilePath $global:logFile
-    Write-LogMessage -Message "`nNETWORK CONFIGURATION:" -FilePath $global:logFile
-    Write-LogMessage -Message "----------------------------------------" -FilePath $global:logFile
+    Write-LogMessage -Message "Getting network configuration..." -FilePath $script:logFile
+    Write-LogMessage -Message "`nNETWORK CONFIGURATION:" -FilePath $script:logFile
+    Write-LogMessage -Message "----------------------------------------" -FilePath $script:logFile
     
     $ipConfig = ipconfig /all
-    Add-Content -Path $global:logFile -Value $ipConfig
-    Write-LogMessage -Message "----------------------------------------`n" -FilePath $global:logFile
+    $streamWriter = [System.IO.StreamWriter]::new($script:logFile, $true)
+    $streamWriter.WriteLine($ipConfig)
+    $streamWriter.Close()
+    
+    Write-LogMessage -Message "----------------------------------------`n" -FilePath $script:logFile
     
     # Start ping test
-    Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $global:logFile -ForegroundColor Cyan
+    Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $script:logFile -ForegroundColor Cyan
     
-    while (!$global:interrupted) {
+    while (!$script:interrupted) {
+        # Check for Ctrl+C
+        if ($job.HasMoreData) {
+            $script:interrupted = $true
+            break
+        }
+
         $pingResult = Test-Connection -ComputerName $Target -Count 1 -ErrorAction SilentlyContinue
-        $global:sent++
+        $script:sent++
         
         $currentTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
         
         if ($pingResult) {
-            $global:received++
+            $script:received++
             $responseTime = $pingResult.ResponseTime
-            $global:totalTime += $responseTime
-            $global:minTime = [Math]::Min($global:minTime, $responseTime)
-            $global:maxTime = [Math]::Max($global:maxTime, $responseTime)
+            $script:totalTime += $responseTime
+            $script:minTime = [Math]::Min($script:minTime, $responseTime)
+            $script:maxTime = [Math]::Max($script:maxTime, $responseTime)
             
             $result = "Reply from $($pingResult.Address): time=${responseTime}ms size=$($pingResult.ReplySize)bytes"
-            Write-LogMessage -Message $result -FilePath $global:logFile -NoConsole
+            Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
             Write-Host "[$currentTime] $result" -ForegroundColor Green
         }
         else {
             $result = "Request timed out."
-            Write-LogMessage -Message $result -FilePath $global:logFile -NoConsole
+            Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
             Write-Host "[$currentTime] $result" -ForegroundColor Red
         }
         
         # Update statistics every 10 pings
-        if ($global:sent % 10 -eq 0) {
-            $packetLoss = 100 - ($global:received / $global:sent * 100)
-            $avgTime = if ($global:received -gt 0) { $global:totalTime / $global:received } else { 0 }
+        if ($script:sent % 10 -eq 0) {
+            $packetLoss = 100 - ($script:received / $script:sent * 100)
+            $avgTime = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
             
             $stats = @"
 
 Current Statistics:
 ----------------
-Packets: Sent = $global:sent, Received = $global:received, Lost = $($global:sent - $global:received) ($($packetLoss.ToString('N2'))% loss)
-Round Trip Times: Min = $($global:minTime)ms, Max = $($global:maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
+Packets: Sent = $script:sent, Received = $script:received, Lost = $($script:sent - $script:received) ($($packetLoss.ToString('N2'))% loss)
+Round Trip Times: Min = $($script:minTime)ms, Max = $($script:maxTime)ms, Avg = $($avgTime.ToString('N2'))ms
 
 "@
-            Write-LogMessage -Message $stats -FilePath $global:logFile
+            Write-LogMessage -Message $stats -FilePath $script:logFile
             Write-Host $stats -ForegroundColor Cyan
         }
         
         # Check if we should stop
-        if ($Count -gt 0 -and $global:sent -ge $Count) {
+        if ($Count -gt 0 -and $script:sent -ge $Count) {
             break
         }
         
         # Small delay between pings
         Start-Sleep -Milliseconds 1000
     }
-
-    # Write final statistics if not interrupted
-    if (!$global:interrupted) {
-        Write-FinalStatistics
-    }
 }
 catch {
     Write-Error "Error during ping test: $_"
     Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
-    if ($global:logFile) {
-        Write-LogMessage -Message "ERROR: $_" -FilePath $global:logFile
-        Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $global:logFile
+    if ($script:logFile) {
+        Write-LogMessage -Message "ERROR: $_" -FilePath $script:logFile
+        Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $script:logFile
+    }
+}
+finally {
+    # Clean up the background job
+    Stop-Job -Job $job
+    Remove-Job -Job $job
+    
+    # Write final statistics
+    if ($script:interrupted) {
+        Write-FinalStatistics -Interrupted
+    }
+    else {
+        Write-FinalStatistics
     }
 }
