@@ -103,9 +103,9 @@ try {
     if (-not $storageAccount) {
         Write-Log "Creating new storage account $storageAccountName"
         $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroup `
-                                             -Name $storageAccountName `
-                                             -Location $location `
-                                             -SkuName Standard_LRS
+                                           -Name $storageAccountName `
+                                           -Location $location `
+                                           -SkuName Standard_LRS
     } else {
         Write-Log "Reusing existing storage account $storageAccountName"
     }
@@ -113,8 +113,8 @@ try {
     Write-Log "Creating storage context..."
     $storageKey = (Get-AzStorageAccountKey -ResourceGroupName $resourceGroup -Name $storageAccountName)[0].Value
     $storageAccountContext = New-AzStorageContext -StorageAccountName $storageAccountName `
-                                                 -StorageAccountKey $storageKey `
-                                                 -Protocol 'HTTPS'
+                                               -StorageAccountKey $storageKey `
+                                               -Protocol 'HTTPS'
 
     Write-Log "Checking container..."
     $container = Get-AzStorageContainer -Name $containerName -Context $storageAccountContext -ErrorAction SilentlyContinue
@@ -157,10 +157,10 @@ workflow $runbookName {
 
     Write-Log "Uploading runbook to blob storage..."
     Set-AzStorageBlobContent -Context $storageAccountContext `
-                            -Container $containerName `
-                            -File $tempRunbookFilePath `
-                            -Blob $blobName `
-                            -Force | Out-Null
+                         -Container $containerName `
+                         -File $tempRunbookFilePath `
+                         -Blob $blobName `
+                         -Force | Out-Null
     Write-Log "Runbook uploaded to blob storage successfully"
     
     Write-Log "Temporary file cleaned up"
@@ -198,9 +198,9 @@ try {
     if (-not $subnet) {
         Write-Log "Creating new subnet $subnetName"
         Add-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork `
-                                        -AddressPrefix "10.0.1.0/24" `
-                                        -Name $subnetName | Out-Null
-        $virtualNetwork | Set-AzVirtualNetwork -ErrorAction Stop | Out-Null
+                                     -AddressPrefix "10.0.1.0/24" `
+                                     -Name $subnetName | Out-Null
+        $virtualNetwork = $virtualNetwork | Set-AzVirtualNetwork -ErrorAction Stop
         $subnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $virtualNetwork -Name $subnetName -ErrorAction Stop
     } else {
         Write-Log "Reusing existing subnet $subnetName"
@@ -211,8 +211,8 @@ try {
     if (-not $nsg) {
         Write-Log "Creating new Network Security Group $nsgName"
         $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup `
-                                         -Location $location `
-                                         -Name $nsgName
+                                       -Location $location `
+                                       -Name $nsgName
     } else {
         Write-Log "Reusing existing Network Security Group $nsgName"
     }
@@ -222,9 +222,9 @@ try {
     if (-not $nic) {
         Write-Log "Creating new network interface $($vmName)VMNic"
         $nic = New-AzNetworkInterface -Name "$($vmName)VMNic" `
-                                     -ResourceGroupName $resourceGroup `
-                                     -Location $location `
-                                     -SubnetId $subnet.Id
+                                   -ResourceGroupName $resourceGroup `
+                                   -Location $location `
+                                   -SubnetId $subnet.Id
     } else {
         Write-Log "Reusing existing network interface $($vmName)VMNic"
     }
@@ -234,10 +234,10 @@ try {
     if (-not $publicIp) {
         Write-Log "Creating new public IP address $publicIpName"
         $publicIp = New-AzPublicIpAddress -Name $publicIpName `
-                                         -ResourceGroupName $resourceGroup `
-                                         -Location $location `
-                                         -AllocationMethod Static `
-                                         -Sku Standard
+                                       -ResourceGroupName $resourceGroup `
+                                       -Location $location `
+                                       -AllocationMethod Static `
+                                       -Sku Standard
     } else {
         Write-Log "Reusing existing public IP address $publicIpName"
     }
@@ -270,37 +270,37 @@ try {
         $credential = New-Object System.Management.Automation.PSCredential($adminUsername, $securePassword)
         
         $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig `
-                                          -Windows `
-                                          -ComputerName $vmName `
-                                          -Credential $credential `
-                                          -ErrorAction Stop
+                                        -Windows `
+                                        -ComputerName $vmName `
+                                        -Credential $credential `
+                                        -ErrorAction Stop
 
         Write-Log "Setting VM source image..."
         $vmConfig = Set-AzVMSourceImage -VM $vmConfig `
-                                      -PublisherName "MicrosoftWindowsServer" `
-                                      -Offer "WindowsServer" `
-                                      -Skus "2025-datacenter-core-g2" `
-                                      -Version "latest" `
-                                      -ErrorAction Stop
+                                    -PublisherName "MicrosoftWindowsServer" `
+                                    -Offer "WindowsServer" `
+                                    -Skus "2025-datacenter-core-g2" `
+                                    -Version "latest" `
+                                    -ErrorAction Stop
 
         Write-Log "Adding network interface to VM configuration..."
         $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id -ErrorAction Stop
 
         Write-Log "Configuring VM OS disk..."
         $vmConfig = Set-AzVMOSDisk -VM $vmConfig `
-                                  -Windows `
-                                  -Caching ReadWrite `
-                                  -CreateOption FromImage `
-                                  -DiskSizeInGB 128 `
-                                  -Name "$($vmName)OSDisk" `
-                                  -ErrorAction Stop
+                                -Windows `
+                                -Caching ReadWrite `
+                                -CreateOption FromImage `
+                                -DiskSizeInGB 128 `
+                                -Name "$($vmName)OSDisk" `
+                                -ErrorAction Stop
 
         Write-Log "Configuring boot diagnostics..."
         $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
-                                          -Enable `
-                                          -StorageAccountName $storageAccountName `
-                                          -ResourceGroupName $resourceGroup `
-                                          -ErrorAction Stop
+                                        -Enable `
+                                        -StorageAccountName $storageAccountName `
+                                        -ResourceGroupName $resourceGroup `
+                                        -ErrorAction Stop
 
         Write-Log "Configuring security profile..."
         $vmConfig.SecurityProfile = @{
@@ -313,10 +313,10 @@ try {
 
         Write-Log "Creating VM with Azure Hybrid Benefit..."
         $vmCreation = New-AzVM -ResourceGroupName $resourceGroup `
-                              -Location $location `
-                              -VM $vmConfig `
-                              -LicenseType "Windows_Server" `
-                              -ErrorAction Stop
+                            -Location $location `
+                            -VM $vmConfig `
+                            -LicenseType "Windows_Server" `
+                            -ErrorAction Stop
 
         if (-not (Wait-ForVM -ResourceGroupName $resourceGroup -VMName $vmName)) {
             throw "Timeout waiting for VM creation"
@@ -335,26 +335,26 @@ try {
 
         Write-Log "Executing RDP port configuration..."
         $rdpConfig = Invoke-AzVMRunCommand -ResourceGroupName $resourceGroup `
-                                         -VMName $vmName `
-                                         -CommandId 'RunPowerShellScript' `
-                                         -ScriptString $scriptBlock `
-                                         -ErrorAction Stop
+                                       -VMName $vmName `
+                                       -CommandId 'RunPowerShellScript' `
+                                       -ScriptString $scriptBlock `
+                                       -ErrorAction Stop
 
         Write-Log "Checking NSG rules for custom RDP port..."
         $rdpRule = Get-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg -Name "Allow_RDP_10443" -ErrorAction SilentlyContinue
         if (-not $rdpRule) {
             Write-Log "Creating new NSG rule Allow_RDP_10443"
             Add-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsg `
-                                          -Name "Allow_RDP_10443" `
-                                          -Description "Allow RDP" `
-                                          -Access Allow `
-                                          -Protocol Tcp `
-                                          -Direction Inbound `
-                                          -Priority 1001 `
-                                          -SourceAddressPrefix * `
-                                          -SourcePortRange * `
-                                          -DestinationAddressPrefix * `
-                                          -DestinationPortRange 10443 | Out-Null
+                                        -Name "Allow_RDP_10443" `
+                                        -Description "Allow RDP" `
+                                        -Access Allow `
+                                        -Protocol Tcp `
+                                        -Direction Inbound `
+                                        -Priority 1001 `
+                                        -SourceAddressPrefix * `
+                                        -SourcePortRange * `
+                                        -DestinationAddressPrefix * `
+                                        -DestinationPortRange 10443 | Out-Null
             $nsg | Set-AzNetworkSecurityGroup -ErrorAction Stop | Out-Null
             Write-Log "NSG rule created successfully"
         } else {
@@ -377,43 +377,43 @@ try {
     
     # Check if automation account exists
     $automationAccount = Get-AzAutomationAccount -ResourceGroupName $resourceGroup `
-                                               -Name $automationAccountName `
-                                               -ErrorAction SilentlyContinue
+                                             -Name $automationAccountName `
+                                             -ErrorAction SilentlyContinue
     
     if (-not $automationAccount) {
         Write-Log "Creating new Automation Account $automationAccountName"
         $automationAccount = New-AzAutomationAccount -ResourceGroupName $resourceGroup `
-                                                   -Name $automationAccountName `
-                                                   -Location $location `
-                                                   -ErrorAction Stop
+                                                 -Name $automationAccountName `
+                                                 -Location $location `
+                                                 -ErrorAction Stop
     } else {
         Write-Log "Reusing existing Automation Account $automationAccountName"
     }
 
     # Check for existing runbook but only update if content is different
     $existingRunbook = Get-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                                              -Name $runbookName `
-                                              -ResourceGroupName $resourceGroup `
-                                              -ErrorAction SilentlyContinue
+                                            -Name $runbookName `
+                                            -ResourceGroupName $resourceGroup `
+                                            -ErrorAction SilentlyContinue
 
     $shouldUpdateRunbook = $true
     if ($existingRunbook) {
         Write-Log "Existing runbook found. Checking if update is needed..."
         $exportPath = "C:\Temp\ExistingRunbook.ps1"
         Export-AzAutomationRunbook -ResourceGroupName $resourceGroup `
-                                 -AutomationAccountName $automationAccountName `
-                                 -Name $runbookName `
-                                 -OutputFolder (Split-Path $exportPath) `
-                                 -Slot "Published" `
-                                 -ErrorAction SilentlyContinue
+                               -AutomationAccountName $automationAccountName `
+                               -Name $runbookName `
+                               -OutputFolder (Split-Path $exportPath) `
+                               -Slot "Published" `
+                               -ErrorAction SilentlyContinue
 
         if (Test-Path $exportPath) {
             $existingContent = Get-Content $exportPath -Raw
             $newContent = Get-AzStorageBlobContent -Container $containerName `
-                                                 -Blob $blobName `
-                                                 -Context $storageAccountContext `
-                                                 -Force `
-                                                 -AsString
+                                               -Blob $blobName `
+                                               -Context $storageAccountContext `
+                                               -Force `
+                                               -AsString
             if ($existingContent -eq $newContent) {
                 Write-Log "Runbook content is unchanged. Skipping update."
                 $shouldUpdateRunbook = $false
@@ -426,40 +426,40 @@ try {
         Write-Log "Updating runbook content..."
         if ($existingRunbook) {
             Remove-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                                     -Name $runbookName `
-                                     -ResourceGroupName $resourceGroup `
-                                     -Force `
-                                     -ErrorAction Stop
+                                   -Name $runbookName `
+                                   -ResourceGroupName $resourceGroup `
+                                   -Force `
+                                   -ErrorAction Stop
         }
 
         # Create and import new runbook
         New-AzAutomationRunbook -AutomationAccountName $automationAccountName `
-                               -Name $runbookName `
-                               -ResourceGroupName $resourceGroup `
-                               -Type PowerShellWorkflow `
-                               -ErrorAction Stop | Out-Null
+                             -Name $runbookName `
+                             -ResourceGroupName $resourceGroup `
+                             -Type PowerShellWorkflow `
+                             -ErrorAction Stop | Out-Null
 
         # Import updated content
         $downloadPath = "C:\Temp\$runbookName.ps1"
         Get-AzStorageBlobContent -Container $containerName `
-                               -Blob $blobName `
-                               -Destination $downloadPath `
-                               -Context $storageAccountContext `
-                               -ErrorAction Stop
+                             -Blob $blobName `
+                             -Destination $downloadPath `
+                             -Context $storageAccountContext `
+                             -ErrorAction Stop
 
         Import-AzAutomationRunbook -Path $downloadPath `
-                                   -Name $runbookName `
-                                   -Type PowerShellWorkflow `
-                                   -ResourceGroupName $resourceGroup `
-                                   -AutomationAccountName $automationAccountName `
-                                   -Force `
-                                   -ErrorAction Stop
+                                -Name $runbookName `
+                                -Type PowerShellWorkflow `
+                                -ResourceGroupName $resourceGroup `
+                                -AutomationAccountName $automationAccountName `
+                                -Force `
+                                -ErrorAction Stop
 
         Write-Log "Publishing updated runbook..."
         Publish-AzAutomationRunbook -Name $runbookName `
-                                   -ResourceGroupName $resourceGroup `
-                                   -AutomationAccountName $automationAccountName `
-                                   -ErrorAction Stop
+                                 -ResourceGroupName $resourceGroup `
+                                 -AutomationAccountName $automationAccountName `
+                                 -ErrorAction Stop
 
         Remove-Item -Path $downloadPath -ErrorAction SilentlyContinue
     }
@@ -489,21 +489,21 @@ try {
     $scheduleName = "DailyAutoShutdownSchedule"
     try {
         $schedule = New-AzAutomationSchedule -AutomationAccountName $automationAccountName `
-                                             -Name $scheduleName `
-                                             -StartTime $startTimeUtc `
-                                             -ExpiryTime ($startTimeUtc.AddYears(5)) `
-                                             -Interval 1 `
-                                             -Frequency Day `
-                                             -ResourceGroupName $resourceGroup `
-                                             -ErrorAction Stop
+                                         -Name $scheduleName `
+                                         -StartTime $startTimeUtc `
+                                         -ExpiryTime ($startTimeUtc.AddYears(5)) `
+                                         -Interval 1 `
+                                         -Frequency Day `
+                                         -ResourceGroupName $resourceGroup `
+                                         -ErrorAction Stop
         Write-Log "Schedule '$scheduleName' created successfully for daily execution at 9pm MST (Phoenix)."
     
         Register-AzAutomationScheduledRunbook -AutomationAccountName $automationAccountName `
-                                              -Name $runbookName `
-                                              -ScheduleName $scheduleName `
-                                              -ResourceGroupName $resourceGroup `
-                                              -Parameters @{ "resourceGroupName" = $resourceGroup; "vmName" = $vmName } `
-                                              -ErrorAction Stop
+                                          -Name $runbookName `
+                                          -ScheduleName $scheduleName `
+                                          -ResourceGroupName $resourceGroup `
+                                          -Parameters @{ "resourceGroupName" = $resourceGroup; "vmName" = $vmName } `
+                                          -ErrorAction Stop
         Write-Log "Runbook '$runbookName' scheduled successfully to shut down the VM daily at 9pm MST (Phoenix)."
     }
     catch {
