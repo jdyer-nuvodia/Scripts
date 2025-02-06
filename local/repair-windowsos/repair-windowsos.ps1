@@ -1,162 +1,151 @@
-# Windows OS Repair Script
-# Version: 3.1
-# Author: Original by jdyer-nuvodia, optimized with GitHub Copilot
-# Last Updated: 2025-02-05 21:46:40
-# Description: Performs comprehensive Windows system repairs and health checks using PowerShell cmdlets
-# Requires: PowerShell 5.1 or later, Windows 10/Server 2016 or later
-
-#Requires -RunAsAdministrator
-#Requires -Version 5.1
-
-# Ensure we stop on errors immediately
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
+<#
+.SYNOPSIS
+    Windows OS Repair and Maintenance Script
+.DESCRIPTION
+    Performs various Windows OS repairs and maintenance tasks
+.NOTES
+    Created: 2025-02-06
+    Author: Updated by jdyer-nuvodia
+#>
 
 # Script Variables
-$logFile = Join-Path $env:TEMP "WindowsRepair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$repairsMade = $false
-$restartNeeded = $false
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+$logFile = Join-Path $scriptPath "WindowsRepair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$global:repairsMade = $false
+$global:restartNeeded = $false
 
-# Function to write to both console and log file
+# Function to write formatted log entries
 function Write-RepairLog {
-    param (
+    param(
+        [Parameter(Mandatory=$true)]
         [string]$Message,
-        [string]$Color = 'White',
-        [switch]$NoNewline
+        
+        [Parameter(Mandatory=$false)]
+        [string]$Color = "White",
+        
+        [Parameter(Mandatory=$false)]
+        [switch]$NoNewLine
     )
     
-    # Get current timestamp
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] $Message"
     
     # Write to console with color
-    if ($NoNewline) {
-        Write-Host $Message -ForegroundColor $Color -NoNewline
+    if ($NoNewLine) {
+        Write-Host $logEntry -ForegroundColor $Color -NoNewline
     } else {
-        Write-Host $Message -ForegroundColor $Color
+        Write-Host $logEntry -ForegroundColor $Color
     }
     
-    # Write to log file with timestamp
-    "$timestamp - $Message" | Out-File -FilePath $logFile -Append
+    # Write to log file
+    Add-Content -Path $logFile -Value $logEntry
 }
 
-# Function to run repair commands and handle errors
-function Invoke-RepairCommand {
-    param (
-        [string]$CommandName,
-        [scriptblock]$ScriptBlock,
-        [string]$SuccessMessage,
-        [string]$ErrorMessage
-    )
-    
-    Write-RepairLog "Starting: $CommandName" -Color Cyan
-    try {
-        $result = & $ScriptBlock
-        Write-RepairLog $SuccessMessage -Color Green
-        return $result
-    }
-    catch {
-        Write-RepairLog "Error in $CommandName : $_" -Color Red
-        Write-RepairLog "Stack Trace: $($_.ScriptStackTrace)" -Color Red
-        Write-RepairLog $ErrorMessage -Color Red
-        throw  # Re-throw the error to stop script execution
+# Function to check system file integrity
+function Test-SystemFileIntegrity {
+    Write-RepairLog "Checking system file integrity..." -Color Cyan
+    $sfc = Start-Process "sfc.exe" -ArgumentList "/scannow" -Wait -PassThru
+    if ($sfc.ExitCode -eq 0) {
+        Write-RepairLog "System File Checker completed successfully." -Color Green
+    } else {
+        Write-RepairLog "System File Checker encountered issues." -Color Yellow
+        $global:repairsMade = $true
+        $global:restartNeeded = $true
     }
 }
 
-# Display initial system information
-Write-RepairLog "=== Windows Repair Script Started ===" -Color Cyan
-Write-RepairLog "System Information:" -Color Cyan
-Write-RepairLog "Windows Version: $([System.Environment]::OSVersion.Version)" -Color White
-Write-RepairLog "PowerShell Version: $($PSVersionTable.PSVersion)" -Color White
-Write-RepairLog "Computer Name: $env:COMPUTERNAME" -Color White
-Write-RepairLog "Log File Location: $logFile" -Color White
-Write-RepairLog "----------------------------------------" -Color Cyan
-
-# Step 1: Windows Image Health Check
-Write-RepairLog "`nStep 1/3: Windows Image Health Check" -Color Cyan
-Write-RepairLog "Checking Windows image health..." -Color Yellow
-
-$imageCheck = Invoke-RepairCommand -CommandName "Windows Image Health Check" -ScriptBlock {
-    # Using DISM PowerShell module commands
-    $componentState = Get-WindowsOptionalFeature -Online | 
-        Where-Object { $_.State -eq 'Disabled' -or $_.State -eq 'EnablePending' -or $_.State -eq 'DisablePending' }
-    
-    if ($null -eq $componentState) {
-        return @{ Success = $true; NeedsRepair = $false }
-    }
-    return @{ Success = $true; NeedsRepair = $true }
-} -SuccessMessage "Windows image health check completed." -ErrorMessage "Windows image health check failed."
-
-if ($imageCheck.NeedsRepair) {
-    Write-RepairLog "Image corruption detected. Initiating repair..." -Color Yellow
-    $imageRepair = Invoke-RepairCommand -CommandName "Windows Image Repair" -ScriptBlock {
-        # Using DISM PowerShell module commands
-        $repair = Repair-WindowsImage -Online -RestoreHealth -NoRestart
-        if ($repair.ImageHealthState -eq "Healthy") {
-            $script:repairsMade = $true
-            return $true
+# Function to repair Windows image
+function Repair-WindowsImage {
+    Write-RepairLog "Scanning Windows image for corruption..." -Color Cyan
+    $dism = Start-Process "DISM.exe" -ArgumentList "/Online /Cleanup-Image /ScanHealth" -Wait -PassThru
+    if ($dism.ExitCode -eq 0) {
+        Write-RepairLog "DISM scan completed successfully." -Color Green
+        
+        Write-RepairLog "Attempting to repair Windows image..." -Color Cyan
+        $dismRepair = Start-Process "DISM.exe" -ArgumentList "/Online /Cleanup-Image /RestoreHealth" -Wait -PassThru
+        if ($dismRepair.ExitCode -eq 0) {
+            Write-RepairLog "Windows image repair completed successfully." -Color Green
+        } else {
+            Write-RepairLog "Windows image repair encountered issues." -Color Yellow
+            $global:repairsMade = $true
+            $global:restartNeeded = $true
         }
-        throw "Image repair failed to restore health"
-    } -SuccessMessage "Windows image repair completed successfully." -ErrorMessage "Windows image repair encountered issues."
+    } else {
+        Write-RepairLog "DISM scan encountered issues." -Color Yellow
+    }
 }
 
-# Step 2: System File Check
-Write-RepairLog "`nStep 2/3: System File Check" -Color Cyan
-$sfcResult = Invoke-RepairCommand -CommandName "System File Check" -ScriptBlock {
-    $process = Start-Process -FilePath "sfc.exe" -ArgumentList "/scannow" -Wait -PassThru -NoNewWindow
-    if ($process.ExitCode -ne 0) {
-        throw "SFC returned error code: $($process.ExitCode)"
-    }
-    $script:repairsMade = $true
-    return @{ Success = $true; RepairsNeeded = $true }
-} -SuccessMessage "System File Check completed." -ErrorMessage "System File Check encountered issues."
-
-# Step 3: Volume Health Check
-Write-RepairLog "`nStep 3/3: Volume Health Check" -Color Cyan
-$systemDrive = $env:SystemDrive.TrimEnd(':')
-
-$volumeCheck = Invoke-RepairCommand -CommandName "Volume Health Check" -ScriptBlock {
-    # Get volume health details
-    $volume = Get-Volume -DriveLetter $systemDrive -ErrorAction Stop
+# Function to clear Windows Update cache
+function Clear-WindowsUpdateCache {
+    Write-RepairLog "Clearing Windows Update cache..." -Color Cyan
     
-    # Check for basic volume health indicators
-    if ($volume.HealthStatus -eq "Healthy" -and $volume.OperationalStatus -eq "OK") {
-        return @{ Success = $true; Problems = $false }
+    $services = @("wuauserv", "cryptSvc", "bits", "msiserver")
+    
+    # Stop services
+    foreach ($service in $services) {
+        Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
+        Write-RepairLog "Stopped service: $service" -Color Gray
     }
-    return @{ Success = $true; Problems = $true }
-} -SuccessMessage "Volume health check completed." -ErrorMessage "Volume health check failed."
-
-if ($volumeCheck.Problems) {
-    Write-RepairLog "Volume issues detected. Initiating repair..." -Color Yellow
-    $volumeRepair = Invoke-RepairCommand -CommandName "Volume Repair" -ScriptBlock {
-        $result = Repair-Volume -DriveLetter $systemDrive -Scan -ErrorAction Stop
-        if (-not $result) {
-            throw "Volume repair scan failed"
-        }
-        $script:restartNeeded = $true
-        $script:repairsMade = $true
-        return $true
-    } -SuccessMessage "Volume repair scheduled for next restart." -ErrorMessage "Failed to schedule volume repair."
+    
+    # Clear Windows Update cache
+    Remove-Item "$env:SystemRoot\SoftwareDistribution\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item "$env:SystemRoot\System32\catroot2\*" -Recurse -Force -ErrorAction SilentlyContinue
+    
+    # Start services
+    foreach ($service in $services) {
+        Start-Service -Name $service -ErrorAction SilentlyContinue
+        Write-RepairLog "Started service: $service" -Color Gray
+    }
+    
+    Write-RepairLog "Windows Update cache cleared." -Color Green
+    $global:repairsMade = $true
 }
 
-# Final Summary
-Write-RepairLog "`n=== Repair Summary ===" -Color Cyan
-Write-RepairLog "Repairs performed: $($repairsMade ? 'Yes' : 'No')" -Color ($repairsMade ? 'Yellow' : 'Green')
-Write-RepairLog "Restart required: $($restartNeeded ? 'Yes' : 'No')" -Color ($restartNeeded ? 'Yellow' : 'Green')
-Write-RepairLog "Log file location: $logFile" -Color White
+# Main script execution
+try {
+    Write-RepairLog "=== Windows OS Repair Script ===" -Color Cyan
+    Write-RepairLog "Started by: $env:USERNAME" -Color Cyan
+    Write-RepairLog "Start Time (UTC): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color Cyan
+    Write-RepairLog "----------------------------------------" -Color Cyan
+    
+    # Verify running as administrator
+    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw "This script requires administrator privileges."
+    }
+    
+    # Execute repair functions
+    Test-SystemFileIntegrity
+    Repair-WindowsImage
+    Clear-WindowsUpdateCache
+    
+    # Report results
+    Write-RepairLog "----------------------------------------" -Color Cyan
+    
+    $repairsStatus = if ($global:repairsMade) { 'Yes' } else { 'No' }
+    $repairsColor = if ($global:repairsMade) { 'Yellow' } else { 'Green' }
+    Write-RepairLog "Repairs performed: $repairsStatus" -Color $repairsColor
+    
+    $restartStatus = if ($global:restartNeeded) { 'Yes' } else { 'No' }
+    $restartColor = if ($global:restartNeeded) { 'Yellow' } else { 'Green' }
+    Write-RepairLog "Restart required: $restartStatus" -Color $restartColor
+    
+    Write-RepairLog "End Time (UTC): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color Cyan
+    Write-RepairLog "Log file: $logFile" -Color Cyan
+    
+} catch {
+    Write-RepairLog "Error: $($_.Exception.Message)" -Color Red
+    exit 1
+}
 
-# Handle restart if needed
-if ($restartNeeded) {
-    Write-RepairLog "`nSystem restart is required to complete repairs." -Color Yellow
-    $restart = Read-Host "Would you like to restart your computer now? (Y/N)"
-    if ($restart -eq "Y" -or $restart -eq "y") {
+# Prompt for restart if needed
+if ($global:restartNeeded) {
+    Write-RepairLog "`nSystem restart is recommended to complete repairs." -Color Yellow
+    $restart = Read-Host "Would you like to restart now? (Y/N)"
+    if ($restart -eq 'Y' -or $restart -eq 'y') {
         Write-RepairLog "Initiating system restart..." -Color Yellow
-        Start-Sleep -Seconds 3
         Restart-Computer -Force
     } else {
-        Write-RepairLog "Please restart your computer at your earliest convenience to complete repairs." -Color Yellow
+        Write-RepairLog "Please restart your computer at your earliest convenience." -Color Yellow
     }
-} else {
-    Write-RepairLog "`nAll operations completed successfully. No restart required." -Color Green
 }
-
-Write-RepairLog "`n=== Windows Repair Script Completed ===" -Color Cyan
