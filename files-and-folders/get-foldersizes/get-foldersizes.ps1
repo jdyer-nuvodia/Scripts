@@ -1,7 +1,55 @@
-# get-foldersizes.ps1
-# Author: jdyer-nuvodia
-# Created: 2025-02-05 00:55:03 UTC
-# Purpose: Ultra-fast directory scanner including system directories (read-only)
+<#
+.SYNOPSIS
+    Ultra-fast directory scanner that analyzes folder sizes and identifies largest files.
+
+.DESCRIPTION
+    This script performs a high-performance recursive directory scan to identify the largest
+    folders and files in a given directory path. It uses multi-threading and optimized .NET
+    methods for maximum performance, even when scanning system directories.
+
+    Features:
+    - Multi-threaded scanning for improved performance
+    - Handles access-denied errors gracefully
+    - Identifies largest files in each directory
+    - Creates detailed log file of the scan
+    - Requires administrative privileges
+    - Supports custom depth limitation
+
+.PARAMETER Path
+    The root directory path to start scanning from. Defaults to "C:\"
+
+.PARAMETER MaxDepth
+    Maximum depth of recursion for the directory scan. Defaults to 10 levels deep.
+
+.EXAMPLE
+    .\Get-FolderSizes.ps1
+    Scans the C:\ drive with default settings
+
+.EXAMPLE
+    .\Get-FolderSizes.ps1 -Path "D:\Users" -MaxDepth 5
+    Scans the D:\Users directory with a maximum depth of 5 levels
+
+.EXAMPLE
+    .\Get-FolderSizes.ps1 -Path "\\server\share"
+    Scans a network share starting from the root
+
+.NOTES
+    Author:  jdyer-nuvodia
+    Created: 2025-02-05 00:55:03 UTC
+    Updated: 2025-02-07 15:36:40 UTC
+
+    Requirements:
+    - Windows PowerShell 5.1 or later
+    - Administrative privileges
+    - Minimum 4GB RAM recommended for large directory structures
+
+    Version History:
+    1.0.0 - Initial release
+    1.0.1 - Fixed compatibility issues with older PowerShell versions
+#>
+
+#Requires -RunAsAdministrator
+#Requires -Version 5.1
 
 param (
     [string]$Path = "C:\",
@@ -163,7 +211,7 @@ function Get-FolderSizes {
             $jobs = @()
 
             foreach ($dir in $batch) {
-                $dirPath = $dir.FullName ?? $dir
+                $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
                 $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $typeName -ScriptBlock {
                     param($path, $className)
                     try {
@@ -244,13 +292,24 @@ while ($true) {
             "No files"
         }
         
-        Write-Host ($format -f 
-            ($folder.Folder.Length -gt 47 ? "..." + $folder.Folder.Substring($folder.Folder.Length - 44) : $folder.Folder),
+        # PowerShell 5.1 compatible version of string truncation
+        $folderPathDisplay = if ($folder.Folder.Length -gt 47) {
+            "..." + $folder.Folder.Substring($folder.Folder.Length - 44)
+        } else {
+            $folder.Folder
+        }
+
+        $largestFileDisplay = if ($largestFileInfo.Length -gt 47) {
+            "..." + $largestFileInfo.Substring($largestFileInfo.Length - 44)
+        } else {
+            $largestFileInfo
+        }
+
+        Write-Host ($format -f $folderPathDisplay,
             (Format-SizeWithPadding $folder.SizeGB),
             $folder.TotalSubfolders,
             $folder.TotalFiles,
-            ($largestFileInfo.Length -gt 47 ? "..." + $largestFileInfo.Substring($largestFileInfo.Length - 44) : $largestFileInfo)
-        )
+            $largestFileDisplay)
     }
     Write-TableLine
 
