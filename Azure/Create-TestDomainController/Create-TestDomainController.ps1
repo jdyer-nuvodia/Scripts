@@ -2,11 +2,19 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 22:45:13 UTC
+# Last Updated: 2025-02-07 23:46:04 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0
-# Purpose: Creates a test domain controller in Azure with existence checks
+# Version: 2.2
+# Purpose: Creates a test domain controller in Azure with existence checks,
+#          error handling, logging, and an option for verbose output.
 # =============================================================================
+
+[CmdletBinding()]
+Param()
+
+# Enable strict mode and set error action preference
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
 # Function to write timestamped log messages
 function Write-Log {
@@ -15,246 +23,117 @@ function Write-Log {
     Write-Host "[$timestamp UTC] $Message"
 }
 
-# Function to check if a resource group exists
+Write-Log "Script execution started."
+Write-Verbose "Verbose mode activated."
+
+# Import required Azure modules with error checking
+try {
+    Write-Log "Importing required Azure modules..."
+    Import-Module Az.Resources -ErrorAction Stop
+    Import-Module Az.Compute -ErrorAction Stop
+    Import-Module Az.Network -ErrorAction Stop
+    Write-Verbose "Azure modules imported successfully."
+} catch {
+    Write-Log "ERROR: Failed to import Azure modules. $_"
+    exit 1
+}
+
+# Script Parameters (defaults; these could be parameterized as needed)
+$resourceGroupName    = "JB-TEST-RG2"
+$location             = "westus2"
+$storageAccountName   = "jbteststorage0"
+$vnetName             = "JB-TEST-VNET"
+$subnetName           = "JB-TEST-SUBNET1"
+$vmName               = "JB-TEST-DC01"
+$adminUsername        = "jbadmin"
+$adminPassword        = "TS=pGxB~8m^A~WH^[yB8"
+$domainName           = "JB-TEST.local"
+$publicIpName         = "$vmName-PUBIP"
+$nsgName              = "JB-TEST-NSG"
+
+# Function: Test if a Resource Group exists
 function Test-ResourceGroupExists {
     param($ResourceGroupName)
     try {
-        $null = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Stop
+        Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Stop | Out-Null
         return $true
-    }
-    catch {
+    } catch {
         return $false
     }
 }
 
-# Function to check if a storage account exists
-function Test-StorageAccountExists {
-    param($StorageAccountName, $ResourceGroupName)
-    try {
-        $null = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $StorageAccountName -ErrorAction Stop
-        return $true
+# Begin resource creation steps with error checking and logging
+
+# 1. Check and create Resource Group if missing
+try {
+    Write-Log "Checking for resource group '$resourceGroupName'..."
+    if (-not (Test-ResourceGroupExists -ResourceGroupName $resourceGroupName)) {
+        Write-Log "Resource group '$resourceGroupName' not found. Creating resource group..."
+        New-AzResourceGroup -Name $resourceGroupName -Location $location -ErrorAction Stop | Out-Null
+        Write-Log "Resource group '$resourceGroupName' created."
+    } else {
+        Write-Log "Resource group '$resourceGroupName' exists."
     }
-    catch {
-        return $false
-    }
+} catch {
+    Write-Log "ERROR: Failed to verify or create resource group. $_"
+    exit 1
 }
 
-# Function to check if a virtual network exists
-function Test-VNetExists {
-    param($VNetName, $ResourceGroupName)
-    try {
-        $null = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        return $true
-    }
-    catch {
-        return $false
-    }
+# 2. Create Public IP
+try {
+    Write-Log "Creating Public IP '$publicIpName'..."
+    $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName -Location $location -AllocationMethod Dynamic -ErrorAction Stop
+    Write-Log "Public IP '$publicIpName' created."
+} catch {
+    Write-Log "ERROR: Failed to create Public IP. $_"
+    exit 1
 }
 
-# Function to check if a subnet exists
-function Test-SubnetExists {
-    param($VNetName, $SubnetName, $ResourceGroupName)
-    try {
-        $vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
-        $null = $vnet.Subnets | Where-Object { $_.Name -eq $SubnetName }
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
-
-# Function to check if a public IP exists
-function Test-PublicIPExists {
-    param($PublicIPName, $ResourceGroupName)
-    try {
-        $null = Get-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
-
-# Function to check if a network interface exists
-function Test-NetworkInterfaceExists {
-    param($NICName, $ResourceGroupName)
-    try {
-        $null = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
-
-# Function to check if a virtual machine exists
-function Test-VMExists {
-    param($VMName, $ResourceGroupName)
-    try {
-        $null = Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
-
-# Script Parameters (Updated to use backup script values)
-$resourceGroupName = "JB-TEST-RG2"
-$location          = "westus2"
-$storageAccountName = "jbteststorage0"
-$vnetName          = "JB-TEST-VNET"
-$subnetName        = "JB-TEST-SUBNET1"
-$publicIPName      = "JB-TEST-DC01-PUBIP"
-$nicName           = "JB-TEST-DC01-NIC"
-$vmName            = "JB-TEST-DC01"
-
-Write-Log "Importing Azure modules..."
-Import-Module Az.Accounts
-Import-Module Az.Resources
-Import-Module Az.Storage
-Import-Module Az.Network
-Import-Module Az.Compute
-
-# Check and create Resource Group
-Write-Log "Setting up Resource Group..."
-if (-not (Test-ResourceGroupExists -ResourceGroupName $resourceGroupName)) {
-    try {
-        New-AzResourceGroup -Name $resourceGroupName -Location $location
-        Write-Log "Resource Group created successfully"
-    }
-    catch {
-        Write-Log "ERROR: Failed to create Resource Group: $_"
-        exit 1
-    }
-}
-else {
-    Write-Log "Resource Group already exists - skipping creation"
-}
-
-# Check and create Storage Account
-Write-Log "Configuring Storage..."
-if (-not (Test-StorageAccountExists -StorageAccountName $storageAccountName -ResourceGroupName $resourceGroupName)) {
-    Write-Log "Checking storage account name availability..."
-    $storageNameAvailable = Get-AzStorageAccountNameAvailability -Name $storageAccountName
-    
-    if ($storageNameAvailable.NameAvailable) {
-        try {
-            New-AzStorageAccount -ResourceGroupName $resourceGroupName `
-                                -Name $storageAccountName `
-                                -Location $location `
-                                -SkuName Standard_LRS
-            Write-Log "Storage Account created successfully"
-        }
-        catch {
-            Write-Log "ERROR: Failed to create Storage Account: $_"
-            exit 1
-        }
-    }
-    else {
-        Write-Log "ERROR: Storage account name '$storageAccountName' is not available. Reason: $($storageNameAvailable.Message)"
-        exit 1
-    }
-}
-else {
-    Write-Log "Storage Account already exists - skipping creation"
-}
-
-# Check and create Virtual Network
-Write-Log "Setting up Virtual Network..."
-if (-not (Test-VNetExists -VNetName $vnetName -ResourceGroupName $resourceGroupName)) {
-    try {
+# 3. Create Virtual Network and Subnet
+try {
+    Write-Log "Checking for Virtual Network '$vnetName'..."
+    $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if (-not $vnet) {
+        Write-Log "Virtual Network '$vnetName' not found. Creating Virtual Network with subnet '$subnetName'..."
         $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix "10.0.0.0/24"
-        New-AzVirtualNetwork -ResourceGroupName $resourceGroupName `
-                            -Name $vnetName `
-                            -Location $location `
-                            -AddressPrefix "10.0.0.0/16" `
-                            -Subnet $subnetConfig
-        Write-Log "Virtual Network created successfully"
+        $vnet = New-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -Location $location -AddressPrefix "10.0.0.0/16" -Subnet $subnetConfig -ErrorAction Stop
+        Write-Log "Virtual Network '$vnetName' created."
+    } else {
+        Write-Log "Virtual Network '$vnetName' exists."
     }
-    catch {
-        Write-Log "ERROR: Failed to create Virtual Network: $_"
-        exit 1
-    }
-}
-else {
-    Write-Log "Virtual Network already exists - skipping creation"
+} catch {
+    Write-Log "ERROR: Failed to verify or create Virtual Network. $_"
+    exit 1
 }
 
-# Check and create Public IP
-Write-Log "Creating Public IP..."
-if (-not (Test-PublicIPExists -PublicIPName $publicIPName -ResourceGroupName $resourceGroupName)) {
-    try {
-        New-AzPublicIpAddress -Name $publicIPName `
-                             -ResourceGroupName $resourceGroupName `
-                             -Location $location `
-                             -AllocationMethod Dynamic
-        Write-Log "Public IP created successfully"
+# 4. Create Network Interface
+try {
+    Write-Log "Creating Network Interface for VM '$vmName'..."
+    $subnet = $vnet.Subnets | Where-Object { $_.Name -eq $subnetName }
+    if (-not $subnet) {
+        throw "Subnet '$subnetName' could not be found in Virtual Network '$vnetName'."
     }
-    catch {
-        Write-Log "ERROR: Failed to create Public IP: $_"
-        exit 1
-    }
-}
-else {
-    Write-Log "Public IP already exists - skipping creation"
+    $nic = New-AzNetworkInterface -Name "$vmName-NIC" -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -ErrorAction Stop
+    Write-Log "Network Interface for VM '$vmName' created."
+} catch {
+    Write-Log "ERROR: Failed to create Network Interface. $_"
+    exit 1
 }
 
-# Check and create Network Interface
-Write-Log "Setting up Network Interface..."
-if (-not (Test-NetworkInterfaceExists -NICName $nicName -ResourceGroupName $resourceGroupName)) {
-    try {
-        $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
-        $subnet = $vnet.Subnets[0]
-        $pip = Get-AzPublicIpAddress -Name $publicIPName -ResourceGroupName $resourceGroupName
-        
-        New-AzNetworkInterface -Name $nicName `
-                              -ResourceGroupName $resourceGroupName `
-                              -Location $location `
-                              -SubnetId $subnet.Id `
-                              -PublicIpAddressId $pip.Id
-        Write-Log "Network Interface created successfully"
-    }
-    catch {
-        Write-Log "ERROR: Failed to create Network Interface: $_"
-        exit 1
-    }
-}
-else {
-    Write-Log "Network Interface already exists - skipping creation"
+# 5. Create Virtual Machine
+try {
+    Write-Log "Creating Virtual Machine '$vmName'..."
+    $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
+    $cred = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
+    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_DS1_v2" -ErrorAction Stop |
+      Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $cred -ProvisionVMAgent -EnableAutoUpdate -ErrorAction Stop |
+      Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2019-Datacenter" -Version "latest" -ErrorAction Stop |
+      Add-AzVMNetworkInterface -Id $nic.Id -Primary -ErrorAction Stop
+    New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig -ErrorAction Stop | Out-Null
+    Write-Log "Virtual Machine '$vmName' created successfully."
+} catch {
+    Write-Log "ERROR: Failed to create Virtual Machine. $_"
+    exit 1
 }
 
-# Check and create Virtual Machine
-Write-Log "Creating Virtual Machine..."
-if (-not (Test-VMExists -VMName $vmName -ResourceGroupName $resourceGroupName)) {
-    try {
-        $nic = Get-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName
-        
-        $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_DS2_v2"
-        $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig `
-                                          -Windows `
-                                          -ComputerName $vmName `
-                                          -Credential (Get-Credential) `
-                                          -ProvisionVMAgent
-        
-        $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
-        $vmConfig = Set-AzVMSourceImage -VM $vmConfig `
-                                      -PublisherName "MicrosoftWindowsServer" `
-                                      -Offer "WindowsServer" `
-                                      -Skus "2019-Datacenter" `
-                                      -Version "latest"
-        
-        New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
-        Write-Log "Virtual Machine created successfully"
-    }
-    catch {
-        Write-Log "ERROR: Failed to create Virtual Machine: $_"
-        exit 1
-    }
-}
-else {
-    Write-Log "Virtual Machine already exists - skipping creation"
-}
-
-Write-Log "Script completed successfully"
+Write-Log "Script execution completed successfully."
