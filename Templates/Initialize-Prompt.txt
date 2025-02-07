@@ -1,66 +1,87 @@
-I am working with PowerShell scripts. 
-Please follow these guidelines for all responses:
+# =============================================================================
+# Initialize-Prompt.txt
+# Last Updated: 2025-02-07 21:21:53 UTC
+# Updated By: jdyer-nuvodia
+# Purpose: Define conversation and response requirements for GitHub Copilot
+# =============================================================================
 
-SCRIPT HANDLING REQUIREMENTS:
-1. Always provide complete scripts when making updates or modifications
-2. Never provide partial script sections unless specifically requested
-3. Include file header with current timestamp and user information
-4. Format timestamps in UTC using YYYY-MM-DD HH:MM:SS format
-5. Update both file headers and internal timestamps consistently
+CONTEXT_VARIABLES={
+    "current_timestamp": "2025-02-07 21:21:53",
+    "current_user": "jdyer-nuvodia",
+    "timezone": "UTC",
+    "timestamp_format": "yyyy-MM-dd HH:mm:ss"
+}
 
-1. Script Updates and Creation:
-   - Use the template from Templates/script-template.ps1 for all PowerShell scripts
-   - Include all required sections: Synopsis, Description, Parameters, Examples, Notes
-   - Maintain existing version history and update the "Updated" timestamp
-   - Break code blocks into 200-line segments, splitting at lines starting with '#'
-   - CRITICAL: Each code block MUST have a UNIQUE name, even when splitting the same script
-   - Example naming for split scripts:
-     ```powershell name=script_name_part1_of_3.ps1
-     ```powershell name=script_name_part2_of_3.ps1
-     ```powershell name=script_name_part3_of_3.ps1
+RESPONSE_REQUIREMENTS={
+    # Content Delivery Rules
+    "always_complete": true,
+    "no_truncation": true,
+    "verify_size_first": true,
+    
+    # Script Requirements
+    "provide_full_scripts": true,
+    "update_all_timestamps": true,
+    "maintain_headers": true,
+    "include_version_history": true,
+    
+    # Formatting Standards
+    "use_consistent_format": true,
+    "include_creation_date": true,
+    "track_modifications": true,
+    
+    # Header Template
+    "header_format": """
+    # =============================================================================
+    # Script: {scriptname}
+    # Created: {creation_date} UTC
+    # Author: {author}
+    # Last Updated: {current_timestamp} UTC
+    # Updated By: {current_user}
+    # Version: {version}
+    # =============================================================================
+    """,
+    
+    # Response Structure
+    "start_with_context": true,
+    "end_with_verification": true,
+    
+    # Error Handling
+    "provide_clear_errors": true,
+    "include_troubleshooting": true,
+    
+    # Documentation
+    "detailed_comments": true,
+    "explain_complex_logic": true,
+    "reference_dependencies": true
+}
 
-2. Code Block Naming Convention:
-   - Base scripts: scriptname.ps1
-   - Split scripts: scriptname_part1_of_n.ps1
-   - Temporary scripts: scriptname_temp.ps1
-   - Modified scripts: scriptname_modified.ps1
-   - Test scripts: scriptname_test.ps1
-   - NEVER reuse the same name for different code blocks in the same response
+EXECUTION_CHECKLIST=[
+    "Verify current context (timestamp, user)",
+    "Check total response size",
+    "Ensure complete content delivery",
+    "Validate all timestamps",
+    "Verify user information",
+    "Confirm formatting standards",
+    "Check header completeness",
+    "Validate version information"
+]
 
-3. Repository Update Documentation:
-   - Follow the format in Templates/update-notes.txt for all changes
-   - Include all sections: Changes, Testing, Files Modified, Version History
-   - Provide update notes in a copyable code block
-   - Name update notes as: scriptname_updates.txt
+QUALITY_CONTROL={
+    "verify_syntax": true,
+    "check_formatting": true,
+    "validate_timestamps": true,
+    "confirm_headers": true,
+    "ensure_completeness": true
+}
 
-4. Code Block Requirements:
-   - Always provide complete, functional scripts
-   - Each code block MUST be independently copyable
-   - Maximum 200 lines per block
-   - Split at comment lines (starting with #)
-   - Maintain proper indentation and formatting
-   - Include complete header information in each part
-   - Each part must explicitly state its position (e.g., "Part 1 of 3")
+# CRITICAL RULES
+1. Never truncate or split responses
+2. Always provide complete scripts
+3. Update all timestamps consistently
+4. Maintain user context throughout conversation
+5. Verify all requirements before sending
+6. Use UTC for all timestamps
+7. Format timestamps as: yyyy-MM-dd HH:mm:ss
+8. Include timezone designation (UTC)
 
-5. Additional Requirements:
-   - Verify PowerShell version compatibility (minimum 5.1)
-   - Include all necessary module dependencies
-   - Provide complete error handling
-   - Include logging and transcript functionality
-   - Test all code snippets before providing them
-   - Include date/time stamps in UTC
-   - Use the provided current user's login for author attribution
-
-6. Version Control:
-   - Increment version numbers appropriately for all changes
-   - Include change log in script headers
-   - Document all changes in both script and update notes
-   - Maintain backwards compatibility unless specified otherwise
-
-7. Formatting Guidelines:
-   - Use consistent indentation (4 spaces)
-   - Include blank lines between major sections
-   - Use clear, descriptive variable names
-   - Include comments for complex operations
-   - Use region markers for major script sections
-   
+# END OF INITIALIZE-PROMPT
