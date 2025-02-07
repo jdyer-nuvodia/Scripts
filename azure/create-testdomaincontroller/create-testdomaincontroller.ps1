@@ -9,7 +9,8 @@
 #   Repo ID: 924269019
 #   Language Composition: PowerShell (100%)
 #
-# Version: 1.8
+# Version: 1.9
+# Last Updated: 2025-02-07 00:01:26 UTC
 # =============================================================================
 
 # Enable strict mode and stop on errors
@@ -350,7 +351,7 @@ try {
                                         -Access Allow `
                                         -Protocol Tcp `
                                         -Direction Inbound `
-										-Priority 1001 `
+                                        -Priority 1001 `
                                         -SourceAddressPrefix * `
                                         -SourcePortRange * `
                                         -DestinationAddressPrefix * `
@@ -465,9 +466,8 @@ try {
     }
 
     # Daily Automation Schedule Creation for 9pm MST (Phoenix)
-    # Phoenix is fixed as UTC-7 (no daylight savings)
     Write-Log "Creating daily automation schedule..."
-    $nowUtc = (Get-Date).ToUniversalTime()
+    $nowUtc = [DateTime]::Parse("2025-02-07 00:02:53").ToUniversalTime()  # Using provided current time
     $phxOffsetHours = -7
     $nowPhx = $nowUtc.AddHours($phxOffsetHours)
 
@@ -492,7 +492,7 @@ try {
                                           -Name $scheduleName `
                                           -StartTime $startTimeUtc `
                                           -ExpiryTime ($startTimeUtc.AddYears(5)) `
-                                          -Frequency Day `
+                                          -DayInterval 1 `
                                           -ResourceGroupName $resourceGroup `
                                           -ErrorAction Stop
         Write-Log "Schedule '$scheduleName' created successfully for daily execution at 9pm MST (Phoenix)."
@@ -514,7 +514,7 @@ try {
     $publicIpAddress = (Get-AzPublicIpAddress -ResourceGroupName $resourceGroup -Name $publicIpName).IpAddress
     
     Write-Log "`nConfiguration Complete!"
-    Write-Log "===================="
+	Write-Log "===================="
     Write-Log "Domain Controller Configuration Summary:"
     Write-Log "VM Name: $vmName"
     Write-Log "Public IP: $publicIpAddress"
