@@ -2,9 +2,9 @@
 # Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 22:50:55 UTC
+# Last Updated: 2025-02-07 23:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7
+# Version: 1.10
 # Purpose: Define conversation and response requirements for GitHub Copilot
 # =============================================================================
 
@@ -13,7 +13,7 @@ REPOSITORY_REQUIREMENTS={
     "update_notes": {
         "required": true,
         "format": "markdown",
-        "filename": "update-notes.md",
+        "filename": "update-notes.txt",
         "include": {
             "timestamp": true,
             "author": true,
@@ -27,36 +27,19 @@ REPOSITORY_REQUIREMENTS={
             "placement": "before_script_content",
             "format_requirements": {
                 "use_code_block": true,
-                "block_format": "markdown",
-                "syntax": "```markdown name=update-notes.md\n{content}\n```"
+                "block_format": "txt",
+                "syntax": "```txt name=update-notes.txt\n{content}\n```"
             },
             "template": """
 # Repository Update Notes
 ## Timestamp: {timestamp}
 ## Author: {author}
-## Files Modified
-{files_modified}
-
-## Changes Made
-{changes_made}
-
-## Purpose
-{purpose}
-
-## Impact
-{impact}
-
+## Files Modified: {files_modified}
+## Changes Made: {changes_made}
+## Purpose: {purpose}
+## Impact: {impact}
 ---
-""",
-            "validation_rules": [
-                "Must be provided before any script content",
-                "All fields in template must be completed",
-                "Cannot be empty or placeholder text",
-                "Must reflect actual changes made",
-                "Must be enclosed in a copyable code block",
-                "Code block must include filename in header",
-                "Text files must include complete contents"
-            ]
+"""
         }
     },
     
@@ -91,7 +74,8 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "NO placeholders like '[Rest of script remains the same...]' are allowed",
         "NO references to existing content without including it",
         "ALL script content must be included in EVERY response",
-        "COMPLETE means the ENTIRE script from start to finish"
+        "COMPLETE means the ENTIRE script from start to finish",
+        "Always provide repository update notes when updating any file accessed from the repositories"
     ],
     "prohibited_patterns": [
         "Rest of script...",
@@ -107,7 +91,9 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "/* Previous content stays the same */",
         "[... existing content ...]",
         "// Script continues with original content",
-        "# Maintain previous script sections"
+        "# Maintain previous script sections",
+        "Rest of the script continues...",
+        "Additional resource creation logic would follow here..."
     ],
     "validation": {
         "require_complete_files": true,
@@ -159,7 +145,7 @@ SCRIPT_DELIVERY_PREFERENCES={
 }
 
 CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-07 22:50:55",
+    "current_timestamp": "2025-02-07 23:38:00",
     "current_user": "jdyer-nuvodia",
     "timezone": "UTC",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss"
@@ -256,9 +242,8 @@ QUALITY_CONTROL={
 12. Include filename in code block headers
 13. Always include complete file contents for .txt files
 14. Never use placeholders like "previous content remains unchanged"
-15. NEVER provide partial scripts or use phrases like "Rest of script remains the same"
+15. NEVER provide partial scripts or use phrases like "Rest of script remains the same..."
 16. ALL script content must be provided in EVERY response
 17. NO references to existing content without including it
 18. Scripts must be complete and immediately usable
-
 # END OF INITIALIZE-PROMPT
