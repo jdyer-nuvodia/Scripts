@@ -2,9 +2,9 @@
 # Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 22:24:27 UTC
+# Last Updated: 2025-02-07 22:41:21 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3
+# Version: 1.6
 # Purpose: Define conversation and response requirements for GitHub Copilot
 # =============================================================================
 
@@ -22,10 +22,15 @@ REPOSITORY_REQUIREMENTS={
             "purpose": true,
             "impact": true
         },
-        # New: Enforce update notes in every response
+        # Updated: Enforce update notes in every response with copyable format
         "enforcement": {
             "mandatory_in_response": true,
             "placement": "before_script_content",
+            "format_requirements": {
+                "use_code_block": true,
+                "block_format": "markdown",
+                "syntax": "```markdown name=update-notes.md\n{content}\n```"
+            },
             "template": """
 # Repository Update Notes
 ## Timestamp: {timestamp}
@@ -48,7 +53,10 @@ REPOSITORY_REQUIREMENTS={
                 "Must be provided before any script content",
                 "All fields in template must be completed",
                 "Cannot be empty or placeholder text",
-                "Must reflect actual changes made"
+                "Must reflect actual changes made",
+                "Must be enclosed in a copyable code block",
+                "Code block must include filename in header",
+                "Text files must include complete contents"
             ]
         }
     },
@@ -57,7 +65,14 @@ REPOSITORY_REQUIREMENTS={
     "script_format": {
         "prefer_minified": true,
         "maintain_readability": true,
-        "include_comments": true
+        "include_comments": true,
+        "code_block_required": true,
+        "code_block_format": "```{language} name={filename}\n{content}\n```",
+        "text_file_requirements": {
+            "include_full_content": true,
+            "no_content_placeholders": true,
+            "maintain_line_endings": true
+        }
     },
     
     # Documentation Standards
@@ -65,11 +80,132 @@ REPOSITORY_REQUIREMENTS={
         "header_required": true,
         "section_comments": true,
         "version_tracking": true,
-        "changelog": true
+        "changelog": true,
+        "complete_file_history": true
     }
 }
 
-[Previous content remains unchanged...]
+SCRIPT_DELIVERY_PREFERENCES={
+    # Script Formatting Requirements
+    "format": "minified",
+    "maintain_readability": true,
+    "include_section_comments": true,
+    
+    # Minification Rules
+    "minification": {
+        "remove_extra_whitespace": true,
+        "shorten_variable_names": true,
+        "combine_compatible_operations": true,
+        "preserve_critical_logging": true,
+        "maintain_error_handling": true
+    },
+    
+    # Documentation Requirements
+    "comments": {
+        "script_purpose": true,
+        "section_descriptions": true,
+        "function_explanations": true,
+        "complex_logic_notes": true
+    },
+    
+    # Header Requirements
+    "header": {
+        "include_timestamp": true,
+        "include_author": true,
+        "include_version": true,
+        "include_purpose": true,
+        "include_change_log": true
+    },
+    
+    # Code Block Requirements
+    "code_blocks": {
+        "always_use": true,
+        "include_filename": true,
+        "specify_language": true,
+        "maintain_formatting": true
+    }
+}
+
+CONTEXT_VARIABLES={
+    "current_timestamp": "2025-02-07 22:41:21",
+    "current_user": "jdyer-nuvodia",
+    "timezone": "UTC",
+    "timestamp_format": "yyyy-MM-dd HH:mm:ss"
+}
+
+RESPONSE_REQUIREMENTS={
+    # Content Delivery Rules
+    "always_complete": true,
+    "no_truncation": true,
+    "verify_size_first": true,
+    
+    # Script Requirements
+    "provide_full_scripts": true,
+    "update_all_timestamps": true,
+    "maintain_headers": true,
+    "include_version_history": true,
+    
+    # Formatting Standards
+    "use_consistent_format": true,
+    "include_creation_date": true,
+    "track_modifications": true,
+    
+    # Header Template
+    "header_format": """
+    # =============================================================================
+    # Script: {scriptname}
+    # Created: {creation_date} UTC
+    # Author: {author}
+    # Last Updated: {current_timestamp} UTC
+    # Updated By: {current_user}
+    # Version: {version}
+    # =============================================================================
+    """,
+    
+    # Response Structure
+    "start_with_context": true,
+    "end_with_verification": true,
+    
+    # Error Handling
+    "provide_clear_errors": true,
+    "include_troubleshooting": true,
+    
+    # Documentation
+    "detailed_comments": true,
+    "explain_complex_logic": true,
+    "reference_dependencies": true,
+    
+    # File Content Requirements
+    "complete_file_contents": true,
+    "no_content_placeholders": true,
+    "preserve_formatting": true
+}
+
+EXECUTION_CHECKLIST=[
+    "Verify current context (timestamp, user)",
+    "Check total response size",
+    "Ensure complete content delivery",
+    "Validate all timestamps",
+    "Verify user information",
+    "Confirm formatting standards",
+    "Check header completeness",
+    "Validate version information",
+    "Confirm update notes are included",
+    "Verify update notes format",
+    "Check code block formatting",
+    "Verify complete file contents"
+]
+
+QUALITY_CONTROL={
+    "verify_syntax": true,
+    "check_formatting": true,
+    "validate_timestamps": true,
+    "confirm_headers": true,
+    "ensure_completeness": true,
+    "verify_update_notes": true,
+    "check_code_blocks": true,
+    "validate_file_contents": true
+}
 
 # CRITICAL RULES
 1. Never truncate or split responses
@@ -82,5 +218,9 @@ REPOSITORY_REQUIREMENTS={
 8. Include timezone designation (UTC)
 9. Always include repository update notes before script content
 10. Follow update notes template exactly
+11. Always present update notes and code in copyable code blocks
+12. Include filename in code block headers
+13. Always include complete file contents for .txt files
+14. Never use placeholders like "previous content remains unchanged"
 
 # END OF INITIALIZE-PROMPT
