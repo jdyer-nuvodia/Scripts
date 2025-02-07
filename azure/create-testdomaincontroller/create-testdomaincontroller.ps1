@@ -1,236 +1,260 @@
 # =============================================================================
-# Script: create-testdomaincontroller.ps1
-# Created: 2025-02-05 01:27:32 UTC
+# Script: Create-TestDomainController.ps1
+# Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 22:22:29 UTC
+# Last Updated: 2025-02-07 22:45:13 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3
-# Purpose: Creates a test domain controller in Azure with automated shutdown
+# Version: 2.0
+# Purpose: Creates a test domain controller in Azure with existence checks
 # =============================================================================
 
-# Script Configuration and Error Handling
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
-
-# Logging Function
+# Function to write timestamped log messages
 function Write-Log {
     param($Message)
-    Write-Host "[$((Get-Date).ToString('yyyy-MM-dd HH:mm:ss')) UTC] $Message"
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+    Write-Host "[$timestamp UTC] $Message"
 }
 
-# Core Variables
-$rg = "JB-TEST-RG2"
-$loc = "westus2"
-$vm = "JB-TEST-DC01"
-$vnet = "JB-TEST-VNET"
-$subnet = "JB-TEST-SUBNET1"
-$nsg = "JB-TEST-NSG"
-$pip = "$vm-PUBIP"
-$stor = "jbteststorage0"
-$cont = "runbooks"
-$auto = "JB-TEST-AUTOMATION"
-$rb = "AutoShutdownRunbook"
-$cred = New-Object PSCredential("jbadmin", (ConvertTo-SecureString "TS=pGxB~8m^A~WH^[yB8" -AsPlainText -Force))
+# Function to check if a resource group exists
+function Test-ResourceGroupExists {
+    param($ResourceGroupName)
+    try {
+        $null = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
 
-# Module Import with Error Handling
+# Function to check if a storage account exists
+function Test-StorageAccountExists {
+    param($StorageAccountName, $ResourceGroupName)
+    try {
+        $null = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $StorageAccountName -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to check if a virtual network exists
+function Test-VNetExists {
+    param($VNetName, $ResourceGroupName)
+    try {
+        $null = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to check if a subnet exists
+function Test-SubnetExists {
+    param($VNetName, $SubnetName, $ResourceGroupName)
+    try {
+        $vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
+        $null = $vnet.Subnets | Where-Object { $_.Name -eq $SubnetName }
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to check if a public IP exists
+function Test-PublicIPExists {
+    param($PublicIPName, $ResourceGroupName)
+    try {
+        $null = Get-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to check if a network interface exists
+function Test-NetworkInterfaceExists {
+    param($NICName, $ResourceGroupName)
+    try {
+        $null = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to check if a virtual machine exists
+function Test-VMExists {
+    param($VMName, $ResourceGroupName)
+    try {
+        $null = Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+# Script Parameters
+$resourceGroupName = "TestDC-RG"
+$location = "eastus"
+$storageAccountName = "jbteststorage0"
+$vnetName = "TestDC-VNet"
+$subnetName = "TestDC-Subnet"
+$publicIPName = "TestDC-PIP"
+$nicName = "TestDC-NIC"
+$vmName = "TestDC01"
+
 Write-Log "Importing Azure modules..."
-try {
-    @('Az.Automation', 'Az.Storage', 'Az.Network', 'Az.Compute') | ForEach-Object { Import-Module $_ -ErrorAction Stop }
-} catch {
-    Write-Log "ERROR: Module import failed: $_"
-    exit 1
-}
+Import-Module Az.Accounts
+Import-Module Az.Resources
+Import-Module Az.Storage
+Import-Module Az.Network
+Import-Module Az.Compute
 
-# Resource Group Setup
+# Check and create Resource Group
 Write-Log "Setting up Resource Group..."
-try {
-    if (!(Get-AzResourceGroup -Name $rg -ErrorAction SilentlyContinue)) {
-        New-AzResourceGroup -Name $rg -Location $loc -ErrorAction Stop
+if (-not (Test-ResourceGroupExists -ResourceGroupName $resourceGroupName)) {
+    try {
+        New-AzResourceGroup -Name $resourceGroupName -Location $location
+        Write-Log "Resource Group created successfully"
     }
-} catch {
-    Write-Log "ERROR: RG creation failed: $_"
-    exit 1
+    catch {
+        Write-Log "ERROR: Failed to create Resource Group: $_"
+        exit 1
+    }
+}
+else {
+    Write-Log "Resource Group already exists - skipping creation"
 }
 
-# Storage Account and Container Setup
+# Check and create Storage Account
 Write-Log "Configuring Storage..."
-try {
-    # Check storage account name availability
+if (-not (Test-StorageAccountExists -StorageAccountName $storageAccountName -ResourceGroupName $resourceGroupName)) {
     Write-Log "Checking storage account name availability..."
-    $nameAvailable = Get-AzStorageAccountNameAvailability -Name $stor
-    if (!$nameAvailable.NameAvailable) {
-        Write-Log "ERROR: Storage account name '$stor' is not available. Reason: $($nameAvailable.Message)"
-        exit 1
-    }
-
-    # Get or create storage account with timeout
-    Write-Log "Attempting to get existing storage account..."
-    $sa = Get-AzStorageAccount -ResourceGroupName $rg -Name $stor -ErrorAction SilentlyContinue
+    $storageNameAvailable = Get-AzStorageAccountNameAvailability -Name $storageAccountName
     
-    if (!$sa) {
-        Write-Log "Creating new storage account: $stor"
-        $sa = New-AzStorageAccount -ResourceGroupName $rg -Name $stor -Location $loc -SkuName Standard_LRS
-        
-        # Wait for provisioning with timeout
-        $timeout = 300 # 5 minutes
-        $timer = 0
-        $interval = 10
-        Write-Log "Waiting for storage account provisioning..."
-        
-        while ($timer -lt $timeout) {
-            $sa = Get-AzStorageAccount -ResourceGroupName $rg -Name $stor
-            if ($sa.ProvisioningState -eq "Succeeded") {
-                Write-Log "Storage account provisioned successfully"
-                break
-            }
-            
-            Write-Log "Current status: $($sa.ProvisioningState) - Waiting $interval seconds..."
-            Start-Sleep -Seconds $interval
-            $timer += $interval
-            
-            if ($timer -ge $timeout) {
-                Write-Log "ERROR: Storage account provisioning timed out after $($timeout/60) minutes"
-                exit 1
-            }
+    if ($storageNameAvailable.NameAvailable) {
+        try {
+            New-AzStorageAccount -ResourceGroupName $resourceGroupName `
+                                -Name $storageAccountName `
+                                -Location $location `
+                                -SkuName Standard_LRS
+            Write-Log "Storage Account created successfully"
         }
-    }
-
-    # Create storage context with verification
-    Write-Log "Creating storage context..."
-    $keys = Get-AzStorageAccountKey -ResourceGroupName $rg -Name $stor
-    if (!$keys) {
-        Write-Log "ERROR: Failed to retrieve storage account keys"
-        exit 1
-    }
-    
-    $ctx = New-AzStorageContext -StorageAccountName $stor -StorageAccountKey $keys[0].Value
-    
-    # Create container if needed
-    Write-Log "Checking container existence..."
-    $container = Get-AzStorageContainer -Name $cont -Context $ctx -ErrorAction SilentlyContinue
-    if (!$container) {
-        Write-Log "Creating container: $cont"
-        $container = New-AzStorageContainer -Name $cont -Context $ctx -Permission Off
-        if (!$container) {
-            Write-Log "ERROR: Failed to create storage container"
+        catch {
+            Write-Log "ERROR: Failed to create Storage Account: $_"
             exit 1
         }
     }
-    
-    Write-Log "Storage configuration completed successfully"
-} catch {
-    Write-Log "ERROR: Storage setup failed with details:"
-    Write-Log "Exception: $($_.Exception.Message)"
-    Write-Log "Stack Trace: $($_.ScriptStackTrace)"
-    Write-Log "Position: $($_.InvocationInfo.PositionMessage)"
-    exit 1
+    else {
+        Write-Log "ERROR: Storage account name '$storageAccountName' is not available. Reason: $($storageNameAvailable.Message)"
+        exit 1
+    }
+}
+else {
+    Write-Log "Storage Account already exists - skipping creation"
 }
 
-# Runbook Creation and Upload
-Write-Log "Creating Runbook..."
-try {
-    $rbContent = @"
-workflow $rb {
-    param([string]`$rg,[string]`$vm)
-    `$conn = Get-AutomationConnection -Name AzureRunAsConnection
-    Add-AzAccount -ServicePrincipal -TenantId `$conn.TenantId -ApplicationId `$conn.ApplicationId -CertificateThumbprint `$conn.CertificateThumbprint
-    Stop-AzVM -ResourceGroupName `$rg -Name `$vm -Force
+# Check and create Virtual Network
+Write-Log "Setting up Virtual Network..."
+if (-not (Test-VNetExists -VNetName $vnetName -ResourceGroupName $resourceGroupName)) {
+    try {
+        $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix "10.0.0.0/24"
+        New-AzVirtualNetwork -ResourceGroupName $resourceGroupName `
+                            -Name $vnetName `
+                            -Location $location `
+                            -AddressPrefix "10.0.0.0/16" `
+                            -Subnet $subnetConfig
+        Write-Log "Virtual Network created successfully"
+    }
+    catch {
+        Write-Log "ERROR: Failed to create Virtual Network: $_"
+        exit 1
+    }
 }
-"@
-    $rbPath = "C:\Temp\$rb.ps1"
-    if (!(Test-Path "C:\Temp")) { mkdir "C:\Temp" }
-    Set-Content $rbPath $rbContent
-    Set-AzStorageBlobContent -Context $ctx -Container $cont -File $rbPath -Blob "$rb.ps1" -Force | Out-Null
-    Remove-Item $rbPath -ErrorAction SilentlyContinue
-} catch {
-    Write-Log "ERROR: Runbook creation failed: $_"
-    exit 1
-}
-
-# Network Configuration
-Write-Log "Setting up Network..."
-try {
-    # Virtual Network
-    $vnetObj = Get-AzVirtualNetwork -Name $vnet -ResourceGroupName $rg -ErrorAction SilentlyContinue
-    if (!$vnetObj) {
-        $vnetObj = New-AzVirtualNetwork -ResourceGroupName $rg -Location $loc -Name $vnet -AddressPrefix "10.0.0.0/16"
-    }
-
-    # Subnet
-    $subnetObj = $vnetObj | Get-AzVirtualNetworkSubnetConfig -Name $subnet -ErrorAction SilentlyContinue
-    if (!$subnetObj) {
-        $vnetObj | Add-AzVirtualNetworkSubnetConfig -Name $subnet -AddressPrefix "10.0.1.0/24" | Set-AzVirtualNetwork | Out-Null
-        $subnetObj = $vnetObj | Get-AzVirtualNetworkSubnetConfig -Name $subnet
-    }
-
-    # NSG with RDP Rules
-    $nsgObj = Get-AzNetworkSecurityGroup -ResourceGroupName $rg -Name $nsg -ErrorAction SilentlyContinue
-    if (!$nsgObj) {
-        $nsgObj = New-AzNetworkSecurityGroup -ResourceGroupName $rg -Location $loc -Name $nsg
-    }
-
-    # Configure RDP Rules
-    $rdpRules = @(
-        @{
-            Name = "Allow_RDP_3389"
-            Protocol = "Tcp"
-            Access = "Allow"
-            Priority = 100
-            SourceAddressPrefix = "Internet"
-            DestinationPortRange = "3389"
-        },
-        @{
-            Name = "Allow_RDP_10443"
-            Protocol = "Tcp"
-            Access = "Allow"
-            Priority = 101
-            SourceAddressPrefix = "Internet"
-            DestinationPortRange = "10443"
-        }
-    )
-    
-    $updated = $false
-    foreach ($rule in $rdpRules) {
-        if (!(Get-AzNetworkSecurityRuleConfig -NetworkSecurityGroup $nsgObj -Name $rule.Name -ErrorAction SilentlyContinue)) {
-            $nsgObj | Add-AzNetworkSecurityRuleConfig -Direction "Inbound" -SourcePortRange "*" `
-                -DestinationAddressPrefix "VirtualNetwork" @rule | Out-Null
-            $updated = $true
-        }
-    }
-    if ($updated) { $nsgObj | Set-AzNetworkSecurityGroup | Out-Null }
-
-    # NIC and Public IP
-    $nic = Get-AzNetworkInterface -ResourceGroupName $rg -Name "$($vm)VMNic" -ErrorAction SilentlyContinue
-    $pubip = Get-AzPublicIpAddress -ResourceGroupName $rg -Name $pip -ErrorAction SilentlyContinue
-    
-    if (!$pubip) {
-        $pubip = New-AzPublicIpAddress -Name $pip -ResourceGroupName $rg -Location $loc -AllocationMethod Static -Sku Standard
-    }
-    
-    if (!$nic) {
-        $nic = New-AzNetworkInterface -Name "$($vm)VMNic" -ResourceGroupName $rg -Location $loc `
-            -SubnetId $subnetObj.Id -NetworkSecurityGroupId $nsgObj.Id -PublicIpAddressId $pubip.Id
-    }
-} catch {
-    Write-Log "ERROR: Network setup failed: $_"
-    exit 1
+else {
+    Write-Log "Virtual Network already exists - skipping creation"
 }
 
-# VM Creation and Configuration
-Write-Log "Creating VM..."
-try {
-    $vmConfig = New-AzVMConfig -VMName $vm -VMSize "Standard_B2s" |
-        Set-AzVMOperatingSystem -Windows -ComputerName $vm -Credential $cred |
-        Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" `
-            -Skus "2025-datacenter-core-g2" -Version "latest" |
-        Add-AzVMNetworkInterface -Id $nic.Id |
-        Set-AzVMOSDisk -Name "$($vm)_OSDisk" -CreateOption FromImage -Windows
+# Check and create Public IP
+Write-Log "Creating Public IP..."
+if (-not (Test-PublicIPExists -PublicIPName $publicIPName -ResourceGroupName $resourceGroupName)) {
+    try {
+        New-AzPublicIpAddress -Name $publicIPName `
+                             -ResourceGroupName $resourceGroupName `
+                             -Location $location `
+                             -AllocationMethod Dynamic
+        Write-Log "Public IP created successfully"
+    }
+    catch {
+        Write-Log "ERROR: Failed to create Public IP: $_"
+        exit 1
+    }
+}
+else {
+    Write-Log "Public IP already exists - skipping creation"
+}
 
-    New-AzVM -ResourceGroupName $rg -Location $loc -VM $vmConfig
-    Write-Log "VM creation completed successfully"
-} catch {
-    Write-Log "ERROR: VM creation failed: $_"
-    exit 1
+# Check and create Network Interface
+Write-Log "Setting up Network Interface..."
+if (-not (Test-NetworkInterfaceExists -NICName $nicName -ResourceGroupName $resourceGroupName)) {
+    try {
+        $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName
+        $subnet = $vnet.Subnets[0]
+        $pip = Get-AzPublicIpAddress -Name $publicIPName -ResourceGroupName $resourceGroupName
+        
+        New-AzNetworkInterface -Name $nicName `
+                              -ResourceGroupName $resourceGroupName `
+                              -Location $location `
+                              -SubnetId $subnet.Id `
+                              -PublicIpAddressId $pip.Id
+        Write-Log "Network Interface created successfully"
+    }
+    catch {
+        Write-Log "ERROR: Failed to create Network Interface: $_"
+        exit 1
+    }
+}
+else {
+    Write-Log "Network Interface already exists - skipping creation"
+}
+
+# Check and create Virtual Machine
+Write-Log "Creating Virtual Machine..."
+if (-not (Test-VMExists -VMName $vmName -ResourceGroupName $resourceGroupName)) {
+    try {
+        $nic = Get-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName
+        
+        $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_DS2_v2"
+        $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig `
+                                          -Windows `
+                                          -ComputerName $vmName `
+                                          -Credential (Get-Credential) `
+                                          -ProvisionVMAgent
+        
+        $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
+        $vmConfig = Set-AzVMSourceImage -VM $vmConfig `
+                                      -PublisherName "MicrosoftWindowsServer" `
+                                      -Offer "WindowsServer" `
+                                      -Skus "2019-Datacenter" `
+                                      -Version "latest"
+        
+        New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
+        Write-Log "Virtual Machine created successfully"
+    }
+    catch {
+        Write-Log "ERROR: Failed to create Virtual Machine: $_"
+        exit 1
+    }
+}
+else {
+    Write-Log "Virtual Machine already exists - skipping creation"
 }
 
 Write-Log "Script completed successfully"
