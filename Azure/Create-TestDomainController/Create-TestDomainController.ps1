@@ -100,15 +100,15 @@ function Test-VMExists {
     }
 }
 
-# Script Parameters
-$resourceGroupName = "TestDC-RG"
-$location = "eastus"
+# Script Parameters (Updated to use backup script values)
+$resourceGroupName = "JB-TEST-RG2"
+$location          = "westus2"
 $storageAccountName = "jbteststorage0"
-$vnetName = "TestDC-VNet"
-$subnetName = "TestDC-Subnet"
-$publicIPName = "TestDC-PIP"
-$nicName = "TestDC-NIC"
-$vmName = "TestDC01"
+$vnetName          = "JB-TEST-VNET"
+$subnetName        = "JB-TEST-SUBNET1"
+$publicIPName      = "JB-TEST-DC01-PUBIP"
+$nicName           = "JB-TEST-DC01-NIC"
+$vmName            = "JB-TEST-DC01"
 
 Write-Log "Importing Azure modules..."
 Import-Module Az.Accounts
