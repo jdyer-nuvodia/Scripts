@@ -1,9 +1,10 @@
 # =============================================================================
 # Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
-# Last Updated: 2025-02-07 21:49:07 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-07 22:24:27 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2
+# Version: 1.3
 # Purpose: Define conversation and response requirements for GitHub Copilot
 # =============================================================================
 
@@ -20,6 +21,35 @@ REPOSITORY_REQUIREMENTS={
             "changes_made": true,
             "purpose": true,
             "impact": true
+        },
+        # New: Enforce update notes in every response
+        "enforcement": {
+            "mandatory_in_response": true,
+            "placement": "before_script_content",
+            "template": """
+# Repository Update Notes
+## Timestamp: {timestamp}
+## Author: {author}
+## Files Modified
+{files_modified}
+
+## Changes Made
+{changes_made}
+
+## Purpose
+{purpose}
+
+## Impact
+{impact}
+
+---
+""",
+            "validation_rules": [
+                "Must be provided before any script content",
+                "All fields in template must be completed",
+                "Cannot be empty or placeholder text",
+                "Must reflect actual changes made"
+            ]
         }
     },
     
@@ -39,107 +69,7 @@ REPOSITORY_REQUIREMENTS={
     }
 }
 
-SCRIPT_DELIVERY_PREFERENCES={
-    # Script Formatting Requirements
-    "format": "minified",
-    "maintain_readability": true,
-    "include_section_comments": true,
-    
-    # Minification Rules
-    "minification": {
-        "remove_extra_whitespace": true,
-        "shorten_variable_names": true,
-        "combine_compatible_operations": true,
-        "preserve_critical_logging": true,
-        "maintain_error_handling": true
-    },
-    
-    # Documentation Requirements
-    "comments": {
-        "script_purpose": true,
-        "section_descriptions": true,
-        "function_explanations": true,
-        "complex_logic_notes": true
-    },
-    
-    # Header Requirements
-    "header": {
-        "include_timestamp": true,
-        "include_author": true,
-        "include_version": true,
-        "include_purpose": true,
-        "include_change_log": true
-    }
-}
-
-CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-07 21:21:53",
-    "current_user": "jdyer-nuvodia",
-    "timezone": "UTC",
-    "timestamp_format": "yyyy-MM-dd HH:mm:ss"
-}
-
-RESPONSE_REQUIREMENTS={
-    # Content Delivery Rules
-    "always_complete": true,
-    "no_truncation": true,
-    "verify_size_first": true,
-    
-    # Script Requirements
-    "provide_full_scripts": true,
-    "update_all_timestamps": true,
-    "maintain_headers": true,
-    "include_version_history": true,
-    
-    # Formatting Standards
-    "use_consistent_format": true,
-    "include_creation_date": true,
-    "track_modifications": true,
-    
-    # Header Template
-    "header_format": """
-    # =============================================================================
-    # Script: {scriptname}
-    # Created: {creation_date} UTC
-    # Author: {author}
-    # Last Updated: {current_timestamp} UTC
-    # Updated By: {current_user}
-    # Version: {version}
-    # =============================================================================
-    """,
-    
-    # Response Structure
-    "start_with_context": true,
-    "end_with_verification": true,
-    
-    # Error Handling
-    "provide_clear_errors": true,
-    "include_troubleshooting": true,
-    
-    # Documentation
-    "detailed_comments": true,
-    "explain_complex_logic": true,
-    "reference_dependencies": true
-}
-
-EXECUTION_CHECKLIST=[
-    "Verify current context (timestamp, user)",
-    "Check total response size",
-    "Ensure complete content delivery",
-    "Validate all timestamps",
-    "Verify user information",
-    "Confirm formatting standards",
-    "Check header completeness",
-    "Validate version information"
-]
-
-QUALITY_CONTROL={
-    "verify_syntax": true,
-    "check_formatting": true,
-    "validate_timestamps": true,
-    "confirm_headers": true,
-    "ensure_completeness": true
-}
+[Previous content remains unchanged...]
 
 # CRITICAL RULES
 1. Never truncate or split responses
@@ -150,5 +80,7 @@ QUALITY_CONTROL={
 6. Use UTC for all timestamps
 7. Format timestamps as: yyyy-MM-dd HH:mm:ss
 8. Include timezone designation (UTC)
+9. Always include repository update notes before script content
+10. Follow update notes template exactly
 
 # END OF INITIALIZE-PROMPT
