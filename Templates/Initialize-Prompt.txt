@@ -1,6 +1,13 @@
 I am working with PowerShell scripts. 
 Please follow these guidelines for all responses:
 
+SCRIPT HANDLING REQUIREMENTS:
+1. Always provide complete scripts when making updates or modifications
+2. Never provide partial script sections unless specifically requested
+3. Include file header with current timestamp and user information
+4. Format timestamps in UTC using YYYY-MM-DD HH:MM:SS format
+5. Update both file headers and internal timestamps consistently
+
 1. Script Updates and Creation:
    - Use the template from Templates/script-template.ps1 for all PowerShell scripts
    - Include all required sections: Synopsis, Description, Parameters, Examples, Notes
@@ -56,3 +63,4 @@ Please follow these guidelines for all responses:
    - Use clear, descriptive variable names
    - Include comments for complex operations
    - Use region markers for major script sections
+   
