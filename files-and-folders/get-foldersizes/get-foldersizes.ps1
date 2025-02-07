@@ -4,11 +4,12 @@
 
 .DESCRIPTION
     This script performs a high-performance recursive directory scan to identify the largest
-    folders and files in a given directory path. It uses multi-threading and optimized .NET
-    methods for maximum performance, even when scanning system directories.
+    folders and files in a given directory path. It uses multi-threading when available
+    and optimized .NET methods for maximum performance, even when scanning system directories.
 
     Features:
-    - Multi-threaded scanning for improved performance
+    - Multi-threaded scanning when ThreadJob module is available
+    - Fallback to single-threaded mode when ThreadJob is not available
     - Handles access-denied errors gracefully
     - Identifies largest files in each directory
     - Creates detailed log file of the scan
@@ -36,16 +37,18 @@
 .NOTES
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
-    Updated: 2025-02-07 15:36:40 UTC
+    Updated: 2025-02-07 15:41:22 UTC
 
     Requirements:
     - Windows PowerShell 5.1 or later
     - Administrative privileges
     - Minimum 4GB RAM recommended for large directory structures
+    - ThreadJob module (optional - will be installed if not present)
 
     Version History:
     1.0.0 - Initial release
     1.0.1 - Fixed compatibility issues with older PowerShell versions
+    1.0.2 - Added ThreadJob module handling and fallback mechanism
 #>
 
 #Requires -RunAsAdministrator
@@ -56,6 +59,26 @@ param (
     [int]$MaxDepth = 10
 )
 
+# Check for ThreadJob module
+$threadJobModule = Get-Module -ListAvailable -Name ThreadJob
+if (-not $threadJobModule) {
+    try {
+        Write-Host "ThreadJob module not found. Attempting to install..."
+        Install-Module -Name ThreadJob -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+        Import-Module ThreadJob -ErrorAction Stop
+        Write-Host "ThreadJob module installed successfully."
+        $global:useThreadJobs = $true
+    }
+    catch {
+        Write-Warning "Could not install ThreadJob module. Using fallback method."
+        $global:useThreadJobs = $false
+    }
+}
+else {
+    Import-Module ThreadJob -ErrorAction Stop
+    $global:useThreadJobs = $true
+}
+
 # Check for elevated privileges and restart if necessary
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "Elevated privileges required. Attempting to restart script as Administrator..."
@@ -63,13 +86,13 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Exit
 }
 
-# Setup transcript logging with UTF8 encoding for proper table formatting
+# Setup transcript logging
 $transcriptPath = "C:\temp"
 if (-not (Test-Path $transcriptPath)) {
     New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
 }
 $transcriptFile = Join-Path $transcriptPath "FolderScan_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
-Start-Transcript -Path $transcriptFile -Force -UseMinimalHeader
+Start-Transcript -Path $transcriptFile -Force
 
 # Add script header to transcript
 Write-Host "======================================================"
@@ -79,6 +102,7 @@ Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd H
 Write-Host "User: $env:USERNAME"
 Write-Host "Computer: $env:COMPUTERNAME"
 Write-Host "Target Path: $Path"
+Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
 Write-Host "======================================================"
 Write-Host ""
 
@@ -208,19 +232,56 @@ function Get-FolderSizes {
         $batchSize = 10
         for ($i = 0; $i -lt $folders.Count; $i += $batchSize) {
             $batch = $folders | Select-Object -Skip $i -First $batchSize
-            $jobs = @()
+            $results = @()
 
-            foreach ($dir in $batch) {
-                $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
-                $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $typeName -ScriptBlock {
-                    param($path, $className)
+            if ($global:useThreadJobs) {
+                $jobs = @()
+                foreach ($dir in $batch) {
+                    $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
+                    $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $typeName -ScriptBlock {
+                        param($path, $className)
+                        try {
+                            $size = Invoke-Expression "[$className]::GetDirectorySize('$path')"
+                            $counts = Invoke-Expression "[$className]::GetDirectoryCounts('$path')"
+                            $largestFile = Invoke-Expression "[$className]::GetLargestFile('$path')"
+
+                            return [PSCustomObject]@{
+                                Folder = $path
+                                SizeGB = $size / 1GB
+                                TotalFiles = $counts.Item1
+                                TotalSubfolders = $counts.Item2
+                                LargestFile = if ($largestFile) {
+                                    [PSCustomObject]@{
+                                        Name = $largestFile.Name
+                                        Path = $largestFile.FullName
+                                        SizeGB = $largestFile.Length / 1GB
+                                        SizeMB = $largestFile.Length / 1MB
+                                    }
+                                } else { $null }
+                            }
+                        }
+                        catch {
+                            Write-Warning "Error processing $path : $_"
+                            return $null
+                        }
+                    }
+                }
+
+                # Wait for batch completion
+                $results = $jobs | Wait-Job | Receive-Job
+                $jobs | Remove-Job -Force
+            }
+            else {
+                # Fallback method - direct processing
+                foreach ($dir in $batch) {
+                    $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
                     try {
-                        $size = Invoke-Expression "[$className]::GetDirectorySize('$path')"
-                        $counts = Invoke-Expression "[$className]::GetDirectoryCounts('$path')"
-                        $largestFile = Invoke-Expression "[$className]::GetLargestFile('$path')"
+                        $size = Invoke-Expression "[$typeName]::GetDirectorySize('$dirPath')"
+                        $counts = Invoke-Expression "[$typeName]::GetDirectoryCounts('$dirPath')"
+                        $largestFile = Invoke-Expression "[$typeName]::GetLargestFile('$dirPath')"
 
-                        return [PSCustomObject]@{
-                            Folder = $path
+                        $results += [PSCustomObject]@{
+                            Folder = $dirPath
                             SizeGB = $size / 1GB
                             TotalFiles = $counts.Item1
                             TotalSubfolders = $counts.Item2
@@ -235,15 +296,11 @@ function Get-FolderSizes {
                         }
                     }
                     catch {
-                        Write-Warning "Error processing $path : $_"
-                        return $null
+                        Write-Warning "Error processing $dirPath : $_"
                     }
                 }
             }
 
-            # Wait for batch completion
-            $results = $jobs | Wait-Job | Receive-Job
-            $jobs | Remove-Job -Force
             $folderSizes += @($results | Where-Object { $_ -ne $null })
             $processedCount += $batch.Count
             Write-Host "`rProcessed $processedCount of $totalDirs folders..." -NoNewline
@@ -292,7 +349,6 @@ while ($true) {
             "No files"
         }
         
-        # PowerShell 5.1 compatible version of string truncation
         $folderPathDisplay = if ($folder.Folder.Length -gt 47) {
             "..." + $folder.Folder.Substring($folder.Folder.Length - 44)
         } else {
