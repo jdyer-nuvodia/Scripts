@@ -1,0 +1,13 @@
+UserPrincipalName,ForwardingAddress,ForwardingSmtpAddress,DeliverToMailboxAndForward,InboxRules
+bobbieg@nhss.com,,,FALSE,
+conradl@nhss.com,,,FALSE,
+DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@nhsscorp.onmicrosoft.com,,,FALSE,
+info@nhss.com,,,FALSE,
+interimsupport@nhss.com,,,FALSE,
+johnj@nhss.com,,,FALSE,
+krisj@nhss.com,,,FALSE,
+accounting@nhss.com,,,FALSE,
+legal@nhss.com,,,FALSE,
+reneel@nhss.com,,,FALSE,
+travisd@nhss.com,,,FALSE,
+web@nhss.com,,,FALSE,
