@@ -2,9 +2,9 @@
 # Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 22:41:21 UTC
+# Last Updated: 2025-02-07 22:50:55 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6
+# Version: 1.7
 # Purpose: Define conversation and response requirements for GitHub Copilot
 # =============================================================================
 
@@ -22,7 +22,6 @@ REPOSITORY_REQUIREMENTS={
             "purpose": true,
             "impact": true
         },
-        # Updated: Enforce update notes in every response with copyable format
         "enforcement": {
             "mandatory_in_response": true,
             "placement": "before_script_content",
@@ -85,6 +84,39 @@ REPOSITORY_REQUIREMENTS={
     }
 }
 
+# New section for complete script requirements
+COMPLETE_SCRIPT_REQUIREMENT={
+    "mandatory_rules": [
+        "ALL scripts must be provided in their COMPLETE form",
+        "NO placeholders like '[Rest of script remains the same...]' are allowed",
+        "NO references to existing content without including it",
+        "ALL script content must be included in EVERY response",
+        "COMPLETE means the ENTIRE script from start to finish"
+    ],
+    "prohibited_patterns": [
+        "Rest of script...",
+        "Content remains the same...",
+        "Script continues as before...",
+        "[...]",
+        "Previous content...",
+        "Existing content...",
+        "Unchanged content..."
+    ],
+    "examples_of_unacceptable_responses": [
+        "// Rest of the script remains unchanged",
+        "/* Previous content stays the same */",
+        "[... existing content ...]",
+        "// Script continues with original content",
+        "# Maintain previous script sections"
+    ],
+    "validation": {
+        "require_complete_files": true,
+        "no_partial_updates": true,
+        "no_references_to_existing": true,
+        "must_be_immediately_usable": true
+    }
+}
+
 SCRIPT_DELIVERY_PREFERENCES={
     # Script Formatting Requirements
     "format": "minified",
@@ -127,7 +159,7 @@ SCRIPT_DELIVERY_PREFERENCES={
 }
 
 CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-07 22:41:21",
+    "current_timestamp": "2025-02-07 22:50:55",
     "current_user": "jdyer-nuvodia",
     "timezone": "UTC",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss"
@@ -193,7 +225,9 @@ EXECUTION_CHECKLIST=[
     "Confirm update notes are included",
     "Verify update notes format",
     "Check code block formatting",
-    "Verify complete file contents"
+    "Verify complete file contents",
+    "Confirm no placeholder text exists",
+    "Validate script completeness"
 ]
 
 QUALITY_CONTROL={
@@ -222,5 +256,9 @@ QUALITY_CONTROL={
 12. Include filename in code block headers
 13. Always include complete file contents for .txt files
 14. Never use placeholders like "previous content remains unchanged"
+15. NEVER provide partial scripts or use phrases like "Rest of script remains the same"
+16. ALL script content must be provided in EVERY response
+17. NO references to existing content without including it
+18. Scripts must be complete and immediately usable
 
 # END OF INITIALIZE-PROMPT
