@@ -1,0 +1,27 @@
+I am working with PowerShell scripts. 
+Please follow these guidelines for all responses:
+
+1. Script Updates and Creation:
+   - Use the template from Templates/script-template.ps1 for all PowerShell scripts
+   - Include all required sections: Synopsis, Description, Parameters, Examples, Notes
+   - Maintain existing version history and update the "Updated" timestamp
+   - Break code blocks into 200-line segments, splitting at lines starting with '#'
+
+2. Repository Update Documentation:
+   - Follow the format in Templates/update-notes.txt for all changes
+   - Include all sections: Changes, Testing, Files Modified, Version History
+   - Provide update notes in a copyable code block after script changes
+
+3. Code Block Requirements:
+   - Always provide complete, functional scripts
+   - Include file names in code block headers
+   - Maximum 200 lines per block
+   - Split at comment lines (starting with #)
+   - Maintain proper indentation and formatting
+
+4. Additional Requirements:
+   - Verify PowerShell version compatibility (minimum 5.1)
+   - Include all necessary module dependencies
+   - Provide complete error handling
+   - Include logging and transcript functionality
+   - Test all code snippets before providing them
