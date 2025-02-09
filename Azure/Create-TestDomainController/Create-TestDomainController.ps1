@@ -2,11 +2,11 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 15:42:57 UTC
+# Last Updated: 2025-02-09 15:48:59 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5
+# Version: 2.6
 # Purpose: Creates a test domain controller in Azure with existence checks,
-#          error handling, logging, and an option for verbose output.
+#          error handling, logging, and overwrites existing resources automatically.
 # =============================================================================
 
 [CmdletBinding()]
@@ -63,9 +63,9 @@ function Test-ResourceGroupExists {
     }
 }
 
-# Begin resource creation steps with error checking and logging
+# Begin resource creation steps with error checking and automatic overwrites
 
-# 1. Check and create Resource Group if missing
+# 1. Check and create Resource Group if missing (resource group is reused if exists)
 try {
     Write-Log "Checking for resource group '$resourceGroupName'..."
     if (-not (Test-ResourceGroupExists -ResourceGroupName $resourceGroupName)) {
@@ -80,24 +80,32 @@ try {
     exit 1
 }
 
-# 1.1 Check and create Storage Account if missing
+# 1.1. Check and remove existing Storage Account, then create new one
 try {
     Write-Log "Checking for storage account '$storageAccountName'..."
-    $storageAccount = Get-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
-    if (-not $storageAccount) {
-        Write-Log "Storage account '$storageAccountName' not found. Creating storage account..."
-        $storageAccount = New-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
-        Write-Log "Storage account '$storageAccountName' created."
-    } else {
-        Write-Log "Storage account '$storageAccountName' exists."
+    $existingStorage = Get-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if ($existingStorage) {
+        Write-Log "Storage account '$storageAccountName' already exists. Removing..."
+        Remove-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
+        Write-Log "Storage account '$storageAccountName' removed."
     }
+    Write-Log "Creating storage account '$storageAccountName'..."
+    $storageAccount = New-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
+    Write-Log "Storage account '$storageAccountName' created."
 } catch {
     Write-Log "ERROR: Failed to verify or create storage account. $_"
     exit 1
 }
 
-# 2. Create Public IP
+# 2. Check and remove existing Public IP, then create new one
 try {
+    Write-Log "Checking for Public IP '$publicIpName'..."
+    $existingPublicIp = Get-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if ($existingPublicIp) {
+        Write-Log "Public IP '$publicIpName' already exists. Removing..."
+        Remove-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
+        Write-Log "Public IP '$publicIpName' removed."
+    }
     Write-Log "Creating Public IP '$publicIpName'..."
     $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName -Location $location -AllocationMethod Static -ErrorAction Stop
     Write-Log "Public IP '$publicIpName' created."
@@ -106,39 +114,55 @@ try {
     exit 1
 }
 
-# 3. Create Virtual Network and Subnet
+# 3. Check and remove existing Virtual Network, then create new one with subnet
 try {
     Write-Log "Checking for Virtual Network '$vnetName'..."
-    $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
-    if (-not $vnet) {
-        Write-Log "Virtual Network '$vnetName' not found. Creating Virtual Network with subnet '$subnetName'..."
-        $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix "10.0.0.0/24"
-        $vnet = New-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -Location $location -AddressPrefix "10.0.0.0/16" -Subnet $subnetConfig -ErrorAction Stop
-        Write-Log "Virtual Network '$vnetName' created."
-    } else {
-        Write-Log "Virtual Network '$vnetName' exists."
+    $existingVnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if ($existingVnet) {
+        Write-Log "Virtual Network '$vnetName' already exists. Removing..."
+        Remove-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
+        Write-Log "Virtual Network '$vnetName' removed."
     }
+    Write-Log "Creating Virtual Network '$vnetName' with subnet '$subnetName'..."
+    $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix "10.0.0.0/24"
+    $vnet = New-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -Location $location -AddressPrefix "10.0.0.0/16" -Subnet $subnetConfig -ErrorAction Stop
+    Write-Log "Virtual Network '$vnetName' created."
 } catch {
     Write-Log "ERROR: Failed to verify or create Virtual Network. $_"
     exit 1
 }
 
-# 4. Create Network Interface
+# 4. Check and remove existing Network Interface, then create new one
 try {
+    $nicName = "$vmName-NIC"
+    Write-Log "Checking for Network Interface '$nicName'..."
+    $existingNic = Get-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if ($existingNic) {
+        Write-Log "Network Interface '$nicName' already exists. Removing..."
+        Remove-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
+        Write-Log "Network Interface '$nicName' removed."
+    }
     Write-Log "Creating Network Interface for VM '$vmName'..."
     $subnet = $vnet.Subnets | Where-Object { $_.Name -eq $subnetName }
     if (-not $subnet) {
         throw "Subnet '$subnetName' could not be found in Virtual Network '$vnetName'."
     }
-    $nic = New-AzNetworkInterface -Name "$vmName-NIC" -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -ErrorAction Stop
+    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -ErrorAction Stop
     Write-Log "Network Interface for VM '$vmName' created."
 } catch {
     Write-Log "ERROR: Failed to create Network Interface. $_"
     exit 1
 }
 
-# 5. Create Virtual Machine
+# 5. Check and remove existing Virtual Machine, then create new one
 try {
+    Write-Log "Checking for Virtual Machine '$vmName'..."
+    $existingVm = Get-AzVM -Name $vmName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if ($existingVm) {
+        Write-Log "Virtual Machine '$vmName' already exists. Removing..."
+        Remove-AzVM -Name $vmName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
+        Write-Log "Virtual Machine '$vmName' removed."
+    }
     Write-Log "Creating Virtual Machine '$vmName'..."
     $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
     $cred = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
