@@ -1,4 +1,12 @@
-# =============================================================================; # Script: Create-TestDomainController.ps1; # Created: 2025-02-07 21:21:53 UTC; # Author: jdyer-nuvodia; # Last Updated: 2025-02-09 17:14:09 UTC; # Updated By: jdyer-nuvodia; # Version: 2.13; # Additional Info: Generic header template integrated as per Initialize-Prompt.txt; # =============================================================================
+# =============================================================================
+# Script: Create-TestDomainController.ps1
+# Created: 2025-02-07 21:21:53 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-09 17:32:24 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.2
+# Additional Info: Updated boot diagnostics configuration to use current Azure PowerShell methods
+# =============================================================================
 <#
 .SYNOPSIS
     Creates a test domain controller in Azure with existence checks, logging, and backup capabilities.
@@ -19,13 +27,13 @@ Set-StrictMode -Version Latest; $ErrorActionPreference = "Stop"
 if ($PSScriptRoot) { $scriptFolder = $PSScriptRoot } else { $scriptFolder = Get-Location }
 $logPattern = "Create-TestDomainController-*.log"
 $existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue)
-if ($existingLogs) { $latestLog = $existingLogs | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($latestLog) { Write-Host "Deleting previous log file: $($latestLog.FullName)"; Remove-Item $latestLog.FullName -Force } }
+if ($existingLogs) { $latestLog = $existingLogs | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($latestLog) { Write-Host "Deleting previous log file: $($latestLog.FullName)"; Remove-Item -Path $latestLog.FullName -Force } }
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
 $logFile = Join-Path $scriptFolder "Create-TestDomainController-$timestamp.log"
 Start-Transcript -Path $logFile
 $backupPattern = "Create-TestDomainController_Backup-*.ps1"
 $existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue)
-if ($existingBackups) { $latestBackup = $existingBackups | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($latestBackup) { Write-Host "Deleting previous backup file: $($latestBackup.FullName)"; Remove-Item $latestBackup.FullName -Force } }
+if ($existingBackups) { $latestBackup = $existingBackups | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ($latestBackup) { Write-Host "Deleting previous backup file: $($latestBackup.FullName)"; Remove-Item -Path $latestBackup.FullName -Force } }
 $backupTimestamp = Get-Date -Format "yyyyMMddHHmmss"
 $backupFile = Join-Path $scriptFolder "Create-TestDomainController_Backup-$backupTimestamp.ps1"
 $currentScriptPath = $MyInvocation.MyCommand.Path
@@ -34,7 +42,7 @@ if (-not $currentScriptPath) {
     $fallbackScriptPath = Join-Path $scriptFolder $expectedScriptName
     if (Test-Path $fallbackScriptPath) { $currentScriptPath = $fallbackScriptPath } else { Write-Host "ERROR: Unable to determine the current script file path."; Stop-Transcript; exit 1 }
 }
-try { Write-Host "Creating backup of the current script: $currentScriptPath"; Copy-Item -Path $currentScriptPath -Destination $backupFile -Force; Write-Host "Backup created successfully: $backupFile" } catch { Write-Host "ERROR: Failed to create backup file. $_" }
+try { Write-Host "Creating backup of the current script: $currentScriptPath"; Copy-Item -Path $currentScriptPath -Destination $backupFile -Force; Write-Host "Backup created successfully: $backupFile" } catch { Write-Host "ERROR: Failed to create script backup. $_"; Stop-Transcript; exit 1 }
 function Write-Log { param($Message); $timeStamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss"); Write-Host "[$timeStamp UTC] $Message" }
 Write-Log "Script execution started."; Write-Verbose "Verbose mode activated."
 try {
@@ -81,8 +89,8 @@ try {
     $existingNsg = Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if ($existingNsg) { Write-Log "NSG '$nsgName' already exists. Removing..."; Remove-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -Force -Confirm:$false; Write-Log "NSG '$nsgName' removed." }
     Write-Log "Creating NSG '$nsgName' with rules:"; Write-Log " - Denying inbound RDP on port 3389"; Write-Log " - Allowing inbound RDP on port 10443"
-    $denyRule = New-AzNetworkSecurityRuleConfig -Name "Deny-RDP-3389" -Protocol Tcp -Direction Inbound -Priority 900 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 3389 -Access Deny -Description "Explicitly deny RDP traffic on port 3389"
-    $allowRule = New-AzNetworkSecurityRuleConfig -Name "Allow-RDP-10443" -Protocol Tcp -Direction Inbound -Priority 1000 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 10443 -Access Allow -Description "Allow RDP traffic on port 10443"
+    $denyRule = New-AzNetworkSecurityRuleConfig -Name "Deny-RDP-3389" -Protocol Tcp -Direction Inbound -Priority 900 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 3389 -Access Deny
+    $allowRule = New-AzNetworkSecurityRuleConfig -Name "Allow-RDP-10443" -Protocol Tcp -Direction Inbound -Priority 1000 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 10443 -Access Allow
     $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName -Location $location -Name $nsgName -SecurityRules @($denyRule, $allowRule) -ErrorAction Stop
     Write-Log "NSG '$nsgName' created."
 } catch { Write-Log "ERROR: Failed to verify or create NSG. $_"; Stop-Transcript; exit 1 }
@@ -122,10 +130,12 @@ try {
     $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
     $cred = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
     $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_DS1_v2" -ErrorAction Stop |
-      Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $cred -ProvisionVMAgent -EnableAutoUpdate -ErrorAction Stop |
-      Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2019-Datacenter" -Version "latest" -ErrorAction Stop |
-      Add-AzVMNetworkInterface -Id $nic.Id -Primary -ErrorAction Stop
-    $vmConfig = Enable-AzVMBootDiagnostics -VM $vmConfig -ResourceGroupName $resourceGroupName -StorageAccountName $storageAccountName -ErrorAction Stop
+        Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $cred -ProvisionVMAgent -EnableAutoUpdate -ErrorAction Stop |
+        Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2019-Datacenter" -Version "latest" -ErrorAction Stop |
+        Add-AzVMNetworkInterface -Id $nic.Id -Primary -ErrorAction Stop
+    $vmConfig.DiagnosticsProfile.BootDiagnostics = New-Object Microsoft.Azure.Management.Compute.Models.BootDiagnostics
+    $vmConfig.DiagnosticsProfile.BootDiagnostics.Enabled = $true
+    $vmConfig.DiagnosticsProfile.BootDiagnostics.StorageUri = $storageAccount.PrimaryEndpoints.Blob
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig -ErrorAction Stop | Out-Null
     Write-Log "Virtual Machine '$vmName' created successfully."
 } catch { Write-Log "ERROR: Failed to create Virtual Machine. $_"; Stop-Transcript; exit 1 }
