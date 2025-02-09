@@ -1,10 +1,10 @@
 # =============================================================================
-# Initialize-Prompt.txt
+# Script: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:35:29 UTC
+# Last Updated: 2025-02-09 16:38:37 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.18
+# Version: 1.19
 # Purpose: Define conversation and response requirements for GitHub Copilot, 
 #         repository update requirements, generic header and comment templates,
 #         mandatory update notes on every file modification, and guidelines
@@ -18,13 +18,16 @@ REPOSITORY_REQUIREMENTS={
         "format": "markdown",
         "filename": "update-notes.txt",
         "apply_to_all_file_types": true,
+        "mandatory_for_all_responses": true,  # Added to emphasize requirement
         "include": {
             "timestamp": true,
             "author": true,
             "files_modified": true,
             "changes_made": true,
             "purpose": true,
-            "impact": true
+            "impact": true,
+            "version_update": true,  # Added to track version changes
+            "complete_script_verification": true  # Added to verify completeness
         },
         "enforcement": {
             "mandatory_in_response": true,
@@ -42,6 +45,8 @@ REPOSITORY_REQUIREMENTS={
 ## Changes Made: {changes_made}
 ## Purpose: {purpose}
 ## Impact: {impact}
+## Version Update: {version_from} → {version_to}
+## Complete Script Verification: {verification_status}
 ---
 """
         }
@@ -50,12 +55,15 @@ REPOSITORY_REQUIREMENTS={
 
 COMPLETE_SCRIPT_REQUIREMENT={
     "mandatory_rules": [
-        "ALL scripts must be provided in their COMPLETE form.",
-        "NO placeholders like '[Rest of script remains the same...]' are allowed.",
-        "NO references to external, non-included code examples.",
-        "ALL script content must be included in EVERY response.",
-        "COMPLETE means the ENTIRE script from start to finish.",
-        "Always provide repository update notes when updating any file accessed from the repositories."
+        "ALL scripts MUST be provided in their COMPLETE form with NO EXCEPTIONS.",
+        "ALWAYS include the ENTIRE script content from start to finish.",
+        "NO placeholders or partial updates are allowed under any circumstances.",
+        "ALL dependencies and included files MUST be explicitly listed.",
+        "EVERY script modification MUST include complete repository update notes.",
+        "Version numbers MUST be updated for all modified scripts.",
+        "ALL script headers MUST be updated with current timestamp and author.",
+        "COMPLETE means the script can be executed immediately without additional content.",
+        "Repository update notes are MANDATORY for EVERY script modification."
     ],
     "prohibited_patterns": [
         "Rest of script...",
@@ -64,14 +72,30 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "[...]",
         "Previous content...",
         "Existing content...",
-        "Unchanged content..."
+        "Unchanged content...",
+        "See above/below for...",
+        "Refer to previous..."
     ],
     "validation": {
         "require_complete_files": true,
         "no_partial_updates": true,
         "no_references_to_existing": true,
-        "must_be_immediately_usable": true
-    }
+        "must_be_immediately_usable": true,
+        "verify_completeness": true,
+        "check_dependencies": true,
+        "validate_headers": true,
+        "confirm_update_notes": true
+    },
+    "completeness_checklist": [
+        "Verify script has complete header",
+        "Confirm all functions are included",
+        "Check for required dependencies",
+        "Validate parameter definitions",
+        "Ensure error handling is complete",
+        "Verify logging mechanisms",
+        "Check version number update",
+        "Confirm update notes presence"
+    ]
 }
 
 SCRIPT_DELIVERY_PREFERENCES={
@@ -90,7 +114,7 @@ SCRIPT_DELIVERY_PREFERENCES={
     "code_examples": {
         "require_complete_files": true,
         "format": "markdown",
-        "instructions": "If you choose to provide code examples, they MUST always be formatted as markdown code blocks with the file name in the header.",
+        "instructions": "ALL code examples MUST be provided as complete files in markdown code blocks with the file name in the header.",
         "example": "```<language> name=<filename>\n<content>\n```"
     }
 }
@@ -100,9 +124,9 @@ CODE_EXAMPLES_REQUIREMENT={
     "format": "markdown",
     "require_complete_files": true,
     "instructions": """
-If you choose to provide code examples, they MUST always be formatted as markdown 
-code blocks with the file name in the header. Complete files should be provided 
-rather than snippets whenever possible.
+ALL code examples MUST be provided as complete files in markdown code blocks with 
+the file name in the header. Partial code snippets are NOT allowed - complete 
+files must be provided in all cases.
 """,
     "format_template": "```<language> name=<filename>\n<content>\n```"
 }
@@ -124,7 +148,7 @@ STANDARD_SCRIPT_COMMENT_TEMPLATE="""
 """
 
 CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-09 16:35:29",
+    "current_timestamp": "2025-02-09 16:38:37",
     "current_user": "jdyer-nuvodia",
     "timezone": "UTC",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss"
@@ -137,7 +161,9 @@ RESPONSE_REQUIREMENTS={
     "provide_full_scripts": true,
     "update_all_timestamps": true,
     "maintain_headers": true,
-    "include_version_history": true
+    "include_version_history": true,
+    "require_update_notes": true,  # Added to emphasize requirement
+    "verify_complete_scripts": true  # Added to ensure completeness
 }
 
 EXECUTION_CHECKLIST=[
@@ -146,7 +172,9 @@ EXECUTION_CHECKLIST=[
     "Ensure complete content delivery",
     "Validate all timestamps",
     "Verify user information",
-    "Confirm format compliance"
+    "Confirm format compliance",
+    "Verify update notes presence",  # Added
+    "Confirm script completeness"    # Added
 ]
 
 QUALITY_CONTROL={
@@ -157,7 +185,9 @@ QUALITY_CONTROL={
     "ensure_completeness": true,
     "verify_update_notes": true,
     "check_code_blocks": true,
-    "validate_response_instructions": true
+    "validate_response_instructions": true,
+    "confirm_full_script_delivery": true,  # Added
+    "validate_repository_updates": true    # Added
 }
 
 GENERIC_SCRIPT_HEADER_TEMPLATE="""
