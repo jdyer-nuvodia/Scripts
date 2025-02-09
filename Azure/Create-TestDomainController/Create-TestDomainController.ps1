@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:44:37 UTC
+# Last Updated: 2025-02-09 16:56:43 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.13
+# Version: 2.14
 # Additional Info: Generic header template integrated as per Initialize-Prompt.txt
 # =============================================================================
 
@@ -43,7 +43,7 @@ $logPattern = "Create-TestDomainController-*.log"
 $existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue)
 if ($existingLogs) {
     $existingLogs = $existingLogs | Sort-Object LastWriteTime -Descending
-    if ($existingLogs.Count -gt 0) {
+    if ($existingLogs.Length -gt 0) {
         Write-Host "Deleting previous log file: $($existingLogs[0].FullName)"
         Remove-Item $existingLogs[0].FullName -Force -ErrorAction SilentlyContinue
     }
@@ -61,7 +61,7 @@ $backupPattern = "Create-TestDomainController_Backup-*.ps1"
 $existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue)
 if ($existingBackups) {
     $existingBackups = $existingBackups | Sort-Object LastWriteTime -Descending
-    if ($existingBackups.Count -gt 0) {
+    if ($existingBackups.Length -gt 0) {
         Write-Host "Deleting previous backup file: $($existingBackups[0].FullName)"
         Remove-Item $existingBackups[0].FullName -Force -ErrorAction SilentlyContinue
     }
@@ -278,4 +278,6 @@ try {
     }
     Write-Log "Creating Virtual Machine '$vmName'..."
     $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
-    $cred = New-Object System.Management.Automation.PSCredential ($admin
+    $cred = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
+
+    $vmConfig = New-AzVMConfig
