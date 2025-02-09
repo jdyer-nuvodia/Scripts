@@ -2,9 +2,9 @@
 # Script: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:38:37 UTC
+# Last Updated: 2025-02-09 16:52:02 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.19
+# Version: 1.20
 # Purpose: Define conversation and response requirements for GitHub Copilot, 
 #         repository update requirements, generic header and comment templates,
 #         mandatory update notes on every file modification, and guidelines
@@ -63,7 +63,14 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "Version numbers MUST be updated for all modified scripts.",
         "ALL script headers MUST be updated with current timestamp and author.",
         "COMPLETE means the script can be executed immediately without additional content.",
-        "Repository update notes are MANDATORY for EVERY script modification."
+        "Repository update notes are MANDATORY for EVERY script modification.",
+        "NEVER truncate or partially update scripts - full scripts are required.",
+        "ALL script updates MUST include word count validation.",
+        "COMPLETE script verification MUST be performed before delivery.",
+        "NO references to previous content or existing content allowed.",
+        "FULL script content MUST be provided even for minor changes.",
+        "ALL responses MUST be verified for completeness before submission.",
+        "ANY truncated content MUST trigger immediate resubmission."
     ],
     "prohibited_patterns": [
         "Rest of script...",
@@ -74,7 +81,13 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "Existing content...",
         "Unchanged content...",
         "See above/below for...",
-        "Refer to previous..."
+        "Refer to previous...",
+        "[Previous content remains the same]",
+        "Until section X...",
+        "From section Y...",
+        "Content truncated...",
+        "To be continued...",
+        "Continued from above..."
     ],
     "validation": {
         "require_complete_files": true,
@@ -84,7 +97,13 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "verify_completeness": true,
         "check_dependencies": true,
         "validate_headers": true,
-        "confirm_update_notes": true
+        "confirm_update_notes": true,
+        "word_count_validation": true,
+        "verify_no_truncation": true,
+        "check_full_content": true,
+        "validate_file_size": true,
+        "confirm_complete_delivery": true,
+        "verify_response_integrity": true
     },
     "completeness_checklist": [
         "Verify script has complete header",
@@ -94,7 +113,25 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "Ensure error handling is complete",
         "Verify logging mechanisms",
         "Check version number update",
-        "Confirm update notes presence"
+        "Confirm update notes presence",
+        "Validate word count matches original",
+        "Verify no content truncation",
+        "Confirm all sections present",
+        "Check for prohibited patterns",
+        "Validate full script delivery",
+        "Verify file size consistency",
+        "Confirm response completeness"
+    ],
+    "verification_steps": [
+        "Calculate and verify total file size",
+        "Compare with original file size if updating",
+        "Check for any truncation markers",
+        "Validate all code blocks are complete",
+        "Ensure no prohibited patterns exist",
+        "Verify all sections are present",
+        "Confirm proper formatting throughout",
+        "Check for complete error handling",
+        "Validate all function definitions"
     ]
 }
 
@@ -148,7 +185,7 @@ STANDARD_SCRIPT_COMMENT_TEMPLATE="""
 """
 
 CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-09 16:38:37",
+    "current_timestamp": "2025-02-09 16:52:02",
     "current_user": "jdyer-nuvodia",
     "timezone": "UTC",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss"
@@ -162,8 +199,11 @@ RESPONSE_REQUIREMENTS={
     "update_all_timestamps": true,
     "maintain_headers": true,
     "include_version_history": true,
-    "require_update_notes": true,  # Added to emphasize requirement
-    "verify_complete_scripts": true  # Added to ensure completeness
+    "require_update_notes": true,
+    "verify_complete_scripts": true,
+    "validate_response_size": true,
+    "confirm_full_delivery": true,
+    "check_content_integrity": true
 }
 
 EXECUTION_CHECKLIST=[
@@ -173,8 +213,11 @@ EXECUTION_CHECKLIST=[
     "Validate all timestamps",
     "Verify user information",
     "Confirm format compliance",
-    "Verify update notes presence",  # Added
-    "Confirm script completeness"    # Added
+    "Verify update notes presence",
+    "Confirm script completeness",
+    "Validate response integrity",
+    "Check for truncation",
+    "Verify file completeness"
 ]
 
 QUALITY_CONTROL={
@@ -186,8 +229,10 @@ QUALITY_CONTROL={
     "verify_update_notes": true,
     "check_code_blocks": true,
     "validate_response_instructions": true,
-    "confirm_full_script_delivery": true,  # Added
-    "validate_repository_updates": true    # Added
+    "confirm_full_script_delivery": true,
+    "validate_repository_updates": true,
+    "verify_response_integrity": true,
+    "check_content_completeness": true
 }
 
 GENERIC_SCRIPT_HEADER_TEMPLATE="""
