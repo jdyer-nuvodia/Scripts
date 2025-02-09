@@ -2,11 +2,12 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 15:48:59 UTC
+# Last Updated: 2025-02-09 15:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.6
+# Version: 2.7
 # Purpose: Creates a test domain controller in Azure with existence checks,
-#          error handling, logging, and overwrites existing resources automatically.
+#          error handling, logging, NSG creation with an RDP rule on port 10443,
+#          and overwrites existing resources automatically.
 # =============================================================================
 
 [CmdletBinding()]
@@ -97,6 +98,26 @@ try {
     exit 1
 }
 
+# 1.2. Check and remove existing Network Security Group (NSG), then create new one with an RDP rule on port 10443
+try {
+    Write-Log "Checking for Network Security Group '$nsgName'..."
+    $existingNsg = Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if ($existingNsg) {
+        Write-Log "NSG '$nsgName' already exists. Removing..."
+        Remove-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
+        Write-Log "NSG '$nsgName' removed."
+    }
+    Write-Log "Creating NSG '$nsgName' with an inbound rule to allow RDP on port 10443..."
+    $nsgRule = New-AzNetworkSecurityRuleConfig -Name "Allow-RDP-10443" -Protocol Tcp -Direction Inbound -Priority 1000 `
+                 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 10443 `
+                 -Access Allow -Description "Allow RDP traffic on port 10443"
+    $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName -Location $location -Name $nsgName -SecurityRules $nsgRule -ErrorAction Stop
+    Write-Log "NSG '$nsgName' created."
+} catch {
+    Write-Log "ERROR: Failed to verify or create NSG. $_"
+    exit 1
+}
+
 # 2. Check and remove existing Public IP, then create new one
 try {
     Write-Log "Checking for Public IP '$publicIpName'..."
@@ -132,7 +153,7 @@ try {
     exit 1
 }
 
-# 4. Check and remove existing Network Interface, then create new one
+# 4. Check and remove existing Network Interface, then create new one; associate it with the NSG
 try {
     $nicName = "$vmName-NIC"
     Write-Log "Checking for Network Interface '$nicName'..."
@@ -142,12 +163,13 @@ try {
         Remove-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
         Write-Log "Network Interface '$nicName' removed."
     }
-    Write-Log "Creating Network Interface for VM '$vmName'..."
+    Write-Log "Creating Network Interface for VM '$vmName' and associating NSG '$nsgName'..."
     $subnet = $vnet.Subnets | Where-Object { $_.Name -eq $subnetName }
     if (-not $subnet) {
         throw "Subnet '$subnetName' could not be found in Virtual Network '$vnetName'."
     }
-    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -ErrorAction Stop
+    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Location $location `
+           -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -NetworkSecurityGroupId $nsg.Id -ErrorAction Stop
     Write-Log "Network Interface for VM '$vmName' created."
 } catch {
     Write-Log "ERROR: Failed to create Network Interface. $_"
