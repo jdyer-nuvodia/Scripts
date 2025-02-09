@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:08:07 UTC
+# Last Updated: 2025-02-09 16:44:37 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.12
+# Version: 2.13
 # Additional Info: Generic header template integrated as per Initialize-Prompt.txt
 # =============================================================================
 
@@ -40,10 +40,13 @@ if ($PSScriptRoot) {
 
 # Delete previous transcript log file if it exists.
 $logPattern = "Create-TestDomainController-*.log"
-$existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue) | Sort-Object LastWriteTime -Descending
-if ($existingLogs -and $existingLogs.Count -gt 0) {
-    Write-Host "Deleting previous log file: $($existingLogs[0].FullName)"
-    Remove-Item $existingLogs[0].FullName -Force
+$existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue)
+if ($existingLogs) {
+    $existingLogs = $existingLogs | Sort-Object LastWriteTime -Descending
+    if ($existingLogs.Count -gt 0) {
+        Write-Host "Deleting previous log file: $($existingLogs[0].FullName)"
+        Remove-Item $existingLogs[0].FullName -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # Create a new transcript log file with a timestamp.
@@ -55,11 +58,15 @@ Start-Transcript -Path $logFile
 # Backup mechanism: Delete previous backup and create a new backup of this script.
 # ---------------------------------------------------------------------------
 $backupPattern = "Create-TestDomainController_Backup-*.ps1"
-$existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue) | Sort-Object LastWriteTime -Descending
-if ($existingBackups -and $existingBackups.Count -gt 0) {
-    Write-Host "Deleting previous backup file: $($existingBackups[0].FullName)"
-    Remove-Item $existingBackups[0].FullName -Force
+$existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue)
+if ($existingBackups) {
+    $existingBackups = $existingBackups | Sort-Object LastWriteTime -Descending
+    if ($existingBackups.Count -gt 0) {
+        Write-Host "Deleting previous backup file: $($existingBackups[0].FullName)"
+        Remove-Item $existingBackups[0].FullName -Force -ErrorAction SilentlyContinue
+    }
 }
+
 $backupTimestamp = Get-Date -Format "yyyyMMddHHmmss"
 $backupFile = Join-Path $scriptFolder "Create-TestDomainController_Backup-$backupTimestamp.ps1"
 
@@ -271,25 +278,4 @@ try {
     }
     Write-Log "Creating Virtual Machine '$vmName'..."
     $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
-    $cred = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
-    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_DS1_v2" -ErrorAction Stop |
-      Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $cred -ProvisionVMAgent -EnableAutoUpdate -ErrorAction Stop |
-      Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2019-Datacenter" -Version "latest" -ErrorAction Stop |
-      Add-AzVMNetworkInterface -Id $nic.Id -Primary -ErrorAction Stop
-
-    # Configure boot diagnostics using the specified storage account.
-    $vmConfig = Enable-AzVMBootDiagnostics -VM $vmConfig -ResourceGroupName $resourceGroupName -StorageAccountName $storageAccountName -ErrorAction Stop
-
-    New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig -ErrorAction Stop | Out-Null
-    Write-Log "Virtual Machine '$vmName' created successfully."
-} catch {
-    Write-Log "ERROR: Failed to create Virtual Machine. $_"
-    Stop-Transcript
-    exit 1
-}
-
-Write-Log "Script execution completed successfully."
-
-# Stop transcript logging.
-Stop-Transcript
-Stop
+    $cred = New-Object System.Management.Automation.PSCredential ($admin
