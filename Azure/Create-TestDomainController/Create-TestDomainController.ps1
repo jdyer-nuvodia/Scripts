@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:10:15 UTC
+# Last Updated: 2025-02-09 16:08:07 UTC
 # Updated By: jdyer-nuvodia
 # Version: 2.12
-# Additional Info: Creates a test domain controller in Azure with robust logging and backup functionality.
+# Additional Info: Generic header template integrated as per Initialize-Prompt.txt
 # =============================================================================
 
 <#
@@ -23,6 +23,7 @@
     .\Create-TestDomainController.ps1
     This command runs the script to provision a test domain controller in Azure.
 #>
+
 
 [CmdletBinding()]
 Param()
@@ -111,17 +112,17 @@ try {
 }
 
 # Script Parameters (defaults can be parameterized as needed)
-$resourceGroupName  = "JB-TEST-RG2"
-$location           = "westus2"
-$storageAccountName = "jbteststorage0"
-$vnetName           = "JB-TEST-VNET"
-$subnetName         = "JB-TEST-SUBNET1"
-$vmName             = "JB-TEST-DC01"
-$adminUsername      = "jbadmin"
-$adminPassword      = "TS=pGxB~8m^A~WH^[yB8"
-$domainName         = "JB-TEST.local"
-$publicIpName       = "$vmName-PUBIP"
-$nsgName            = "JB-TEST-NSG"
+$resourceGroupName    = "JB-TEST-RG2"
+$location             = "westus2"
+$storageAccountName   = "jbteststorage0"
+$vnetName             = "JB-TEST-VNET"
+$subnetName           = "JB-TEST-SUBNET1"
+$vmName               = "JB-TEST-DC01"
+$adminUsername        = "jbadmin"
+$adminPassword        = "TS=pGxB~8m^A~WH^[yB8"
+$domainName           = "JB-TEST.local"
+$publicIpName         = "$vmName-PUBIP"
+$nsgName              = "JB-TEST-NSG"
 
 # Function: Test if a Resource Group exists.
 function Test-ResourceGroupExists {
