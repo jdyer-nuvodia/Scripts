@@ -2,13 +2,27 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:20:00 UTC
+# Last Updated: 2025-02-09 17:14:09 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.10
-# Purpose: Creates a test domain controller in Azure with existence checks,
-#          error handling, NSG creation with an RDP rule on port 10443 and an explicit deny on port 3389,
-#          overwrites existing resources automatically, logs execution via transcript, and backs up the current script.
+# Version: 2.13
+# Additional Info: Generic header template integrated as per Initialize-Prompt.txt
 # =============================================================================
+
+<#
+.SYNOPSIS
+    Creates a test domain controller in Azure with existence checks, logging, and backup capabilities.
+.DESCRIPTION
+    This script provisions a test domain controller in Azure and performs the following actions:
+    - Checks and creates the required Azure Resource Group.
+    - Removes any existing conflicting resources (Storage Account, NSG, Public IP, Virtual Network, NIC, Virtual Machine) before re-creation.
+    - Configures boot diagnostics and a backup mechanism.
+    - Logs execution details via PowerShell transcript.
+.PARAMETER None
+    This script does not require parameters by default; parameters can be added as needed.
+.EXAMPLE
+    .\Create-TestDomainController.ps1
+    This command runs the script to provision a test domain controller in Azure.
+#>
 
 [CmdletBinding()]
 Param()
@@ -26,10 +40,13 @@ if ($PSScriptRoot) {
 
 # Delete previous transcript log file if it exists.
 $logPattern = "Create-TestDomainController-*.log"
-$existingLogs = Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
-if ($existingLogs -and $existingLogs.Count -gt 0) {
-    Write-Host "Deleting previous log file: $($existingLogs[0].FullName)"
-    Remove-Item $existingLogs[0].FullName -Force
+$existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue)
+if ($existingLogs) {
+    $latestLog = $existingLogs | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($latestLog) {
+        Write-Host "Deleting previous log file: $($latestLog.FullName)"
+        Remove-Item $latestLog.FullName -Force
+    }
 }
 
 # Create a new transcript log file with a timestamp.
@@ -41,18 +58,31 @@ Start-Transcript -Path $logFile
 # Backup mechanism: Delete previous backup and create a new backup of this script.
 # ---------------------------------------------------------------------------
 $backupPattern = "Create-TestDomainController_Backup-*.ps1"
-$existingBackups = Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
-if ($existingBackups -and $existingBackups.Count -gt 0) {
-    Write-Host "Deleting previous backup file: $($existingBackups[0].FullName)"
-    Remove-Item $existingBackups[0].FullName -Force
+$existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue)
+if ($existingBackups) {
+    $latestBackup = $existingBackups | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($latestBackup) {
+        Write-Host "Deleting previous backup file: $($latestBackup.FullName)"
+        Remove-Item $latestBackup.FullName -Force
+    }
 }
 $backupTimestamp = Get-Date -Format "yyyyMMddHHmmss"
 $backupFile = Join-Path $scriptFolder "Create-TestDomainController_Backup-$backupTimestamp.ps1"
+
+# Determine the current script file path using a fallback mechanism.
 $currentScriptPath = $MyInvocation.MyCommand.Path
 if (-not $currentScriptPath) {
-    Write-Host "ERROR: Unable to determine the current script file path."
-    Stop-Transcript
-    exit 1
+    # Fallback: Assume the script filename is "Create-TestDomainController.ps1" in the script folder.
+    $expectedScriptName = "Create-TestDomainController.ps1"
+    $fallbackScriptPath = Join-Path $scriptFolder $expectedScriptName
+    if (Test-Path $fallbackScriptPath) {
+        $currentScriptPath = $fallbackScriptPath
+    }
+    else {
+        Write-Host "ERROR: Unable to determine the current script file path."
+        Stop-Transcript
+        exit 1
+    }
 }
 try {
     Write-Host "Creating backup of the current script: $currentScriptPath"
@@ -88,16 +118,16 @@ try {
 
 # Script Parameters (defaults can be parameterized as needed)
 $resourceGroupName    = "JB-TEST-RG2"
-$location             = "westus2"
-$storageAccountName   = "jbteststorage0"
-$vnetName             = "JB-TEST-VNET"
-$subnetName           = "JB-TEST-SUBNET1"
-$vmName               = "JB-TEST-DC01"
-$adminUsername        = "jbadmin"
-$adminPassword        = "TS=pGxB~8m^A~WH^[yB8"
-$domainName           = "JB-TEST.local"
-$publicIpName         = "$vmName-PUBIP"
-$nsgName              = "JB-TEST-NSG"
+$location            = "westus2"
+$storageAccountName  = "jbteststorage0"
+$vnetName            = "JB-TEST-VNET"
+$subnetName          = "JB-TEST-SUBNET1"
+$vmName              = "JB-TEST-DC01"
+$adminUsername       = "jbadmin"
+$adminPassword       = "TS=pGxB~8m^A~WH^[yB8"
+$domainName          = "JB-TEST.local"
+$publicIpName        = "$vmName-PUBIP"
+$nsgName             = "JB-TEST-NSG"
 
 # Function: Test if a Resource Group exists.
 function Test-ResourceGroupExists {
@@ -268,4 +298,3 @@ Write-Log "Script execution completed successfully."
 
 # Stop transcript logging.
 Stop-Transcript
-Stop
