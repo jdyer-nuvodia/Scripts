@@ -2,9 +2,9 @@
 # Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:05:39 UTC
+# Last Updated: 2025-02-09 16:12:02 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11
+# Version: 1.13
 # Purpose: Define conversation and response requirements for GitHub Copilot, repository update requirements,
 #          and a generic header template to be used in all scripts going forward.
 # =============================================================================
@@ -15,6 +15,7 @@ REPOSITORY_REQUIREMENTS={
         "required": true,
         "format": "markdown",
         "filename": "update-notes.txt",
+        "apply_to_all_file_types": true,
         "include": {
             "timestamp": true,
             "author": true,
@@ -76,7 +77,7 @@ COMPLETE_SCRIPT_REQUIREMENT={
         "NO references to existing content without including it",
         "ALL script content must be included in EVERY response",
         "COMPLETE means the ENTIRE script from start to finish",
-        "Always provide repository update notes when updating any file accessed from the repositories"
+        "Always provide repository update notes when updating any file accessed from the repositories, including .txt files"
     ],
     "prohibited_patterns": [
         "Rest of script...",
@@ -133,7 +134,8 @@ SCRIPT_DELIVERY_PREFERENCES={
         "include_author": true,
         "include_version": true,
         "include_purpose": true,
-        "include_change_log": true
+        "include_change_log": true,
+        "always_use_generic_header": true
     },
     
     # Code Block Requirements
@@ -141,12 +143,13 @@ SCRIPT_DELIVERY_PREFERENCES={
         "always_use": true,
         "include_filename": true,
         "specify_language": true,
-        "maintain_formatting": true
+        "maintain_formatting": true,
+        "force_markdown_code_blocks": true  // Always format code examples in markdown code blocks with the file name.
     }
 }
 
 CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-09 16:05:39",
+    "current_timestamp": "2025-02-09 16:12:02",
     "current_user": "jdyer-nuvodia",
     "timezone": "UTC",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss"
@@ -169,14 +172,14 @@ RESPONSE_REQUIREMENTS={
     "include_creation_date": true,
     "track_modifications": true,
     
-    # Header Template
+    # Header Template: This generic header template must be included at the top of every script.
     "header_format": """
 # =============================================================================
 # Script: {scriptname}
 # Created: {creation_date} UTC
 # Author: {author}
-# Last Updated: {current_timestamp} UTC
-# Updated By: {current_user}
+# Last Updated: {last_updated} UTC
+# Updated By: {updated_by}
 # Version: {version}
 # Additional Info: {additional_info}
 # =============================================================================
@@ -233,8 +236,15 @@ QUALITY_CONTROL={
 # GENERIC SCRIPT HEADER TEMPLATE
 #
 # This generic template is to be used in all scripts going forward.
-# It provides a standardized header for scripts, ensuring consistency and
-# traceability across the repository.
+# It provides a standardized header for scripts, ensuring consistency,
+# traceability, and adherence to documentation standards.
+#
+# Whenever providing code examples, always format the examples as markdown code blocks.
+# Complete files should be provided using code blocks like:
+#
+#     ```<language> name=<filename>
+#     // File contents here.
+#     ```
 #
 # Example Header:
 #
@@ -248,7 +258,7 @@ QUALITY_CONTROL={
 # Additional Info: <Additional_Information>
 # =============================================================================
 #
-# Replace the placeholder tokens with the appropriate values for your script.
+# Replace the placeholder tokens with appropriate values for your script.
 # -----------------------------------------------------------------------------
 
 GENERIC_SCRIPT_HEADER_TEMPLATE="""
