@@ -2,12 +2,12 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:10:00 UTC
+# Last Updated: 2025-02-09 16:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.9
+# Version: 2.10
 # Purpose: Creates a test domain controller in Azure with existence checks,
 #          error handling, NSG creation with an RDP rule on port 10443 and an explicit deny on port 3389,
-#          overwrites existing resources automatically, and logs execution via transcript.
+#          overwrites existing resources automatically, logs execution via transcript, and backs up the current script.
 # =============================================================================
 
 [CmdletBinding()]
@@ -24,7 +24,7 @@ if ($PSScriptRoot) {
     $scriptFolder = Get-Location
 }
 
-# Delete previous log file if it exists.
+# Delete previous transcript log file if it exists.
 $logPattern = "Create-TestDomainController-*.log"
 $existingLogs = Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
 if ($existingLogs -and $existingLogs.Count -gt 0) {
@@ -36,6 +36,31 @@ if ($existingLogs -and $existingLogs.Count -gt 0) {
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
 $logFile = Join-Path $scriptFolder "Create-TestDomainController-$timestamp.log"
 Start-Transcript -Path $logFile
+
+# ---------------------------------------------------------------------------
+# Backup mechanism: Delete previous backup and create a new backup of this script.
+# ---------------------------------------------------------------------------
+$backupPattern = "Create-TestDomainController_Backup-*.ps1"
+$existingBackups = Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+if ($existingBackups -and $existingBackups.Count -gt 0) {
+    Write-Host "Deleting previous backup file: $($existingBackups[0].FullName)"
+    Remove-Item $existingBackups[0].FullName -Force
+}
+$backupTimestamp = Get-Date -Format "yyyyMMddHHmmss"
+$backupFile = Join-Path $scriptFolder "Create-TestDomainController_Backup-$backupTimestamp.ps1"
+$currentScriptPath = $MyInvocation.MyCommand.Path
+if (-not $currentScriptPath) {
+    Write-Host "ERROR: Unable to determine the current script file path."
+    Stop-Transcript
+    exit 1
+}
+try {
+    Write-Host "Creating backup of the current script: $currentScriptPath"
+    Copy-Item -Path $currentScriptPath -Destination $backupFile -Force
+    Write-Host "Backup created successfully: $backupFile"
+} catch {
+    Write-Host "ERROR: Failed to create backup file. $_"
+}
 
 # Function to write timestamped log messages.
 function Write-Log {
