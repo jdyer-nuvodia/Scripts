@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:20:00 UTC
+# Last Updated: 2025-02-09 16:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.10
+# Version: 2.11
 # Purpose: Creates a test domain controller in Azure with existence checks,
 #          error handling, NSG creation with an RDP rule on port 10443 and an explicit deny on port 3389,
 #          overwrites existing resources automatically, logs execution via transcript, and backs up the current script.
@@ -48,11 +48,21 @@ if ($existingBackups -and $existingBackups.Count -gt 0) {
 }
 $backupTimestamp = Get-Date -Format "yyyyMMddHHmmss"
 $backupFile = Join-Path $scriptFolder "Create-TestDomainController_Backup-$backupTimestamp.ps1"
+
+# Determine the current script file path using a fallback mechanism.
 $currentScriptPath = $MyInvocation.MyCommand.Path
 if (-not $currentScriptPath) {
-    Write-Host "ERROR: Unable to determine the current script file path."
-    Stop-Transcript
-    exit 1
+    # Fallback: Assume the script filename is "Create-TestDomainController.ps1" in the script folder.
+    $expectedScriptName = "Create-TestDomainController.ps1"
+    $fallbackScriptPath = Join-Path $scriptFolder $expectedScriptName
+    if (Test-Path $fallbackScriptPath) {
+        $currentScriptPath = $fallbackScriptPath
+    }
+    else {
+        Write-Host "ERROR: Unable to determine the current script file path."
+        Stop-Transcript
+        exit 1
+    }
 }
 try {
     Write-Host "Creating backup of the current script: $currentScriptPath"
