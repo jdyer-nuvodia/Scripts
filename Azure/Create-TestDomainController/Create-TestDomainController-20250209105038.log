@@ -1538,3 +1538,15 @@ VERBOSE: Azure modules imported successfully.
 PS>TerminatingError(): "The pipeline has been stopped."
 >> TerminatingError(): "The pipeline has been stopped."
 >> TerminatingError(): "The pipeline has been stopped."
+PS C:\Users\jdyer> Create-TestDomainController.ps1 -verbose
+ParserError: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Create-TestDomainController.ps1:282
+Line |
+ 282 |  } catch {
+     |   ~
+     | Catch block must be the last catch block.
+ParserError: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Create-TestDomainController.ps1:282
+Line |
+ 282 |  } catch {
+     |   ~
+     | Catch block must be the last catch block.
+
