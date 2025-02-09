@@ -203,7 +203,30 @@ RESPONSE_REQUIREMENTS={
     "verify_complete_scripts": true,
     "validate_response_size": true,
     "confirm_full_delivery": true,
-    "check_content_integrity": true
+    "check_content_integrity": true,
+    "code_block_requirements": {
+        "max_lines_per_block": 200,
+        "separation_rules": [
+            "Separate at logical break points (function ends, major sections)",
+            "Include clear block numbers and total block count",
+            "Ensure blocks can be easily concatenated",
+            "Mark continuation points clearly"
+        ],
+        "block_header_template": """
+        ### Code Block {block_number} of {total_blocks}
+        Continuation from: {previous_block_end}
+        Continues at: {next_block_start}
+        """
+    },
+    "datetime_format": {
+        "format": "YYYY-MM-DD HH:MM:SS",
+        "timezone": "UTC",
+        "example": "2025-02-09 17:10:23"
+    },
+    "user_identification": {
+        "format": "{username}",
+        "example": "jdyer-nuvodia"
+    }
 }
 
 EXECUTION_CHECKLIST=[
