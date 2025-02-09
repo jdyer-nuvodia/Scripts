@@ -8,6 +8,16 @@
 # Additional Info: This file contains templates for script headers and update notes.
 # =============================================================================
 
+<# 
+Prompt to engae the AI: 
+
+Before answering my question, please systematically analyze the Initialize-Prompt.txt 
+file in the repository jdyer-nuvodia/Scripts for instructions and please use that 
+repository to find all future files in this conversation. Please adhere to the rules 
+in Initilize-Prompt.txt strictly throughout our interactions.
+
+#>
+
 # -----------------------------------------------------------------------------
 # SCRIPT HEADER TEMPLATE
 # -----------------------------------------------------------------------------
