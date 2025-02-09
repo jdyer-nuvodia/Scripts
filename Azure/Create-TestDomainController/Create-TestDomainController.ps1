@@ -24,7 +24,6 @@
     This command runs the script to provision a test domain controller in Azure.
 #>
 
-
 [CmdletBinding()]
 Param()
 
@@ -41,7 +40,7 @@ if ($PSScriptRoot) {
 
 # Delete previous transcript log file if it exists.
 $logPattern = "Create-TestDomainController-*.log"
-$existingLogs = Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+$existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue) | Sort-Object LastWriteTime -Descending
 if ($existingLogs -and $existingLogs.Count -gt 0) {
     Write-Host "Deleting previous log file: $($existingLogs[0].FullName)"
     Remove-Item $existingLogs[0].FullName -Force
@@ -56,7 +55,7 @@ Start-Transcript -Path $logFile
 # Backup mechanism: Delete previous backup and create a new backup of this script.
 # ---------------------------------------------------------------------------
 $backupPattern = "Create-TestDomainController_Backup-*.ps1"
-$existingBackups = Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+$existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue) | Sort-Object LastWriteTime -Descending
 if ($existingBackups -and $existingBackups.Count -gt 0) {
     Write-Host "Deleting previous backup file: $($existingBackups[0].FullName)"
     Remove-Item $existingBackups[0].FullName -Force

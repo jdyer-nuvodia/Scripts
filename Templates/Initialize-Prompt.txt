@@ -1,14 +1,78 @@
 # =============================================================================
 # Initialize-Prompt.txt - Minified
-# Created: 2025-02-07 21:21:53 UTC | Author: jdyer-nuvodia | Last Updated: 2025-02-09 16:17:50 UTC | Version: 1.16
+# Created: 2025-02-07 21:21:53 UTC | Author: jdyer-nuvodia | Last Updated: 2025-02-09 16:26:35 UTC | Version: 1.17
 # =============================================================================
-REPOSITORY_REQUIREMENTS={"update_notes":{"required":true,"format":"markdown","filename":"update-notes.txt","apply_to_all_file_types":true,"include":{"timestamp":true,"author":true,"files_modified":true,"changes_made":true,"purpose":true,"impact":true},"enforcement":{"mandatory_in_response":true,"placement":"before_script_content","format_requirements":{"use_code_block":true,"block_format":"txt","syntax":"```txt name=update-notes.txt\n{content}\n```"},"template":"\n# Repository Update Notes\n## Timestamp: {timestamp}\n## Author: {author}\n## Files Modified: {files_modified}\n## Changes Made: {changes_made}\n## Purpose: {purpose}\n## Impact: {impact}\n---\n"}},"script_format":{"prefer_minified":true,"maintain_readability":true,"include_comments":true,"code_block_required":true,"code_block_format":"```{language} name={filename}\n{content}\n```","text_file_requirements":{"include_full_content":true,"no_content_placeholders":true,"maintain_line_endings":true}},"documentation":{"header_required":true,"section_comments":true,"version_tracking":true,"changelog":true,"complete_file_history":true}}
-,COMPLETE_SCRIPT_REQUIREMENT={"mandatory_rules":["ALL scripts must be provided in their COMPLETE form.","NO placeholders like '[Rest of script remains the same...]' are allowed.","NO references to existing content without including it.","ALL script content must be included in EVERY response.","COMPLETE means the ENTIRE script from start to finish.","Always provide repository update notes when updating any file accessed from the repositories, including .txt files."],"prohibited_patterns":["Rest of script...","Content remains the same...","Script continues as before...","[...]","Previous content...","Existing content...","Unchanged content..."],"examples_of_unacceptable_responses":["// Rest of the script remains unchanged","/* Previous content stays the same */","[... existing content ...]","// Script continues with original content","# Maintain previous script sections","Rest of the script continues...","Additional resource creation logic would follow here..."],"validation":{"require_complete_files":true,"no_partial_updates":true,"no_references_to_existing":true,"must_be_immediately_usable":true}}
-,SCRIPT_DELIVERY_PREFERENCES={"format":"minified","maintain_readability":true,"include_section_comments":true,"minification":{"remove_extra_whitespace":true,"shorten_variable_names":true,"combine_compatible_operations":true,"preserve_critical_logging":true,"maintain_error_handling":true},"comments":{"script_purpose":true,"section_descriptions":true,"function_explanations":true,"complex_logic_notes":true},"header":{"include_timestamp":true,"include_author":true,"include_version":true,"include_purpose":true,"include_change_log":true,"always_use_generic_header":true},"code_blocks":{"always_use":true,"include_filename":true,"specify_language":true,"maintain_formatting":true,"force_markdown_code_blocks":true}}
-,STANDARD_SCRIPT_COMMENT_TEMPLATE="<#\n.SYNOPSIS\n    Remediates a compromised Office 365 account by performing security-related actions.\n.DESCRIPTION\n    This script performs a comprehensive set of actions to secure a compromised Office 365 account:\n    - Resets password and enforces complexity\n    - Revokes all active sign-in sessions\n    - Removes mailbox delegates\n    - Removes external mail forwarding rules\n    - Removes recent inbox rules\n    - Removes global mailbox forwarding\n    - Enables MFA (if client uses it)\n    - Generates audit logs\n.PARAMETER UserPrincipalName\n    The email address (UPN) of the compromised account to remediate.\n.PARAMETER TranscriptPath\n    Optional. The path where the transcript log will be saved. Defaults to current directory.\n.EXAMPLE\n    .\\remediate-365account.ps1 -UserPrincipalName \"user@domain.com\"\n#>"
-,CONTEXT_VARIABLES={"current_timestamp":"2025-02-09 16:17:50","current_user":"jdyer-nuvodia","timezone":"UTC","timestamp_format":"yyyy-MM-dd HH:mm:ss"}
-,RESPONSE_REQUIREMENTS={"always_complete":true,"no_truncation":true,"verify_size_first":true,"provide_full_scripts":true,"update_all_timestamps":true,"maintain_headers":true,"include_version_history":true,"use_consistent_format":true,"include_creation_date":true,"track_modifications":true,"header_format":"\n# =============================================================================\n# Script: {scriptname}\n# Created: {creation_date} UTC\n# Author: {author}\n# Last Updated: {last_updated} UTC\n# Updated By: {updated_by}\n# Version: {version}\n# Additional Info: {additional_info}\n# =============================================================================\n","start_with_context":true,"end_with_verification":true,"provide_clear_errors":true,"include_troubleshooting":true,"detailed_comments":true,"explain_complex_logic":true,"reference_dependencies":true,"complete_file_contents":true,"no_content_placeholders":true,"preserve_formatting":true}
-,EXECUTION_CHECKLIST=["Verify current context (timestamp, user)","Check total response size","Ensure complete content delivery","Validate all timestamps","Verify user information","Confirm formatting standards","Check header completeness","Validate version information","Confirm update notes are included","Verify update notes format","Check code block formatting","Verify complete file contents","Confirm no placeholder text exists","Validate script completeness"]
-,QUALITY_CONTROL={"verify_syntax":true,"check_formatting":true,"validate_timestamps":true,"confirm_headers":true,"ensure_completeness":true,"verify_update_notes":true,"check_code_blocks":true,"validate_file_contents":true}
-,GENERIC_SCRIPT_HEADER_TEMPLATE="\n# =============================================================================\n# Script: {scriptname}\n# Created: {creation_date} UTC\n# Author: {author}\n# Last Updated: {last_updated} UTC\n# Updated By: {updated_by}\n# Version: {version}\n# Additional Info: {additional_info}\n# =============================================================================\n"
+{
+    "REPOSITORY_REQUIREMENTS": {
+        "update_notes": {
+            "required": true,
+            "format": "markdown",
+            "filename": "update-notes.txt",
+            "apply_to_all_file_types": true,
+            "include": {
+                "timestamp": true,
+                "author": true,
+                "files_modified": ["..."]
+            }
+        }
+    },
+    "COMPLETE_SCRIPT_REQUIREMENT": {
+        "mandatory_rules": [
+            "ALL scripts must be provided in their COMPLETE form.",
+            "NO placeholders like '[Rest of script remains the same...]' are allowed.",
+            "NO references to external, non-included code examples."
+        ]
+    },
+    "SCRIPT_DELIVERY_PREFERENCES": {
+        "format": "minified",
+        "maintain_readability": true,
+        "include_section_comments": true,
+        "minification": {
+            "remove_extra_whitespace": true,
+            "shorten_variable_names": true,
+            "combine_consecutive_declarations": true
+        }
+    },
+    "CODE_EXAMPLES_REQUIREMENT": {
+        "mandatory": true,
+        "format": "markdown",
+        "require_complete_files": true,
+        "instructions": "If you choose to provide code examples, they MUST always be formatted as markdown code blocks with the file name in the header. Complete files should be provided rather than code snippets."
+    },
+    "STANDARD_SCRIPT_COMMENT_TEMPLATE": "<#\n.SYNOPSIS\n    Remediates a compromised Office 365 account by performing security-related actions.\n.DESCRIPTION\n    This script performs a comprehensive set of actions to secure an Office 365 account including, but not limited to: verifying user identity, resetting credentials, and scanning for anomalies.\n#>",
+    "CONTEXT_VARIABLES": {
+        "current_timestamp": "2025-02-09 16:26:35",
+        "current_user": "jdyer-nuvodia",
+        "timezone": "UTC",
+        "timestamp_format": "yyyy-MM-dd HH:mm:ss"
+    },
+    "RESPONSE_REQUIREMENTS": {
+        "always_complete": true,
+        "no_truncation": true,
+        "verify_size_first": true,
+        "provide_full_scripts": true,
+        "update_all_timestamps": true,
+        "maintain_headers": true,
+        "include_version_history": true
+    },
+    "EXECUTION_CHECKLIST": [
+        "Verify current context (timestamp, user)",
+        "Check total response size",
+        "Ensure complete content delivery",
+        "Validate all timestamps",
+        "Verify user information",
+        "Confirm format compliance"
+    ],
+    "QUALITY_CONTROL": {
+        "verify_syntax": true,
+        "check_formatting": true,
+        "validate_timestamps": true,
+        "confirm_headers": true,
+        "ensure_completeness": true,
+        "verify_update_notes": true,
+        "check_code_blocks": true,
+        "validate_response_instructions": true
+    },
+    "GENERIC_SCRIPT_HEADER_TEMPLATE": "\n# =============================================================================\n# Script: {scriptname}\n# Created: {creation_date} UTC\n# Author: {author}\n# Last Updated: {last_updated}\n# Version: {version}\n# ============================================================================="
+}
 # END OF INITIALIZE-PROMPT
