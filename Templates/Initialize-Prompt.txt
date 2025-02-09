@@ -1,273 +1,61 @@
 # =============================================================================
-# Script: Initialize-Prompt.txt
+# File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:52:02 UTC
+# Last Updated: 2025-02-09 17:22:33 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.20
-# Purpose: Define conversation and response requirements for GitHub Copilot, 
-#         repository update requirements, generic header and comment templates,
-#         mandatory update notes on every file modification, and guidelines
-#         for script delivery to be used in all scripts.
+# Version: 1.1
+# Additional Info: This file contains templates for script headers and update notes.
 # =============================================================================
 
-REPOSITORY_REQUIREMENTS={
-    # Repository Update Documentation
-    "update_notes": {
-        "required": true,
-        "format": "markdown",
-        "filename": "update-notes.txt",
-        "apply_to_all_file_types": true,
-        "mandatory_for_all_responses": true,  # Added to emphasize requirement
-        "include": {
-            "timestamp": true,
-            "author": true,
-            "files_modified": true,
-            "changes_made": true,
-            "purpose": true,
-            "impact": true,
-            "version_update": true,  # Added to track version changes
-            "complete_script_verification": true  # Added to verify completeness
-        },
-        "enforcement": {
-            "mandatory_in_response": true,
-            "placement": "before_script_content",
-            "format_requirements": {
-                "use_code_block": true,
-                "block_format": "txt",
-                "syntax": "```txt name=update-notes.txt\n{content}\n```"
-            },
-            "template": """
-# Repository Update Notes
-## Timestamp: {timestamp}
-## Author: {author}
-## Files Modified: {files_modified}
-## Changes Made: {changes_made}
-## Purpose: {purpose}
-## Impact: {impact}
-## Version Update: {version_from} → {version_to}
-## Complete Script Verification: {verification_status}
----
-"""
-        }
-    }
-}
-
-COMPLETE_SCRIPT_REQUIREMENT={
-    "mandatory_rules": [
-        "ALL scripts MUST be provided in their COMPLETE form with NO EXCEPTIONS.",
-        "ALWAYS include the ENTIRE script content from start to finish.",
-        "NO placeholders or partial updates are allowed under any circumstances.",
-        "ALL dependencies and included files MUST be explicitly listed.",
-        "EVERY script modification MUST include complete repository update notes.",
-        "Version numbers MUST be updated for all modified scripts.",
-        "ALL script headers MUST be updated with current timestamp and author.",
-        "COMPLETE means the script can be executed immediately without additional content.",
-        "Repository update notes are MANDATORY for EVERY script modification.",
-        "NEVER truncate or partially update scripts - full scripts are required.",
-        "ALL script updates MUST include word count validation.",
-        "COMPLETE script verification MUST be performed before delivery.",
-        "NO references to previous content or existing content allowed.",
-        "FULL script content MUST be provided even for minor changes.",
-        "ALL responses MUST be verified for completeness before submission.",
-        "ANY truncated content MUST trigger immediate resubmission."
-    ],
-    "prohibited_patterns": [
-        "Rest of script...",
-        "Content remains the same...",
-        "Script continues as before...",
-        "[...]",
-        "Previous content...",
-        "Existing content...",
-        "Unchanged content...",
-        "See above/below for...",
-        "Refer to previous...",
-        "[Previous content remains the same]",
-        "Until section X...",
-        "From section Y...",
-        "Content truncated...",
-        "To be continued...",
-        "Continued from above..."
-    ],
-    "validation": {
-        "require_complete_files": true,
-        "no_partial_updates": true,
-        "no_references_to_existing": true,
-        "must_be_immediately_usable": true,
-        "verify_completeness": true,
-        "check_dependencies": true,
-        "validate_headers": true,
-        "confirm_update_notes": true,
-        "word_count_validation": true,
-        "verify_no_truncation": true,
-        "check_full_content": true,
-        "validate_file_size": true,
-        "confirm_complete_delivery": true,
-        "verify_response_integrity": true
-    },
-    "completeness_checklist": [
-        "Verify script has complete header",
-        "Confirm all functions are included",
-        "Check for required dependencies",
-        "Validate parameter definitions",
-        "Ensure error handling is complete",
-        "Verify logging mechanisms",
-        "Check version number update",
-        "Confirm update notes presence",
-        "Validate word count matches original",
-        "Verify no content truncation",
-        "Confirm all sections present",
-        "Check for prohibited patterns",
-        "Validate full script delivery",
-        "Verify file size consistency",
-        "Confirm response completeness"
-    ],
-    "verification_steps": [
-        "Calculate and verify total file size",
-        "Compare with original file size if updating",
-        "Check for any truncation markers",
-        "Validate all code blocks are complete",
-        "Ensure no prohibited patterns exist",
-        "Verify all sections are present",
-        "Confirm proper formatting throughout",
-        "Check for complete error handling",
-        "Validate all function definitions"
-    ]
-}
-
-SCRIPT_DELIVERY_PREFERENCES={
-    "format": "minified",
-    "maintain_readability": true,
-    "include_section_comments": true,
-    
-    "minification": {
-        "remove_extra_whitespace": true,
-        "shorten_variable_names": true,
-        "combine_consecutive_declarations": true,
-        "preserve_critical_logging": true,
-        "maintain_error_handling": true
-    },
-    
-    "code_examples": {
-        "require_complete_files": true,
-        "format": "markdown",
-        "instructions": "ALL code examples MUST be provided as complete files in markdown code blocks with the file name in the header.",
-        "example": "```<language> name=<filename>\n<content>\n```"
-    }
-}
-
-CODE_EXAMPLES_REQUIREMENT={
-    "mandatory": true,
-    "format": "markdown",
-    "require_complete_files": true,
-    "instructions": """
-ALL code examples MUST be provided as complete files in markdown code blocks with 
-the file name in the header. Partial code snippets are NOT allowed - complete 
-files must be provided in all cases.
-""",
-    "format_template": "```<language> name=<filename>\n<content>\n```"
-}
-
-STANDARD_SCRIPT_COMMENT_TEMPLATE="""
+# -----------------------------------------------------------------------------
+# SCRIPT HEADER TEMPLATE
+# -----------------------------------------------------------------------------
 <#
 .SYNOPSIS
-    Brief description of the script's purpose
+    [Brief statement of the script's purpose]
 .DESCRIPTION
-    Detailed description of what the script does, including:
-    - Major functions and operations
-    - Dependencies and requirements
-    - Expected outcomes
-.PARAMETER ParameterName
-    Description of each parameter and its purpose
+    [Detailed explanation of the script's functionality, including:
+     - Key actions
+     - Dependencies or prerequisites
+     - Usage or examples (if needed)]
+.PARAMETER <ParameterName>
+    [Description of parameter usage if applicable]
 .EXAMPLE
-    Example of how to use the script
+    .\<ScriptName>.ps1
+    [Example usage, describing outcomes or key steps]
 #>
-"""
 
-CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-09 16:52:02",
-    "current_user": "jdyer-nuvodia",
-    "timezone": "UTC",
-    "timestamp_format": "yyyy-MM-dd HH:mm:ss"
-}
-
-RESPONSE_REQUIREMENTS={
-    "always_complete": true,
-    "no_truncation": true,
-    "verify_size_first": true,
-    "provide_full_scripts": true,
-    "update_all_timestamps": true,
-    "maintain_headers": true,
-    "include_version_history": true,
-    "require_update_notes": true,
-    "verify_complete_scripts": true,
-    "validate_response_size": true,
-    "confirm_full_delivery": true,
-    "check_content_integrity": true,
-    "code_block_requirements": {
-        "max_lines_per_block": 200,
-        "separation_rules": [
-            "Separate at logical break points (function ends, major sections)",
-            "Include clear block numbers and total block count",
-            "Ensure blocks can be easily concatenated",
-            "Mark continuation points clearly"
-        ],
-        "block_header_template": """
-        ### Code Block {block_number} of {total_blocks}
-        Continuation from: {previous_block_end}
-        Continues at: {next_block_start}
-        """
-    },
-    "datetime_format": {
-        "format": "YYYY-MM-DD HH:MM:SS",
-        "timezone": "UTC",
-        "example": "2025-02-09 17:10:23"
-    },
-    "user_identification": {
-        "format": "{username}",
-        "example": "jdyer-nuvodia"
-    }
-}
-
-EXECUTION_CHECKLIST=[
-    "Verify current context (timestamp, user)",
-    "Check total response size",
-    "Ensure complete content delivery",
-    "Validate all timestamps",
-    "Verify user information",
-    "Confirm format compliance",
-    "Verify update notes presence",
-    "Confirm script completeness",
-    "Validate response integrity",
-    "Check for truncation",
-    "Verify file completeness"
-]
-
-QUALITY_CONTROL={
-    "verify_syntax": true,
-    "check_formatting": true,
-    "validate_timestamps": true,
-    "confirm_headers": true,
-    "ensure_completeness": true,
-    "verify_update_notes": true,
-    "check_code_blocks": true,
-    "validate_response_instructions": true,
-    "confirm_full_script_delivery": true,
-    "validate_repository_updates": true,
-    "verify_response_integrity": true,
-    "check_content_completeness": true
-}
-
-GENERIC_SCRIPT_HEADER_TEMPLATE="""
+# Example Header Block:
 # =============================================================================
-# Script: {scriptname}
-# Created: {creation_date} UTC
-# Author: {author}
-# Last Updated: {last_updated} UTC
-# Updated By: {updated_by}
-# Version: {version}
-# Additional Info: {additional_info}
+# Script: <ScriptName>.ps1
+# Created: <YYYY-MM-DD HH:MM:SS UTC>
+# Author: <AuthorName>
+# Last Updated: <YYYY-MM-DD HH:MM:SS UTC>
+# Updated By: <AuthorName or Collaborator>
+# Version: <VersionNumber>
+# Additional Info: <Additional contextual data>
 # =============================================================================
-"""
 
-# END OF INITIALIZE-PROMPT
+
+# -----------------------------------------------------------------------------
+# REPOSITORY UPDATE NOTES TEMPLATE
+# -----------------------------------------------------------------------------
+# Use this template to document repository commits or changes in a structured way.
+
+# Example Update Notes:
+# -----------------------------------------------------------------------------
+# Date: <YYYY-MM-DD>
+# Commit: <Brief description of the commit or change>
+# Author: <AuthorName or Collaborator>
+#
+# Summary of Changes:
+# - <List each key change or improvement>
+#
+# Impact:
+# - <Note how these changes affect functionality, dependencies, or users>
+# - <Highlight any potential risks or required follow-up actions>
+
+# -----------------------------------------------------------------------------
+# END OF FILE
+# -----------------------------------------------------------------------------
