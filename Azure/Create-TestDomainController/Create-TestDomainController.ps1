@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:08:07 UTC
+# Last Updated: 2025-02-09 17:14:09 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.12
+# Version: 2.13
 # Additional Info: Generic header template integrated as per Initialize-Prompt.txt
 # =============================================================================
 
@@ -40,10 +40,13 @@ if ($PSScriptRoot) {
 
 # Delete previous transcript log file if it exists.
 $logPattern = "Create-TestDomainController-*.log"
-$existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue) | Sort-Object LastWriteTime -Descending
-if ($existingLogs -and $existingLogs.Count -gt 0) {
-    Write-Host "Deleting previous log file: $($existingLogs[0].FullName)"
-    Remove-Item $existingLogs[0].FullName -Force
+$existingLogs = @(Get-ChildItem -Path $scriptFolder -Filter $logPattern -ErrorAction SilentlyContinue)
+if ($existingLogs) {
+    $latestLog = $existingLogs | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($latestLog) {
+        Write-Host "Deleting previous log file: $($latestLog.FullName)"
+        Remove-Item $latestLog.FullName -Force
+    }
 }
 
 # Create a new transcript log file with a timestamp.
@@ -55,10 +58,13 @@ Start-Transcript -Path $logFile
 # Backup mechanism: Delete previous backup and create a new backup of this script.
 # ---------------------------------------------------------------------------
 $backupPattern = "Create-TestDomainController_Backup-*.ps1"
-$existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue) | Sort-Object LastWriteTime -Descending
-if ($existingBackups -and $existingBackups.Count -gt 0) {
-    Write-Host "Deleting previous backup file: $($existingBackups[0].FullName)"
-    Remove-Item $existingBackups[0].FullName -Force
+$existingBackups = @(Get-ChildItem -Path $scriptFolder -Filter $backupPattern -ErrorAction SilentlyContinue)
+if ($existingBackups) {
+    $latestBackup = $existingBackups | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($latestBackup) {
+        Write-Host "Deleting previous backup file: $($latestBackup.FullName)"
+        Remove-Item $latestBackup.FullName -Force
+    }
 }
 $backupTimestamp = Get-Date -Format "yyyyMMddHHmmss"
 $backupFile = Join-Path $scriptFolder "Create-TestDomainController_Backup-$backupTimestamp.ps1"
@@ -112,16 +118,16 @@ try {
 
 # Script Parameters (defaults can be parameterized as needed)
 $resourceGroupName    = "JB-TEST-RG2"
-$location             = "westus2"
-$storageAccountName   = "jbteststorage0"
-$vnetName             = "JB-TEST-VNET"
-$subnetName           = "JB-TEST-SUBNET1"
-$vmName               = "JB-TEST-DC01"
-$adminUsername        = "jbadmin"
-$adminPassword        = "TS=pGxB~8m^A~WH^[yB8"
-$domainName           = "JB-TEST.local"
-$publicIpName         = "$vmName-PUBIP"
-$nsgName              = "JB-TEST-NSG"
+$location            = "westus2"
+$storageAccountName  = "jbteststorage0"
+$vnetName            = "JB-TEST-VNET"
+$subnetName          = "JB-TEST-SUBNET1"
+$vmName              = "JB-TEST-DC01"
+$adminUsername       = "jbadmin"
+$adminPassword       = "TS=pGxB~8m^A~WH^[yB8"
+$domainName          = "JB-TEST.local"
+$publicIpName        = "$vmName-PUBIP"
+$nsgName             = "JB-TEST-NSG"
 
 # Function: Test if a Resource Group exists.
 function Test-ResourceGroupExists {
@@ -292,4 +298,3 @@ Write-Log "Script execution completed successfully."
 
 # Stop transcript logging.
 Stop-Transcript
-Stop
