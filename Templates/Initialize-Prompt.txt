@@ -2,11 +2,12 @@
 # Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:12:02 UTC
+# Last Updated: 2025-02-09 16:17:50 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.13
+# Version: 1.16
 # Purpose: Define conversation and response requirements for GitHub Copilot, repository update requirements,
-#          and a generic header template to be used in all scripts going forward.
+#          generic header and comment templates, mandatory update notes on every file modification,
+#          and guidelines for script delivery to be used in all scripts.
 # =============================================================================
 
 REPOSITORY_REQUIREMENTS={
@@ -72,12 +73,12 @@ REPOSITORY_REQUIREMENTS={
 # New section for complete script requirements
 COMPLETE_SCRIPT_REQUIREMENT={
     "mandatory_rules": [
-        "ALL scripts must be provided in their COMPLETE form",
-        "NO placeholders like '[Rest of script remains the same...]' are allowed",
-        "NO references to existing content without including it",
-        "ALL script content must be included in EVERY response",
-        "COMPLETE means the ENTIRE script from start to finish",
-        "Always provide repository update notes when updating any file accessed from the repositories, including .txt files"
+        "ALL scripts must be provided in their COMPLETE form.",
+        "NO placeholders like '[Rest of script remains the same...]' are allowed.",
+        "NO references to existing content without including it.",
+        "ALL script content must be included in EVERY response.",
+        "COMPLETE means the ENTIRE script from start to finish.",
+        "Always provide repository update notes when updating any file accessed from the repositories, including .txt files."
     ],
     "prohibited_patterns": [
         "Rest of script...",
@@ -148,8 +149,34 @@ SCRIPT_DELIVERY_PREFERENCES={
     }
 }
 
+# New Section: Standard Script Comment Template
+# This section defines a standardized comment block that must be added to any script generated.
+# The comment block includes the .SYNOPSIS, .DESCRIPTION, .PARAMETER, and .EXAMPLE sections.
+STANDARD_SCRIPT_COMMENT_TEMPLATE="""
+<#
+.SYNOPSIS
+    Remediates a compromised Office 365 account by performing security-related actions.
+.DESCRIPTION
+    This script performs a comprehensive set of actions to secure a compromised Office 365 account:
+    - Resets password and enforces complexity
+    - Revokes all active sign-in sessions
+    - Removes mailbox delegates
+    - Removes external mail forwarding rules
+    - Removes recent inbox rules
+    - Removes global mailbox forwarding
+    - Enables MFA (if client uses it)
+    - Generates audit logs
+.PARAMETER UserPrincipalName
+    The email address (UPN) of the compromised account to remediate.
+.PARAMETER TranscriptPath
+    Optional. The path where the transcript log will be saved. Defaults to current directory.
+.EXAMPLE
+    .\remediate-365account.ps1 -UserPrincipalName "user@domain.com"
+#>
+"""
+
 CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-09 16:12:02",
+    "current_timestamp": "2025-02-09 16:17:50",
     "current_user": "jdyer-nuvodia",
     "timezone": "UTC",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss"
