@@ -1,78 +1,175 @@
 # =============================================================================
-# Initialize-Prompt.txt - Minified
-# Created: 2025-02-07 21:21:53 UTC | Author: jdyer-nuvodia | Last Updated: 2025-02-09 16:26:35 UTC | Version: 1.17
+# Initialize-Prompt.txt
+# Created: 2025-02-07 21:21:53 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-09 16:35:29 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.18
+# Purpose: Define conversation and response requirements for GitHub Copilot, 
+#         repository update requirements, generic header and comment templates,
+#         mandatory update notes on every file modification, and guidelines
+#         for script delivery to be used in all scripts.
 # =============================================================================
-{
-    "REPOSITORY_REQUIREMENTS": {
-        "update_notes": {
-            "required": true,
-            "format": "markdown",
-            "filename": "update-notes.txt",
-            "apply_to_all_file_types": true,
-            "include": {
-                "timestamp": true,
-                "author": true,
-                "files_modified": ["..."]
-            }
-        }
-    },
-    "COMPLETE_SCRIPT_REQUIREMENT": {
-        "mandatory_rules": [
-            "ALL scripts must be provided in their COMPLETE form.",
-            "NO placeholders like '[Rest of script remains the same...]' are allowed.",
-            "NO references to external, non-included code examples."
-        ]
-    },
-    "SCRIPT_DELIVERY_PREFERENCES": {
-        "format": "minified",
-        "maintain_readability": true,
-        "include_section_comments": true,
-        "minification": {
-            "remove_extra_whitespace": true,
-            "shorten_variable_names": true,
-            "combine_consecutive_declarations": true
-        }
-    },
-    "CODE_EXAMPLES_REQUIREMENT": {
-        "mandatory": true,
+
+REPOSITORY_REQUIREMENTS={
+    # Repository Update Documentation
+    "update_notes": {
+        "required": true,
         "format": "markdown",
-        "require_complete_files": true,
-        "instructions": "If you choose to provide code examples, they MUST always be formatted as markdown code blocks with the file name in the header. Complete files should be provided rather than code snippets."
-    },
-    "STANDARD_SCRIPT_COMMENT_TEMPLATE": "<#\n.SYNOPSIS\n    Remediates a compromised Office 365 account by performing security-related actions.\n.DESCRIPTION\n    This script performs a comprehensive set of actions to secure an Office 365 account including, but not limited to: verifying user identity, resetting credentials, and scanning for anomalies.\n#>",
-    "CONTEXT_VARIABLES": {
-        "current_timestamp": "2025-02-09 16:26:35",
-        "current_user": "jdyer-nuvodia",
-        "timezone": "UTC",
-        "timestamp_format": "yyyy-MM-dd HH:mm:ss"
-    },
-    "RESPONSE_REQUIREMENTS": {
-        "always_complete": true,
-        "no_truncation": true,
-        "verify_size_first": true,
-        "provide_full_scripts": true,
-        "update_all_timestamps": true,
-        "maintain_headers": true,
-        "include_version_history": true
-    },
-    "EXECUTION_CHECKLIST": [
-        "Verify current context (timestamp, user)",
-        "Check total response size",
-        "Ensure complete content delivery",
-        "Validate all timestamps",
-        "Verify user information",
-        "Confirm format compliance"
-    ],
-    "QUALITY_CONTROL": {
-        "verify_syntax": true,
-        "check_formatting": true,
-        "validate_timestamps": true,
-        "confirm_headers": true,
-        "ensure_completeness": true,
-        "verify_update_notes": true,
-        "check_code_blocks": true,
-        "validate_response_instructions": true
-    },
-    "GENERIC_SCRIPT_HEADER_TEMPLATE": "\n# =============================================================================\n# Script: {scriptname}\n# Created: {creation_date} UTC\n# Author: {author}\n# Last Updated: {last_updated}\n# Version: {version}\n# ============================================================================="
+        "filename": "update-notes.txt",
+        "apply_to_all_file_types": true,
+        "include": {
+            "timestamp": true,
+            "author": true,
+            "files_modified": true,
+            "changes_made": true,
+            "purpose": true,
+            "impact": true
+        },
+        "enforcement": {
+            "mandatory_in_response": true,
+            "placement": "before_script_content",
+            "format_requirements": {
+                "use_code_block": true,
+                "block_format": "txt",
+                "syntax": "```txt name=update-notes.txt\n{content}\n```"
+            },
+            "template": """
+# Repository Update Notes
+## Timestamp: {timestamp}
+## Author: {author}
+## Files Modified: {files_modified}
+## Changes Made: {changes_made}
+## Purpose: {purpose}
+## Impact: {impact}
+---
+"""
+        }
+    }
 }
+
+COMPLETE_SCRIPT_REQUIREMENT={
+    "mandatory_rules": [
+        "ALL scripts must be provided in their COMPLETE form.",
+        "NO placeholders like '[Rest of script remains the same...]' are allowed.",
+        "NO references to external, non-included code examples.",
+        "ALL script content must be included in EVERY response.",
+        "COMPLETE means the ENTIRE script from start to finish.",
+        "Always provide repository update notes when updating any file accessed from the repositories."
+    ],
+    "prohibited_patterns": [
+        "Rest of script...",
+        "Content remains the same...",
+        "Script continues as before...",
+        "[...]",
+        "Previous content...",
+        "Existing content...",
+        "Unchanged content..."
+    ],
+    "validation": {
+        "require_complete_files": true,
+        "no_partial_updates": true,
+        "no_references_to_existing": true,
+        "must_be_immediately_usable": true
+    }
+}
+
+SCRIPT_DELIVERY_PREFERENCES={
+    "format": "minified",
+    "maintain_readability": true,
+    "include_section_comments": true,
+    
+    "minification": {
+        "remove_extra_whitespace": true,
+        "shorten_variable_names": true,
+        "combine_consecutive_declarations": true,
+        "preserve_critical_logging": true,
+        "maintain_error_handling": true
+    },
+    
+    "code_examples": {
+        "require_complete_files": true,
+        "format": "markdown",
+        "instructions": "If you choose to provide code examples, they MUST always be formatted as markdown code blocks with the file name in the header.",
+        "example": "```<language> name=<filename>\n<content>\n```"
+    }
+}
+
+CODE_EXAMPLES_REQUIREMENT={
+    "mandatory": true,
+    "format": "markdown",
+    "require_complete_files": true,
+    "instructions": """
+If you choose to provide code examples, they MUST always be formatted as markdown 
+code blocks with the file name in the header. Complete files should be provided 
+rather than snippets whenever possible.
+""",
+    "format_template": "```<language> name=<filename>\n<content>\n```"
+}
+
+STANDARD_SCRIPT_COMMENT_TEMPLATE="""
+<#
+.SYNOPSIS
+    Brief description of the script's purpose
+.DESCRIPTION
+    Detailed description of what the script does, including:
+    - Major functions and operations
+    - Dependencies and requirements
+    - Expected outcomes
+.PARAMETER ParameterName
+    Description of each parameter and its purpose
+.EXAMPLE
+    Example of how to use the script
+#>
+"""
+
+CONTEXT_VARIABLES={
+    "current_timestamp": "2025-02-09 16:35:29",
+    "current_user": "jdyer-nuvodia",
+    "timezone": "UTC",
+    "timestamp_format": "yyyy-MM-dd HH:mm:ss"
+}
+
+RESPONSE_REQUIREMENTS={
+    "always_complete": true,
+    "no_truncation": true,
+    "verify_size_first": true,
+    "provide_full_scripts": true,
+    "update_all_timestamps": true,
+    "maintain_headers": true,
+    "include_version_history": true
+}
+
+EXECUTION_CHECKLIST=[
+    "Verify current context (timestamp, user)",
+    "Check total response size",
+    "Ensure complete content delivery",
+    "Validate all timestamps",
+    "Verify user information",
+    "Confirm format compliance"
+]
+
+QUALITY_CONTROL={
+    "verify_syntax": true,
+    "check_formatting": true,
+    "validate_timestamps": true,
+    "confirm_headers": true,
+    "ensure_completeness": true,
+    "verify_update_notes": true,
+    "check_code_blocks": true,
+    "validate_response_instructions": true
+}
+
+GENERIC_SCRIPT_HEADER_TEMPLATE="""
+# =============================================================================
+# Script: {scriptname}
+# Created: {creation_date} UTC
+# Author: {author}
+# Last Updated: {last_updated} UTC
+# Updated By: {updated_by}
+# Version: {version}
+# Additional Info: {additional_info}
+# =============================================================================
+"""
+
 # END OF INITIALIZE-PROMPT
