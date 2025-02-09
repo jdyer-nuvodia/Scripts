@@ -2,10 +2,11 @@
 # Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 23:38:00 UTC
+# Last Updated: 2025-02-09 16:05:39 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10
-# Purpose: Define conversation and response requirements for GitHub Copilot
+# Version: 1.11
+# Purpose: Define conversation and response requirements for GitHub Copilot, repository update requirements,
+#          and a generic header template to be used in all scripts going forward.
 # =============================================================================
 
 REPOSITORY_REQUIREMENTS={
@@ -145,7 +146,7 @@ SCRIPT_DELIVERY_PREFERENCES={
 }
 
 CONTEXT_VARIABLES={
-    "current_timestamp": "2025-02-07 23:38:00",
+    "current_timestamp": "2025-02-09 16:05:39",
     "current_user": "jdyer-nuvodia",
     "timezone": "UTC",
     "timestamp_format": "yyyy-MM-dd HH:mm:ss"
@@ -170,15 +171,16 @@ RESPONSE_REQUIREMENTS={
     
     # Header Template
     "header_format": """
-    # =============================================================================
-    # Script: {scriptname}
-    # Created: {creation_date} UTC
-    # Author: {author}
-    # Last Updated: {current_timestamp} UTC
-    # Updated By: {current_user}
-    # Version: {version}
-    # =============================================================================
-    """,
+# =============================================================================
+# Script: {scriptname}
+# Created: {creation_date} UTC
+# Author: {author}
+# Last Updated: {current_timestamp} UTC
+# Updated By: {current_user}
+# Version: {version}
+# Additional Info: {additional_info}
+# =============================================================================
+""",
     
     # Response Structure
     "start_with_context": true,
@@ -227,23 +229,39 @@ QUALITY_CONTROL={
     "validate_file_contents": true
 }
 
-# CRITICAL RULES
-1. Never truncate or split responses
-2. Always provide complete scripts
-3. Update all timestamps consistently
-4. Maintain user context throughout conversation
-5. Verify all requirements before sending
-6. Use UTC for all timestamps
-7. Format timestamps as: yyyy-MM-dd HH:mm:ss
-8. Include timezone designation (UTC)
-9. Always include repository update notes before script content
-10. Follow update notes template exactly
-11. Always present update notes and code in copyable code blocks
-12. Include filename in code block headers
-13. Always include complete file contents for .txt files
-14. Never use placeholders like "previous content remains unchanged"
-15. NEVER provide partial scripts or use phrases like "Rest of script remains the same..."
-16. ALL script content must be provided in EVERY response
-17. NO references to existing content without including it
-18. Scripts must be complete and immediately usable
+# -----------------------------------------------------------------------------
+# GENERIC SCRIPT HEADER TEMPLATE
+#
+# This generic template is to be used in all scripts going forward.
+# It provides a standardized header for scripts, ensuring consistency and
+# traceability across the repository.
+#
+# Example Header:
+#
+# =============================================================================
+# Script: <ScriptName>
+# Created: <Creation_Date> UTC
+# Author: jdyer-nuvodia
+# Last Updated: <Last_Updated_Date> UTC
+# Updated By: <Updater>
+# Version: <Version>
+# Additional Info: <Additional_Information>
+# =============================================================================
+#
+# Replace the placeholder tokens with the appropriate values for your script.
+# -----------------------------------------------------------------------------
+
+GENERIC_SCRIPT_HEADER_TEMPLATE="""
+# =============================================================================
+# Script: {scriptname}
+# Created: {creation_date} UTC
+# Author: {author}
+# Last Updated: {last_updated} UTC
+# Updated By: {updated_by}
+# Version: {version}
+# Additional Info: {additional_info}
+# =============================================================================
+"""
+
+# -----------------------------------------------------------------------------
 # END OF INITIALIZE-PROMPT
