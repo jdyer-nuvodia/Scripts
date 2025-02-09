@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 23:46:04 UTC
+# Last Updated: 2025-02-09 15:25:08 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2
+# Version: 2.3
 # Purpose: Creates a test domain controller in Azure with existence checks,
 #          error handling, logging, and an option for verbose output.
 # =============================================================================
@@ -82,7 +82,7 @@ try {
 # 2. Create Public IP
 try {
     Write-Log "Creating Public IP '$publicIpName'..."
-    $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName -Location $location -AllocationMethod Dynamic -ErrorAction Stop
+    $publicIp = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName -Location $location -AllocationMethod Static -ErrorAction Stop
     Write-Log "Public IP '$publicIpName' created."
 } catch {
     Write-Log "ERROR: Failed to create Public IP. $_"
