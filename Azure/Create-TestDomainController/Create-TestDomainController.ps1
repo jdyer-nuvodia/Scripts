@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 15:25:08 UTC
+# Last Updated: 2025-02-09 15:29:47 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3
+# Version: 2.4
 # Purpose: Creates a test domain controller in Azure with existence checks,
 #          error handling, logging, and an option for verbose output.
 # =============================================================================
@@ -32,9 +32,10 @@ try {
     Import-Module Az.Resources -ErrorAction Stop
     Import-Module Az.Compute -ErrorAction Stop
     Import-Module Az.Network -ErrorAction Stop
+    Import-Module Az.Storage -ErrorAction Stop
     Write-Verbose "Azure modules imported successfully."
 } catch {
-    Write-Log "ERROR: Failed to import Azure modules. $_"
+    Write-Log "ERROR: Failed to import required Azure modules. $_"
     exit 1
 }
 
@@ -76,6 +77,22 @@ try {
     }
 } catch {
     Write-Log "ERROR: Failed to verify or create resource group. $_"
+    exit 1
+}
+
+# 1.1 Check and create Storage Account if missing
+try {
+    Write-Log "Checking for storage account '$storageAccountName'..."
+    $storageAccount = Get-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if (-not $storageAccount) {
+        Write-Log "Storage account '$storageAccountName' not found. Creating storage account..."
+        $storageAccount = New-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
+        Write-Log "Storage account '$storageAccountName' created."
+    } else {
+        Write-Log "Storage account '$storageAccountName' exists."
+    }
+} catch {
+    Write-Log "ERROR: Failed to verify or create storage account. $_"
     exit 1
 }
 
@@ -129,6 +146,10 @@ try {
       Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $cred -ProvisionVMAgent -EnableAutoUpdate -ErrorAction Stop |
       Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2019-Datacenter" -Version "latest" -ErrorAction Stop |
       Add-AzVMNetworkInterface -Id $nic.Id -Primary -ErrorAction Stop
+
+    # Configure boot diagnostics to use the specified storage account
+    $vmConfig = Set-AzVMBootDiagnostics -VM $vmConfig -ResourceGroupName $resourceGroupName -StorageAccountName $storageAccountName -ErrorAction Stop
+
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig -ErrorAction Stop | Out-Null
     Write-Log "Virtual Machine '$vmName' created successfully."
 } catch {
