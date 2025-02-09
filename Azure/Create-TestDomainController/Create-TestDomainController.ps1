@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 15:29:47 UTC
+# Last Updated: 2025-02-09 15:42:57 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.4
+# Version: 2.5
 # Purpose: Creates a test domain controller in Azure with existence checks,
 #          error handling, logging, and an option for verbose output.
 # =============================================================================
@@ -147,8 +147,8 @@ try {
       Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2019-Datacenter" -Version "latest" -ErrorAction Stop |
       Add-AzVMNetworkInterface -Id $nic.Id -Primary -ErrorAction Stop
 
-    # Configure boot diagnostics to use the specified storage account
-    $vmConfig = Set-AzVMBootDiagnostics -VM $vmConfig -ResourceGroupName $resourceGroupName -StorageAccountName $storageAccountName -ErrorAction Stop
+    # Configure boot diagnostics to use the specified storage account using the correct cmdlet
+    $vmConfig = Enable-AzVMBootDiagnostics -VM $vmConfig -ResourceGroupName $resourceGroupName -StorageAccountName $storageAccountName -ErrorAction Stop
 
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig -ErrorAction Stop | Out-Null
     Write-Log "Virtual Machine '$vmName' created successfully."
