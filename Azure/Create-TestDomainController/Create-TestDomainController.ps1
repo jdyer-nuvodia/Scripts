@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 17:53:03 UTC
+# Last Updated: 2025-02-09 17:56:05 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5
-# Additional Info: Enhanced storage account creation with retry logic and timeout
+# Version: 1.6
+# Additional Info: Fixed parser error in catch block structure
 # =============================================================================
 <#
 .SYNOPSIS
@@ -165,7 +165,7 @@ try {
                 Write-Log "Storage account '$storageAccountName' already exists. Removing..."
                 Remove-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
                 Write-Log "Storage account removed."
-                Start-Sleep -Seconds 30  # Wait for removal to complete
+                Start-Sleep -Seconds 30
             }
             
             Write-Log "Creating storage account '$storageAccountName' (Attempt $($retryCount + 1) of $maxRetries)..."
@@ -271,12 +271,6 @@ try {
     if (-not $subnet) {
         throw "Subnet '$subnetName' could not be found in Virtual Network '$vnetName'."
     }
-    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -NetworkSecurityGroupId $nsg.Id -ErrorAction Stop
-    Write-Log "Network Interface for VM '$vmName' created."
-} catch {
-    Write-Log "ERROR: Failed to create Network Interface. $_"
-    Stop-Transcript
-    exit 1
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -NetworkSecurityGroupId $nsg.Id -ErrorAction Stop
     Write-Log "Network Interface for VM '$vmName' created."
 } catch {
