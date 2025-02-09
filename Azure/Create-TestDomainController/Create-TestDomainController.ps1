@@ -2,11 +2,11 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 15:55:00 UTC
+# Last Updated: 2025-02-09 15:59:30 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.7
+# Version: 2.8
 # Purpose: Creates a test domain controller in Azure with existence checks,
-#          error handling, logging, NSG creation with an RDP rule on port 10443,
+#          error handling, NSG creation with an RDP rule on port 10443 and an explicit deny on port 3389,
 #          and overwrites existing resources automatically.
 # =============================================================================
 
@@ -98,7 +98,7 @@ try {
     exit 1
 }
 
-# 1.2. Check and remove existing Network Security Group (NSG), then create new one with an RDP rule on port 10443
+# 1.2. Check and remove existing Network Security Group (NSG), then create new one with rules for RDP
 try {
     Write-Log "Checking for Network Security Group '$nsgName'..."
     $existingNsg = Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
@@ -107,11 +107,19 @@ try {
         Remove-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
         Write-Log "NSG '$nsgName' removed."
     }
-    Write-Log "Creating NSG '$nsgName' with an inbound rule to allow RDP on port 10443..."
-    $nsgRule = New-AzNetworkSecurityRuleConfig -Name "Allow-RDP-10443" -Protocol Tcp -Direction Inbound -Priority 1000 `
+    Write-Log "Creating NSG '$nsgName' with rules:"
+    Write-Log " - Denying inbound RDP on port 3389"
+    Write-Log " - Allowing inbound RDP on port 10443"
+    # Create rule to deny TCP port 3389
+    $denyRule = New-AzNetworkSecurityRuleConfig -Name "Deny-RDP-3389" -Protocol Tcp -Direction Inbound -Priority 900 `
+                 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 3389 `
+                 -Access Deny -Description "Explicitly deny RDP traffic on port 3389"
+    # Create rule to allow TCP port 10443 for RDP
+    $allowRule = New-AzNetworkSecurityRuleConfig -Name "Allow-RDP-10443" -Protocol Tcp -Direction Inbound -Priority 1000 `
                  -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 10443 `
                  -Access Allow -Description "Allow RDP traffic on port 10443"
-    $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName -Location $location -Name $nsgName -SecurityRules $nsgRule -ErrorAction Stop
+    $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName -Location $location -Name $nsgName `
+           -SecurityRules @($denyRule, $allowRule) -ErrorAction Stop
     Write-Log "NSG '$nsgName' created."
 } catch {
     Write-Log "ERROR: Failed to verify or create NSG. $_"
