@@ -2,13 +2,27 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:30:00 UTC
+# Last Updated: 2025-02-09 16:10:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.11
-# Purpose: Creates a test domain controller in Azure with existence checks,
-#          error handling, NSG creation with an RDP rule on port 10443 and an explicit deny on port 3389,
-#          overwrites existing resources automatically, logs execution via transcript, and backs up the current script.
+# Version: 2.12
+# Additional Info: Creates a test domain controller in Azure with robust logging and backup functionality.
 # =============================================================================
+
+<#
+.SYNOPSIS
+    Creates a test domain controller in Azure with existence checks, logging, and backup capabilities.
+.DESCRIPTION
+    This script provisions a test domain controller in Azure and performs the following actions:
+    - Checks and creates the required Azure Resource Group.
+    - Removes any existing conflicting resources (Storage Account, NSG, Public IP, Virtual Network, NIC, Virtual Machine) before re-creation.
+    - Configures boot diagnostics and a backup mechanism.
+    - Logs execution details via PowerShell transcript.
+.PARAMETER None
+    This script does not require parameters by default; parameters can be added as needed.
+.EXAMPLE
+    .\Create-TestDomainController.ps1
+    This command runs the script to provision a test domain controller in Azure.
+#>
 
 [CmdletBinding()]
 Param()
@@ -97,17 +111,17 @@ try {
 }
 
 # Script Parameters (defaults can be parameterized as needed)
-$resourceGroupName    = "JB-TEST-RG2"
-$location             = "westus2"
-$storageAccountName   = "jbteststorage0"
-$vnetName             = "JB-TEST-VNET"
-$subnetName           = "JB-TEST-SUBNET1"
-$vmName               = "JB-TEST-DC01"
-$adminUsername        = "jbadmin"
-$adminPassword        = "TS=pGxB~8m^A~WH^[yB8"
-$domainName           = "JB-TEST.local"
-$publicIpName         = "$vmName-PUBIP"
-$nsgName              = "JB-TEST-NSG"
+$resourceGroupName  = "JB-TEST-RG2"
+$location           = "westus2"
+$storageAccountName = "jbteststorage0"
+$vnetName           = "JB-TEST-VNET"
+$subnetName         = "JB-TEST-SUBNET1"
+$vmName             = "JB-TEST-DC01"
+$adminUsername      = "jbadmin"
+$adminPassword      = "TS=pGxB~8m^A~WH^[yB8"
+$domainName         = "JB-TEST.local"
+$publicIpName       = "$vmName-PUBIP"
+$nsgName            = "JB-TEST-NSG"
 
 # Function: Test if a Resource Group exists.
 function Test-ResourceGroupExists {
