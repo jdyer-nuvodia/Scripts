@@ -2,9 +2,9 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 16:59:22 UTC
+# Last Updated: 2025-02-09 17:01:23 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.15
+# Version: 2.16
 # Additional Info: Generic header template integrated as per Initialize-Prompt.txt
 # =============================================================================
 
@@ -276,9 +276,10 @@ try {
         Remove-AzVM -Name $vmName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
         Write-Log "Virtual Machine '$vmName' removed."
     }
+    
     Write-Log "Creating Virtual Machine '$vmName'..."
     $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
     $cred = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
 
-    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize "Standard_DS1_v2" -ErrorAction Stop |
-        
+    # Create the VM configuration
+    $vmConfig = New-AzVMConfig -VM
