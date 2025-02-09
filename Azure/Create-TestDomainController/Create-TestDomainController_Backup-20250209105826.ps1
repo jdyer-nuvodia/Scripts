@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 17:48:55 UTC
+# Last Updated: 2025-02-09 17:56:05 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4
-# Additional Info: Fixed parser error in log file handling and updated file operations
+# Version: 1.6
+# Additional Info: Fixed parser error in catch block structure
 # =============================================================================
 <#
 .SYNOPSIS
@@ -95,6 +95,7 @@ $adminPassword       = "TS=pGxB~8m^A~WH^[yB8"
 $domainName          = "JB-TEST.local"
 $publicIpName        = "$vmName-PUBIP"
 $nsgName             = "JB-TEST-NSG"
+
 function Test-ResourceGroupExists {
     param($ResourceGroupName)
     try {
@@ -104,6 +105,38 @@ function Test-ResourceGroupExists {
         return $false
     }
 }
+
+function Wait-ForStorageAccount {
+    param(
+        [string]$ResourceGroupName,
+        [string]$StorageAccountName,
+        [int]$TimeoutSeconds = 300,
+        [int]$RetryIntervalSeconds = 10
+    )
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $completed = $false
+    Write-Log "Waiting for storage account '$StorageAccountName' to be fully provisioned..."
+    while (-not $completed -and $timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        try {
+            $storageAccount = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $StorageAccountName -ErrorAction Stop
+            if ($storageAccount.ProvisioningState -eq "Succeeded") {
+                Write-Log "Storage account '$StorageAccountName' is fully provisioned."
+                $completed = $true
+                return $true
+            }
+            Write-Log "Current provisioning state: $($storageAccount.ProvisioningState)"
+        } catch {
+            Write-Log "Waiting for storage account to be accessible... ($($timer.Elapsed.TotalSeconds) seconds elapsed)"
+        }
+        Start-Sleep -Seconds $RetryIntervalSeconds
+    }
+    $timer.Stop()
+    if (-not $completed) {
+        Write-Log "ERROR: Timeout waiting for storage account creation after $TimeoutSeconds seconds."
+        return $false
+    }
+}
+
 try {
     Write-Log "Checking for resource group '$resourceGroupName'..."
     if (-not (Test-ResourceGroupExists -ResourceGroupName $resourceGroupName)) {
@@ -118,22 +151,58 @@ try {
     Stop-Transcript
     exit 1
 }
+
 try {
     Write-Log "Checking for storage account '$storageAccountName'..."
-    $existingStorage = Get-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
-    if ($existingStorage) {
-        Write-Log "Storage account '$storageAccountName' already exists. Removing..."
-        Remove-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
-        Write-Log "Storage account removed."
+    $maxRetries = 3
+    $retryCount = 0
+    $storageAccount = $null
+    
+    while ($retryCount -lt $maxRetries) {
+        try {
+            $existingStorage = Get-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+            if ($existingStorage) {
+                Write-Log "Storage account '$storageAccountName' already exists. Removing..."
+                Remove-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
+                Write-Log "Storage account removed."
+                Start-Sleep -Seconds 30
+            }
+            
+            Write-Log "Creating storage account '$storageAccountName' (Attempt $($retryCount + 1) of $maxRetries)..."
+            $storageAccount = New-AzStorageAccount `
+                -Name $storageAccountName `
+                -ResourceGroupName $resourceGroupName `
+                -Location $location `
+                -SkuName Standard_LRS `
+                -Kind StorageV2 `
+                -ErrorAction Stop
+            
+            if (Wait-ForStorageAccount -ResourceGroupName $resourceGroupName -StorageAccountName $storageAccountName) {
+                Write-Log "Storage account '$storageAccountName' created and verified successfully."
+                break
+            } else {
+                throw "Storage account creation verification timed out."
+            }
+        } catch {
+            $retryCount++
+            Write-Log "WARNING: Attempt $retryCount failed to create storage account. Error: $_"
+            if ($retryCount -ge $maxRetries) {
+                throw "Failed to create storage account after $maxRetries attempts."
+            }
+            Write-Log "Waiting 60 seconds before retry..."
+            Start-Sleep -Seconds 60
+        }
     }
-    Write-Log "Creating storage account '$storageAccountName'..."
-    $storageAccount = New-AzStorageAccount -Name $storageAccountName -ResourceGroupName $resourceGroupName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
-    Write-Log "Storage account '$storageAccountName' created."
+    
+    if (-not $storageAccount) {
+        throw "Failed to create storage account after all attempts."
+    }
 } catch {
     Write-Log "ERROR: Failed to verify or create storage account. $_"
     Stop-Transcript
     exit 1
 }
+
 try {
     Write-Log "Checking for Network Security Group '$nsgName'..."
     $existingNsg = Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
@@ -142,9 +211,7 @@ try {
         Remove-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -Force -Confirm:$false
         Write-Log "NSG removed."
     }
-    Write-Log "Creating NSG '$nsgName' with rules:"
-    Write-Log " - Denying inbound RDP on port 3389"
-    Write-Log " - Allowing inbound RDP on port 10443"
+    Write-Log "Creating NSG '$nsgName' with rules..."
     $denyRule = New-AzNetworkSecurityRuleConfig -Name "Deny-RDP-3389" -Protocol Tcp -Direction Inbound -Priority 900 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 3389 -Access Deny
     $allowRule = New-AzNetworkSecurityRuleConfig -Name "Allow-RDP-10443" -Protocol Tcp -Direction Inbound -Priority 1000 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 10443 -Access Allow
     $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName -Location $location -Name $nsgName -SecurityRules @($denyRule, $allowRule) -ErrorAction Stop
@@ -154,6 +221,7 @@ try {
     Stop-Transcript
     exit 1
 }
+
 try {
     Write-Log "Checking for Public IP '$publicIpName'..."
     $existingPublicIp = Get-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
@@ -170,6 +238,7 @@ try {
     Stop-Transcript
     exit 1
 }
+
 try {
     Write-Log "Checking for Virtual Network '$vnetName'..."
     $existingVnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
@@ -187,6 +256,7 @@ try {
     Stop-Transcript
     exit 1
 }
+
 try {
     $nicName = "$vmName-NIC"
     Write-Log "Checking for Network Interface '$nicName'..."
@@ -208,6 +278,7 @@ try {
     Stop-Transcript
     exit 1
 }
+
 try {
     Write-Log "Checking for Virtual Machine '$vmName'..."
     $existingVm = Get-AzVM -Name $vmName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
@@ -231,5 +302,6 @@ try {
     Stop-Transcript
     exit 1
 }
+
 Write-Log "Script execution completed successfully."
 Stop-Transcript
