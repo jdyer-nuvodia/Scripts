@@ -30,36 +30,36 @@
            -adminUsername "jbadmin" -adminPassword "TS=pGxB~8m^A~WH^[yB8"
 #>
 
-# Explicitly defined variables (values preserved from the repository)
-$resourceGroupName    = "JB-TEST-RG2"
-$location             = "westus2"
-$storageAccountName   = "jbteststorage0"
-$vnetName             = "JB-TEST-VNET"
-$subnetName           = "JB-TEST-SUBNET1"
-$vmName               = "JB-TEST-DC01"
-$adminUsername        = "jbadmin"
-$adminPassword        = "TS=pGxB~8m^A~WH^[yB8"
-$domainName           = "JB-TEST.local"
-$publicIpName         = "$vmName-PUBIP"
-$nsgName              = "JB-TEST-NSG"
+# Explicitly defined default variables (values preserved from the repository)
+$DefaultResourceGroupName    = "JB-TEST-RG2"
+$DefaultLocation             = "westus2"
+$DefaultStorageAccountName   = "jbteststorage0"
+$DefaultVnetName             = "JB-TEST-VNET"
+$DefaultSubnetName           = "JB-TEST-SUBNET1"
+$DefaultVmName               = "JB-TEST-DC01"
+$DefaultAdminUsername        = "jbadmin"
+$DefaultAdminPassword        = "TS=pGxB~8m^A~WH^[yB8"
+$DefaultDomainName           = "JB-TEST.local"
+$DefaultPublicIpName         = "$DefaultVmName-PUBIP"
+$DefaultNsgName              = "JB-TEST-NSG"
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$resourceGroupName = $resourceGroupName,
+    [string]$resourceGroupName = $DefaultResourceGroupName,
     [Parameter(Mandatory = $true)]
-    [string]$location = $location,
+    [string]$location = $DefaultLocation,
     [Parameter(Mandatory = $true)]
-    [string]$vmName = $vmName,
+    [string]$vmName = $DefaultVmName,
     [Parameter(Mandatory = $true)]
     [string]$VMSize = "Standard_DS2_v2",
     [Parameter(Mandatory = $true)]
-    [string]$vnetName = $vnetName,
+    [string]$vnetName = $DefaultVnetName,
     [Parameter(Mandatory = $true)]
-    [string]$subnetName = $subnetName,
+    [string]$subnetName = $DefaultSubnetName,
     [Parameter(Mandatory = $true)]
-    [string]$adminUsername = $adminUsername,
+    [string]$adminUsername = $DefaultAdminUsername,
     [Parameter(Mandatory = $true)]
-    [string]$adminPassword = $adminPassword
+    [string]$adminPassword = $DefaultAdminPassword
 )
 
 # ---------------------------------------------------------------------------
@@ -99,13 +99,13 @@ catch {
 # Create/Verify Storage Account
 # ---------------------------------------------------------------------------
 try {
-    if (-not (Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $storageAccountName -ErrorAction SilentlyContinue)) {
-        Write-Host "Creating Storage Account '$storageAccountName'..."
-        New-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $storageAccountName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
-        Write-Host "Storage Account '$storageAccountName' created successfully."
+    if (-not (Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue)) {
+        Write-Host "Creating Storage Account '$DefaultStorageAccountName'..."
+        New-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
+        Write-Host "Storage Account '$DefaultStorageAccountName' created successfully."
     }
     else {
-        Write-Host "Storage Account '$storageAccountName' already exists."
+        Write-Host "Storage Account '$DefaultStorageAccountName' already exists."
     }
 }
 catch {
@@ -130,7 +130,7 @@ catch {
 # Create Public IP Address
 # ---------------------------------------------------------------------------
 try {
-    $PublicIP = New-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $resourceGroupName `
+    $PublicIP = New-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName `
         -Location $location -AllocationMethod Dynamic -ErrorAction Stop
     Write-Host "Public IP address '$($PublicIP.Name)' created successfully."
 }
@@ -143,14 +143,14 @@ catch {
 # Create Network Security Group (NSG)
 # ---------------------------------------------------------------------------
 try {
-    if (-not (Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue)) {
-        Write-Host "Creating Network Security Group '$nsgName'..."
-        $nsg = New-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -Location $location -ErrorAction Stop
-        Write-Host "NSG '$nsgName' created successfully."
+    if (-not (Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue)) {
+        Write-Host "Creating Network Security Group '$DefaultNsgName'..."
+        $nsg = New-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -Location $location -ErrorAction Stop
+        Write-Host "NSG '$DefaultNsgName' created successfully."
     }
     else {
-        $nsg = Get-AzNetworkSecurityGroup -Name $nsgName -ResourceGroupName $resourceGroupName -ErrorAction Stop
-        Write-Host "NSG '$nsgName' already exists."
+        $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction Stop
+        Write-Host "NSG '$DefaultNsgName' already exists."
     }
 }
 catch {
@@ -176,7 +176,7 @@ catch {
 # ---------------------------------------------------------------------------
 try {
     Set-AzNetworkInterface -NetworkInterface $NIC -NetworkSecurityGroup $nsg -ErrorAction Stop
-    Write-Host "Associated NSG '$nsgName' with NIC '$($NIC.Name)'."
+    Write-Host "Associated NSG '$DefaultNsgName' with NIC '$($NIC.Name)'."
 }
 catch {
     Write-Error "Error associating NSG with NIC: $_"
@@ -226,7 +226,7 @@ try {
     Write-Host "Initiating creation of Trusted Launch VM '$vmName'..."
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $VMConfig -ErrorAction Stop
     Write-Host "Trusted Launch VM '$vmName' created successfully."
-    Write-Host "Note: The provided domain name '$domainName' is ready for future domain join configuration."
+    Write-Host "Note: The provided domain name '$DefaultDomainName' is ready for future domain join configuration."
 }
 catch {
     Write-Error "Error during VM creation: $_"
