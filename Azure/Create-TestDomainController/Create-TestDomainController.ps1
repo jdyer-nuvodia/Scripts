@@ -5,8 +5,6 @@
     This script provisions a domain controller VM configured as a Trusted Launch VM in Azure.
     It creates or verifies a resource group, storage account, network resources (virtual network, subnet, public IP,
     network security group), and provisions a Windows Server VM with Trusted Launch security features (Secure Boot and vTPM enabled).
-    Additionally, it preserves explicitly defined default variable values exactly as found in the repository.
-    Note: The $DefaultDomainName variable is provided for future domain join or configuration purposes.
 .PARAMETER resourceGroupName
     The name of the resource group where the VM and related resources will be created.
 .PARAMETER location
@@ -30,7 +28,7 @@
            -adminUsername 'jbadmin' -adminPassword 'TS-pGxB~8m^A~WH^[yB8'
 #>
 
-# Explicitly defined default variables (values preserved from the repository)
+# Explicitly defined default variables
 $DefaultResourceGroupName    = 'JB-TEST-RG2'
 $DefaultLocation             = 'westus2'
 $DefaultStorageAccountName   = 'jbteststorage0'
@@ -43,16 +41,16 @@ $DefaultDomainName           = 'JB-TEST.local'
 $DefaultPublicIpName         = "$DefaultVmName-PUBIP"
 $DefaultNsgName              = 'JB-TEST-NSG'
 
-# Set up log file: delete old log and create a new one each run
+# Set up log file
 $logFile = Join-Path -Path $PSScriptRoot -ChildPath 'Create-TestDomainController.log'
 if (Test-Path $logFile) { Remove-Item $logFile -Force }
 "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log file reset. New log starting." | Out-File -FilePath $logFile
 
-# Function for logging both to console and log file
+# Logging function
 function Write-Log {
     param (
         [string]$Message,
-        [ValidateSet('INFO', 'ERROR')]
+        [ValidateSet('INFO','ERROR')]
         [string]$Level = 'INFO'
     )
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -61,27 +59,27 @@ function Write-Log {
     $entry | Out-File -FilePath $logFile -Append
 }
 
-param(
+param (
     [Parameter(Mandatory = $true)]
-    [string]$resourceGroupName = 'JB-TEST-RG2',
+    [string]$resourceGroupName = 'JB-TEST-RG2'
 
     [Parameter(Mandatory = $true)]
-    [string]$location = 'westus2',
+    [string]$location = 'westus2'
 
     [Parameter(Mandatory = $true)]
-    [string]$vmName = 'JB-TEST-DC01',
+    [string]$vmName = 'JB-TEST-DC01'
 
     [Parameter(Mandatory = $true)]
-    [string]$VMSize = 'Standard_DS2_v2',
+    [string]$VMSize = 'Standard_DS2_v2'
 
     [Parameter(Mandatory = $true)]
-    [string]$vnetName = 'JB-TEST-VNET',
+    [string]$vnetName = 'JB-TEST-VNET'
 
     [Parameter(Mandatory = $true)]
-    [string]$subnetName = 'JB-TEST-SUBNET1',
+    [string]$subnetName = 'JB-TEST-SUBNET1'
 
     [Parameter(Mandatory = $true)]
-    [string]$adminUsername = 'jbadmin',
+    [string]$adminUsername = 'jbadmin'
 
     [Parameter(Mandatory = $true)]
     [string]$adminPassword = 'TS-pGxB~8m^A~WH^[yB8'
