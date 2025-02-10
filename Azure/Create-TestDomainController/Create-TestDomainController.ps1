@@ -27,6 +27,24 @@
            -vnetName 'JB-TEST-VNET' -subnetName 'JB-TEST-SUBNET1' `
            -adminUsername 'jbadmin' -adminPassword 'TS-pGxB~8m^A~WH^[yB8'
 #>
+param (
+    [Parameter(Mandatory = $false)]
+    [string]$resourceGroupName,
+    [Parameter(Mandatory = $false)]
+    [string]$location,
+    [Parameter(Mandatory = $false)]
+    [string]$vmName,
+    [Parameter(Mandatory = $false)]
+    [string]$VMSize,
+    [Parameter(Mandatory = $false)]
+    [string]$vnetName,
+    [Parameter(Mandatory = $false)]
+    [string]$subnetName,
+    [Parameter(Mandatory = $false)]
+    [string]$adminUsername,
+    [Parameter(Mandatory = $false)]
+    [string]$adminPassword
+)
 
 # Explicitly defined default variables
 $DefaultResourceGroupName    = 'JB-TEST-RG2'
@@ -40,6 +58,16 @@ $DefaultAdminPassword        = 'TS-pGxB~8m^A~WH^[yB8'
 $DefaultDomainName           = 'JB-TEST.local'
 $DefaultPublicIpName         = "$DefaultVmName-PUBIP"
 $DefaultNsgName              = 'JB-TEST-NSG'
+
+# If parameters are not provided, assign defaults.
+if (-not $resourceGroupName) { $resourceGroupName = $DefaultResourceGroupName }
+if (-not $location)          { $location = $DefaultLocation }
+if (-not $vmName)            { $vmName = $DefaultVmName }
+if (-not $VMSize)            { $VMSize = 'Standard_DS2_v2' }
+if (-not $vnetName)          { $vnetName = $DefaultVnetName }
+if (-not $subnetName)        { $subnetName = $DefaultSubnetName }
+if (-not $adminUsername)     { $adminUsername = $DefaultAdminUsername }
+if (-not $adminPassword)     { $adminPassword = $DefaultAdminPassword }
 
 # Set up log file
 $logFile = Join-Path -Path $PSScriptRoot -ChildPath 'Create-TestDomainController.log'
@@ -58,25 +86,6 @@ function Write-Log {
     Write-Host $entry
     $entry | Out-File -FilePath $logFile -Append
 }
-
-param (
-    [Parameter(Mandatory = $true)]
-    [string]$resourceGroupName,
-    [Parameter(Mandatory = $true)]
-    [string]$location,
-    [Parameter(Mandatory = $true)]
-    [string]$vmName,
-    [Parameter(Mandatory = $true)]
-    [string]$VMSize,
-    [Parameter(Mandatory = $true)]
-    [string]$vnetName,
-    [Parameter(Mandatory = $true)]
-    [string]$subnetName,
-    [Parameter(Mandatory = $true)]
-    [string]$adminUsername,
-    [Parameter(Mandatory = $true)]
-    [string]$adminPassword
-)
 
 # ---------------------------------------------------------------------------
 # Load Az Modules and Verify
