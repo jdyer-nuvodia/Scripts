@@ -199,7 +199,7 @@ try {
         Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
         Set-AzVMSourceImage -PublisherName 'MicrosoftWindowsServer' `
             -Offer 'WindowsServer' `
-            -Skus '2022-Datacenter' `
+            -Skus '2022-datacenter-g2' ` # Changed to Gen2 image
             -Version latest |
         Add-AzVMNetworkInterface -Id $nic.Id
     
