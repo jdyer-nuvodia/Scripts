@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-10 20:18:12 UTC
+# Last Updated: 2025-02-10 20:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5
-# Additional Info: Added requirement to preserve all functionalities during script minimization.
+# Version: 1.6
+# Additional Info: Added requirement to preserve explicitly defined variables.
 # =============================================================================
 
 <# 
@@ -32,6 +32,7 @@ for all file operations.
    - Group related operations into logical blocks
    - Place closing braces on their own line
    - IMPORTANT: Minimizing scripts MUST NOT remove any functionality, including additional logging, extended error handling, or extra features, unless such changes are explicitly discussed first.
+   - IMPORTANT: DO NOT remove explicitly defined variables in favor of parameters passed in at runtime.
 
 2. Complete Script Requirements (MANDATORY):
    - ALL scripts MUST be provided in their complete form
@@ -89,12 +90,11 @@ for all file operations.
 # Additional Info: <Additional contextual data>
 # =============================================================================
 
-
 # -----------------------------------------------------------------------------
 # REPOSITORY UPDATE NOTES TEMPLATE (MANDATORY)
 # -----------------------------------------------------------------------------
 # Update notes MUST be provided in a separate txt file using this format:
-
+#
 # -----------------------------------------------------------------------------
 # Date: <YYYY-MM-DD>
 # Commit: <Brief description of the commit or change>
