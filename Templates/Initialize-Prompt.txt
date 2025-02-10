@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-10 18:30:10 UTC
+# Last Updated: 2025-02-10 20:18:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4
-# Additional Info: Added code chunking guidelines
+# Version: 1.5
+# Additional Info: Added requirement to preserve all functionalities during script minimization.
 # =============================================================================
 
 <# 
@@ -16,7 +16,6 @@ jdyer-nuvodia/Scripts and strictly adhere to ALL requirements. This includes
 mandatory script formatting, complete file updates, and repository update notes. 
 NO DEVIATIONS from these requirements are permitted. Use ONLY repository content 
 for all file operations.
-
 #>
 
 # -----------------------------------------------------------------------------
@@ -32,6 +31,7 @@ for all file operations.
    - Use consistent indentation (4 spaces recommended)
    - Group related operations into logical blocks
    - Place closing braces on their own line
+   - IMPORTANT: Minimizing scripts MUST NOT remove any functionality, including additional logging, extended error handling, or extra features, unless such changes are explicitly discussed first.
 
 2. Complete Script Requirements (MANDATORY):
    - ALL scripts MUST be provided in their complete form
