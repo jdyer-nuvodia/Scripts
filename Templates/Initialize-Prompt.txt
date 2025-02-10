@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-10 22:08:36 UTC
+# Last Updated: 2025-02-10 22:41:23 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8
-# Additional Info: Modified parameter block requirements to allow omission of default value assignments when preventing parser errors.
+# Version: 1.9
+# Additional Info: Added explicit requirements for code chunk separation
 # =============================================================================
 
 <# 
@@ -46,16 +46,20 @@ for all file operations.
    - Scripts MUST include proper completion handling
    - Scripts MUST include proper resource cleanup where applicable
  
-3. Code Chunking Guidelines (NEW):
+3. Code Chunking Laws (MANDATORY):
    - For scripts exceeding 200 lines, content MUST be presented in chunks of 200 lines
-   - Each chunk MUST be clearly labeled with its line range (e.g., "Lines 1-200")
+   - Each chunk MUST be presented in its own separate code block with a unique header
+   - Each chunk MUST be clearly labeled with its line range (e.g., "Chunk 1: Lines 1-200")
+   - Code blocks MUST be separated by at least one line of explanatory text
    - ALL chunks MUST be provided in the same response
-   - The complete script MUST still be provided as one unit
+   - The complete script MUST still be logically maintained as one unit
    - Chunks MUST maintain proper code formatting and indentation
    - Chunks MUST NOT break logical code blocks
    - If a logical block would be split, extend the chunk to include the complete block
    - The final chunk may contain fewer than 200 lines
    - Include a chunk summary at the start indicating total number of chunks
+   - IMPORTANT: Never combine multiple chunks in a single code block
+   - IMPORTANT: Each chunk MUST have its own ```powershell name=filename.ps1 block
  
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file
