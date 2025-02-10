@@ -43,6 +43,24 @@ $DefaultDomainName           = "JB-TEST.local"
 $DefaultPublicIpName         = "$DefaultVmName-PUBIP"
 $DefaultNsgName              = "JB-TEST-NSG"
 
+# Set up log file: delete old log and create a new one each run
+$logFile = Join-Path -Path $PSScriptRoot -ChildPath "Create-TestDomainController.log"
+if (Test-Path $logFile) { Remove-Item $logFile -Force }
+"[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log file reset. New log starting." | Out-File -FilePath $logFile
+
+# Function for logging both to console and log file
+function Write-Log {
+    param (
+        [string]$Message,
+        [ValidateSet("INFO", "ERROR")]
+        [string]$Level = "INFO"
+    )
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $entry = "[$timestamp] [$Level] $Message"
+    Write-Host $entry
+    $entry | Out-File -FilePath $logFile -Append
+}
+
 param(
     [Parameter(Mandatory = $true)]
     [string]$resourceGroupName = $DefaultResourceGroupName,
@@ -70,10 +88,10 @@ try {
     Import-Module Az.Compute -ErrorAction Stop
     Import-Module Az.Network -ErrorAction Stop
     Import-Module Az.Resources -ErrorAction Stop
-    Write-Host "Successfully loaded required Az modules."
+    Write-Log "Successfully loaded required Az modules."
 }
 catch {
-    Write-Error "Failed to load required Az modules: $_"
+    Write-Log "Failed to load required Az modules: $_" "ERROR"
     exit 1
 }
 
@@ -82,16 +100,16 @@ catch {
 # ---------------------------------------------------------------------------
 try {
     if (-not (Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue)) {
-        Write-Host "Creating resource group '$resourceGroupName' in location '$location'..."
+        Write-Log "Creating resource group '$resourceGroupName' in location '$location'..."
         New-AzResourceGroup -Name $resourceGroupName -Location $location -ErrorAction Stop
-        Write-Host "Resource group '$resourceGroupName' created successfully."
+        Write-Log "Resource group '$resourceGroupName' created successfully."
     }
     else {
-        Write-Host "Resource group '$resourceGroupName' already exists."
+        Write-Log "Resource group '$resourceGroupName' already exists."
     }
 }
 catch {
-    Write-Error "Error during resource group creation or verification: $_"
+    Write-Log "Error during resource group creation or verification: $_" "ERROR"
     exit 1
 }
 
@@ -100,16 +118,16 @@ catch {
 # ---------------------------------------------------------------------------
 try {
     if (-not (Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue)) {
-        Write-Host "Creating Storage Account '$DefaultStorageAccountName'..."
+        Write-Log "Creating Storage Account '$DefaultStorageAccountName'..."
         New-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
-        Write-Host "Storage Account '$DefaultStorageAccountName' created successfully."
+        Write-Log "Storage Account '$DefaultStorageAccountName' created successfully."
     }
     else {
-        Write-Host "Storage Account '$DefaultStorageAccountName' already exists."
+        Write-Log "Storage Account '$DefaultStorageAccountName' already exists."
     }
 }
 catch {
-    Write-Error "Error creating Storage Account: $_"
+    Write-Log "Error creating Storage Account: $_" "ERROR"
     exit 1
 }
 
@@ -119,10 +137,10 @@ catch {
 try {
     $VNet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction Stop
     $Subnet = Get-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet -ErrorAction Stop
-    Write-Host "Virtual network '$vnetName' and subnet '$subnetName' fetched successfully."
+    Write-Log "Virtual network '$vnetName' and subnet '$subnetName' fetched successfully."
 }
 catch {
-    Write-Error "Error fetching virtual network/subnet: $_"
+    Write-Log "Error fetching virtual network/subnet: $_" "ERROR"
     exit 1
 }
 
@@ -132,10 +150,10 @@ catch {
 try {
     $PublicIP = New-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName `
         -Location $location -AllocationMethod Dynamic -ErrorAction Stop
-    Write-Host "Public IP address '$($PublicIP.Name)' created successfully."
+    Write-Log "Public IP address '$($PublicIP.Name)' created successfully."
 }
 catch {
-    Write-Error "Error creating Public IP Address: $_"
+    Write-Log "Error creating Public IP Address: $_" "ERROR"
     exit 1
 }
 
@@ -144,17 +162,17 @@ catch {
 # ---------------------------------------------------------------------------
 try {
     if (-not (Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue)) {
-        Write-Host "Creating Network Security Group '$DefaultNsgName'..."
+        Write-Log "Creating Network Security Group '$DefaultNsgName'..."
         $nsg = New-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -Location $location -ErrorAction Stop
-        Write-Host "NSG '$DefaultNsgName' created successfully."
+        Write-Log "NSG '$DefaultNsgName' created successfully."
     }
     else {
         $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction Stop
-        Write-Host "NSG '$DefaultNsgName' already exists."
+        Write-Log "NSG '$DefaultNsgName' already exists."
     }
 }
 catch {
-    Write-Error "Error creating or retrieving NSG: $_"
+    Write-Log "Error creating or retrieving NSG: $_" "ERROR"
     exit 1
 }
 
@@ -164,10 +182,10 @@ catch {
 try {
     $NIC = New-AzNetworkInterface -Name "$vmName-nic" -ResourceGroupName $resourceGroupName `
         -Location $location -SubnetId $Subnet.Id -PublicIpAddressId $PublicIP.Id -ErrorAction Stop
-    Write-Host "Network interface '$($NIC.Name)' created successfully."
+    Write-Log "Network interface '$($NIC.Name)' created successfully."
 }
 catch {
-    Write-Error "Error creating Network Interface: $_"
+    Write-Log "Error creating Network Interface: $_" "ERROR"
     exit 1
 }
 
@@ -176,10 +194,10 @@ catch {
 # ---------------------------------------------------------------------------
 try {
     Set-AzNetworkInterface -NetworkInterface $NIC -NetworkSecurityGroup $nsg -ErrorAction Stop
-    Write-Host "Associated NSG '$DefaultNsgName' with NIC '$($NIC.Name)'."
+    Write-Log "Associated NSG '$DefaultNsgName' with NIC '$($NIC.Name)'."
 }
 catch {
-    Write-Error "Error associating NSG with NIC: $_"
+    Write-Log "Error associating NSG with NIC: $_" "ERROR"
     exit 1
 }
 
@@ -193,7 +211,7 @@ $TrustedLaunchProfile = @{
         VtpmEnabled       = $true
     }
 }
-Write-Host "Trusted Launch settings defined."
+Write-Log "Trusted Launch settings defined."
 
 # ---------------------------------------------------------------------------
 # Create VM Configuration with Extended Settings
@@ -212,10 +230,10 @@ try {
     # Apply Trusted Launch settings without altering explicitly defined variable values or extra functionality
     $VMConfig.AdditionalCapabilities = @{ UefiSettings = $TrustedLaunchProfile.UefiSettings }
     $VMConfig.SecurityProfile = @{ SecurityType = $TrustedLaunchProfile.SecurityType }
-    Write-Host "VM configuration prepared with Trusted Launch settings."
+    Write-Log "VM configuration prepared with Trusted Launch settings."
 }
 catch {
-    Write-Error "Error configuring VM settings: $_"
+    Write-Log "Error configuring VM settings: $_" "ERROR"
     exit 1
 }
 
@@ -223,12 +241,12 @@ catch {
 # Create the Trusted Launch VM
 # ---------------------------------------------------------------------------
 try {
-    Write-Host "Initiating creation of Trusted Launch VM '$vmName'..."
+    Write-Log "Initiating creation of Trusted Launch VM '$vmName'..."
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $VMConfig -ErrorAction Stop
-    Write-Host "Trusted Launch VM '$vmName' created successfully."
-    Write-Host "Note: The provided domain name '$DefaultDomainName' is ready for future domain join configuration."
+    Write-Log "Trusted Launch VM '$vmName' created successfully."
+    Write-Log "Note: The provided domain name '$DefaultDomainName' is ready for future domain join configuration."
 }
 catch {
-    Write-Error "Error during VM creation: $_"
+    Write-Log "Error during VM creation: $_" "ERROR"
     exit 1
 }
