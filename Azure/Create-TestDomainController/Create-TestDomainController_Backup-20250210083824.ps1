@@ -303,5 +303,46 @@ try {
     exit 1
 }
 
+try {
+    Write-Log "Configuring auto-shutdown schedule for VM '$vmName'..."
+    
+    # Calculate 9pm MST in UTC (MST is UTC-7, so 9pm MST = 4am UTC next day)
+    # This calculation ignores daylight savings time as requested
+    $scheduledTime = "0400"  # 4am UTC = 9pm MST
+    
+    $scheduleConfig = @{
+        "location"              = $location
+        "name"                  = "shutdown-computevm-$vmName"
+        "targetResourceId"      = (Get-AzVM -ResourceGroupName $resourceGroupName -Name $vmName).Id
+        "dailyRecurrence"       = @{"time" = $scheduledTime }
+        "notificationSettings"  = @{
+            "enabled"           = $false
+            "timeInMinutes"    = 30
+        }
+        "timeZoneId"           = "UTC"
+    }
+    
+    Write-Log "Setting up daily shutdown schedule for $scheduledTime UTC..."
+    $schedule = New-AzAutomationSchedule `
+        -ResourceGroupName $resourceGroupName `
+        -AutomationAccountName "AutoShutdownAccount" `
+        -Name "ShutdownSchedule-$vmName" `
+        -StartTime (Get-Date).Date.AddDays(1).AddHours(4) `
+        -DayInterval 1 `
+        -ErrorAction Stop
+        
+    Enable-AzureRmAutoshutdown `
+        -ResourceGroupName $resourceGroupName `
+        -VirtualMachineName $vmName `
+        -ShutdownTime $scheduledTime `
+        -TimeZoneId "UTC" `
+        -ErrorAction Stop
+        
+    Write-Log "Auto-shutdown schedule configured successfully for 9pm MST (4am UTC)."
+} catch {
+    Write-Log "ERROR: Failed to configure auto-shutdown schedule. $_"
+    Write-Log "WARNING: VM created successfully but auto-shutdown configuration failed. Manual configuration required."
+}
+
 Write-Log "Script execution completed successfully."
 Stop-Transcript
