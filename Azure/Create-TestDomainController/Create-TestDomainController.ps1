@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-10 22:50:04 UTC
+# Last Updated: 2025-02-10 23:05:38 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2
-# Additional Info: Fixed Public IP SKU and allocation method
+# Version: 1.3
+# Additional Info: Fixed image version parameter syntax error
 # =============================================================================
 
 <# 
@@ -129,7 +129,7 @@ try {
     $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (!$nsg) {
         Write-Log "[INFO] Creating Network Security Group '$DefaultNsgName'..."
-		        $nsgRules = @(
+		$nsgRules = @(
             @{
                 Name = 'AllowRDP'
                 Protocol = 'Tcp'
@@ -199,8 +199,8 @@ try {
         Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
         Set-AzVMSourceImage -PublisherName 'MicrosoftWindowsServer' `
             -Offer 'WindowsServer' `
-            -Skus '2022-datacenter-g2' ` # Changed to Gen2 image
-            -Version latest |
+            -Skus '2022-datacenter-g2' `
+            -Version 'latest' |
         Add-AzVMNetworkInterface -Id $nic.Id
     
     # Enable Trusted Launch
