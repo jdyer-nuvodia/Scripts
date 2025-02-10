@@ -48,7 +48,10 @@ for all file operations.
  
 3. Code Chunking Laws (MANDATORY):
    - For scripts exceeding 200 lines, content MUST be presented in chunks of 200 lines
-   - Each chunk MUST be presented in its own separate code block with a unique header
+   - Each chunk MUST be presented in its own separate code block
+   - Each chunk MUST use a unique filename in its code block header using the format:
+     ```powershell name=filename.extension.chunk#```
+     Example: ```powershell name=script.ps1.chunk1```
    - Each chunk MUST be clearly labeled with its line range (e.g., "Chunk 1: Lines 1-200")
    - Code blocks MUST be separated by at least one line of explanatory text
    - ALL chunks MUST be provided in the same response
@@ -59,7 +62,8 @@ for all file operations.
    - The final chunk may contain fewer than 200 lines
    - Include a chunk summary at the start indicating total number of chunks
    - IMPORTANT: Never combine multiple chunks in a single code block
-   - IMPORTANT: Each chunk MUST have its own ```powershell name=filename.ps1 block
+   - IMPORTANT: Each chunk MUST have its own unique filename in the code block header
+   - IMPORTANT: The chunk number in the filename MUST match the chunk number in the description
  
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file
