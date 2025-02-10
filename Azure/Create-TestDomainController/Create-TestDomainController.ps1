@@ -61,21 +61,21 @@ function Write-Log {
 
 param (
     [Parameter(Mandatory = $true)]
-    [string]$resourceGroupName = 'JB-TEST-RG2',
+    [string]$resourceGroupName,
     [Parameter(Mandatory = $true)]
-    [string]$location = 'westus2',
+    [string]$location,
     [Parameter(Mandatory = $true)]
-    [string]$vmName = 'JB-TEST-DC01',
+    [string]$vmName,
     [Parameter(Mandatory = $true)]
-    [string]$VMSize = 'Standard_DS2_v2',
+    [string]$VMSize,
     [Parameter(Mandatory = $true)]
-    [string]$vnetName = 'JB-TEST-VNET',
+    [string]$vnetName,
     [Parameter(Mandatory = $true)]
-    [string]$subnetName = 'JB-TEST-SUBNET1',
+    [string]$subnetName,
     [Parameter(Mandatory = $true)]
-    [string]$adminUsername = 'jbadmin',
+    [string]$adminUsername,
     [Parameter(Mandatory = $true)]
-    [string]$adminPassword = 'TS-pGxB~8m^A~WH^[yB8'
+    [string]$adminPassword
 )
 
 # ---------------------------------------------------------------------------
@@ -154,6 +154,7 @@ catch {
     Write-Log "Error creating Public IP Address: $_" 'ERROR'
     exit 1
 }
+
 # ---------------------------------------------------------------------------
 # Create Network Security Group (NSG)
 # ---------------------------------------------------------------------------
