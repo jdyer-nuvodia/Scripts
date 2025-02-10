@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-10 21:58:43 UTC
+# Last Updated: 2025-02-10 22:08:36 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7
-# Additional Info: Added allowance for new lines in multi-line command and parameter declarations.
+# Version: 1.8
+# Additional Info: Modified parameter block requirements to allow omission of default value assignments when preventing parser errors.
 # =============================================================================
 
 <# 
@@ -26,15 +26,16 @@ for all file operations.
    - Use single empty lines only between major sections or logical breaks
    - Align parameter blocks and variable assignments for readability
    - Use concise, descriptive variable names following PowerShell conventions
-   - Allow new lines in command parameters or multi-line declarations when it affects syntax to prevent parsing errors
+   - Allow new lines in command parameters or multi-line declarations when it affects syntax to prevent parsing errors.
+   - When default value assignments in parameter blocks cause parsing errors, it is allowed to omit them provided that the explicit default values are defined elsewhere in the script.
    - Place opening braces on the same line as the condition/function declaration
    - Include error handling in try/catch blocks for critical operations
    - Use consistent indentation (4 spaces recommended)
    - Group related operations into logical blocks
-   - Place closing braces on their own line
+   - Place closing braces on their own lines
    - IMPORTANT: Minimizing scripts MUST NOT remove any functionality, including additional logging, extended error handling, or extra features, unless such changes are explicitly discussed first.
    - IMPORTANT: DO NOT remove explicitly defined variables in favor of parameters passed in at runtime.
-
+ 
 2. Complete Script Requirements (MANDATORY):
    - ALL scripts MUST be provided in their complete form
    - NO partial scripts or code snippets are allowed
@@ -44,7 +45,7 @@ for all file operations.
    - Scripts MUST include all required parameter declarations
    - Scripts MUST include proper completion handling
    - Scripts MUST include proper resource cleanup where applicable
-
+ 
 3. Code Chunking Guidelines (NEW):
    - For scripts exceeding 200 lines, content MUST be presented in chunks of 200 lines
    - Each chunk MUST be clearly labeled with its line range (e.g., "Lines 1-200")
@@ -55,13 +56,12 @@ for all file operations.
    - If a logical block would be split, extend the chunk to include the complete block
    - The final chunk may contain fewer than 200 lines
    - Include a chunk summary at the start indicating total number of chunks
-
+ 
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file
    - Update notes MUST follow the template format below
    - NO commits are allowed without corresponding update notes
    - Update notes MUST be created before script implementation
-
 # -----------------------------------------------------------------------------
 # SCRIPT HEADER TEMPLATE
 # -----------------------------------------------------------------------------
