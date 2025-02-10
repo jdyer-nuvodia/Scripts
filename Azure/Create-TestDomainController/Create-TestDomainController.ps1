@@ -1,3 +1,13 @@
+# =============================================================================
+# Script: Create-TestDomainController.ps1
+# Created: 2025-02-10 22:50:04 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-10 22:50:04 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.2
+# Additional Info: Fixed Public IP SKU and allocation method
+# =============================================================================
+
 <# 
 .SYNOPSIS
     Creates a test domain controller as a Trusted Launch VM in Azure.
@@ -27,6 +37,7 @@
            -vnetName 'JB-TEST-VNET' -subnetName 'JB-TEST-SUBNET1' `
            -adminUsername 'jbadmin' -adminPassword 'TS-pGxB~8m^A~WH^[yB8'
 #>
+
 param (
     [Parameter(Mandatory = $false)]
     [string]$resourceGroupName,
@@ -46,6 +57,18 @@ param (
     [string]$adminPassword
 )
 
+# Start logging
+$LogFile = Join-Path $PSScriptRoot "Create-TestDomainController.log"
+function Write-Log {
+    param($Message)
+    $LogMessage = "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] $Message"
+    Add-Content -Path $LogFile -Value $LogMessage
+    Write-Host $LogMessage
+}
+
+# Clear log file
+Set-Content -Path $LogFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log file reset. New log starting."
+
 # Explicitly defined default variables
 $DefaultResourceGroupName    = 'JB-TEST-RG2'
 $DefaultLocation            = 'westus2'
@@ -61,7 +84,7 @@ $DefaultNsgName           = 'JB-TEST-NSG'
 $DefaultVnetAddressSpace   = '10.0.0.0/16'
 $DefaultSubnetAddressSpace = '10.0.1.0/24'
 
-# If parameters are not provided, assign defaults.
+# If parameters are not provided, assign defaults
 if (-not $resourceGroupName) { $resourceGroupName = $DefaultResourceGroupName }
 if (-not $location)          { $location = $DefaultLocation }
 if (-not $vmName)            { $vmName = $DefaultVmName }
@@ -71,207 +94,124 @@ if (-not $subnetName)        { $subnetName = $DefaultSubnetName }
 if (-not $adminUsername)     { $adminUsername = $DefaultAdminUsername }
 if (-not $adminPassword)     { $adminPassword = $DefaultAdminPassword }
 
-# Set up log file
-$logFile = Join-Path -Path $PSScriptRoot -ChildPath 'Create-TestDomainController.log'
-if (Test-Path $logFile) { Remove-Item $logFile -Force }
-"[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log file reset. New log starting." | Out-File -FilePath $logFile
-
-# Logging function
-function Write-Log {
-    param (
-        [string]$Message,
-        [ValidateSet('INFO','ERROR')]
-        [string]$Level = 'INFO'
-    )
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry = "[$timestamp] [$Level] $Message"
-    Write-Host $entry
-    $entry | Out-File -FilePath $logFile -Append
-}
-
-# ---------------------------------------------------------------------------
-# Load Az Modules and Verify
-# ---------------------------------------------------------------------------
 try {
-    if (-not (Get-Module -ListAvailable -Name Az.Compute)) { throw 'Az.Compute module not found' }
-    Import-Module Az.Compute -ErrorAction Stop
-    Import-Module Az.Network -ErrorAction Stop
-    Import-Module Az.Resources -ErrorAction Stop
-    Write-Log 'Successfully loaded required Az modules.'
-}
-catch {
-    Write-Log "Failed to load required Az modules: $_" 'ERROR'
-    exit 1
-}
-
-# ---------------------------------------------------------------------------
-# Create/Verify Resource Group
-# ---------------------------------------------------------------------------
-try {
-    if (-not (Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue)) {
-        Write-Log "Creating resource group '$resourceGroupName' in location '$location'..."
-        New-AzResourceGroup -Name $resourceGroupName -Location $location -ErrorAction Stop
-        Write-Log "Resource group '$resourceGroupName' created successfully."
-    }
-    else {
-        Write-Log "Resource group '$resourceGroupName' already exists."
-    }
-}
-catch {
-    Write-Log "Error during resource group creation or verification: $_" 'ERROR'
-    exit 1
-}
-
-# ---------------------------------------------------------------------------
-# Create/Verify Storage Account
-# ---------------------------------------------------------------------------
-try {
-    if (-not (Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue)) {
-        Write-Log "Creating Storage Account '$DefaultStorageAccountName'..."
-        New-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -Location $location -SkuName Standard_LRS -Kind StorageV2 -ErrorAction Stop
-        Write-Log "Storage Account '$DefaultStorageAccountName' created successfully."
-    }
-    else {
-        Write-Log "Storage Account '$DefaultStorageAccountName' already exists."
-    }
-}
-catch {
-    Write-Log "Error creating Storage Account: $_" 'ERROR'
-    exit 1
-}
-
-# ---------------------------------------------------------------------------
-# Create/Verify Virtual Network and Subnet
-# ---------------------------------------------------------------------------
-try {
-    $VNet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
-    if (-not $VNet) {
-        Write-Log "Creating Virtual Network '$vnetName'..."
-        $SubnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix $DefaultSubnetAddressSpace
-        $VNet = New-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName `
-            -Location $location -AddressPrefix $DefaultVnetAddressSpace -Subnet $SubnetConfig
-        Write-Log "Virtual Network '$vnetName' created successfully."
-    }
-    else {
-        Write-Log "Virtual Network '$vnetName' already exists."
-        $Subnet = Get-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet -ErrorAction SilentlyContinue
-        if (-not $Subnet) {
-            Write-Log "Creating Subnet '$subnetName'..."
-            Add-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet -AddressPrefix $DefaultSubnetAddressSpace
-            $VNet | Set-AzVirtualNetwork
-            Write-Log "Subnet '$subnetName' created successfully."
+    # Verify Az modules are loaded
+    $requiredModules = @('Az.Accounts', 'Az.Resources', 'Az.Network', 'Az.Storage', 'Az.Compute')
+    foreach ($module in $requiredModules) {
+        if (!(Get-Module -Name $module -ListAvailable)) {
+            throw "Required module $module is not installed"
         }
     }
-    $Subnet = Get-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet
-    Write-Log "Virtual network and subnet configuration completed."
-}
-catch {
-    Write-Log "Error configuring virtual network/subnet: $_" 'ERROR'
-    exit 1
-}
+    Write-Log "[INFO] Successfully loaded required Az modules."
 
-# ---------------------------------------------------------------------------
-# Create Public IP Address
-# ---------------------------------------------------------------------------
-try {
-    $PublicIP = New-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName `
-        -Location $location -AllocationMethod Dynamic -ErrorAction Stop
-    Write-Log "Public IP address '$($PublicIP.Name)' created successfully."
-}
-catch {
-    Write-Log "Error creating Public IP Address: $_" 'ERROR'
-    exit 1
-}
-
-# ---------------------------------------------------------------------------
-# Create Network Security Group (NSG)
-# ---------------------------------------------------------------------------
-try {
-    if (-not (Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue)) {
-        Write-Log "Creating Network Security Group '$DefaultNsgName'..."
-        $nsg = New-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -Location $location -ErrorAction Stop
-        Write-Log "NSG '$DefaultNsgName' created successfully."
+    # Check/Create Resource Group
+    $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
+    if (!$rg) {
+        Write-Log "[INFO] Creating resource group '$resourceGroupName'..."
+        New-AzResourceGroup -Name $resourceGroupName -Location $location
+    } else {
+        Write-Log "[INFO] Resource group '$resourceGroupName' already exists."
     }
-    else {
-        $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction Stop
-        Write-Log "NSG '$DefaultNsgName' already exists."
+
+    # Create Storage Account if it doesn't exist
+    $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
+    if (!$storageAccount) {
+        Write-Log "[INFO] Creating Storage Account '$DefaultStorageAccountName'..."
+        $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroupName `
+            -Name $DefaultStorageAccountName `
+            -Location $location `
+            -SkuName Standard_LRS `
+            -Kind StorageV2
+        Write-Log "[INFO] Storage Account '$DefaultStorageAccountName' created successfully."
     }
-}
-catch {
-    Write-Log "Error creating or retrieving NSG: $_" 'ERROR'
-    exit 1
-}
 
-# ---------------------------------------------------------------------------
-# Create Network Interface
-# ---------------------------------------------------------------------------
-try {
-    $NIC = New-AzNetworkInterface -Name "$vmName-nic" -ResourceGroupName $resourceGroupName `
-        -Location $location -SubnetId $Subnet.Id -PublicIpAddressId $PublicIP.Id -ErrorAction Stop
-    Write-Log "Network interface '$($NIC.Name)' created successfully."
-}
-catch {
-    Write-Log "Error creating Network Interface: $_" 'ERROR'
-    exit 1
-}
-
-# ---------------------------------------------------------------------------
-# Associate NSG with Network Interface
-# ---------------------------------------------------------------------------
-try {
-    Set-AzNetworkInterface -NetworkInterface $NIC -NetworkSecurityGroup $nsg -ErrorAction Stop
-    Write-Log "Associated NSG '$DefaultNsgName' with NIC '$($NIC.Name)'."
-}
-catch {
-    Write-Log "Error associating NSG with NIC: $_" 'ERROR'
-    exit 1
-}
-
-# ---------------------------------------------------------------------------
-# Define Trusted Launch Settings
-# ---------------------------------------------------------------------------
-$TrustedLaunchProfile = @{
-    SecurityType = 'TrustedLaunch'
-    UefiSettings = @{
-        SecureBootEnabled = $true
-        VtpmEnabled       = $true
+    # Create Network Security Group
+    $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if (!$nsg) {
+        Write-Log "[INFO] Creating Network Security Group '$DefaultNsgName'..."
+		        $nsgRules = @(
+            @{
+                Name = 'AllowRDP'
+                Protocol = 'Tcp'
+                SourcePortRange = '*'
+                DestinationPortRange = '3389'
+                SourceAddressPrefix = '*'
+                DestinationAddressPrefix = '*'
+                Access = 'Allow'
+                Priority = 100
+                Direction = 'Inbound'
+            }
+        )
+        
+        $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName `
+            -Location $location `
+            -Name $DefaultNsgName
+        
+        foreach ($rule in $nsgRules) {
+            Add-AzNetworkSecurityRuleConfig @rule -NetworkSecurityGroup $nsg
+        }
+        $nsg | Set-AzNetworkSecurityGroup
+        Write-Log "[INFO] Network Security Group created successfully."
     }
-}
-Write-Log 'Trusted Launch settings defined.'
 
-# ---------------------------------------------------------------------------
-# Create VM Configuration with Extended Settings
-# ---------------------------------------------------------------------------
-try {
-    $SecureCredential = New-Object System.Management.Automation.PSCredential(
-        $adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)
-    )
-    $VMConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize -ErrorAction Stop | `
-        Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $SecureCredential `
-            -ProvisionVMAgent -EnableAutoUpdate -ErrorAction Stop | `
-        Set-AzVMSourceImage -PublisherName MicrosoftWindowsServer -Offer WindowsServer `
-            -Skus 2019-Datacenter -Version latest -ErrorAction Stop | `
-        Add-AzVMNetworkInterface -Id $NIC.Id -ErrorAction Stop
+    # Create Virtual Network and Subnet if they don't exist
+    $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if (!$vnet) {
+        Write-Log "[INFO] Creating Virtual Network '$vnetName'..."
+        $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName `
+            -AddressPrefix $DefaultSubnetAddressSpace `
+            -NetworkSecurityGroup $nsg
 
-    $VMConfig.AdditionalCapabilities = @{ UefiSettings = $TrustedLaunchProfile.UefiSettings }
-    $VMConfig.SecurityProfile = @{ SecurityType = $TrustedLaunchProfile.SecurityType }
-    Write-Log 'VM configuration prepared with Trusted Launch settings.'
-}
-catch {
-    Write-Log "Error configuring VM settings: $_" 'ERROR'
-    exit 1
-}
+        $vnet = New-AzVirtualNetwork -ResourceGroupName $resourceGroupName `
+            -Location $location `
+            -Name $vnetName `
+            -AddressPrefix $DefaultVnetAddressSpace `
+            -Subnet $subnetConfig
+        Write-Log "[INFO] Virtual Network and Subnet created successfully."
+    }
 
-# ---------------------------------------------------------------------------
-# Create the Trusted Launch VM
-# ---------------------------------------------------------------------------
-try {
-    Write-Log "Initiating creation of Trusted Launch VM '$vmName'..."
-    New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $VMConfig -ErrorAction Stop
-    Write-Log "Trusted Launch VM '$vmName' created successfully."
-    Write-Log "Note: The provided domain name '$DefaultDomainName' is ready for future domain join configuration."
-}
-catch {
-    Write-Log "Error during VM creation: $_" 'ERROR'
-    exit 1
+    # Create Public IP with Standard SKU and Static allocation
+    $publicIp = Get-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if (!$publicIp) {
+        Write-Log "[INFO] Creating Public IP '$DefaultPublicIpName'..."
+        $publicIp = New-AzPublicIpAddress -ResourceGroupName $resourceGroupName `
+            -Location $location `
+            -Name $DefaultPublicIpName `
+            -Sku Standard `
+            -AllocationMethod Static
+        Write-Log "[INFO] Public IP created successfully."
+    }
+
+    # Create NIC
+    $nicName = "$vmName-NIC"
+    $subnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName |
+        Get-AzVirtualNetworkSubnetConfig -Name $subnetName
+    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName `
+        -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id
+    Write-Log "[INFO] Network interface created successfully."
+
+    # Create VM configuration
+    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize |
+        Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
+        Set-AzVMSourceImage -PublisherName 'MicrosoftWindowsServer' `
+            -Offer 'WindowsServer' `
+            -Skus '2022-Datacenter' `
+            -Version latest |
+        Add-AzVMNetworkInterface -Id $nic.Id
+    
+    # Enable Trusted Launch
+    $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
+    $vmConfig = Set-AzVMUefi -VM $vmConfig -EnableVtpm $true -EnableSecureBoot $true
+
+    # Create the VM
+    Write-Log "[INFO] Creating VM '$vmName'..."
+    New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
+    Write-Log "[INFO] VM '$vmName' created successfully."
+
+    Write-Log "[INFO] Domain Controller VM creation completed successfully."
+} catch {
+    Write-Log "[ERROR] An error occurred: $($_.Exception.Message)"
+    throw
+} finally {
+    Write-Log "[INFO] Script execution completed."
 }
