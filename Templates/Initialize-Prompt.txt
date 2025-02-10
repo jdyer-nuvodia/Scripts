@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 17:42:17 UTC
+# Last Updated: 2025-02-10 18:30:10 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3
-# Additional Info: This file contains templates for script headers and update notes.
+# Version: 1.4
+# Additional Info: Added code chunking guidelines
 # =============================================================================
 
 <# 
@@ -43,7 +43,18 @@ for all file operations.
    - Scripts MUST include proper completion handling
    - Scripts MUST include proper resource cleanup where applicable
 
-3. Repository Update Notes (MANDATORY):
+3. Code Chunking Guidelines (NEW):
+   - For scripts exceeding 200 lines, content MUST be presented in chunks of 200 lines
+   - Each chunk MUST be clearly labeled with its line range (e.g., "Lines 1-200")
+   - ALL chunks MUST be provided in the same response
+   - The complete script MUST still be provided as one unit
+   - Chunks MUST maintain proper code formatting and indentation
+   - Chunks MUST NOT break logical code blocks
+   - If a logical block would be split, extend the chunk to include the complete block
+   - The final chunk may contain fewer than 200 lines
+   - Include a chunk summary at the start indicating total number of chunks
+
+4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file
    - Update notes MUST follow the template format below
    - NO commits are allowed without corresponding update notes
