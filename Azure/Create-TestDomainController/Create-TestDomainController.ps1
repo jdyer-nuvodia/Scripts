@@ -190,6 +190,10 @@ try {
         -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id
     Write-Log "[INFO] Network interface created successfully."
 
+    # Create PSCredential object for VM
+    $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
+
     # Create VM configuration
     $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize |
         Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
