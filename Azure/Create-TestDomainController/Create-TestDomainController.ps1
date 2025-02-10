@@ -5,7 +5,7 @@
     This script provisions a domain controller VM configured as a Trusted Launch VM in Azure.
     It creates or verifies a resource group, storage account, network resources (virtual network, subnet, public IP,
     network security group), and provisions a Windows Server VM with Trusted Launch security features (Secure Boot and vTPM enabled).
-    Additionally, it preserves explicitly defined variable values exactly as found in the repository.
+    Additionally, it preserves explicitly defined default variable values exactly as found in the repository.
     Note: The $DefaultDomainName variable is provided for future domain join or configuration purposes.
 .PARAMETER resourceGroupName
     The name of the resource group where the VM and related resources will be created.
@@ -63,28 +63,28 @@ function Write-Log {
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$resourceGroupName = $DefaultResourceGroupName
-
+    [string]$resourceGroupName = "JB-TEST-RG2",
+    
     [Parameter(Mandatory = $true)]
-    [string]$location = $DefaultLocation
-
+    [string]$location = "westus2",
+    
     [Parameter(Mandatory = $true)]
-    [string]$vmName = $DefaultVmName
-
+    [string]$vmName = "JB-TEST-DC01",
+    
     [Parameter(Mandatory = $true)]
-    [string]$VMSize = "Standard_DS2_v2"
-
+    [string]$VMSize = "Standard_DS2_v2",
+    
     [Parameter(Mandatory = $true)]
-    [string]$vnetName = $DefaultVnetName
-
+    [string]$vnetName = "JB-TEST-VNET",
+    
     [Parameter(Mandatory = $true)]
-    [string]$subnetName = $DefaultSubnetName
-
+    [string]$subnetName = "JB-TEST-SUBNET1",
+    
     [Parameter(Mandatory = $true)]
-    [string]$adminUsername = $DefaultAdminUsername
-
+    [string]$adminUsername = "jbadmin",
+    
     [Parameter(Mandatory = $true)]
-    [string]$adminPassword = $DefaultAdminPassword
+    [string]$adminPassword = "TS=pGxB~8m^A~WH^[yB8"
 )
 
 # ---------------------------------------------------------------------------
