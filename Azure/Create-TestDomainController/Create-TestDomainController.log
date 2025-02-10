@@ -1,3 +1,11 @@
-[2025-02-10 15:09:49] Log file reset. New log starting.
-[2025-02-10 15:09:49] [INFO] Successfully loaded required Az modules.
-[2025-02-10 15:09:49] [ERROR] Error during resource group creation or verification: Cannot validate argument on parameter 'Name'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again.
+[2025-02-10 15:11:13] Log file reset. New log starting.
+[2025-02-10 15:11:13] [INFO] Successfully loaded required Az modules.
+[2025-02-10 15:11:14] [INFO] Resource group 'JB-TEST-RG2' already exists.
+[2025-02-10 15:11:15] [INFO] Creating Storage Account 'jbteststorage0'...
+[2025-02-10 15:11:43] [INFO] Storage Account 'jbteststorage0' created successfully.
+[2025-02-10 15:11:44] [ERROR] Error fetching virtual network/subnet: The Resource 'Microsoft.Network/virtualNetworks/JB-TEST-VNET' under resource group 'JB-TEST-RG2' was not found. For more details please go to https://aka.ms/ARMResourceNotFoundFix
+StatusCode: 404
+ReasonPhrase: Not Found
+ErrorCode: ResourceNotFound
+ErrorMessage: The Resource 'Microsoft.Network/virtualNetworks/JB-TEST-VNET' under resource group 'JB-TEST-RG2' was not found. For more details please go to https://aka.ms/ARMResourceNotFoundFix
+OperationID : 965dc011-95f6-4797-b3e9-cc85edff33c6
