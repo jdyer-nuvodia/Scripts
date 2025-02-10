@@ -1,15 +1,14 @@
-[2025-02-10 16:01:35] Log file reset. New log starting.
-[2025-02-10 16:01:35] [INFO] Successfully loaded required Az modules.
-[2025-02-10 16:01:35] [INFO] Resource group 'JB-TEST-RG2' already exists.
-[2025-02-10 16:01:35] [INFO] Creating Storage Account 'jbteststorage0'...
-[2025-02-10 16:02:03] [INFO] Storage Account 'jbteststorage0' created successfully.
-[2025-02-10 16:02:03] [INFO] Creating Network Security Group 'JB-TEST-NSG'...
-[2025-02-10 16:02:08] [INFO] Network Security Group created successfully.
-[2025-02-10 16:02:09] [INFO] Creating Virtual Network 'JB-TEST-VNET'...
-[2025-02-10 16:02:13] [INFO] Virtual Network and Subnet created successfully.
-[2025-02-10 16:02:13] [INFO] Creating Public IP 'JB-TEST-DC01-PUBIP'...
-[2025-02-10 16:02:15] [INFO] Public IP created successfully.
-[2025-02-10 16:02:17] [INFO] Network interface created successfully.
-[2025-02-10 16:02:17] [ERROR] An error occurred: The term '-Version' is not recognized as a name of a cmdlet, function, script file, or executable program.
-Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
-[2025-02-10 16:02:17] [INFO] Script execution completed.
+[2025-02-10 16:52:28] Log file reset. New log starting.
+[2025-02-10 16:52:28] [INFO] Successfully loaded required Az modules.
+[2025-02-10 16:52:30] [INFO] Resource group 'JB-TEST-RG2' already exists.
+[2025-02-10 16:52:30] [INFO] Creating Storage Account 'jbteststorage0'...
+[2025-02-10 16:52:57] [INFO] Storage Account 'jbteststorage0' created successfully.
+[2025-02-10 16:52:58] [INFO] Creating Network Security Group 'JB-TEST-NSG'...
+[2025-02-10 16:53:03] [INFO] Network Security Group created successfully.
+[2025-02-10 16:53:03] [INFO] Creating Virtual Network 'JB-TEST-VNET'...
+[2025-02-10 16:53:08] [INFO] Virtual Network and Subnet created successfully.
+[2025-02-10 16:53:08] [INFO] Creating Public IP 'JB-TEST-DC01-PUBIP'...
+[2025-02-10 16:53:11] [INFO] Public IP created successfully.
+[2025-02-10 16:53:12] [INFO] Network interface created successfully.
+[2025-02-10 16:53:12] [INFO] Creating VM 'JB-TEST-DC01'...
+[2025-02-10 16:55:37] [INFO] Script execution completed.
