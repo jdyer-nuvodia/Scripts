@@ -1,14 +1,14 @@
-[2025-02-10 15:28:12] Log file reset. New log starting.
-[2025-02-10 15:28:12] [INFO] Successfully loaded required Az modules.
-[2025-02-10 15:28:12] [INFO] Resource group 'JB-TEST-RG2' already exists.
-[2025-02-10 15:28:13] [INFO] Creating Storage Account 'jbteststorage0'...
-[2025-02-10 15:28:40] [INFO] Storage Account 'jbteststorage0' created successfully.
-[2025-02-10 15:28:40] [INFO] Creating Virtual Network 'JB-TEST-VNET'...
-[2025-02-10 15:28:45] [INFO] Virtual Network 'JB-TEST-VNET' created successfully.
-[2025-02-10 15:28:45] [INFO] Virtual network and subnet configuration completed.
-[2025-02-10 15:28:50] [ERROR] Error creating Public IP Address: Standard sku publicIp /subscriptions/2d9a0b3b-de9d-4acf-baad-af240553bcc7/resourceGroups/JB-TEST-RG2/providers/Microsoft.Network/publicIPAddresses/JB-TEST-DC01-PUBIP must have AllocationMethod set to Static.
-StatusCode: 400
-ReasonPhrase: Bad Request
-ErrorCode: StandardSkuPublicIPAddressesMustBeStatic
-ErrorMessage: Standard sku publicIp /subscriptions/2d9a0b3b-de9d-4acf-baad-af240553bcc7/resourceGroups/JB-TEST-RG2/providers/Microsoft.Network/publicIPAddresses/JB-TEST-DC01-PUBIP must have AllocationMethod set to Static.
-OperationID : e35bbf49-4a2a-4da2-8b23-5808e9ccd85d
+[2025-02-10 15:52:20] Log file reset. New log starting.
+[2025-02-10 15:52:21] [INFO] Successfully loaded required Az modules.
+[2025-02-10 15:52:21] [INFO] Resource group 'JB-TEST-RG2' already exists.
+[2025-02-10 15:52:21] [INFO] Creating Storage Account 'jbteststorage0'...
+[2025-02-10 15:52:50] [INFO] Storage Account 'jbteststorage0' created successfully.
+[2025-02-10 15:52:50] [INFO] Creating Network Security Group 'JB-TEST-NSG'...
+[2025-02-10 15:52:58] [INFO] Network Security Group created successfully.
+[2025-02-10 15:52:59] [INFO] Creating Virtual Network 'JB-TEST-VNET'...
+[2025-02-10 15:53:03] [INFO] Virtual Network and Subnet created successfully.
+[2025-02-10 15:53:04] [INFO] Creating Public IP 'JB-TEST-DC01-PUBIP'...
+[2025-02-10 15:53:07] [INFO] Public IP created successfully.
+[2025-02-10 15:53:08] [INFO] Network interface created successfully.
+[2025-02-10 15:53:08] [ERROR] An error occurred: Cannot validate argument on parameter 'Credential'. The argument is null or empty. Provide an argument that is not null or empty, and then try the command again.
+[2025-02-10 15:53:08] [INFO] Script execution completed.
