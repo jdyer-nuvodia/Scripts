@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-09 17:56:05 UTC
+# Last Updated: 2025-02-10 18:34:31 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6
-# Additional Info: Fixed parser error in catch block structure
+# Version: 1.7
+# Additional Info: Completed missing NSG rule and NIC parameter details.
 # =============================================================================
 <#
 .SYNOPSIS
@@ -85,16 +85,16 @@ try {
     exit 1
 }
 $resourceGroupName    = "JB-TEST-RG2"
-$location            = "westus2"
-$storageAccountName  = "jbteststorage0"
-$vnetName            = "JB-TEST-VNET"
-$subnetName          = "JB-TEST-SUBNET1"
-$vmName              = "JB-TEST-DC01"
-$adminUsername       = "jbadmin"
-$adminPassword       = "TS=pGxB~8m^A~WH^[yB8"
-$domainName          = "JB-TEST.local"
-$publicIpName        = "$vmName-PUBIP"
-$nsgName             = "JB-TEST-NSG"
+$location             = "westus2"
+$storageAccountName   = "jbteststorage0"
+$vnetName             = "JB-TEST-VNET"
+$subnetName           = "JB-TEST-SUBNET1"
+$vmName               = "JB-TEST-DC01"
+$adminUsername        = "jbadmin"
+$adminPassword        = "TS=pGxB~8m^A~WH^[yB8"
+$domainName           = "JB-TEST.local"
+$publicIpName         = "$vmName-PUBIP"
+$nsgName              = "JB-TEST-NSG"
 
 function Test-ResourceGroupExists {
     param($ResourceGroupName)
@@ -317,7 +317,7 @@ try {
         "dailyRecurrence"       = @{"time" = $scheduledTime }
         "notificationSettings"  = @{
             "enabled"           = $false
-            "timeInMinutes"    = 30
+            "timeInMinutes"     = 30
         }
         "timeZoneId"           = "UTC"
     }
