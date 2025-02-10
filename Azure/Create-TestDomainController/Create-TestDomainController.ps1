@@ -6,7 +6,7 @@
     It creates or verifies a resource group, storage account, network resources (virtual network, subnet, public IP,
     network security group), and provisions a Windows Server VM with Trusted Launch security features (Secure Boot and vTPM enabled).
     Additionally, it preserves explicitly defined variable values exactly as found in the repository.
-    Note: The $domainName variable is provided for future domain join or configuration purposes.
+    Note: The $DefaultDomainName variable is provided for future domain join or configuration purposes.
 .PARAMETER resourceGroupName
     The name of the resource group where the VM and related resources will be created.
 .PARAMETER location
@@ -63,19 +63,26 @@ function Write-Log {
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$resourceGroupName = $DefaultResourceGroupName,
+    [string]$resourceGroupName = $DefaultResourceGroupName
+
     [Parameter(Mandatory = $true)]
-    [string]$location = $DefaultLocation,
+    [string]$location = $DefaultLocation
+
     [Parameter(Mandatory = $true)]
-    [string]$vmName = $DefaultVmName,
+    [string]$vmName = $DefaultVmName
+
     [Parameter(Mandatory = $true)]
-    [string]$VMSize = "Standard_DS2_v2",
+    [string]$VMSize = "Standard_DS2_v2"
+
     [Parameter(Mandatory = $true)]
-    [string]$vnetName = $DefaultVnetName,
+    [string]$vnetName = $DefaultVnetName
+
     [Parameter(Mandatory = $true)]
-    [string]$subnetName = $DefaultSubnetName,
+    [string]$subnetName = $DefaultSubnetName
+
     [Parameter(Mandatory = $true)]
-    [string]$adminUsername = $DefaultAdminUsername,
+    [string]$adminUsername = $DefaultAdminUsername
+
     [Parameter(Mandatory = $true)]
     [string]$adminPassword = $DefaultAdminPassword
 )
