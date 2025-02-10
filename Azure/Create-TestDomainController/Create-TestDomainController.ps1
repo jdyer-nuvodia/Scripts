@@ -48,16 +48,18 @@ param (
 
 # Explicitly defined default variables
 $DefaultResourceGroupName    = 'JB-TEST-RG2'
-$DefaultLocation             = 'westus2'
-$DefaultStorageAccountName   = 'jbteststorage0'
-$DefaultVnetName             = 'JB-TEST-VNET'
-$DefaultSubnetName           = 'JB-TEST-SUBNET1'
-$DefaultVmName               = 'JB-TEST-DC01'
-$DefaultAdminUsername        = 'jbadmin'
-$DefaultAdminPassword        = 'TS-pGxB~8m^A~WH^[yB8'
-$DefaultDomainName           = 'JB-TEST.local'
-$DefaultPublicIpName         = "$DefaultVmName-PUBIP"
-$DefaultNsgName              = 'JB-TEST-NSG'
+$DefaultLocation            = 'westus2'
+$DefaultStorageAccountName  = 'jbteststorage0'
+$DefaultVnetName           = 'JB-TEST-VNET'
+$DefaultSubnetName         = 'JB-TEST-SUBNET1'
+$DefaultVmName             = 'JB-TEST-DC01'
+$DefaultAdminUsername      = 'jbadmin'
+$DefaultAdminPassword      = 'TS-pGxB~8m^A~WH^[yB8'
+$DefaultDomainName         = 'JB-TEST.local'
+$DefaultPublicIpName       = "$DefaultVmName-PUBIP"
+$DefaultNsgName           = 'JB-TEST-NSG'
+$DefaultVnetAddressSpace   = '10.0.0.0/16'
+$DefaultSubnetAddressSpace = '10.0.1.0/24'
 
 # If parameters are not provided, assign defaults.
 if (-not $resourceGroupName) { $resourceGroupName = $DefaultResourceGroupName }
@@ -139,15 +141,32 @@ catch {
 }
 
 # ---------------------------------------------------------------------------
-# Configure Virtual Network and Subnet
+# Create/Verify Virtual Network and Subnet
 # ---------------------------------------------------------------------------
 try {
-    $VNet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction Stop
-    $Subnet = Get-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet -ErrorAction Stop
-    Write-Log "Virtual network '$vnetName' and subnet '$subnetName' fetched successfully."
+    $VNet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+    if (-not $VNet) {
+        Write-Log "Creating Virtual Network '$vnetName'..."
+        $SubnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix $DefaultSubnetAddressSpace
+        $VNet = New-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName `
+            -Location $location -AddressPrefix $DefaultVnetAddressSpace -Subnet $SubnetConfig
+        Write-Log "Virtual Network '$vnetName' created successfully."
+    }
+    else {
+        Write-Log "Virtual Network '$vnetName' already exists."
+        $Subnet = Get-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet -ErrorAction SilentlyContinue
+        if (-not $Subnet) {
+            Write-Log "Creating Subnet '$subnetName'..."
+            Add-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet -AddressPrefix $DefaultSubnetAddressSpace
+            $VNet | Set-AzVirtualNetwork
+            Write-Log "Subnet '$subnetName' created successfully."
+        }
+    }
+    $Subnet = Get-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $VNet
+    Write-Log "Virtual network and subnet configuration completed."
 }
 catch {
-    Write-Log "Error fetching virtual network/subnet: $_" 'ERROR'
+    Write-Log "Error configuring virtual network/subnet: $_" 'ERROR'
     exit 1
 }
 
@@ -234,7 +253,6 @@ try {
             -Skus 2019-Datacenter -Version latest -ErrorAction Stop | `
         Add-AzVMNetworkInterface -Id $NIC.Id -ErrorAction Stop
 
-    # Apply Trusted Launch settings without altering explicitly defined variable values or extra functionality
     $VMConfig.AdditionalCapabilities = @{ UefiSettings = $TrustedLaunchProfile.UefiSettings }
     $VMConfig.SecurityProfile = @{ SecurityType = $TrustedLaunchProfile.SecurityType }
     Write-Log 'VM configuration prepared with Trusted Launch settings.'
