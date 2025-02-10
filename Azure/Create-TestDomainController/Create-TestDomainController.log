@@ -1,16 +1,15 @@
-[2025-02-10 15:55:38] Log file reset. New log starting.
-[2025-02-10 15:55:38] [INFO] Successfully loaded required Az modules.
-[2025-02-10 15:55:39] [INFO] Resource group 'JB-TEST-RG2' already exists.
-[2025-02-10 15:55:39] [INFO] Creating Storage Account 'jbteststorage0'...
-[2025-02-10 15:56:06] [INFO] Storage Account 'jbteststorage0' created successfully.
-[2025-02-10 15:56:06] [INFO] Creating Network Security Group 'JB-TEST-NSG'...
-[2025-02-10 15:56:11] [INFO] Network Security Group created successfully.
-[2025-02-10 15:56:11] [INFO] Creating Virtual Network 'JB-TEST-VNET'...
-[2025-02-10 15:56:16] [INFO] Virtual Network and Subnet created successfully.
-[2025-02-10 15:56:16] [INFO] Creating Public IP 'JB-TEST-DC01-PUBIP'...
-[2025-02-10 15:56:19] [INFO] Public IP created successfully.
-[2025-02-10 15:56:21] [INFO] Network interface created successfully.
-[2025-02-10 15:56:21] [INFO] Creating VM 'JB-TEST-DC01'...
-[2025-02-10 15:56:43] [INFO] VM 'JB-TEST-DC01' created successfully.
-[2025-02-10 15:56:43] [INFO] Domain Controller VM creation completed successfully.
-[2025-02-10 15:56:43] [INFO] Script execution completed.
+[2025-02-10 16:01:35] Log file reset. New log starting.
+[2025-02-10 16:01:35] [INFO] Successfully loaded required Az modules.
+[2025-02-10 16:01:35] [INFO] Resource group 'JB-TEST-RG2' already exists.
+[2025-02-10 16:01:35] [INFO] Creating Storage Account 'jbteststorage0'...
+[2025-02-10 16:02:03] [INFO] Storage Account 'jbteststorage0' created successfully.
+[2025-02-10 16:02:03] [INFO] Creating Network Security Group 'JB-TEST-NSG'...
+[2025-02-10 16:02:08] [INFO] Network Security Group created successfully.
+[2025-02-10 16:02:09] [INFO] Creating Virtual Network 'JB-TEST-VNET'...
+[2025-02-10 16:02:13] [INFO] Virtual Network and Subnet created successfully.
+[2025-02-10 16:02:13] [INFO] Creating Public IP 'JB-TEST-DC01-PUBIP'...
+[2025-02-10 16:02:15] [INFO] Public IP created successfully.
+[2025-02-10 16:02:17] [INFO] Network interface created successfully.
+[2025-02-10 16:02:17] [ERROR] An error occurred: The term '-Version' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+[2025-02-10 16:02:17] [INFO] Script execution completed.
