@@ -14,7 +14,7 @@
 .PARAMETER vmName
     The name of the VM to create.
 .PARAMETER VMSize
-    The size of the VM (e.g., "Standard_DS2_v2").
+    The size of the VM (e.g., 'Standard_DS2_v2').
 .PARAMETER vnetName
     The virtual network name for the VM.
 .PARAMETER subnetName
@@ -24,10 +24,10 @@
 .PARAMETER adminPassword
     The administrator password for the VM.
 .EXAMPLE
-    PS C:\> .\Create-TestDomainController.ps1 -resourceGroupName "JB-TEST-RG2" `
-           -location "westus2" -vmName "JB-TEST-DC01" -VMSize "Standard_DS2_v2" `
-           -vnetName "JB-TEST-VNET" -subnetName "JB-TEST-SUBNET1" `
-           -adminUsername "jbadmin" -adminPassword "TS=pGxB~8m^A~WH^[yB8"
+    PS C:\> .\Create-TestDomainController.ps1 -resourceGroupName 'JB-TEST-RG2' `
+           -location 'westus2' -vmName 'JB-TEST-DC01' -VMSize 'Standard_DS2_v2' `
+           -vnetName 'JB-TEST-VNET' -subnetName 'JB-TEST-SUBNET1' `
+           -adminUsername 'jbadmin' -adminPassword 'TS-pGxB~8m^A~WH^[yB8'
 #>
 
 # Explicitly defined default variables (values preserved from the repository)
@@ -38,7 +38,7 @@ $DefaultVnetName             = 'JB-TEST-VNET'
 $DefaultSubnetName           = 'JB-TEST-SUBNET1'
 $DefaultVmName               = 'JB-TEST-DC01'
 $DefaultAdminUsername        = 'jbadmin'
-$DefaultAdminPassword        = 'TS=pGxB~8m^A~WH^[yB8'
+$DefaultAdminPassword        = 'TS-pGxB~8m^A~WH^[yB8'
 $DefaultDomainName           = 'JB-TEST.local'
 $DefaultPublicIpName         = "$DefaultVmName-PUBIP"
 $DefaultNsgName              = 'JB-TEST-NSG'
@@ -52,7 +52,7 @@ if (Test-Path $logFile) { Remove-Item $logFile -Force }
 function Write-Log {
     param (
         [string]$Message,
-        [ValidateSet("INFO", "ERROR")]
+        [ValidateSet('INFO', 'ERROR')]
         [string]$Level = 'INFO'
     )
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -63,28 +63,28 @@ function Write-Log {
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$resourceGroupName = 'JB-TEST-RG2'
+    [string]$resourceGroupName = 'JB-TEST-RG2',
 
     [Parameter(Mandatory = $true)]
-    [string]$location = 'westus2'
+    [string]$location = 'westus2',
 
     [Parameter(Mandatory = $true)]
-    [string]$vmName = 'JB-TEST-DC01'
+    [string]$vmName = 'JB-TEST-DC01',
 
     [Parameter(Mandatory = $true)]
-    [string]$VMSize = 'Standard_DS2_v2'
+    [string]$VMSize = 'Standard_DS2_v2',
 
     [Parameter(Mandatory = $true)]
-    [string]$vnetName = 'JB-TEST-VNET'
+    [string]$vnetName = 'JB-TEST-VNET',
 
     [Parameter(Mandatory = $true)]
-    [string]$subnetName = 'JB-TEST-SUBNET1'
+    [string]$subnetName = 'JB-TEST-SUBNET1',
 
     [Parameter(Mandatory = $true)]
-    [string]$adminUsername = 'jbadmin'
+    [string]$adminUsername = 'jbadmin',
 
     [Parameter(Mandatory = $true)]
-    [string]$adminPassword = 'TS=pGxB~8m^A~WH^[yB8'
+    [string]$adminPassword = 'TS-pGxB~8m^A~WH^[yB8'
 )
 
 # ---------------------------------------------------------------------------
