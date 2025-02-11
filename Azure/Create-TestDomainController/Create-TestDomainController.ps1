@@ -2,11 +2,11 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 15:20:00 UTC
+# Last Updated: 2025-02-11 16:07:10 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5
-# Additional Info: Fixed Trusted Launch configuration error by checking for the existence
-# of Set-AzVMUefiSettings, without removing any non-code comments.
+# Version: 2.6
+# Additional Info: Fixed Trusted Launch configuration and DevTest Lab shutdown schedule.
+# Added proper security type configuration and location parameter for auto-shutdown.
 # =============================================================================
 
 <#
@@ -104,18 +104,18 @@ Set-Content -Path $LogFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] L
 
 # Explicitly defined default variables
 $DefaultResourceGroupName    = 'JB-TEST-RG2'
-$DefaultLocation             = 'westus2'
-$DefaultStorageAccountName   = 'jbteststorage0'
-$DefaultVnetName             = 'JB-TEST-VNET'
-$DefaultSubnetName           = 'JB-TEST-SUBNET1'
-$DefaultVmName               = 'JB-TEST-DC01'
-$DefaultAdminUsername        = 'jbadmin'
-$DefaultAdminPassword        = 'TS-pGxB~8m^A~WH^[yB8'
-$DefaultDomainName           = 'JB-TEST.local'
-$DefaultPublicIpName         = "$DefaultVmName-PUBIP"
-$DefaultNsgName              = 'JB-TEST-NSG'
-$DefaultVnetAddressSpace     = '10.0.0.0/16'
-$DefaultSubnetAddressSpace   = '10.0.1.0/24'
+$DefaultLocation            = 'westus2'
+$DefaultStorageAccountName  = 'jbteststorage0'
+$DefaultVnetName            = 'JB-TEST-VNET'
+$DefaultSubnetName         = 'JB-TEST-SUBNET1'
+$DefaultVmName             = 'JB-TEST-DC01'
+$DefaultAdminUsername      = 'jbadmin'
+$DefaultAdminPassword      = 'TS-pGxB~8m^A~WH^[yB8'
+$DefaultDomainName         = 'JB-TEST.local'
+$DefaultPublicIpName       = "$DefaultVmName-PUBIP"
+$DefaultNsgName           = 'JB-TEST-NSG'
+$DefaultVnetAddressSpace   = '10.0.0.0/16'
+$DefaultSubnetAddressSpace = '10.0.1.0/24'
 
 # If parameters are not provided, assign defaults
 if (-not $resourceGroupName) { $resourceGroupName = $DefaultResourceGroupName }
@@ -156,6 +156,7 @@ function Test-AzureResources {
                 }
             }
         }
+		
         # Validate location
         Write-Log "Validating location '$location'..." -Level VALIDATION
         $validLocations = Get-AzLocation
@@ -202,6 +203,7 @@ function Test-AzureResources {
                 $validationResults.Success = $false
             }
         }
+		
         # Validate network configuration
         Write-Log "Validating network configuration..." -Level VALIDATION
         $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
@@ -241,6 +243,7 @@ try {
         Write-Log "Validation only mode - stopping before deployment." -Level INFO
         return
     }
+	
     # Ask for confirmation before proceeding with deployment
     if (-not $PSCmdlet.ShouldProcess("Azure Resources", "Deploy")) {
         Write-Log "Deployment cancelled by user." -Level INFO
@@ -291,6 +294,7 @@ try {
     } else {
         Write-Log "Using existing storage account '$DefaultStorageAccountName'" -Level INFO
     }
+
     # Create Network Security Group
     $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (-not $nsg) {
@@ -321,6 +325,7 @@ try {
         $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix $DefaultSubnetAddressSpace -NetworkSecurityGroup $nsg
         $vnet = New-AzVirtualNetwork -ResourceGroupName $resourceGroupName -Location $location -Name $vnetName -AddressPrefix $DefaultVnetAddressSpace -Subnet $subnetConfig -ErrorAction Stop
     }
+	
     # Create Public IP
     $publicIp = Get-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (-not $publicIp) {
@@ -334,7 +339,7 @@ try {
     # Create VM Configuration
     Write-Log "Creating VM configuration..." -Level INFO
     try {
-        $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize -ErrorAction Stop
+        $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize -SecurityType "TrustedLaunch" -ErrorAction Stop
         # Configure OS
         $credential = New-Object System.Management.Automation.PSCredential ($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force))
         $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential $credential -ProvisionVMAgent -ErrorAction Stop
@@ -342,7 +347,8 @@ try {
         $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id -ErrorAction Stop
         # Set source image
         $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName 'MicrosoftWindowsServer' -Offer 'WindowsServer' -Skus '2022-Datacenter' -Version latest -ErrorAction Stop
-        # Configure boot diagnostics with explicit resource group
+		
+		        # Configure boot diagnostics with explicit resource group
         $diagStorageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
         if ($diagStorageAccount) {
             $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -ResourceGroupName $resourceGroupName -StorageAccountName $DefaultStorageAccountName -ErrorAction Stop
@@ -351,18 +357,15 @@ try {
         }
         # Configure Trusted Launch security settings
         Write-Log "Configuring Trusted Launch..." -Level INFO
-        # If the Set-AzVMUefiSettings cmdlet exists, apply Trusted Launch configuration; otherwise, log a warning.
-        if (Get-Command "Set-AzVMUefiSettings" -ErrorAction SilentlyContinue) {
-            try {
-                Set-AzVMUefiSettings -VMName $vmName -ResourceGroupName $resourceGroupName -EnableSecureBoot $true -EnableVTpm $true -ErrorAction Stop
-                Write-Log "Trusted Launch configuration applied successfully." -Level INFO
-            } catch {
-                Write-Log "Failed to configure Trusted Launch: $($_.Exception.Message)" -Level ERROR
-                throw
+        $securityProfile = @{
+            SecurityType = "TrustedLaunch"
+            UefiSettings = @{
+                SecureBootEnabled = $true
+                VTpmEnabled = $true
             }
-        } else {
-            Write-Log "Set-AzVMUefiSettings cmdlet not found. Skipping Trusted Launch configuration." -Level WARNING
         }
+        $vmConfig.SecurityProfile = $securityProfile
+        
         # Create the VM
         Write-Log "Creating VM '$vmName'..." -Level INFO
         $newVM = New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig -ErrorAction Stop
@@ -375,11 +378,13 @@ try {
         Write-Log "Error during VM configuration or creation: $($_.Exception.Message)" -Level ERROR
         throw
     }
+	
     # Configure auto-shutdown
     Write-Log "Configuring auto-shutdown schedule for VM '$vmName'..." -Level INFO
     $shutdownTime = "21:00" # 9:00 PM
     $timeZone = "UTC-07:00" # UTC-7
-    $scheduledShutdownResourceId = "/subscriptions/{0}/resourceGroups/{1}/providers/microsoft.devtestlab/schedules/shutdown-computevm-{2}" -f (Get-AzContext).Subscription.Id, $resourceGroupName, $vmName
+    $scheduledShutdownResourceId = "/subscriptions/{0}/resourceGroups/{1}/providers/microsoft.devtestlab/schedules/shutdown-computevm-{2}" -f `
+        (Get-AzContext).Subscription.Id, $resourceGroupName, $vmName
     $properties = @{
         status = "Enabled"
         taskType = "ComputeVmShutdownTask"
@@ -387,8 +392,9 @@ try {
         timeZoneId = $timeZone
         targetResourceId = (Get-AzVM -ResourceGroupName $resourceGroupName -Name $vmName).Id
         notificationSettings = @{ status = "Disabled" }
+        location = $location # Added missing location property
     }
-    New-AzResource -ResourceId $scheduledShutdownResourceId -Properties $properties -Force -ErrorAction Stop
+    New-AzResource -ResourceId $scheduledShutdownResourceId -Properties $properties -Force -Location $location -ErrorAction Stop
     # Validate DevTest Lab shutdown schedule
     Write-Log "Validating DevTest Lab shutdown schedule..." -Level VALIDATION
     $existingSchedule = Get-AzResource -ResourceId $scheduledShutdownResourceId -ErrorAction SilentlyContinue
