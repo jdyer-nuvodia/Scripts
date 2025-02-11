@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 00:26:56 UTC
+# Last Updated: 2025-02-11 02:06:55 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9
-# Additional Info: Moved DevTest Lab shutdown schedule validation after deployment
+# Version: 2.0
+# Additional Info: Consolidated all pre-deployment validations into validation phase
 # =============================================================================
 
 <# 
@@ -22,6 +22,7 @@
     - Verifies permissions
     - Validates VM size availability
     - Checks network configuration
+    - Validates existing resources
     
     Phase 2: Deployment
     - Creates or verifies resource group
@@ -153,9 +154,23 @@ function Test-AzureResources {
             $validationResults.Messages += "VM size $VMSize is not available in $location"
             $validationResults.Success = $false
         }
-		
-        # Validate storage account name availability
-        Write-Log "Validating storage account name..." -Level VALIDATION
+
+        # Validate resource group existence and permissions
+        Write-Log "Validating resource group access..." -Level VALIDATION
+        $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
+        if ($rg) {
+            try {
+                $testResource = New-AzResourceGroupDeployment -ResourceGroupName $resourceGroupName `
+                    -TemplateUri "https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/100-blank-template/azuredeploy.json" `
+                    -WhatIf
+            } catch {
+                $validationResults.Messages += "Insufficient permissions on resource group: $resourceGroupName"
+                $validationResults.Success = $false
+            }
+        }
+
+        # Validate storage account name availability and permissions
+        Write-Log "Validating storage account name and permissions..." -Level VALIDATION
         $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
             -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
         if (!$storageAccount) {
@@ -164,9 +179,17 @@ function Test-AzureResources {
                 $validationResults.Messages += "Storage account name $DefaultStorageAccountName is not available"
                 $validationResults.Success = $false
             }
+        } else {
+            try {
+                $testAccess = Get-AzStorageAccountKey -ResourceGroupName $resourceGroupName `
+                    -Name $DefaultStorageAccountName
+            } catch {
+                $validationResults.Messages += "Insufficient permissions on storage account: $DefaultStorageAccountName"
+                $validationResults.Success = $false
+            }
         }
 
-        # Validate network address spaces
+        # Validate network configuration and conflicts
         Write-Log "Validating network configuration..." -Level VALIDATION
         $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
         if ($vnet) {
@@ -174,11 +197,38 @@ function Test-AzureResources {
                 $validationResults.Messages += "Address space $DefaultVnetAddressSpace conflicts with existing VNet"
                 $validationResults.Success = $false
             }
+            
+            # Validate subnet conflicts
+            $existingSubnet = $vnet.Subnets | Where-Object { $_.Name -eq $subnetName }
+            if ($existingSubnet -and $existingSubnet.AddressPrefix -ne $DefaultSubnetAddressSpace) {
+                $validationResults.Messages += "Subnet $subnetName exists with different address space"
+                $validationResults.Success = $false
+            }
+        }
+
+        # Validate NSG
+        Write-Log "Validating Network Security Group..." -Level VALIDATION
+        $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+        if ($nsg) {
+            $rdpRule = $nsg.SecurityRules | Where-Object { $_.DestinationPortRange -eq '3389' }
+            if (!$rdpRule) {
+                $validationResults.Messages += "Existing NSG does not have required RDP rule"
+                $validationResults.Success = $false
+            }
+        }
+
+        # Validate Public IP availability
+        Write-Log "Validating Public IP availability..." -Level VALIDATION
+        $publicIp = Get-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+        if ($publicIp) {
+            if ($publicIp.IpConfiguration) {
+                $validationResults.Messages += "Public IP $DefaultPublicIpName is already in use"
+                $validationResults.Success = $false
+            }
         }
 
         return $validationResults
-    }
-    catch {
+    } catch {
         $validationResults.Success = $false
         $validationResults.Messages += "Validation error: $($_.Exception.Message)"
         return $validationResults
@@ -214,7 +264,7 @@ try {
     # Phase 2: Deployment
     Write-Log "Starting deployment phase..." -Level INFO
 
-    # Check/Create Resource Group
+    # Create Resource Group if it doesn't exist
     $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
     if (!$rg) {
         Write-Log "Creating resource group '$resourceGroupName'..."
@@ -266,7 +316,6 @@ try {
         Write-Log "Using existing storage account '$DefaultStorageAccountName'" -Level INFO
     }
 
-	
     # Create Network Security Group
     $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (!$nsg) {
@@ -337,7 +386,7 @@ try {
     $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName 'MicrosoftWindowsServer' `
         -Offer 'WindowsServer' -Skus '2022-Datacenter' -Version latest
     $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -StorageAccountName $DefaultStorageAccountName
-    
+
     # Enable Trusted Launch
     $vmConfig.SecurityProfile = New-Object Microsoft.Azure.Management.Compute.Models.SecurityProfile
     $vmConfig.SecurityProfile.SecurityType = "TrustedLaunch"
