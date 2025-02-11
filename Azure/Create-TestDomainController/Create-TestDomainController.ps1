@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 00:11:17 UTC
+# Last Updated: 2025-02-11 00:15:35 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6
-# Additional Info: Added WhatIf support for virtual testing
+# Version: 1.7
+# Additional Info: Added two-phase deployment with validation
 # =============================================================================
 
 <# 
@@ -13,11 +13,23 @@
     Creates a test domain controller as a Trusted Launch VM in Azure.
 .DESCRIPTION
     This script provisions a domain controller VM configured as a Trusted Launch VM in Azure.
-    It creates or verifies required resources including storage account, network resources
-    (virtual network, subnet, public IP, network security group), and provisions a Windows
-    Server VM with Trusted Launch security features (Secure Boot and vTPM enabled).
+    It first validates all components and dependencies, then proceeds with the actual deployment
+    only if all validations pass. The script uses a two-phase approach:
     
-    Use -WhatIf to preview the resources that would be created without actually creating them.
+    Phase 1: Validation
+    - Validates all required modules
+    - Checks resource name availability
+    - Verifies permissions
+    - Validates VM size availability
+    - Checks network configuration
+    
+    Phase 2: Deployment
+    - Creates or verifies resource group
+    - Sets up storage account
+    - Configures networking components
+    - Deploys the virtual machine
+    
+    Use -ValidateOnly to perform validation without deployment.
 .PARAMETER resourceGroupName
     The name of the resource group where the VM and related resources will be created.
 .PARAMETER location
@@ -34,16 +46,14 @@
     The administrator username for the VM.
 .PARAMETER adminPassword
     The administrator password for the VM.
-.PARAMETER WhatIf
-    Shows what would happen if the script runs. No resources are actually created.
+.PARAMETER ValidateOnly
+    Performs validation only without deploying resources.
 .EXAMPLE
-    PS C:\> .\Create-TestDomainController.ps1 -WhatIf
-    Shows what resources would be created without actually creating them.
+    PS C:\> .\Create-TestDomainController.ps1 -ValidateOnly
+    Performs validation of all components without deployment.
 .EXAMPLE
-    PS C:\> .\Create-TestDomainController.ps1 -resourceGroupName 'JB-TEST-RG2' `
-           -location 'westus2' -vmName 'JB-TEST-DC01' -VMSize 'Standard_DS2_v2' `
-           -vnetName 'JB-TEST-VNET' -subnetName 'JB-TEST-SUBNET1' `
-           -adminUsername 'jbadmin' -adminPassword 'TS-pGxB~8m^A~WH^[yB8'
+    PS C:\> .\Create-TestDomainController.ps1
+    Validates all components and proceeds with deployment if validation succeeds.
 #>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -63,14 +73,20 @@ param (
     [Parameter(Mandatory = $false)]
     [string]$adminUsername,
     [Parameter(Mandatory = $false)]
-    [string]$adminPassword
+    [string]$adminPassword,
+    [Parameter(Mandatory = $false)]
+    [switch]$ValidateOnly
 )
 
 # Start logging
 $LogFile = Join-Path $PSScriptRoot "Create-TestDomainController.log"
 function Write-Log {
-    param($Message)
-    $LogMessage = "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] $Message"
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'VALIDATION')]
+        [string]$Level = 'INFO'
+    )
+    $LogMessage = "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
     Write-Host $LogMessage
 }
@@ -103,165 +119,210 @@ if (-not $subnetName)        { $subnetName = $DefaultSubnetName }
 if (-not $adminUsername)     { $adminUsername = $DefaultAdminUsername }
 if (-not $adminPassword)     { $adminPassword = $DefaultAdminPassword }
 
-try {
-    # Verify Az modules are loaded
-    $requiredModules = @('Az.Accounts', 'Az.Resources', 'Az.Network', 'Az.Storage', 'Az.Compute')
-    foreach ($module in $requiredModules) {
-        if (!(Get-Module -Name $module -ListAvailable)) {
-            throw "Required module $module is not installed"
-        }
+# Validation function
+function Test-AzureResources {
+    $validationResults = @{
+        Success = $true
+        Messages = @()
     }
-    Write-Log "[INFO] Successfully loaded required Az modules."
+
+    try {
+        # Validate required modules
+        Write-Log "Validating required modules..." -Level VALIDATION
+        $requiredModules = @('Az.Accounts', 'Az.Resources', 'Az.Network', 'Az.Storage', 'Az.Compute')
+        foreach ($module in $requiredModules) {
+            if (!(Get-Module -Name $module -ListAvailable)) {
+                $validationResults.Messages += "Required module $module is not installed"
+                $validationResults.Success = $false
+            }
+        }
+
+        # Validate location
+        Write-Log "Validating location '$location'..." -Level VALIDATION
+        $validLocations = Get-AzLocation
+        if ($location -notin $validLocations.Location) {
+            $validationResults.Messages += "Invalid location: $location"
+            $validationResults.Success = $false
+        }
+
+        # Validate VM size availability
+        Write-Log "Validating VM size '$VMSize'..." -Level VALIDATION
+        $vmSizes = Get-AzVMSize -Location $location
+        if ($VMSize -notin $vmSizes.Name) {
+            $validationResults.Messages += "VM size $VMSize is not available in $location"
+            $validationResults.Success = $false
+        }
+
+        # Validate storage account name availability
+        Write-Log "Validating storage account name..." -Level VALIDATION
+        $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
+            -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
+        if (!$storageAccount) {
+            $storageNameAvailable = Get-AzStorageAccountNameAvailability -Name $DefaultStorageAccountName
+            if (!$storageNameAvailable.NameAvailable) {
+                $validationResults.Messages += "Storage account name $DefaultStorageAccountName is not available"
+                $validationResults.Success = $false
+            }
+        }
+
+        # Validate network address spaces
+        Write-Log "Validating network configuration..." -Level VALIDATION
+        $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
+        if ($vnet) {
+            if ($vnet.AddressSpace.AddressPrefixes -contains $DefaultVnetAddressSpace) {
+                $validationResults.Messages += "Address space $DefaultVnetAddressSpace conflicts with existing VNet"
+                $validationResults.Success = $false
+            }
+        }
+
+        return $validationResults
+    }
+    catch {
+        $validationResults.Success = $false
+        $validationResults.Messages += "Validation error: $($_.Exception.Message)"
+        return $validationResults
+    }
+}
+
+try {
+    # Phase 1: Validation
+    Write-Log "Starting validation phase..." -Level VALIDATION
+    $validation = Test-AzureResources
+
+    if (!$validation.Success) {
+        Write-Log "Validation failed:" -Level ERROR
+        foreach ($message in $validation.Messages) {
+            Write-Log $message -Level ERROR
+        }
+        throw "Resource validation failed. Please review the validation messages above."
+    }
+
+    Write-Log "All validations passed successfully." -Level VALIDATION
+
+    if ($ValidateOnly) {
+        Write-Log "Validation only mode - stopping before deployment." -Level INFO
+        return
+    }
+
+    # Ask for confirmation before proceeding with deployment
+    if (!$PSCmdlet.ShouldProcess("Azure Resources", "Deploy")) {
+        Write-Log "Deployment cancelled by user." -Level INFO
+        return
+    }
+
+    # Phase 2: Deployment
+    Write-Log "Starting deployment phase..." -Level INFO
 
     # Check/Create Resource Group
     $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
     if (!$rg) {
-        if ($PSCmdlet.ShouldProcess($resourceGroupName, "Create Resource Group")) {
-            Write-Log "[INFO] Would create resource group '$resourceGroupName'..."
-            if (-not $WhatIfPreference) {
-                New-AzResourceGroup -Name $resourceGroupName -Location $location
-            }
-        }
-    } else {
-        Write-Log "[INFO] Resource group '$resourceGroupName' already exists."
-    }
-	
-    # Create Storage Account if it doesn't exist
-    $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
-    if (!$storageAccount) {
-        if ($PSCmdlet.ShouldProcess($DefaultStorageAccountName, "Create Storage Account")) {
-            Write-Log "[INFO] Would create Storage Account '$DefaultStorageAccountName'..."
-            if (-not $WhatIfPreference) {
-                $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroupName `
-                    -Name $DefaultStorageAccountName `
-                    -Location $location `
-                    -SkuName Standard_LRS `
-                    -Kind StorageV2
-                Write-Log "[INFO] Storage Account '$DefaultStorageAccountName' created successfully."
-            }
-        }
-    } else {
-        Write-Log "[INFO] Storage Account '$DefaultStorageAccountName' already exists."
+        Write-Log "Creating resource group '$resourceGroupName'..."
+        New-AzResourceGroup -Name $resourceGroupName -Location $location
     }
 
+    # Create Storage Account if it doesn't exist
+    $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
+        -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
+    if (!$storageAccount) {
+        Write-Log "Creating Storage Account '$DefaultStorageAccountName'..."
+        $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroupName `
+            -Name $DefaultStorageAccountName `
+            -Location $location `
+            -SkuName Standard_LRS `
+            -Kind StorageV2
+    }
+	
     # Create Network Security Group
     $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (!$nsg) {
-        if ($PSCmdlet.ShouldProcess($DefaultNsgName, "Create Network Security Group")) {
-            Write-Log "[INFO] Would create Network Security Group '$DefaultNsgName'..."
-            if (-not $WhatIfPreference) {
-                $nsgRules = @(
-                    @{
-                        Name = 'AllowRDP'
-                        Protocol = 'Tcp'
-                        SourcePortRange = '*'
-                        DestinationPortRange = '3389'
-                        SourceAddressPrefix = '*'
-                        DestinationAddressPrefix = '*'
-                        Access = 'Allow'
-                        Priority = 100
-                        Direction = 'Inbound'
-                    }
-                )
-                
-                $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName `
-                    -Location $location `
-                    -Name $DefaultNsgName
-                
-                foreach ($rule in $nsgRules) {
-                    Add-AzNetworkSecurityRuleConfig @rule -NetworkSecurityGroup $nsg
-                }
-                $nsg | Set-AzNetworkSecurityGroup
-                Write-Log "[INFO] Network Security Group created successfully."
+        Write-Log "Creating Network Security Group '$DefaultNsgName'..."
+        $nsgRules = @(
+            @{
+                Name = 'AllowRDP'
+                Protocol = 'Tcp'
+                SourcePortRange = '*'
+                DestinationPortRange = '3389'
+                SourceAddressPrefix = '*'
+                DestinationAddressPrefix = '*'
+                Access = 'Allow'
+                Priority = 100
+                Direction = 'Inbound'
             }
+        )
+        
+        $nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroupName `
+            -Location $location `
+            -Name $DefaultNsgName
+        
+        foreach ($rule in $nsgRules) {
+            Add-AzNetworkSecurityRuleConfig @rule -NetworkSecurityGroup $nsg
         }
+        $nsg | Set-AzNetworkSecurityGroup
     }
 
-    # Create Virtual Network and Subnet if they don't exist
+    # Create Virtual Network and Subnet
     $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (!$vnet) {
-        if ($PSCmdlet.ShouldProcess($vnetName, "Create Virtual Network")) {
-            Write-Log "[INFO] Would create Virtual Network '$vnetName'..."
-            if (-not $WhatIfPreference) {
-                $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName `
-                    -AddressPrefix $DefaultSubnetAddressSpace `
-                    -NetworkSecurityGroup $nsg
+        Write-Log "Creating Virtual Network '$vnetName'..."
+        $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName `
+            -AddressPrefix $DefaultSubnetAddressSpace `
+            -NetworkSecurityGroup $nsg
 
-                $vnet = New-AzVirtualNetwork -ResourceGroupName $resourceGroupName `
-                    -Location $location `
-                    -Name $vnetName `
-                    -AddressPrefix $DefaultVnetAddressSpace `
-                    -Subnet $subnetConfig
-                Write-Log "[INFO] Virtual Network and Subnet created successfully."
-            }
-        }
+        $vnet = New-AzVirtualNetwork -ResourceGroupName $resourceGroupName `
+            -Location $location `
+            -Name $vnetName `
+            -AddressPrefix $DefaultVnetAddressSpace `
+            -Subnet $subnetConfig
     }
-	
-    # Create Public IP with Standard SKU and Static allocation
+
+    # Create Public IP
     $publicIp = Get-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (!$publicIp) {
-        if ($PSCmdlet.ShouldProcess($DefaultPublicIpName, "Create Public IP")) {
-            Write-Log "[INFO] Would create Public IP '$DefaultPublicIpName'..."
-            if (-not $WhatIfPreference) {
-                $publicIp = New-AzPublicIpAddress -ResourceGroupName $resourceGroupName `
-                    -Location $location `
-                    -Name $DefaultPublicIpName `
-                    -Sku Standard `
-                    -AllocationMethod Static
-                Write-Log "[INFO] Public IP created successfully."
-            }
-        }
+        Write-Log "Creating Public IP '$DefaultPublicIpName'..."
+        $publicIp = New-AzPublicIpAddress -ResourceGroupName $resourceGroupName `
+            -Location $location `
+            -Name $DefaultPublicIpName `
+            -Sku Standard `
+            -AllocationMethod Static
     }
 
     # Create NIC
     $nicName = "$vmName-NIC"
-    if ($PSCmdlet.ShouldProcess($nicName, "Create Network Interface")) {
-        Write-Log "[INFO] Would create Network Interface '$nicName'..."
-        if (-not $WhatIfPreference) {
-            $subnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName |
-                Get-AzVirtualNetworkSubnetConfig -Name $subnetName
-            $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName `
-                -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id
-            Write-Log "[INFO] Network interface created successfully."
-        }
-    }
+    $subnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName |
+        Get-AzVirtualNetworkSubnetConfig -Name $subnetName
+    $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName `
+        -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id
 
-    # Create PSCredential object for VM
+    # Create VM
+    Write-Log "Creating VM '$vmName'..."
     $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
     $credential = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
 
-    # Create VM configuration
-    if ($PSCmdlet.ShouldProcess($vmName, "Create Virtual Machine")) {
-        Write-Log "[INFO] Would create VM '$vmName'..."
-        if (-not $WhatIfPreference) {
-            $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize |
-                Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
-                Set-AzVMSourceImage -PublisherName 'MicrosoftWindowsServer' `
-                    -Offer 'WindowsServer' `
-                    -Skus '2022-datacenter-g2' `
-                    -Version 'latest' |
-                Add-AzVMNetworkInterface -Id $nic.Id
-            
-            # Enable Trusted Launch
-            $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
-            $vmConfig = Set-AzVMUefi -VM $vmConfig -EnableVtpm $true -EnableSecureBoot $true
+    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize |
+        Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
+        Set-AzVMSourceImage -PublisherName 'MicrosoftWindowsServer' `
+            -Offer 'WindowsServer' `
+            -Skus '2022-datacenter-g2' `
+            -Version 'latest' |
+        Add-AzVMNetworkInterface -Id $nic.Id
+    
+    # Enable Trusted Launch
+    $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
+    $vmConfig = Set-AzVMUefi -VM $vmConfig -EnableVtpm $true -EnableSecureBoot $true
 
-            # Configure boot diagnostics
-            $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
-                -Enable `
-                -ResourceGroupName $resourceGroupName `
-                -StorageAccountName $DefaultStorageAccountName
+    # Configure boot diagnostics
+    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
+        -Enable `
+        -ResourceGroupName $resourceGroupName `
+        -StorageAccountName $DefaultStorageAccountName
 
-            # Create the VM
-            New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
-            Write-Log "[INFO] VM '$vmName' created successfully."
-        }
-    }
+    # Create the VM
+    New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
 
-    Write-Log "[INFO] Domain Controller VM creation completed successfully."
+    Write-Log "Domain Controller VM creation completed successfully." -Level INFO
 } catch {
-    Write-Log "[ERROR] An error occurred: $($_.Exception.Message)"
+    Write-Log $_.Exception.Message -Level ERROR
     throw
 } finally {
-    Write-Log "[INFO] Script execution completed."
+    Write-Log "Script execution completed." -Level INFO
 }
