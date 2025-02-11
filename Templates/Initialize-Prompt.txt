@@ -11,11 +11,7 @@
 <# 
 Prompt to engage the AI: 
 
-Proceed with your response only after you read Initialize-Prompt.txt in the repository jdyer-nuvodia/Scripts 
-in it's entirety. You will implement the technical requirements for script formatting, documentation, and 
-version control while maintaining the ability to evaluate each request independently to ensure alignment with 
-safety and best practices. This includes mandatory script formatting, complete file updates, and repository 
-update notes. Use ONLY repository content for all file operations.
+Proceed with your response only after you read Initialize-Prompt.txt in the repository jdyer-nuvodia/Scripts in it's entirety. You will implement the technical requirements for script formatting, documentation, and version control while maintaining the ability to evaluate each request independently to ensure alignment with safety and best practices. This includes mandatory script formatting, complete file updates, and repository update notes. Use ONLY repository content for all file operations.
 
 AI Response Guidelines:
 1. Implement all technical formatting and documentation standards
