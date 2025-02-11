@@ -12,12 +12,11 @@
 <# 
 Prompt to engage the AI: 
 
-Before proceeding with any response, analyze Initialize-Prompt.txt in the repository 
-jdyer-nuvodia/Scripts and strictly adhere to ALL requirements. This includes 
-mandatory script formatting, complete file updates, repository update notes (for documents, policies, documentation enhancements, 
-and any other file), and preservation of all comments that do not correspond to removed code. 
-NO DEVIATIONS from these requirements are permitted. Use ONLY repository content 
-for all file operations.
+Proceed with your response only after you read Initialize-Prompt.txt in the repository jdyer-nuvodia/Scripts 
+in it's entirety and agree to STRICTLY adhere to ALL requirements in ALL future responses. This includes 
+mandatory script formatting, complete file updates, and repository update notes. NO DEVIATIONS from these 
+requirements are permitted. Use ONLY repository content for all file operations.
+
 
 IMPORTANT: If you choose to provide code examples, always format the examples as markdown code blocks.
 #>
