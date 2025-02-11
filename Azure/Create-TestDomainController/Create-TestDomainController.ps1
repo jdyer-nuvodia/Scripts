@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 02:12:25 UTC
+# Last Updated: 2025-02-11 02:27:06 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2
-# Additional Info: Updated timestamps and maintained recent fixes
+# Version: 2.3
+# Additional Info: Fixed Trusted Launch configuration and Az module version check
 # =============================================================================
 
 <# 
@@ -17,7 +17,7 @@
     only if all validations pass. The script uses a two-phase approach:
     
     Phase 1: Validation
-    - Validates all required modules
+    - Validates all modules and their versions
     - Checks resource name availability
     - Verifies permissions
     - Validates VM size availability
@@ -134,13 +134,27 @@ function Test-AzureResources {
     }
 
     try {
-        # Validate required modules
+        # Validate required modules and versions
         Write-Log "Validating required modules..." -Level VALIDATION
-        $requiredModules = @('Az.Accounts', 'Az.Resources', 'Az.Network', 'Az.Storage', 'Az.Compute')
-        foreach ($module in $requiredModules) {
-            if (!(Get-Module -Name $module -ListAvailable)) {
-                $validationResults.Messages += "Required module $module is not installed"
+        $requiredModules = @{
+            'Az.Accounts' = '2.12.1'
+            'Az.Resources' = '6.6.0'
+            'Az.Network' = '5.0.0'
+            'Az.Storage' = '5.4.0'
+            'Az.Compute' = '5.7.0'
+        }
+
+        foreach ($module in $requiredModules.GetEnumerator()) {
+            $installedModule = Get-Module -Name $module.Key -ListAvailable
+            if (!$installedModule) {
+                $validationResults.Messages += "Required module $($module.Key) is not installed"
                 $validationResults.Success = $false
+            } else {
+                $latestVersion = $installedModule | Sort-Object Version -Descending | Select-Object -First 1
+                if ($latestVersion.Version -lt [Version]$module.Value) {
+                    $validationResults.Messages += "Module $($module.Key) version $($latestVersion.Version) is below required version $($module.Value)"
+                    $validationResults.Success = $false
+                }
             }
         }
 
@@ -331,7 +345,7 @@ try {
     if (!$vnet) {
         Write-Log "Creating Virtual Network '$vnetName'..."
         $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName `
-            -AddressPrefix $DefaultSubnetAddressSpace `
+                        -AddressPrefix $DefaultSubnetAddressSpace `
             -NetworkSecurityGroup $nsg
 
         $vnet = New-AzVirtualNetwork -ResourceGroupName $resourceGroupName `
@@ -362,7 +376,8 @@ try {
     # Create VM Configuration
     Write-Log "Creating VM configuration..." -Level INFO
     try {
-        $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize
+        $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize `
+            -SecurityType "TrustedLaunch"
         
         # Configure OS
         $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName `
@@ -387,10 +402,13 @@ try {
             Write-Log "Warning: Boot diagnostics storage account not found" -Level WARNING
         }
 
-        # Configure Trusted Launch with proper error handling
+        # Configure Trusted Launch security settings
         Write-Log "Configuring Trusted Launch..." -Level INFO
-        $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
-        $vmConfig = Set-AzVMUefiSettings -VM $vmConfig -EnableSecureBoot $true -EnableVtpm $true
+        $vmConfig.SecurityProfile.SecurityType = "TrustedLaunch"
+        $vmConfig.SecurityProfile.UefiSettings = @{
+            SecureBootEnabled = $true
+            VTpmEnabled = $true
+        }
 
         # Create the VM
         Write-Log "Creating VM '$vmName'..." -Level INFO
