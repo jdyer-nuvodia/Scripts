@@ -293,31 +293,33 @@ try {
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName `
         -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id
 
-    # Create VM
-    Write-Log "Creating VM '$vmName'..."
-    $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
-    $credential = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
-
-    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize |
-        Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
-        Set-AzVMSourceImage -PublisherName 'MicrosoftWindowsServer' `
-            -Offer 'WindowsServer' `
-            -Skus '2022-datacenter-g2' `
-            -Version 'latest' |
-        Add-AzVMNetworkInterface -Id $nic.Id
-    
-    # Enable Trusted Launch
-    $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
-    $vmConfig = Set-AzVMUefi -VM $vmConfig -EnableVtpm $true -EnableSecureBoot $true
-
-    # Configure boot diagnostics
-    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
-        -Enable `
-        -ResourceGroupName $resourceGroupName `
-        -StorageAccountName $DefaultStorageAccountName
-
     # Create the VM
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
+
+    # Configure auto-shutdown
+    Write-Log "Configuring auto-shutdown schedule for VM '$vmName'..."
+    $shutdownTime = "21:00" # 9:00 PM
+    $timeZone = "UTC-07:00" # UTC-7
+    
+    $scheduledShutdownResourceId = "/subscriptions/{0}/resourceGroups/{1}/providers/microsoft.devtestlab/schedules/shutdown-computevm-{2}" -f `
+        (Get-AzContext).Subscription.Id, $resourceGroupName, $vmName
+
+    $properties = @{
+        status = "Enabled"
+        taskType = "ComputeVmShutdownTask"
+        dailyRecurrence = @{time = $shutdownTime }
+        timeZoneId = $timeZone
+        targetResourceId = (Get-AzVM -ResourceGroupName $resourceGroupName -Name $vmName).Id
+        notificationSettings = @{
+            status = "Disabled"
+        }
+    }
+
+    New-AzResource -ResourceId $scheduledShutdownResourceId `
+        -Properties $properties `
+        -Force
+
+    Write-Log "Auto-shutdown schedule configured successfully for $vmName to shutdown at $shutdownTime $timeZone"
 
     Write-Log "Domain Controller VM creation completed successfully." -Level INFO
 } catch {
