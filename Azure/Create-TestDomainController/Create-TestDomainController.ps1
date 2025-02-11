@@ -1,12 +1,12 @@
 # =============================================================================
 # Script: Create-TestDomainController.ps1
-# Created: 2025-02-10 22:50:04 UTC
+# Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 16:07:10 UTC
+# Last Updated: 2025-02-11 16:16:39 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.6
-# Additional Info: Fixed Trusted Launch configuration and DevTest Lab shutdown schedule.
-# Added proper security type configuration and location parameter for auto-shutdown.
+# Version: 2.7
+# Additional Info: Updated VM image configuration for Trusted Launch compatibility
+# Added Gen2 VM support and validation checks
 # =============================================================================
 
 <#
@@ -24,12 +24,13 @@
     - Validates VM size availability
     - Checks network configuration
     - Validates existing resources
+    - Validates Trusted Launch compatibility
     
     Phase 2: Deployment
     - Creates or verifies resource group
     - Sets up storage account
     - Configures networking components
-    - Deploys the virtual machine
+    - Deploys the virtual machine with Gen2 support
     - Configures and validates DevTest Lab shutdown schedule
 
     Use -ValidateOnly to perform validation without deployment.
@@ -156,7 +157,7 @@ function Test-AzureResources {
                 }
             }
         }
-		
+
         # Validate location
         Write-Log "Validating location '$location'..." -Level VALIDATION
         $validLocations = Get-AzLocation
@@ -164,13 +165,22 @@ function Test-AzureResources {
             $validationResults.Messages += "Invalid location: $location"
             $validationResults.Success = $false
         }
-        # Validate VM size availability
-        Write-Log "Validating VM size '$VMSize'..." -Level VALIDATION
+
+        # Validate VM size and Trusted Launch compatibility
+        Write-Log "Validating VM size '$VMSize' and Trusted Launch compatibility..." -Level VALIDATION
         $vmSizes = Get-AzVMSize -Location $location
-        if ($VMSize -notin $vmSizes.Name) {
+        $vmSize = $vmSizes | Where-Object { $_.Name -eq $VMSize }
+        if (!$vmSize) {
             $validationResults.Messages += "VM size $VMSize is not available in $location"
             $validationResults.Success = $false
+        } else {
+            # Verify the VM size supports Trusted Launch
+            if (!($vmSize.SecurityType -contains "TrustedLaunch")) {
+                $validationResults.Messages += "VM size $VMSize does not support Trusted Launch"
+                $validationResults.Success = $false
+            }
         }
+		
         # Validate resource group existence and permissions
         Write-Log "Validating resource group access..." -Level VALIDATION
         $rg = Get-AzResourceGroup -Name $resourceGroupName -ErrorAction SilentlyContinue
@@ -184,6 +194,7 @@ function Test-AzureResources {
                 $validationResults.Success = $false
             }
         }
+
         # Validate storage account name and permissions
         Write-Log "Validating storage account name..." -Level VALIDATION
         $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
@@ -203,7 +214,7 @@ function Test-AzureResources {
                 $validationResults.Success = $false
             }
         }
-		
+
         # Validate network configuration
         Write-Log "Validating network configuration..." -Level VALIDATION
         $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
@@ -219,6 +230,25 @@ function Test-AzureResources {
                 $validationResults.Success = $false
             }
         }
+
+        # Validate OS image compatibility with Trusted Launch
+        Write-Log "Validating OS image compatibility with Trusted Launch..." -Level VALIDATION
+        try {
+            $publisher = 'MicrosoftWindowsServer'
+            $offer = 'WindowsServer'
+            $sku = '2022-datacenter-g2'
+            $version = 'latest'
+            
+            $imageReference = Get-AzVMImage -Location $location -PublisherName $publisher -Offer $offer -Skus $sku -Version $version
+            if (!$imageReference) {
+                $validationResults.Messages += "Could not find compatible Gen2 OS image for Trusted Launch"
+                $validationResults.Success = $false
+            }
+        } catch {
+            $validationResults.Messages += "Error validating OS image: $($_.Exception.Message)"
+            $validationResults.Success = $false
+        }
+
         return $validationResults
     } catch {
         $validationResults.Success = $false
@@ -243,12 +273,13 @@ try {
         Write-Log "Validation only mode - stopping before deployment." -Level INFO
         return
     }
-	
+
     # Ask for confirmation before proceeding with deployment
     if (-not $PSCmdlet.ShouldProcess("Azure Resources", "Deploy")) {
         Write-Log "Deployment cancelled by user." -Level INFO
         return
     }
+
     # Phase 2: Deployment
     Write-Log "Starting deployment phase..." -Level INFO
     # Create Resource Group if it doesn't exist
@@ -257,6 +288,7 @@ try {
         Write-Log "Creating resource group '$resourceGroupName'..." -Level INFO
         New-AzResourceGroup -Name $resourceGroupName -Location $location -ErrorAction Stop
     }
+
     # Create Storage Account if it doesn't exist
     $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
         -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
@@ -294,7 +326,7 @@ try {
     } else {
         Write-Log "Using existing storage account '$DefaultStorageAccountName'" -Level INFO
     }
-
+	
     # Create Network Security Group
     $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (-not $nsg) {
@@ -318,6 +350,7 @@ try {
         }
         $nsg | Set-AzNetworkSecurityGroup
     }
+
     # Create Virtual Network and Subnet
     $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (-not $vnet) {
@@ -325,36 +358,46 @@ try {
         $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $subnetName -AddressPrefix $DefaultSubnetAddressSpace -NetworkSecurityGroup $nsg
         $vnet = New-AzVirtualNetwork -ResourceGroupName $resourceGroupName -Location $location -Name $vnetName -AddressPrefix $DefaultVnetAddressSpace -Subnet $subnetConfig -ErrorAction Stop
     }
-	
+
     # Create Public IP
     $publicIp = Get-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (-not $publicIp) {
         Write-Log "Creating Public IP '$DefaultPublicIpName'..." -Level INFO
         $publicIp = New-AzPublicIpAddress -ResourceGroupName $resourceGroupName -Location $location -Name $DefaultPublicIpName -Sku Standard -AllocationMethod Static -ErrorAction Stop
     }
+
     # Create NIC
     $nicName = "$vmName-NIC"
     $subnet = (Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName).Subnets | Where-Object { $_.Name -eq $subnetName }
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id -ErrorAction Stop
+
     # Create VM Configuration
     Write-Log "Creating VM configuration..." -Level INFO
     try {
         $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize -SecurityType "TrustedLaunch" -ErrorAction Stop
-        # Configure OS
+        
+        # Configure OS with Gen2 image
         $credential = New-Object System.Management.Automation.PSCredential ($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force))
-        $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential $credential -ProvisionVMAgent -ErrorAction Stop
+        $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName -Credential $credential -ProvisionVMAgent -EnableAutoUpdate -ErrorAction Stop
+
         # Add network interface
         $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id -ErrorAction Stop
-        # Set source image
-        $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName 'MicrosoftWindowsServer' -Offer 'WindowsServer' -Skus '2022-Datacenter' -Version latest -ErrorAction Stop
-		
-		        # Configure boot diagnostics with explicit resource group
+
+        # Set source image to Gen2 version
+        $vmConfig = Set-AzVMSourceImage -VM $vmConfig `
+            -PublisherName 'MicrosoftWindowsServer' `
+            -Offer 'WindowsServer' `
+            -Skus '2022-datacenter-g2' `
+            -Version 'latest' -ErrorAction Stop
+			
+        # Configure boot diagnostics
         $diagStorageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
         if ($diagStorageAccount) {
             $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -ResourceGroupName $resourceGroupName -StorageAccountName $DefaultStorageAccountName -ErrorAction Stop
         } else {
             Write-Log "Warning: Boot diagnostics storage account not found" -Level WARNING
         }
+
         # Configure Trusted Launch security settings
         Write-Log "Configuring Trusted Launch..." -Level INFO
         $securityProfile = @{
@@ -365,7 +408,7 @@ try {
             }
         }
         $vmConfig.SecurityProfile = $securityProfile
-        
+
         # Create the VM
         Write-Log "Creating VM '$vmName'..." -Level INFO
         $newVM = New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig -ErrorAction Stop
@@ -378,7 +421,7 @@ try {
         Write-Log "Error during VM configuration or creation: $($_.Exception.Message)" -Level ERROR
         throw
     }
-	
+
     # Configure auto-shutdown
     Write-Log "Configuring auto-shutdown schedule for VM '$vmName'..." -Level INFO
     $shutdownTime = "21:00" # 9:00 PM
@@ -392,9 +435,10 @@ try {
         timeZoneId = $timeZone
         targetResourceId = (Get-AzVM -ResourceGroupName $resourceGroupName -Name $vmName).Id
         notificationSettings = @{ status = "Disabled" }
-        location = $location # Added missing location property
+        location = $location
     }
     New-AzResource -ResourceId $scheduledShutdownResourceId -Properties $properties -Force -Location $location -ErrorAction Stop
+
     # Validate DevTest Lab shutdown schedule
     Write-Log "Validating DevTest Lab shutdown schedule..." -Level VALIDATION
     $existingSchedule = Get-AzResource -ResourceId $scheduledShutdownResourceId -ErrorAction SilentlyContinue
