@@ -212,11 +212,10 @@ try {
     $vmConfig = Set-AzVMUefi -VM $vmConfig -EnableVtpm $true -EnableSecureBoot $true
 
     # Configure boot diagnostics to use existing storage account
-    $bootDiagnostics = @{
-        Enable = $true
-        StorageUri = $storageAccount.PrimaryEndpoints.Blob
-    }
-    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig @bootDiagnostics
+    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
+        -Enable `
+        -ResourceGroupName $resourceGroupName `
+        -StorageAccountName $storageAccount.StorageAccountName
 
     # Create the VM
     Write-Log "[INFO] Creating VM '$vmName'..."
