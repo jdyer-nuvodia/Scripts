@@ -2,11 +2,11 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 16:10:46 UTC
+# Last Updated: 2025-02-11 16:21:38 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3
-# Additional Info: Modified code chunk requirements to enforce minimum 150 lines
-# per chunk while maintaining maximum of 200 lines.
+# Version: 2.4
+# Additional Info: Clarified code chunk requirements for better readability and
+# precise division requirements. Added examples and division calculation guidance.
 # =============================================================================
 
 <# 
@@ -52,25 +52,33 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
   
 3. Code Chunking Laws (MANDATORY):
    - For scripts exceeding 150 lines, content MUST be divided into chunks
+   - Chunk size calculation:
+     * Total number of lines divided by chunks MUST yield 150-200 lines per chunk
+     * Example: 413 total lines should be divided into 2-3 chunks (206/138 vs 171/171/71)
+     * In this case, 2 chunks of ~206 lines each is correct; 3 chunks is incorrect as it 
+       would result in chunks smaller than the minimum 150 lines
    - Each chunk MUST contain a MINIMUM of 150 lines of code
    - NO chunk may exceed 200 lines of code
+   - The final chunk in a script MAY contain fewer than 150 lines ONLY if:
+     * All previous chunks contain the maximum possible lines (close to 200)
+     * The remaining lines are less than 150
    - Each chunk MUST begin with a line starting with '#' symbol
    - Each chunk MUST be presented in its own separate code block
    - Each chunk MUST use a unique filename in its code block header using the format:
      ```powershell name=filename.extension.chunk#
      Example: ```powershell name=script.ps1.chunk1```
-   - Each chunk MUST be clearly labeled with its line range (e.g., "Chunk 1: Lines 1-150")
+   - Each chunk MUST be clearly labeled with its line range (e.g., "Chunk 1: Lines 1-200")
    - Code blocks MUST be separated by at least one line of explanatory text
    - ALL chunks MUST be provided in the same response
    - The complete script MUST still be logically maintained as one unit
    - Chunks MUST maintain proper code formatting and indentation
    - Chunks MUST NOT break logical code blocks
    - If a logical block would be split, extend the chunk to include the complete block
-   - The final chunk may contain fewer than 150 lines ONLY if there are fewer than 150 lines remaining
    - Include a chunk summary at the start indicating total number of chunks
    - IMPORTANT: Never combine multiple chunks in a single code block
    - IMPORTANT: Each chunk MUST have its own unique filename in the code block header
    - IMPORTANT: The chunk number in the filename MUST match the chunk number in the description
+   - IMPORTANT: When calculating chunks, round UP to ensure minimum of 150 lines per chunk
   
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file, regardless of file type.
