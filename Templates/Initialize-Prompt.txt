@@ -2,11 +2,11 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 15:20:00 UTC
+# Last Updated: 2025-02-11 16:10:46 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2
-# Additional Info: Modified code chunk requirements for 150-200 line ranges, added directive for code example formatting,
-# and mandated repository update notes for all files (including policy/documentation).
+# Version: 2.3
+# Additional Info: Modified code chunk requirements to enforce minimum 150 lines
+# per chunk while maintaining maximum of 200 lines.
 # =============================================================================
 
 <# 
@@ -51,7 +51,9 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Scripts MUST include proper resource cleanup where applicable
   
 3. Code Chunking Laws (MANDATORY):
-   - For scripts exceeding 150 lines, content MUST be presented in chunks of 150-200 lines
+   - For scripts exceeding 150 lines, content MUST be divided into chunks
+   - Each chunk MUST contain a MINIMUM of 150 lines of code
+   - NO chunk may exceed 200 lines of code
    - Each chunk MUST begin with a line starting with '#' symbol
    - Each chunk MUST be presented in its own separate code block
    - Each chunk MUST use a unique filename in its code block header using the format:
@@ -64,7 +66,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Chunks MUST maintain proper code formatting and indentation
    - Chunks MUST NOT break logical code blocks
    - If a logical block would be split, extend the chunk to include the complete block
-   - The final chunk may contain fewer than 150 lines
+   - The final chunk may contain fewer than 150 lines ONLY if there are fewer than 150 lines remaining
    - Include a chunk summary at the start indicating total number of chunks
    - IMPORTANT: Never combine multiple chunks in a single code block
    - IMPORTANT: Each chunk MUST have its own unique filename in the code block header
