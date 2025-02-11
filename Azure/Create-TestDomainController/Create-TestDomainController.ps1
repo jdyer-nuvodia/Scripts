@@ -294,7 +294,25 @@ try {
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName `
         -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id
 
+    # Create VM Configuration
+    Write-Log "Creating VM configuration..." -Level INFO
+    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize
+    $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName `
+        -Credential (New-Object System.Management.Automation.PSCredential ($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)))
+    $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
+    $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName 'MicrosoftWindowsServer' `
+        -Offer 'WindowsServer' -Skus '2022-Datacenter' -Version latest
+    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -StorageAccountName $DefaultStorageAccountName
+    
+    # Enable Trusted Launch
+    $vmConfig.SecurityProfile = New-Object Microsoft.Azure.Management.Compute.Models.SecurityProfile
+    $vmConfig.SecurityProfile.SecurityType = "TrustedLaunch"
+    $vmConfig.SecurityProfile.UefiSettings = New-Object Microsoft.Azure.Management.Compute.Models.UefiSettings
+    $vmConfig.SecurityProfile.UefiSettings.SecureBootEnabled = $true
+    $vmConfig.SecurityProfile.UefiSettings.VTpmEnabled = $true
+
     # Create the VM
+    Write-Log "Creating VM '$vmName'..." -Level INFO
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
 
     # Configure auto-shutdown
