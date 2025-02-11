@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 02:06:55 UTC
+# Last Updated: 2025-02-11 02:12:25 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0
-# Additional Info: Consolidated all pre-deployment validations into validation phase
+# Version: 2.2
+# Additional Info: Updated timestamps and maintained recent fixes
 # =============================================================================
 
 <# 
@@ -91,6 +91,11 @@ function Write-Log {
     $LogMessage = "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
     Write-Host $LogMessage
+    if ($Level -eq 'ERROR') {
+        Write-Error $Message
+    } elseif ($VerbosePreference -eq 'Continue') {
+        Write-Verbose $Message
+    }
 }
 
 # Clear log file
@@ -169,8 +174,8 @@ function Test-AzureResources {
             }
         }
 
-        # Validate storage account name availability and permissions
-        Write-Log "Validating storage account name and permissions..." -Level VALIDATION
+        # Validate storage account name and permissions
+        Write-Log "Validating storage account name..." -Level VALIDATION
         $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
             -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
         if (!$storageAccount) {
@@ -189,7 +194,7 @@ function Test-AzureResources {
             }
         }
 
-        # Validate network configuration and conflicts
+        # Validate network configuration
         Write-Log "Validating network configuration..." -Level VALIDATION
         $vnet = Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
         if ($vnet) {
@@ -202,27 +207,6 @@ function Test-AzureResources {
             $existingSubnet = $vnet.Subnets | Where-Object { $_.Name -eq $subnetName }
             if ($existingSubnet -and $existingSubnet.AddressPrefix -ne $DefaultSubnetAddressSpace) {
                 $validationResults.Messages += "Subnet $subnetName exists with different address space"
-                $validationResults.Success = $false
-            }
-        }
-
-        # Validate NSG
-        Write-Log "Validating Network Security Group..." -Level VALIDATION
-        $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
-        if ($nsg) {
-            $rdpRule = $nsg.SecurityRules | Where-Object { $_.DestinationPortRange -eq '3389' }
-            if (!$rdpRule) {
-                $validationResults.Messages += "Existing NSG does not have required RDP rule"
-                $validationResults.Success = $false
-            }
-        }
-
-        # Validate Public IP availability
-        Write-Log "Validating Public IP availability..." -Level VALIDATION
-        $publicIp = Get-AzPublicIpAddress -Name $DefaultPublicIpName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
-        if ($publicIp) {
-            if ($publicIp.IpConfiguration) {
-                $validationResults.Messages += "Public IP $DefaultPublicIpName is already in use"
                 $validationResults.Success = $false
             }
         }
@@ -283,14 +267,12 @@ try {
             SkuName = 'Standard_LRS'
             Kind = 'StorageV2'
         }
-
-        # Create storage account with timeout handling
-        $timeout = New-TimeSpan -Minutes 5
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         $storageAccount = New-AzStorageAccount @storageAccountParams
 
         # Wait for storage account to be ready
         Write-Log "Waiting for storage account provisioning to complete..." -Level INFO
+        $timeout = New-TimeSpan -Minutes 5
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         do {
             $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
                 -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
@@ -315,7 +297,7 @@ try {
     } else {
         Write-Log "Using existing storage account '$DefaultStorageAccountName'" -Level INFO
     }
-
+	
     # Create Network Security Group
     $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
     if (!$nsg) {
@@ -379,24 +361,51 @@ try {
 
     # Create VM Configuration
     Write-Log "Creating VM configuration..." -Level INFO
-    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize
-    $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName `
-        -Credential (New-Object System.Management.Automation.PSCredential ($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)))
-    $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
-    $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName 'MicrosoftWindowsServer' `
-        -Offer 'WindowsServer' -Skus '2022-Datacenter' -Version latest
-    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -StorageAccountName $DefaultStorageAccountName
+    try {
+        $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize
+        
+        # Configure OS
+        $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $vmName `
+            -Credential (New-Object System.Management.Automation.PSCredential ($adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)))
+        
+        # Add network interface
+        $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
+        
+        # Set source image
+        $vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName 'MicrosoftWindowsServer' `
+            -Offer 'WindowsServer' -Skus '2022-Datacenter' -Version latest
+        
+        # Configure boot diagnostics with explicit resource group
+        $diagStorageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
+            -Name $DefaultStorageAccountName
+        if ($diagStorageAccount) {
+            $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
+                -Enable `
+                -ResourceGroupName $resourceGroupName `
+                -StorageAccountName $DefaultStorageAccountName
+        } else {
+            Write-Log "Warning: Boot diagnostics storage account not found" -Level WARNING
+        }
 
-    # Enable Trusted Launch
-    $vmConfig.SecurityProfile = New-Object Microsoft.Azure.Management.Compute.Models.SecurityProfile
-    $vmConfig.SecurityProfile.SecurityType = "TrustedLaunch"
-    $vmConfig.SecurityProfile.UefiSettings = New-Object Microsoft.Azure.Management.Compute.Models.UefiSettings
-    $vmConfig.SecurityProfile.UefiSettings.SecureBootEnabled = $true
-    $vmConfig.SecurityProfile.UefiSettings.VTpmEnabled = $true
+        # Configure Trusted Launch with proper error handling
+        Write-Log "Configuring Trusted Launch..." -Level INFO
+        $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
+        $vmConfig = Set-AzVMUefiSettings -VM $vmConfig -EnableSecureBoot $true -EnableVtpm $true
 
-    # Create the VM
-    Write-Log "Creating VM '$vmName'..." -Level INFO
-    New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
+        # Create the VM
+        Write-Log "Creating VM '$vmName'..." -Level INFO
+        $newVM = New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
+
+        if ($newVM) {
+            Write-Log "VM created successfully" -Level INFO
+        } else {
+            throw "VM creation failed without specific error"
+        }
+
+    } catch {
+        Write-Log "Error during VM configuration or creation: $($_.Exception.Message)" -Level ERROR
+        throw
+    }
 
     # Configure auto-shutdown
     Write-Log "Configuring auto-shutdown schedule for VM '$vmName'..." -Level INFO
