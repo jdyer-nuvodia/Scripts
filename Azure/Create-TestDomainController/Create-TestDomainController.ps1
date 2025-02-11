@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-10 23:05:38 UTC
+# Last Updated: 2025-02-11 00:03:37 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3
-# Additional Info: Fixed image version parameter syntax error
+# Version: 1.5
+# Additional Info: Fixed boot diagnostics storage account handling
 # =============================================================================
 
 <# 
@@ -13,8 +13,10 @@
     Creates a test domain controller as a Trusted Launch VM in Azure.
 .DESCRIPTION
     This script provisions a domain controller VM configured as a Trusted Launch VM in Azure.
-    It creates or verifies a resource group, storage account, network resources (virtual network, subnet, public IP,
-    network security group), and provisions a Windows Server VM with Trusted Launch security features (Secure Boot and vTPM enabled).
+    It creates or verifies required resources including storage account, network resources
+    (virtual network, subnet, public IP, network security group), and provisions a Windows
+    Server VM with Trusted Launch security features (Secure Boot and vTPM enabled).
+    The script uses a single storage account for both general storage and boot diagnostics.
 .PARAMETER resourceGroupName
     The name of the resource group where the VM and related resources will be created.
 .PARAMETER location
@@ -123,6 +125,8 @@ try {
             -SkuName Standard_LRS `
             -Kind StorageV2
         Write-Log "[INFO] Storage Account '$DefaultStorageAccountName' created successfully."
+    } else {
+        Write-Log "[INFO] Using existing Storage Account '$DefaultStorageAccountName'."
     }
 
     # Create Network Security Group
@@ -189,12 +193,12 @@ try {
     $nic = New-AzNetworkInterface -Name $nicName -ResourceGroupName $resourceGroupName `
         -Location $location -SubnetId $subnet.Id -PublicIpAddressId $publicIp.Id
     Write-Log "[INFO] Network interface created successfully."
-
+	
     # Create PSCredential object for VM
     $securePassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
     $credential = New-Object System.Management.Automation.PSCredential ($adminUsername, $securePassword)
 
-    # Create VM configuration
+    # Create VM configuration with boot diagnostics using existing storage account
     $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $VMSize |
         Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential $credential |
         Set-AzVMSourceImage -PublisherName 'MicrosoftWindowsServer' `
@@ -206,6 +210,13 @@ try {
     # Enable Trusted Launch
     $vmConfig = Set-AzVMSecurityProfile -VM $vmConfig -SecurityType "TrustedLaunch"
     $vmConfig = Set-AzVMUefi -VM $vmConfig -EnableVtpm $true -EnableSecureBoot $true
+
+    # Configure boot diagnostics to use existing storage account
+    $bootDiagnostics = @{
+        Enable = $true
+        StorageUri = $storageAccount.PrimaryEndpoints.Blob
+    }
+    $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig @bootDiagnostics
 
     # Create the VM
     Write-Log "[INFO] Creating VM '$vmName'..."
