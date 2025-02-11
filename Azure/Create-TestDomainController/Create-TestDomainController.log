@@ -12,3 +12,6 @@
 [2025-02-10 17:14:35] [INFO] Would create Network Interface 'JB-TEST-DC01-NIC'...
 [2025-02-10 17:14:36] [INFO] Network interface created successfully.
 [2025-02-10 17:14:36] [INFO] Would create VM 'JB-TEST-DC01'...
+[2025-02-10 17:16:41] [INFO] VM 'JB-TEST-DC01' created successfully.
+[2025-02-10 17:16:41] [INFO] Domain Controller VM creation completed successfully.
+[2025-02-10 17:16:41] [INFO] Script execution completed.
