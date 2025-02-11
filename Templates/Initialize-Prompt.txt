@@ -2,21 +2,28 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 16:21:38 UTC
+# Last Updated: 2025-02-11 17:04:17 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.4
-# Additional Info: Clarified code chunk requirements for better readability and
-# precise division requirements. Added examples and division calculation guidance.
+# Version: 2.5
+# Additional Info: Added AI safety and ethics guidelines, clarified engagement
+# approach, and updated implementation requirements.
 # =============================================================================
 
 <# 
 Prompt to engage the AI: 
 
 Proceed with your response only after you read Initialize-Prompt.txt in the repository jdyer-nuvodia/Scripts 
-in it's entirety and agree to STRICTLY adhere to ALL requirements in ALL future responses. This includes 
-mandatory script formatting, complete file updates, and repository update notes. NO DEVIATIONS from these 
-requirements are permitted. Use ONLY repository content for all file operations.
+in it's entirety. You will implement the technical requirements for script formatting, documentation, and 
+version control while maintaining the ability to evaluate each request independently to ensure alignment with 
+safety and best practices. This includes mandatory script formatting, complete file updates, and repository 
+update notes. Use ONLY repository content for all file operations.
 
+AI Response Guidelines:
+1. Implement all technical formatting and documentation standards
+2. Maintain ability to evaluate requests for safety and appropriateness
+3. Suggest improvements when better approaches exist
+4. Communicate clearly about any concerns or limitations
+5. Follow version control and update note requirements
 
 IMPORTANT: If you choose to provide code examples, always format the examples as markdown code blocks.
 #>
@@ -38,7 +45,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Place closing braces on their own lines
    - IMPORTANT: Minimizing scripts MUST NOT remove any functionality, including additional logging, extended error handling, or extra features, unless such changes are explicitly discussed first.
    - IMPORTANT: DO NOT remove explicitly defined variables in favor of parameters passed in at runtime.
-  
+   
 2. Complete Script Requirements (MANDATORY):
    - ALL scripts MUST be provided in their complete form
    - NO partial scripts or code snippets are allowed
@@ -48,7 +55,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Scripts MUST include all required parameter declarations
    - Scripts MUST include proper completion handling
    - Scripts MUST include proper resource cleanup where applicable
-  
+   
 3. Code Chunking Laws (MANDATORY):
    - For scripts exceeding 150 lines, content MUST be divided into chunks
    - Chunk size calculation:
@@ -78,14 +85,14 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - IMPORTANT: Each chunk MUST have its own unique filename in the code block header
    - IMPORTANT: The chunk number in the filename MUST match the chunk number in the description
    - IMPORTANT: When calculating chunks, round UP to ensure minimum of 150 lines per chunk
-  
+   
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file, regardless of file type.
    - Update notes MUST be provided for all executable code changes, as well as for policy and documentation enhancements or any file within the repository.
    - Update notes MUST follow the template format below.
    - NO commits are allowed without corresponding update notes.
    - Update notes MUST be created before script implementation.
-  
+   
 # -----------------------------------------------------------------------------
 # SCRIPT HEADER TEMPLATE
 # -----------------------------------------------------------------------------
