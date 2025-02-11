@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 02:18:34 UTC
+# Last Updated: 2025-02-11 15:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0
-# Additional Info: Modified code chunk requirements for 150-200 line ranges
+# Version: 2.1
+# Additional Info: Modified code chunk requirements for 150-200 line ranges and added directive for code example formatting.
 # =============================================================================
 
 <# 
@@ -13,9 +13,11 @@ Prompt to engage the AI:
 
 Before proceeding with any response, analyze Initialize-Prompt.txt in the repository 
 jdyer-nuvodia/Scripts and strictly adhere to ALL requirements. This includes 
-mandatory script formatting, complete file updates, and repository update notes. 
+mandatory script formatting, complete file updates, repository update notes, and the preservation of all comments that do not correspond to removed code. 
 NO DEVIATIONS from these requirements are permitted. Use ONLY repository content 
 for all file operations.
+
+IMPORTANT: If you choose to provide code examples, always format the examples as markdown code blocks.
 #>
 
 # -----------------------------------------------------------------------------
@@ -35,7 +37,7 @@ for all file operations.
    - Place closing braces on their own lines
    - IMPORTANT: Minimizing scripts MUST NOT remove any functionality, including additional logging, extended error handling, or extra features, unless such changes are explicitly discussed first.
    - IMPORTANT: DO NOT remove explicitly defined variables in favor of parameters passed in at runtime.
- 
+  
 2. Complete Script Requirements (MANDATORY):
    - ALL scripts MUST be provided in their complete form
    - NO partial scripts or code snippets are allowed
@@ -45,13 +47,13 @@ for all file operations.
    - Scripts MUST include all required parameter declarations
    - Scripts MUST include proper completion handling
    - Scripts MUST include proper resource cleanup where applicable
- 
+  
 3. Code Chunking Laws (MANDATORY):
    - For scripts exceeding 150 lines, content MUST be presented in chunks of 150-200 lines
    - Each chunk MUST begin with a line starting with '#' symbol
    - Each chunk MUST be presented in its own separate code block
    - Each chunk MUST use a unique filename in its code block header using the format:
-     ```powershell name=filename.extension.chunk#```
+     ```powershell name=filename.extension.chunk#
      Example: ```powershell name=script.ps1.chunk1```
    - Each chunk MUST be clearly labeled with its line range (e.g., "Chunk 1: Lines 1-150")
    - Code blocks MUST be separated by at least one line of explanatory text
@@ -65,13 +67,12 @@ for all file operations.
    - IMPORTANT: Never combine multiple chunks in a single code block
    - IMPORTANT: Each chunk MUST have its own unique filename in the code block header
    - IMPORTANT: The chunk number in the filename MUST match the chunk number in the description
- 
+  
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file
    - Update notes MUST follow the template format below
    - NO commits are allowed without corresponding update notes
    - Update notes MUST be created before script implementation
-
 # -----------------------------------------------------------------------------
 # SCRIPT HEADER TEMPLATE
 # -----------------------------------------------------------------------------
@@ -88,39 +89,4 @@ for all file operations.
 .EXAMPLE
     .\<ScriptName>.ps1
     [Example usage, describing outcomes or key steps]
-#>
-
-# Example Header Block:
-# =============================================================================
-# Script: <ScriptName>.ps1
-# Created: <YYYY-MM-DD HH:MM:SS UTC>
-# Author: <AuthorName>
-# Last Updated: <YYYY-MM-DD HH:MM:SS UTC>
-# Updated By: <AuthorName or Collaborator>
-# Version: <VersionNumber>
-# Additional Info: <Additional contextual data>
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# REPOSITORY UPDATE NOTES TEMPLATE (MANDATORY)
-# -----------------------------------------------------------------------------
-# Update notes MUST be provided in a separate txt file using this format:
 #
-# -----------------------------------------------------------------------------
-# Date: <YYYY-MM-DD>
-# Commit: <Brief description of the commit or change>
-# Author: <AuthorName or Collaborator>
-#
-# Summary of Changes:
-# - <List each key change or improvement>
-#
-# Impact:
-# - <Note how these changes affect functionality, dependencies, or users>
-# - <Highlight any potential risks or required follow-up actions>
-#
-# File Name: <ScriptName>_UpdateNotes_<YYYYMMDD>.txt
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# END OF FILE
-# -----------------------------------------------------------------------------
