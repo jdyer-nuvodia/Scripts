@@ -1,14 +1,5 @@
-[2025-02-10 16:52:28] Log file reset. New log starting.
-[2025-02-10 16:52:28] [INFO] Successfully loaded required Az modules.
-[2025-02-10 16:52:30] [INFO] Resource group 'JB-TEST-RG2' already exists.
-[2025-02-10 16:52:30] [INFO] Creating Storage Account 'jbteststorage0'...
-[2025-02-10 16:52:57] [INFO] Storage Account 'jbteststorage0' created successfully.
-[2025-02-10 16:52:58] [INFO] Creating Network Security Group 'JB-TEST-NSG'...
-[2025-02-10 16:53:03] [INFO] Network Security Group created successfully.
-[2025-02-10 16:53:03] [INFO] Creating Virtual Network 'JB-TEST-VNET'...
-[2025-02-10 16:53:08] [INFO] Virtual Network and Subnet created successfully.
-[2025-02-10 16:53:08] [INFO] Creating Public IP 'JB-TEST-DC01-PUBIP'...
-[2025-02-10 16:53:11] [INFO] Public IP created successfully.
-[2025-02-10 16:53:12] [INFO] Network interface created successfully.
-[2025-02-10 16:53:12] [INFO] Creating VM 'JB-TEST-DC01'...
-[2025-02-10 16:55:37] [INFO] Script execution completed.
+[2025-02-10 17:01:20] Log file reset. New log starting.
+[2025-02-10 17:01:20] [INFO] Successfully loaded required Az modules.
+[2025-02-10 17:01:21] [INFO] Resource group 'JB-TEST-RG2' already exists.
+[2025-02-10 17:01:21] [ERROR] An error occurred: Storage account 'jbteststorage0' does not exist in resource group 'JB-TEST-RG2'. Please create it first.
+[2025-02-10 17:01:21] [INFO] Script execution completed.
