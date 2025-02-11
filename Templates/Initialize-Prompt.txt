@@ -2,11 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 17:04:17 UTC
+# Last Updated: 2025-02-11 17:19:34 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5
-# Additional Info: Added AI safety and ethics guidelines, clarified engagement
-# approach, and updated implementation requirements.
+# Version: 2.6
+# Additional Info: Added chunk verification and TCP connection requirements
 # =============================================================================
 
 <# 
@@ -45,7 +44,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Place closing braces on their own lines
    - IMPORTANT: Minimizing scripts MUST NOT remove any functionality, including additional logging, extended error handling, or extra features, unless such changes are explicitly discussed first.
    - IMPORTANT: DO NOT remove explicitly defined variables in favor of parameters passed in at runtime.
-   
+    
 2. Complete Script Requirements (MANDATORY):
    - ALL scripts MUST be provided in their complete form
    - NO partial scripts or code snippets are allowed
@@ -55,7 +54,9 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Scripts MUST include all required parameter declarations
    - Scripts MUST include proper completion handling
    - Scripts MUST include proper resource cleanup where applicable
-   
+   - Scripts MUST enforce TCP connections for network operations to ensure data integrity
+   - Scripts MUST include connection validation and retry logic
+    
 3. Code Chunking Laws (MANDATORY):
    - For scripts exceeding 150 lines, content MUST be divided into chunks
    - Chunk size calculation:
@@ -85,14 +86,19 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - IMPORTANT: Each chunk MUST have its own unique filename in the code block header
    - IMPORTANT: The chunk number in the filename MUST match the chunk number in the description
    - IMPORTANT: When calculating chunks, round UP to ensure minimum of 150 lines per chunk
-   
+   - MANDATORY: Line count verification MUST be performed:
+     * Before providing each chunk, verify and display the line count
+     * After providing each chunk, verify and confirm the line count matches
+     * At the end of all chunks, verify and display the total script line count
+     * If any discrepancy is detected, the entire script must be re-chunked
+    
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file, regardless of file type.
    - Update notes MUST be provided for all executable code changes, as well as for policy and documentation enhancements or any file within the repository.
    - Update notes MUST follow the template format below.
    - NO commits are allowed without corresponding update notes.
    - Update notes MUST be created before script implementation.
-   
+    
 # -----------------------------------------------------------------------------
 # SCRIPT HEADER TEMPLATE
 # -----------------------------------------------------------------------------
