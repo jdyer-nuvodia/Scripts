@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 00:21:17 UTC
+# Last Updated: 2025-02-11 00:26:56 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8
-# Additional Info: Added DevTest Lab shutdown schedule validation
+# Version: 1.9
+# Additional Info: Moved DevTest Lab shutdown schedule validation after deployment
 # =============================================================================
 
 <# 
@@ -22,13 +22,13 @@
     - Verifies permissions
     - Validates VM size availability
     - Checks network configuration
-    - Validates DevTest Lab shutdown schedule
     
     Phase 2: Deployment
     - Creates or verifies resource group
     - Sets up storage account
     - Configures networking components
     - Deploys the virtual machine
+    - Configures and validates DevTest Lab shutdown schedule
     
     Use -ValidateOnly to perform validation without deployment.
 .PARAMETER resourceGroupName
@@ -143,16 +143,6 @@ function Test-AzureResources {
         $validLocations = Get-AzLocation
         if ($location -notin $validLocations.Location) {
             $validationResults.Messages += "Invalid location: $location"
-            $validationResults.Success = $false
-        }
-
-        # Validate DevTest Lab shutdown schedule
-        Write-Log "Validating DevTest Lab shutdown schedule..." -Level VALIDATION
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        $scheduledShutdownResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/microsoft.devtestlab/schedules/shutdown-computevm-$vmName"
-        $existingSchedule = Get-AzResource -ResourceId $scheduledShutdownResourceId -ErrorAction SilentlyContinue
-        if ($existingSchedule) {
-            $validationResults.Messages += "DevTest Lab shutdown schedule already exists for VM $vmName"
             $validationResults.Success = $false
         }
 
@@ -308,7 +298,7 @@ try {
     New-AzVM -ResourceGroupName $resourceGroupName -Location $location -VM $vmConfig
 
     # Configure auto-shutdown
-    Write-Log "Configuring auto-shutdown schedule for VM '$vmName'..."
+    Write-Log "Configuring auto-shutdown schedule for VM '$vmName'..." -Level INFO
     $shutdownTime = "21:00" # 9:00 PM
     $timeZone = "UTC-07:00" # UTC-7
     
@@ -330,7 +320,15 @@ try {
         -Properties $properties `
         -Force
 
-    Write-Log "Auto-shutdown schedule configured successfully for $vmName to shutdown at $shutdownTime $timeZone"
+    # Validate DevTest Lab shutdown schedule
+    Write-Log "Validating DevTest Lab shutdown schedule..." -Level VALIDATION
+    $existingSchedule = Get-AzResource -ResourceId $scheduledShutdownResourceId -ErrorAction SilentlyContinue
+    if (!$existingSchedule) {
+        Write-Log "DevTest Lab shutdown schedule validation failed - schedule not found" -Level ERROR
+        throw "Failed to create DevTest Lab shutdown schedule for VM $vmName"
+    }
+    Write-Log "DevTest Lab shutdown schedule validated successfully" -Level INFO
+    Write-Log "Auto-shutdown schedule configured successfully for $vmName to shutdown at $shutdownTime $timeZone" -Level INFO
 
     Write-Log "Domain Controller VM creation completed successfully." -Level INFO
 } catch {
