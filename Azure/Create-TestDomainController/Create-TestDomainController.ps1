@@ -225,13 +225,47 @@ try {
     $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
         -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
     if (!$storageAccount) {
-        Write-Log "Creating Storage Account '$DefaultStorageAccountName'..."
-        $storageAccount = New-AzStorageAccount -ResourceGroupName $resourceGroupName `
-            -Name $DefaultStorageAccountName `
-            -Location $location `
-            -SkuName Standard_LRS `
-            -Kind StorageV2
+        Write-Log "Creating Storage Account '$DefaultStorageAccountName'..." -Level INFO
+        $storageAccountParams = @{
+            ResourceGroupName = $resourceGroupName
+            Name = $DefaultStorageAccountName
+            Location = $location
+            SkuName = 'Standard_LRS'
+            Kind = 'StorageV2'
+        }
+
+        # Create storage account with timeout handling
+        $timeout = New-TimeSpan -Minutes 5
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        $storageAccount = New-AzStorageAccount @storageAccountParams
+
+        # Wait for storage account to be ready
+        Write-Log "Waiting for storage account provisioning to complete..." -Level INFO
+        do {
+            $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
+                -Name $DefaultStorageAccountName -ErrorAction SilentlyContinue
+            
+            if ($stopwatch.Elapsed -gt $timeout) {
+                Write-Log "Timeout waiting for storage account creation" -Level ERROR
+                throw "Storage account creation timed out after 5 minutes"
+            }
+
+            if ($storageAccount.ProvisioningState -eq 'Failed') {
+                Write-Log "Storage account provisioning failed" -Level ERROR
+                throw "Storage account provisioning failed"
+            }
+
+            if ($storageAccount.ProvisioningState -ne 'Succeeded') {
+                Write-Log "Storage account status: $($storageAccount.ProvisioningState)" -Level INFO
+                Start-Sleep -Seconds 10
+            }
+        } while ($storageAccount.ProvisioningState -ne 'Succeeded')
+
+        Write-Log "Storage account created successfully" -Level INFO
+    } else {
+        Write-Log "Using existing storage account '$DefaultStorageAccountName'" -Level INFO
     }
+
 	
     # Create Network Security Group
     $nsg = Get-AzNetworkSecurityGroup -Name $DefaultNsgName -ResourceGroupName $resourceGroupName -ErrorAction SilentlyContinue
