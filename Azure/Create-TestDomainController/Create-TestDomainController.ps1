@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-10 22:50:04 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 00:15:35 UTC
+# Last Updated: 2025-02-11 00:21:17 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7
-# Additional Info: Added two-phase deployment with validation
+# Version: 1.8
+# Additional Info: Added DevTest Lab shutdown schedule validation
 # =============================================================================
 
 <# 
@@ -22,6 +22,7 @@
     - Verifies permissions
     - Validates VM size availability
     - Checks network configuration
+    - Validates DevTest Lab shutdown schedule
     
     Phase 2: Deployment
     - Creates or verifies resource group
@@ -145,6 +146,16 @@ function Test-AzureResources {
             $validationResults.Success = $false
         }
 
+        # Validate DevTest Lab shutdown schedule
+        Write-Log "Validating DevTest Lab shutdown schedule..." -Level VALIDATION
+        $subscriptionId = (Get-AzContext).Subscription.Id
+        $scheduledShutdownResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/microsoft.devtestlab/schedules/shutdown-computevm-$vmName"
+        $existingSchedule = Get-AzResource -ResourceId $scheduledShutdownResourceId -ErrorAction SilentlyContinue
+        if ($existingSchedule) {
+            $validationResults.Messages += "DevTest Lab shutdown schedule already exists for VM $vmName"
+            $validationResults.Success = $false
+        }
+
         # Validate VM size availability
         Write-Log "Validating VM size '$VMSize'..." -Level VALIDATION
         $vmSizes = Get-AzVMSize -Location $location
@@ -152,7 +163,7 @@ function Test-AzureResources {
             $validationResults.Messages += "VM size $VMSize is not available in $location"
             $validationResults.Success = $false
         }
-
+		
         # Validate storage account name availability
         Write-Log "Validating storage account name..." -Level VALIDATION
         $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
