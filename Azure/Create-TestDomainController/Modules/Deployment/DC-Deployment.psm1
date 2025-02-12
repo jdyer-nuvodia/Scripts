@@ -2,10 +2,10 @@
 # Script: DC-Deployment.psm1
 # Created: 2025-02-12 00:25:18 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 20:26:29 UTC
+# Last Updated: 2025-02-12 20:29:54 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9
-# Additional Info: Added New-DCEnvironment implementation with full deployment logic
+# Version: 2.0
+# Additional Info: Fixed storage account usage for boot diagnostics
 # =============================================================================
 
 # Script-scoped variables
@@ -45,6 +45,41 @@ function Set-DCLogFile {
     Write-Log "Log file path set to: $Path" -Level INFO
 }
 
+function Initialize-DCStorage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Config
+    )
+    
+    try {
+        Write-Log "Initializing storage account: $($Config.StorageAccountName)" -Level DEPLOYMENT
+        
+        # Check if storage account exists
+        $storageAccount = Get-AzStorageAccount -ResourceGroupName $Config.ResourceGroupName `
+            -Name $Config.StorageAccountName -ErrorAction SilentlyContinue
+            
+        if (-not $storageAccount) {
+            Write-Log "Storage account does not exist. Creating new storage account." -Level DEPLOYMENT
+            $storageAccount = New-AzStorageAccount -ResourceGroupName $Config.ResourceGroupName `
+                -Name $Config.StorageAccountName `
+                -Location $Config.Location `
+                -SkuName Standard_LRS `
+                -Kind StorageV2
+                
+            Write-Log "Storage account created successfully" -Level DEPLOYMENT
+        } else {
+            Write-Log "Using existing storage account" -Level DEPLOYMENT
+        }
+        
+        return $storageAccount
+    }
+    catch {
+        Write-Log "Failed to initialize storage account: $_" -Level ERROR
+        throw
+    }
+}
+
 function New-DCEnvironment {
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
@@ -61,6 +96,11 @@ function New-DCEnvironment {
                 Write-Log "Creating Resource Group: $($Config.ResourceGroupName)" -Level DEPLOYMENT
                 New-AzResourceGroup -Name $Config.ResourceGroupName -Location $Config.Location
             }
+        }
+
+        # Initialize Storage Account
+        if ($PSCmdlet.ShouldProcess("Storage Account $($Config.StorageAccountName)", "Initialize")) {
+            $storageAccount = Initialize-DCStorage -Config $Config
         }
 
         # Create Virtual Network
@@ -120,6 +160,12 @@ function New-DCEnvironment {
         # Create VM Configuration
         Write-Log "Configuring VM settings" -Level DEPLOYMENT
         $vmConfig = New-AzVMConfig -VMName $Config.VmName -VMSize $Config.VMSize
+        
+        # Configure boot diagnostics with existing storage account
+        $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
+            -Enable `
+            -ResourceGroupName $Config.ResourceGroupName `
+            -StorageAccountName $Config.StorageAccountName
         
         $securePassword = ConvertTo-SecureString $Config.AdminPassword -AsPlainText -Force
         $cred = New-Object System.Management.Automation.PSCredential ($Config.AdminUsername, $securePassword)
