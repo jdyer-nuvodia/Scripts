@@ -1,5 +1,5 @@
-[2025-02-12 11:49:00] Log file reset. New log starting.
-[2025-02-12 11:49:00] [ERROR] Module path not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\Configuration
-[2025-02-12 11:49:00] [ERROR] Module path not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\Validation
-[2025-02-12 11:49:00] [ERROR] Module path not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\Deployment
-[2025-02-12 11:49:00] [ERROR] Critical error during module import: Failed to import 3 required module(s). Please check the log for details.
+[2025-02-12 11:50:08] Log file reset. New log starting.
+[2025-02-12 11:50:08] [ERROR] Module manifest not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\.psd1
+[2025-02-12 11:50:08] [ERROR] Module manifest not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\.psd1
+[2025-02-12 11:50:08] [ERROR] Module manifest not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\.psd1
+[2025-02-12 11:50:08] [ERROR] Critical error during module import: Failed to import 3 required module(s). Please check the log for details.
