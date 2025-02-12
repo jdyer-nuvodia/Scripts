@@ -65,9 +65,9 @@ param (
 )
 
 # Import required modules
-Import-Module -Name ".\Modules\DC-Configuration.psm1" -Force
-Import-Module -Name ".\Modules\DC-Validation.psm1" -Force
-Import-Module -Name ".\Modules\DC-Deployment.psm1" -Force
+Import-Module -Name ".\Modules\Configuration\DC-Configuration.psm1" -Force
+Import-Module -Name ".\Modules\Validation\DC-Validation.psm1" -Force
+Import-Module -Name ".\Modules\Deployment\DC-Deployment.psm1" -Force
 
 # Initialize logging
 $LogFile = Join-Path $PSScriptRoot "Create-TestDomainController.log"
