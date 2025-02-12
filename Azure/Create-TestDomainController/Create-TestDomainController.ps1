@@ -107,9 +107,9 @@ function Import-RequiredModule {
 # Verify and import required modules
 try {
     $requiredModules = @(
-        "Configuration\Configuration",
-        "Validation\Validation",
-        "Deployment\Deployment"
+        "Configuration\",
+        "Validation\",
+        "Deployment\"
     )
     
     $failedImports = 0
