@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: DC-Validation.ps1
-# Created: 2025-02-12 00:15:40 UTC
+# Created: 2025-02-12 00:25:18 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 00:15:40 UTC
+# Last Updated: 2025-02-12 00:25:18 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3
-# Additional Info: Added explicit Trusted Launch VM size detection
+# Version: 1.4
+# Additional Info: Optimized Trusted Launch validation for better performance
 # =============================================================================
 
 function Test-DCPrerequisites {
@@ -49,28 +49,34 @@ function Test-DCPrerequisites {
             $validationResults.Success = $false
         }
 
-        # Get available VM sizes with Trusted Launch support
-        Write-Log "Checking available VM sizes with Trusted Launch support..." -Level VALIDATION
-        $vmSizes = Get-AzVMSize -Location $Config.Location | Where-Object {
-            try {
-                $vmSize = $_
-                $output = az vm list-skus --location $Config.Location --size $vmSize.Name --query "[?name=='$($vmSize.Name)']"
-                $output | ConvertFrom-Json | Where-Object { $_.capabilities.Name -contains "TrustedLaunchEnabled" -and $_.capabilities.Value -contains "True" }
-            } catch {
-                $false
-            }
-        }
-
-        if ($vmSizes.Count -eq 0) {
-            $validationResults.Messages += "No VM sizes supporting Trusted Launch found in $($Config.Location)"
+        # Validate VM size for Gen2 and minimum requirements
+        Write-Log "Validating VM size compatibility..." -Level VALIDATION
+        $vmSize = Get-AzVMSize -Location $Config.Location | Where-Object { $_.Name -eq $Config.VMSize }
+        if (!$vmSize) {
+            $validationResults.Messages += "VM size $($Config.VMSize) is not available in $($Config.Location)"
             $validationResults.Success = $false
         } else {
-            Write-Log "Found $(($vmSizes | Select-Object -First 5 | ForEach-Object { $_.Name }) -join ', ') supporting Trusted Launch" -Level INFO
+            # Check minimum requirements for Domain Controller
+            if ($vmSize.NumberOfCores -lt 2 -or $vmSize.MemoryInMB -lt 4096) {
+                $validationResults.Messages += "VM size $($Config.VMSize) does not meet minimum requirements (2 cores, 4GB RAM)"
+                $validationResults.Success = $false
+            }
             
-            # Validate current VM size
-            if ($Config.VMSize -notin $vmSizes.Name) {
-                $recommendedSize = $vmSizes | Where-Object { $_.NumberOfCores -ge 2 -and $_.MemoryInMB -ge 4096 } | Select-Object -First 1
-                $validationResults.Messages += "VM size $($Config.VMSize) does not support Trusted Launch. Consider using $($recommendedSize.Name)"
+            # For Trusted Launch, we'll use known compatible v4/v5 series sizes
+            $trustedLaunchSeries = @(
+                'Standard_D2s_v4', 'Standard_D4s_v4', 'Standard_D8s_v4',
+                'Standard_D2s_v5', 'Standard_D4s_v5', 'Standard_D8s_v5',
+                'Standard_E2s_v4', 'Standard_E4s_v4', 'Standard_E8s_v4',
+                'Standard_E2s_v5', 'Standard_E4s_v5', 'Standard_E8s_v5'
+            )
+            
+            if ($Config.VMSize -notin $trustedLaunchSeries) {
+                $recommendedSize = $trustedLaunchSeries | Where-Object { 
+                    $size = Get-AzVMSize -Location $Config.Location | Where-Object { $_.Name -eq $_ }
+                    $size -and $size.NumberOfCores -ge 2 -and $size.MemoryInMB -ge 4096
+                } | Select-Object -First 1
+                
+                $validationResults.Messages += "VM size $($Config.VMSize) may not support Trusted Launch. Recommended size: $recommendedSize"
                 $validationResults.Success = $false
             }
         }
