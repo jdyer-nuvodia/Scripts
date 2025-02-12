@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 01:39:17 UTC
+# Last Updated: 2025-02-12 17:34:57 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3
-# Additional Info: Fixed VirtualNetwork parameter binding and enhanced validation
+# Version: 3.5
+# Additional Info: Implemented module path fixes and enhanced error handling
 # =============================================================================
 
 <#
@@ -64,13 +64,12 @@ param (
     [switch]$ValidateOnly
 )
 
-# Import required modules
-Import-Module -Name ".\Modules\Configuration\DC-Configuration.psm1" -Force
-Import-Module -Name ".\Modules\Validation\DC-Validation.psm1" -Force
-Import-Module -Name ".\Modules\Deployment\DC-Deployment.psm1" -Force
+# Get the script path for relative module imports
+$ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ModulePath = Join-Path $ScriptPath "Modules"
+$LogFile = Join-Path $ScriptPath "Create-TestDomainController.log"
 
 # Initialize logging
-$LogFile = Join-Path $PSScriptRoot "Create-TestDomainController.log"
 Set-Content -Path $LogFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log file reset. New log starting."
 
 function Write-Log {
@@ -82,6 +81,28 @@ function Write-Log {
     $logMessage = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message"
     Add-Content -Path $LogFile -Value $logMessage
     Write-Host $logMessage
+}
+
+# Import required modules with error handling
+try {
+    $modules = @(
+        "Configuration\DC-Configuration.psd1",
+        "Validation\DC-Validation.psd1",
+        "Deployment\DC-Deployment.psd1"
+    )
+
+    foreach ($module in $modules) {
+        $modulePath = Join-Path $ModulePath $module
+        if (Test-Path $modulePath) {
+            Import-Module $modulePath -Force -ErrorAction Stop
+            Write-Log "Successfully imported module: $module" -Level INFO
+        } else {
+            throw "Module file not found: $modulePath"
+        }
+    }
+} catch {
+    Write-Log "Failed to import required modules: $_" -Level ERROR
+    throw
 }
 
 try {
@@ -103,17 +124,6 @@ try {
     Write-Log "Starting validation phase..." -Level VALIDATION
     $validation = Test-DCPrerequisites -Config $config
     
-    # Additional network resource validation
-    Write-Log "Validating network resources..." -Level VALIDATION
-    $networkValidation = Test-NetworkResources -Config $config
-    if (-not $networkValidation.Success) {
-        Write-Log "Network validation failed:" -Level ERROR
-        foreach ($message in $networkValidation.Messages) {
-            Write-Log $message -Level ERROR
-        }
-        throw "Network resource validation failed. Please review the validation messages above."
-    }
-    
     if (-not $validation.Success) {
         Write-Log "Validation failed:" -Level ERROR
         foreach ($message in $validation.Messages) {
@@ -131,12 +141,7 @@ try {
     # Phase 2: Deployment
     if ($PSCmdlet.ShouldProcess("Azure Resources", "Deploy")) {
         Write-Log "Starting deployment phase..." -Level INFO
-        $deploymentParams = @{
-            Config = $config
-            VirtualNetwork = $networkValidation.VirtualNetwork
-            Subnet = $networkValidation.Subnet
-        }
-        New-DCEnvironment @deploymentParams
+        New-DCEnvironment -Config $config
         Write-Log "Domain Controller VM creation completed successfully." -Level INFO
     } else {
         Write-Log "Deployment cancelled by user." -Level INFO
