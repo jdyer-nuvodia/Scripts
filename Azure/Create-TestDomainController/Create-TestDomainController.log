@@ -1,8 +1,8 @@
-[2025-02-12 11:57:59] Log file reset. New log starting.
-[2025-02-12 11:57:59] [ERROR] Failed to import module DC-Configuration: The term 'Set-DCLogFile' is not recognized as a name of a cmdlet, function, script file, or executable program.
+[2025-02-12 12:00:39] Log file reset. New log starting.
+[2025-02-12 12:00:39] [ERROR] Failed to import module DC-Configuration: The term 'DC-Configuration\Set-DCLogFile' is not recognized as a name of a cmdlet, function, script file, or executable program.
 Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
-[2025-02-12 11:57:59] [ERROR] Failed to import module DC-Validation: The term 'Set-DCLogFile' is not recognized as a name of a cmdlet, function, script file, or executable program.
+[2025-02-12 12:00:39] [ERROR] Failed to import module DC-Validation: The term 'DC-Validation\Set-DCLogFile' is not recognized as a name of a cmdlet, function, script file, or executable program.
 Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
-[2025-02-12 11:57:59] [ERROR] Failed to import module DC-Deployment: The term 'Set-DCLogFile' is not recognized as a name of a cmdlet, function, script file, or executable program.
+[2025-02-12 12:00:39] [ERROR] Failed to import module DC-Deployment: The term 'DC-Deployment\Set-DCLogFile' is not recognized as a name of a cmdlet, function, script file, or executable program.
 Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
-[2025-02-12 11:57:59] [ERROR] Critical error during module import: Failed to import 3 required module(s). Please check the log for details.
+[2025-02-12 12:00:39] [ERROR] Critical error during module import: Failed to import 3 required module(s). Please check the log for details.
