@@ -1,2 +1,3 @@
-[2025-02-12 10:37:19] Log file reset. New log starting.
-[2025-02-12 10:37:19] [ERROR] Failed to import required modules: The 'guid' member is not valid in the module manifest file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration.psd1': Cannot convert value "9p8o7n6m-5l4k-3j2i-1h0g-f9e8d7c6b5a4" to type "System.Guid". Error: "Guid string should only contain hexadecimal characters."
+[2025-02-12 10:53:18] Log file reset. New log starting.
+[2025-02-12 10:53:18] [INFO] Successfully imported module: Configuration\DC-Configuration.psd1
+[2025-02-12 10:53:18] [ERROR] Failed to import required modules: Module file not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration.psd1\Validation\DC-Validation.psd1
