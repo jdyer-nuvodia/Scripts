@@ -86,18 +86,18 @@ function Write-Log {
 # Import required modules with error handling
 try {
     $modules = @(
-        "Configuration\DC-Configuration.psd1",
-        "Validation\DC-Validation.psd1",
-        "Deployment\DC-Deployment.psd1"
+        "Configuration\DC-Configuration",
+        "Validation\DC-Validation",
+        "Deployment\DC-Deployment"
     )
-
+    
     foreach ($module in $modules) {
         $modulePath = Join-Path $ModulePath $module
-        if (Test-Path $modulePath) {
-            Import-Module $modulePath -Force -ErrorAction Stop
-            Write-Log "Successfully imported module: $module" -Level INFO
+        if (Test-Path "$modulePath.psd1") {
+            Import-Module "$modulePath.psd1" -Force -ErrorAction Stop
+            Write-Log "Successfully imported module: $module.psd1" -Level INFO
         } else {
-            throw "Module file not found: $modulePath"
+            throw "Module manifest not found: $modulePath.psd1"
         }
     }
 } catch {
