@@ -1,18 +1,16 @@
-[2025-02-12 13:26:11] Log file reset. New log starting.
-[2025-02-12 13:26:11] [INFO] Attempting to import module: DC-Configuration
-[2025-02-12 13:26:11] [INFO] Successfully imported module: DC-Configuration from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration.psd1
-[2025-02-12 13:26:11] [INFO] Note: Set-DCLogFile not found in module DC-Configuration. Continuing with default logging.
-[2025-02-12 13:26:11] [INFO] Attempting to import module: DC-Validation
-[2025-02-12 13:26:11] [INFO] Successfully imported module: DC-Validation from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\DC-Validation.psd1
-[2025-02-12 13:26:11] [INFO] Note: Set-DCLogFile not found in module DC-Validation. Continuing with default logging.
-[2025-02-12 13:26:11] [INFO] Attempting to import module: DC-Deployment
-[2025-02-12 13:26:11] [INFO] Successfully imported module: DC-Deployment from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\DC-Deployment.psd1
-[2025-02-12 13:26:11] [INFO] Note: Set-DCLogFile not found in module DC-Deployment. Continuing with default logging.
-[2025-02-12 13:26:11] [INFO] Initializing configuration...
-[2025-02-12 13:26:11] [INFO] Setting TimeZoneId to: US Mountain Standard Time
-[2025-02-12 13:26:11] [VALIDATION] Starting validation phase...
-[2025-02-12 13:26:12] [VALIDATION] All validations passed successfully.
-[2025-02-12 13:26:12] [INFO] Starting deployment phase...
-[2025-02-12 13:26:12] [ERROR] The term 'New-DCEnvironment' is not recognized as a name of a cmdlet, function, script file, or executable program.
-Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
-[2025-02-12 13:26:12] [INFO] Script execution completed.
+[2025-02-12 13:27:34] Log file reset. New log starting.
+[2025-02-12 13:27:34] [INFO] Attempting to import module: DC-Configuration
+[2025-02-12 13:27:34] [INFO] Successfully imported module: DC-Configuration from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration.psd1
+[2025-02-12 13:27:34] [INFO] Note: Set-DCLogFile not found in module DC-Configuration. Continuing with default logging.
+[2025-02-12 13:27:34] [INFO] Attempting to import module: DC-Validation
+[2025-02-12 13:27:34] [INFO] Successfully imported module: DC-Validation from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\DC-Validation.psd1
+[2025-02-12 13:27:34] [INFO] Note: Set-DCLogFile not found in module DC-Validation. Continuing with default logging.
+[2025-02-12 13:27:34] [INFO] Attempting to import module: DC-Deployment
+[2025-02-12 13:27:34] [INFO] Successfully imported module: DC-Deployment from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\DC-Deployment.psd1
+[2025-02-12 13:27:34] [INFO] Note: Set-DCLogFile not found in module DC-Deployment. Continuing with default logging.
+[2025-02-12 13:27:34] [INFO] Initializing configuration...
+[2025-02-12 13:27:34] [INFO] Setting TimeZoneId to: US Mountain Standard Time
+[2025-02-12 13:27:34] [VALIDATION] Starting validation phase...
+[2025-02-12 13:27:34] [VALIDATION] All validations passed successfully.
+[2025-02-12 13:27:34] [INFO] Starting deployment phase...
+[2025-02-12 13:30:17] [INFO] Script execution completed.
