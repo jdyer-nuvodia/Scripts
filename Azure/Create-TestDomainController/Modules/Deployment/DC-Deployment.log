@@ -5,3 +5,13 @@
 [2025-02-12 13:27:49] [DEPLOYMENT] Creating Network Interface for VM: JB-TEST-DC01
 [2025-02-12 13:27:50] [DEPLOYMENT] Configuring VM settings
 [2025-02-12 13:27:52] [DEPLOYMENT] Creating Virtual Machine: JB-TEST-DC01
+[2025-02-12 13:36:08] [DEPLOYMENT] Starting Domain Controller environment deployment
+[2025-02-12 13:36:08] [DEPLOYMENT] Initializing storage account: jbteststorage0
+[2025-02-12 13:36:10] [DEPLOYMENT] Storage account does not exist. Creating new storage account.
+[2025-02-12 13:36:37] [DEPLOYMENT] Storage account created successfully
+[2025-02-12 13:36:37] [DEPLOYMENT] Creating Virtual Network: JB-TEST-VNET
+[2025-02-12 13:36:42] [DEPLOYMENT] Creating Public IP: JB-TEST-DC01-PUBIP
+[2025-02-12 13:36:43] [DEPLOYMENT] Creating Network Security Group: JB-TEST-NSG
+[2025-02-12 13:36:45] [DEPLOYMENT] Creating Network Interface for VM: JB-TEST-DC01
+[2025-02-12 13:36:46] [DEPLOYMENT] Configuring VM settings
+[2025-02-12 13:36:47] [DEPLOYMENT] Creating Virtual Machine: JB-TEST-DC01
