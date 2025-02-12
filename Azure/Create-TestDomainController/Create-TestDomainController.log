@@ -1,3 +1,3 @@
-[2025-02-12 10:53:18] Log file reset. New log starting.
-[2025-02-12 10:53:18] [INFO] Successfully imported module: Configuration\DC-Configuration.psd1
-[2025-02-12 10:53:18] [ERROR] Failed to import required modules: Module file not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration.psd1\Validation\DC-Validation.psd1
+[2025-02-12 10:59:05] Log file reset. New log starting.
+[2025-02-12 10:59:05] [INFO] Successfully imported module: Configuration\DC-Configuration.psd1
+[2025-02-12 10:59:05] [ERROR] Failed to import required modules: Module manifest not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration\Validation\DC-Validation.psd1
