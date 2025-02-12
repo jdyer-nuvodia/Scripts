@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 00:41:56 UTC
+# Last Updated: 2025-02-12 01:39:17 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.2
-# Additional Info: Updated timezone handling for Arizona operations
+# Version: 3.3
+# Additional Info: Fixed VirtualNetwork parameter binding and enhanced validation
 # =============================================================================
 
 <#
@@ -74,6 +74,17 @@ $modulePath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LogFile = Join-Path $PSScriptRoot "Create-TestDomainController.log"
 Set-Content -Path $LogFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log file reset. New log starting."
 
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'ERROR', 'VALIDATION', 'WARNING')]
+        [string]$Level = 'INFO'
+    )
+    $logMessage = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message"
+    Add-Content -Path $LogFile -Value $logMessage
+    Write-Host $logMessage
+}
+
 try {
     # Initialize default configuration
     $config = Initialize-DCConfiguration
@@ -92,6 +103,18 @@ try {
     # Phase 1: Validation
     Write-Log "Starting validation phase..." -Level VALIDATION
     $validation = Test-DCPrerequisites -Config $config
+    
+    # Additional network resource validation
+    Write-Log "Validating network resources..." -Level VALIDATION
+    $networkValidation = Test-NetworkResources -Config $config
+    if (-not $networkValidation.Success) {
+        Write-Log "Network validation failed:" -Level ERROR
+        foreach ($message in $networkValidation.Messages) {
+            Write-Log $message -Level ERROR
+        }
+        throw "Network resource validation failed. Please review the validation messages above."
+    }
+    
     if (-not $validation.Success) {
         Write-Log "Validation failed:" -Level ERROR
         foreach ($message in $validation.Messages) {
@@ -109,7 +132,12 @@ try {
     # Phase 2: Deployment
     if ($PSCmdlet.ShouldProcess("Azure Resources", "Deploy")) {
         Write-Log "Starting deployment phase..." -Level INFO
-        New-DCEnvironment -Config $config
+        $deploymentParams = @{
+            Config = $config
+            VirtualNetwork = $networkValidation.VirtualNetwork
+            Subnet = $networkValidation.Subnet
+        }
+        New-DCEnvironment @deploymentParams
         Write-Log "Domain Controller VM creation completed successfully." -Level INFO
     } else {
         Write-Log "Deployment cancelled by user." -Level INFO
