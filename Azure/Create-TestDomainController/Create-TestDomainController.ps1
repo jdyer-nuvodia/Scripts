@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:08:19 UTC
+# Last Updated: 2025-02-12 18:21:08 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.6
-# Additional Info: Fixed module path joining logic
+# Version: 3.7
+# Additional Info: Enhanced module import handling and validation
 # =============================================================================
 
 <#
@@ -39,7 +39,6 @@
     .\Create-TestDomainController.ps1 -ValidateOnly
     Performs validation of all components without deployment.
 #>
-
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param (
@@ -84,6 +83,32 @@ function Write-Log {
     Write-Host $logMessage
 }
 
+function Import-RequiredModule {
+    param (
+        [string]$ModuleName,
+        [string]$BasePath
+    )
+    
+    $modulePath = Join-Path $BasePath $ModuleName
+    $manifestPath = Join-Path $modulePath "$($ModuleName.Split('\')[-1]).psd1"
+    $modulePath = Join-Path $modulePath "$($ModuleName.Split('\')[-1]).psm1"
+    
+    Write-Log "Checking for module at: $manifestPath" -Level INFO
+    
+    if (Test-Path $manifestPath) {
+        Import-Module $manifestPath -Force -ErrorAction Stop
+        Write-Log "Successfully imported module manifest: $manifestPath" -Level INFO
+        return $true
+    } elseif (Test-Path $modulePath) {
+        Import-Module $modulePath -Force -ErrorAction Stop
+        Write-Log "Successfully imported module: $modulePath" -Level INFO
+        return $true
+    } else {
+        Write-Log "Neither module manifest nor module file found at: $manifestPath or $modulePath" -Level ERROR
+        return $false
+    }
+}
+
 # Import required modules with error handling
 try {
     $requiredModules = @(
@@ -91,17 +116,17 @@ try {
         "Validation\DC-Validation",
         "Deployment\DC-Deployment"
     )
-
+    
+    $failedImports = 0
+    
     foreach ($module in $requiredModules) {
-        $modulePath = Join-Path $ModulePath $module
-        $manifestPath = "$modulePath.psd1"
-        
-        if (Test-Path $manifestPath) {
-            Import-Module $manifestPath -Force -ErrorAction Stop
-            Write-Log "Successfully imported module: $module.psd1" -Level INFO
-        } else {
-            throw "Module manifest not found: $manifestPath"
+        if (-not (Import-RequiredModule -ModuleName $module -BasePath $ModulePath)) {
+            $failedImports++
         }
+    }
+    
+    if ($failedImports -gt 0) {
+        throw "Failed to import $failedImports required module(s). Please check the log for details."
     }
 } catch {
     Write-Log "Failed to import required modules: $_" -Level ERROR
