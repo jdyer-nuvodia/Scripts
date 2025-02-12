@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:58:20 UTC
+# Last Updated: 2025-02-12 19:36:44 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.4
-# Additional Info: Fixed module loading and logging initialization
+# Version: 4.5
+# Additional Info: Updated module imports and path handling for better reliability
 # =============================================================================
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -32,9 +32,9 @@ param (
     [switch]$ValidateOnly
 )
 
-# Initialize paths
+# Initialize paths using script location
 $LogFile = Join-Path -Path $PSScriptRoot -ChildPath "Create-TestDomainController.log"
-$BaseModulePath = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules"
+$BaseModulePath = Join-Path -Path $PSScriptRoot -ChildPath "Modules"
 
 # Initialize logging with timestamp
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -93,14 +93,34 @@ function Import-RequiredModule {
     
     try {
         $manifestPath = Join-Path -Path $fullPath -ChildPath "$ModuleName.psd1"
+        
+        # First try to import the module
         Import-Module -Name $manifestPath -Force -ErrorAction Stop
-        # Initialize module logging after import
-        & "$ModuleName\Set-DCLogFile" -Path $LogFile
         Write-Log "Successfully imported module: $ModuleName from $manifestPath" -Level INFO
+        
+        # Verify module was loaded correctly
+        if (-not (Get-Module -Name $ModuleName -ErrorAction SilentlyContinue)) {
+            throw "Module $ModuleName was not properly loaded after import"
+        }
+        
+        # Check if Set-DCLogFile exists before trying to use it
+        if (Get-Command -Name "$ModuleName\Set-DCLogFile" -ErrorAction SilentlyContinue) {
+            try {
+                & "$ModuleName\Set-DCLogFile" -Path $LogFile
+                Write-Log "Successfully initialized logging for module: $ModuleName" -Level INFO
+            }
+            catch {
+                Write-Log "Warning: Could not initialize module logging for $ModuleName. Continuing anyway." -Level WARNING
+            }
+        }
+        else {
+            Write-Log "Note: Set-DCLogFile not found in module $ModuleName. Continuing with default logging." -Level INFO
+        }
+        
         return $true
     }
     catch {
-        Write-Log ("Failed to import module {0}: {1}" -f $ModuleName, $_) -Level ERROR
+        Write-Log ("Failed to import module {0}: {1}" -f $ModuleName, $_.Exception.Message) -Level ERROR
         return $false
     }
 }
@@ -125,6 +145,7 @@ try {
     $failedImports = 0
     
     foreach ($module in $modules) {
+        Write-Log "Attempting to import module: $($module.Name)" -Level INFO
         if (-not (Import-RequiredModule -ModulePath $module.Path -ModuleName $module.Name)) {
             $failedImports++
         }
@@ -133,25 +154,54 @@ try {
     if ($failedImports -gt 0) {
         throw "Failed to import $failedImports required module(s). Please check the log for details."
     }
-} catch {
+}
+catch {
     Write-Log "Critical error during module import: $_" -Level ERROR
     return
 }
 
 try {
     # Initialize default configuration
+    Write-Log "Initializing configuration..." -Level INFO
     $config = Initialize-DCConfiguration
     
     # Override defaults with provided parameters
-    if ($resourceGroupName) { $config.ResourceGroupName = $resourceGroupName }
-    if ($location)          { $config.Location = $location }
-    if ($vmName)            { $config.VmName = $vmName }
-    if ($VMSize)            { $config.VMSize = $VMSize }
-    if ($vnetName)          { $config.VnetName = $vnetName }
-    if ($subnetName)        { $config.SubnetName = $subnetName }
-    if ($adminUsername)     { $config.AdminUsername = $adminUsername }
-    if ($adminPassword)     { $config.AdminPassword = $adminPassword }
-    if ($timeZoneId)        { $config.TimeZoneId = $timeZoneId }
+    if ($resourceGroupName) { 
+        $config.ResourceGroupName = $resourceGroupName 
+        Write-Log "Setting ResourceGroupName to: $resourceGroupName" -Level INFO
+    }
+    if ($location)          { 
+        $config.Location = $location 
+        Write-Log "Setting Location to: $location" -Level INFO
+    }
+    if ($vmName)            { 
+        $config.VmName = $vmName 
+        Write-Log "Setting VmName to: $vmName" -Level INFO
+    }
+    if ($VMSize)            { 
+        $config.VMSize = $VMSize 
+        Write-Log "Setting VMSize to: $VMSize" -Level INFO
+    }
+    if ($vnetName)          { 
+        $config.VnetName = $vnetName 
+        Write-Log "Setting VnetName to: $vnetName" -Level INFO
+    }
+    if ($subnetName)        { 
+        $config.SubnetName = $subnetName 
+        Write-Log "Setting SubnetName to: $subnetName" -Level INFO
+    }
+    if ($adminUsername)     { 
+        $config.AdminUsername = $adminUsername 
+        Write-Log "Setting AdminUsername to: $adminUsername" -Level INFO
+    }
+    if ($adminPassword)     { 
+        $config.AdminPassword = $adminPassword 
+        Write-Log "Admin password has been set" -Level INFO
+    }
+    if ($timeZoneId)        { 
+        $config.TimeZoneId = $timeZoneId 
+        Write-Log "Setting TimeZoneId to: $timeZoneId" -Level INFO
+    }
     
     # Phase 1: Validation
     Write-Log "Starting validation phase..." -Level VALIDATION
@@ -176,12 +226,15 @@ try {
         Write-Log "Starting deployment phase..." -Level INFO
         New-DCEnvironment -Config $config
         Write-Log "Domain Controller VM creation completed successfully." -Level INFO
-    } else {
+    }
+    else {
         Write-Log "Deployment cancelled by user." -Level INFO
     }
-} catch {
+}
+catch {
     Write-Log $_.Exception.Message -Level ERROR
     throw
-} finally {
+}
+finally {
     Write-Log "Script execution completed." -Level INFO
 }
