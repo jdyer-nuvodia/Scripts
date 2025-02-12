@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: DC-Validation.ps1
-# Created: 2025-02-11 23:45:10 UTC
+# Created: 2025-02-12 00:15:40 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 23:45:10 UTC
+# Last Updated: 2025-02-12 00:15:40 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Validation module for Domain Controller deployment
+# Version: 1.3
+# Additional Info: Added explicit Trusted Launch VM size detection
 # =============================================================================
 
 function Test-DCPrerequisites {
@@ -49,16 +49,30 @@ function Test-DCPrerequisites {
             $validationResults.Success = $false
         }
 
-        # Validate VM size and Trusted Launch compatibility
-        Write-Log "Validating VM size and Trusted Launch compatibility..." -Level VALIDATION
-        $vmSizes = Get-AzVMSize -Location $Config.Location
-        $vmSize = $vmSizes | Where-Object { $_.Name -eq $Config.VMSize }
-        if (!$vmSize) {
-            $validationResults.Messages += "VM size $($Config.VMSize) is not available in $($Config.Location)"
+        # Get available VM sizes with Trusted Launch support
+        Write-Log "Checking available VM sizes with Trusted Launch support..." -Level VALIDATION
+        $vmSizes = Get-AzVMSize -Location $Config.Location | Where-Object {
+            try {
+                $vmSize = $_
+                $output = az vm list-skus --location $Config.Location --size $vmSize.Name --query "[?name=='$($vmSize.Name)']"
+                $output | ConvertFrom-Json | Where-Object { $_.capabilities.Name -contains "TrustedLaunchEnabled" -and $_.capabilities.Value -contains "True" }
+            } catch {
+                $false
+            }
+        }
+
+        if ($vmSizes.Count -eq 0) {
+            $validationResults.Messages += "No VM sizes supporting Trusted Launch found in $($Config.Location)"
             $validationResults.Success = $false
-        } elseif (!($vmSize.SecurityType -contains "TrustedLaunch")) {
-            $validationResults.Messages += "VM size $($Config.VMSize) does not support Trusted Launch"
-            $validationResults.Success = $false
+        } else {
+            Write-Log "Found $(($vmSizes | Select-Object -First 5 | ForEach-Object { $_.Name }) -join ', ') supporting Trusted Launch" -Level INFO
+            
+            # Validate current VM size
+            if ($Config.VMSize -notin $vmSizes.Name) {
+                $recommendedSize = $vmSizes | Where-Object { $_.NumberOfCores -ge 2 -and $_.MemoryInMB -ge 4096 } | Select-Object -First 1
+                $validationResults.Messages += "VM size $($Config.VMSize) does not support Trusted Launch. Consider using $($recommendedSize.Name)"
+                $validationResults.Success = $false
+            }
         }
 
         # Validate resource name availability

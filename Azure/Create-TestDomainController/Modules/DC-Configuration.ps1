@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: DC-Configuration.ps1
-# Created: 2025-02-12 00:09:49 UTC
+# Created: 2025-02-12 00:15:40 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 00:09:49 UTC
+# Last Updated: 2025-02-12 00:15:40 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2
-# Additional Info: Updated VM size to Standard_D8_v5 for confirmed Trusted Launch support
+# Version: 1.3
+# Additional Info: Updated VM size to Standard_D2s_v5 for Trusted Launch support
 # =============================================================================
 
 function Write-Log {
@@ -39,7 +39,7 @@ function Initialize-DCConfiguration {
         NsgName            = 'JB-TEST-NSG'
         VnetAddressSpace   = '10.0.0.0/16'
         SubnetAddressSpace = '10.0.1.0/24'
-        VMSize             = 'Standard_D8_v5'  # Updated to confirmed Trusted Launch compatible size
+        VMSize             = 'Standard_D2s_v5'  # Updated to Standard_D2s_v5 for Trusted Launch support
         ShutdownTime       = '21:00'
         TimeZone           = 'UTC-07:00'
         ImagePublisher     = 'MicrosoftWindowsServer'
