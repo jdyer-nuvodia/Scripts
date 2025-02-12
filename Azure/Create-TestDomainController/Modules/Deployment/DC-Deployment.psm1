@@ -2,10 +2,10 @@
 # Script: DC-Deployment.psm1
 # Created: 2025-02-12 00:25:18 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 20:29:54 UTC
+# Last Updated: 2025-02-12 20:38:20 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0
-# Additional Info: Fixed storage account usage for boot diagnostics
+# Version: 2.1
+# Additional Info: Updated Public IP configuration for Standard SKU compliance
 # =============================================================================
 
 # Script-scoped variables
@@ -51,14 +51,10 @@ function Initialize-DCStorage {
         [Parameter(Mandatory = $true)]
         [hashtable]$Config
     )
-    
     try {
         Write-Log "Initializing storage account: $($Config.StorageAccountName)" -Level DEPLOYMENT
-        
-        # Check if storage account exists
         $storageAccount = Get-AzStorageAccount -ResourceGroupName $Config.ResourceGroupName `
             -Name $Config.StorageAccountName -ErrorAction SilentlyContinue
-            
         if (-not $storageAccount) {
             Write-Log "Storage account does not exist. Creating new storage account." -Level DEPLOYMENT
             $storageAccount = New-AzStorageAccount -ResourceGroupName $Config.ResourceGroupName `
@@ -66,16 +62,43 @@ function Initialize-DCStorage {
                 -Location $Config.Location `
                 -SkuName Standard_LRS `
                 -Kind StorageV2
-                
             Write-Log "Storage account created successfully" -Level DEPLOYMENT
         } else {
             Write-Log "Using existing storage account" -Level DEPLOYMENT
         }
-        
         return $storageAccount
     }
     catch {
         Write-Log "Failed to initialize storage account: $_" -Level ERROR
+        throw
+    }
+}
+
+function New-DCPublicIP {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Config
+    )
+    try {
+        Write-Log "Creating Public IP with Standard SKU: $($Config.PublicIpName)" -Level DEPLOYMENT
+        $publicIpParams = @{
+            Name              = $Config.PublicIpName
+            ResourceGroupName = $Config.ResourceGroupName
+            Location         = $Config.Location
+            Sku              = 'Standard'
+            AllocationMethod = 'Static'
+            IpAddressVersion = 'IPv4'
+            Zone             = 1
+        }
+        if ($PSCmdlet.ShouldProcess("Public IP $($Config.PublicIpName)", "Create")) {
+            $publicIp = New-AzPublicIpAddress @publicIpParams
+            Write-Log "Successfully created Public IP: $($Config.PublicIpName)" -Level DEPLOYMENT
+            return $publicIp
+        }
+    }
+    catch {
+        Write-Log "Failed to create Public IP: $_" -Level ERROR
         throw
     }
 }
@@ -86,7 +109,6 @@ function New-DCEnvironment {
         [Parameter(Mandatory = $true)]
         [hashtable]$Config
     )
-    
     try {
         Write-Log "Starting Domain Controller environment deployment" -Level DEPLOYMENT
         
@@ -117,11 +139,7 @@ function New-DCEnvironment {
 
         # Create Public IP
         if ($PSCmdlet.ShouldProcess("Public IP $($Config.PublicIpName)", "Create")) {
-            Write-Log "Creating Public IP: $($Config.PublicIpName)" -Level DEPLOYMENT
-            $publicIp = New-AzPublicIpAddress -Name $Config.PublicIpName `
-                -ResourceGroupName $Config.ResourceGroupName `
-                -Location $Config.Location `
-                -AllocationMethod Dynamic
+            $publicIp = New-DCPublicIP -Config $Config
         }
 
         # Create Network Security Group
