@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:24:19 UTC
+# Last Updated: 2025-02-12 18:30:19 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.8
-# Additional Info: Enhanced path handling and module version sync
+# Version: 3.9
+# Additional Info: Fixed variable interpolation in error logging
 # =============================================================================
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -104,7 +104,7 @@ function Import-RequiredModule {
         return $true
     }
     catch {
-        Write-Log "Failed to import module $moduleFolder: $_" -Level ERROR
+        Write-Log ("Failed to import module {0}: {1}" -f $moduleFolder, $_) -Level ERROR
         return $false
     }
 }
