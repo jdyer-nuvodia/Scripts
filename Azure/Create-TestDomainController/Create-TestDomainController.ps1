@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 23:45:10 UTC
+# Last Updated: 2025-02-12 00:41:56 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.0
-# Additional Info: Modularized script into components for better maintainability
+# Version: 3.2
+# Additional Info: Updated timezone handling for Arizona operations
 # =============================================================================
 
 <#
@@ -31,6 +31,8 @@
     The administrator username for the VM.
 .PARAMETER adminPassword
     The administrator password for the VM.
+.PARAMETER timeZoneId
+    The timezone ID for VM auto-shutdown scheduling. Defaults to US Mountain Standard Time (Arizona).
 .PARAMETER ValidateOnly
     Performs validation only without deploying resources.
 .EXAMPLE
@@ -56,6 +58,8 @@ param (
     [string]$adminUsername,
     [Parameter(Mandatory = $false)]
     [string]$adminPassword,
+    [Parameter(Mandatory = $false)]
+    [string]$timeZoneId = 'US Mountain Standard Time',
     [Parameter(Mandatory = $false)]
     [switch]$ValidateOnly
 )
@@ -83,6 +87,7 @@ try {
     if ($subnetName)        { $config.SubnetName = $subnetName }
     if ($adminUsername)     { $config.AdminUsername = $adminUsername }
     if ($adminPassword)     { $config.AdminPassword = $adminPassword }
+    if ($timeZoneId)        { $config.TimeZoneId = $timeZoneId }
     
     # Phase 1: Validation
     Write-Log "Starting validation phase..." -Level VALIDATION
@@ -103,6 +108,7 @@ try {
     
     # Phase 2: Deployment
     if ($PSCmdlet.ShouldProcess("Azure Resources", "Deploy")) {
+        Write-Log "Starting deployment phase..." -Level INFO
         New-DCEnvironment -Config $config
         Write-Log "Domain Controller VM creation completed successfully." -Level INFO
     } else {
