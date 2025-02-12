@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:50:53 UTC
+# Last Updated: 2025-02-12 18:53:14 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1
-# Additional Info: Fixed module names to match actual file names with DC- prefix
+# Version: 4.2
+# Additional Info: Fixed module path concatenation issue
 # =============================================================================
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -81,41 +81,49 @@ function Test-ModulePath {
 
 function Import-RequiredModule {
     param (
-        [string]$ModuleName,
-        [string]$BasePath
+        [string]$ModulePath,
+        [string]$ModuleName
     )
     
-    $moduleFolder = $ModuleName.Split('\')[-1]
-    $fullPath = Join-Path -Path $BasePath -ChildPath $ModuleName
+    $fullPath = $ModulePath
     
-    if (-not (Test-ModulePath -Path $fullPath -ModuleName $moduleFolder)) {
+    if (-not (Test-ModulePath -Path $fullPath -ModuleName $ModuleName)) {
         return $false
     }
     
     try {
-        $manifestPath = Join-Path -Path $fullPath -ChildPath "$moduleFolder.psd1"
+        $manifestPath = Join-Path -Path $fullPath -ChildPath "$ModuleName.psd1"
         Import-Module -Name $manifestPath -Force -ErrorAction Stop
-        Write-Log "Successfully imported module: $moduleFolder from $manifestPath" -Level INFO
+        Write-Log "Successfully imported module: $ModuleName from $manifestPath" -Level INFO
         return $true
     }
     catch {
-        Write-Log ("Failed to import module {0}: {1}" -f $moduleFolder, $_) -Level ERROR
+        Write-Log ("Failed to import module {0}: {1}" -f $ModuleName, $_) -Level ERROR
         return $false
     }
 }
 
 # Verify and import required modules
 try {
-    $requiredModules = @(
-        "Configuration\DC-Configuration",
-        "Validation\DC-Validation",
-        "Deployment\DC-Deployment"
+    $modules = @(
+        @{
+            Path = Join-Path -Path $BaseModulePath -ChildPath "Configuration"
+            Name = "DC-Configuration"
+        },
+        @{
+            Path = Join-Path -Path $BaseModulePath -ChildPath "Validation"
+            Name = "DC-Validation"
+        },
+        @{
+            Path = Join-Path -Path $BaseModulePath -ChildPath "Deployment"
+            Name = "DC-Deployment"
+        }
     )
     
     $failedImports = 0
     
-    foreach ($module in $requiredModules) {
-        if (-not (Import-RequiredModule -ModuleName $module -BasePath $BaseModulePath)) {
+    foreach ($module in $modules) {
+        if (-not (Import-RequiredModule -ModulePath $module.Path -ModuleName $module.Name)) {
             $failedImports++
         }
     }
