@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:30:19 UTC
+# Last Updated: 2025-02-12 18:47:21 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.9
-# Additional Info: Fixed variable interpolation in error logging
+# Version: 4.0
+# Additional Info: Updated module paths to use full OneDrive paths
 # =============================================================================
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -32,14 +32,9 @@ param (
     [switch]$ValidateOnly
 )
 
-# Get the absolute script path
-$ScriptPath = $PSScriptRoot
-if (-not $ScriptPath) {
-    $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-}
-
-$ModulePath = Join-Path -Path $ScriptPath -ChildPath "Modules"
-$LogFile = Join-Path -Path $ScriptPath -ChildPath "Create-TestDomainController.log"
+# Initialize paths
+$LogFile = Join-Path -Path $PSScriptRoot -ChildPath "Create-TestDomainController.log"
+$BaseModulePath = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules"
 
 # Initialize logging with timestamp
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -100,7 +95,7 @@ function Import-RequiredModule {
     try {
         $manifestPath = Join-Path -Path $fullPath -ChildPath "$moduleFolder.psd1"
         Import-Module -Name $manifestPath -Force -ErrorAction Stop
-        Write-Log "Successfully imported module: $moduleFolder" -Level INFO
+        Write-Log "Successfully imported module: $moduleFolder from $manifestPath" -Level INFO
         return $true
     }
     catch {
@@ -112,15 +107,15 @@ function Import-RequiredModule {
 # Verify and import required modules
 try {
     $requiredModules = @(
-        "Configuration\DC-Configuration",
-        "Validation\DC-Validation",
-        "Deployment\DC-Deployment"
+        "Configuration\Configuration",
+        "Validation\Validation",
+        "Deployment\Deployment"
     )
     
     $failedImports = 0
     
     foreach ($module in $requiredModules) {
-        if (-not (Import-RequiredModule -ModuleName $module -BasePath $ModulePath)) {
+        if (-not (Import-RequiredModule -ModuleName $module -BasePath $BaseModulePath)) {
             $failedImports++
         }
     }
