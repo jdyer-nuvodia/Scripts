@@ -2,12 +2,13 @@
 # Script: DC-Deployment.ps1
 # Created: 2025-02-12 00:39:44 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 00:52:33 UTC
+# Last Updated: 2025-02-12 01:14:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3
-# Additional Info: Added New-DCEnvironment function for VM deployment
+# Version: 3.4
+# Additional Info: Fixed parameter declaration syntax and function export
 # =============================================================================
 
+# Function to create and configure the domain controller VM
 function New-DCEnvironment {
     [CmdletBinding()]
     param (
@@ -71,17 +72,23 @@ function New-DCEnvironment {
     }
 }
 
+# Function to configure VM auto-shutdown
 function Set-VMAutoShutdown {
+    [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
         [string]$ResourceGroupName,
+
         [Parameter(Mandatory = $true)]
         [string]$VMName,
+
         [Parameter(Mandatory = $true)]
         [string]$Location,
-        [Parameter(Mandatory = false)]
+
+        [Parameter(Mandatory = $false)]
         [string]$TimeZoneId = 'US Mountain Standard Time',
-        [Parameter(Mandatory = false)]
+
+        [Parameter(Mandatory = $false)]
         [string]$ShutdownTime = "2200"
     )
     
@@ -103,23 +110,23 @@ function Set-VMAutoShutdown {
         Write-Log "  - Timezone: $TimeZoneId" -Level INFO
 
         $properties = @{
-            status             = "Enabled"
-            taskType          = "ComputeVmShutdownTask"
-            dailyRecurrence   = @{ time = $ShutdownTime }
-            timeZoneId        = $TimeZoneId
+            status = "Enabled"
+            taskType = "ComputeVmShutdownTask"
+            dailyRecurrence = @{ time = $ShutdownTime }
+            timeZoneId = $TimeZoneId
             notificationSettings = @{
                 status = "Disabled"
             }
-            targetResourceId  = "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$ResourceGroupName/providers/Microsoft.Compute/virtualMachines/$VMName"
+            targetResourceId = "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$ResourceGroupName/providers/Microsoft.Compute/virtualMachines/$VMName"
         }
 
         $scheduledShutdownResourceId = "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$ResourceGroupName/providers/microsoft.devtestlab/schedules/shutdown-computevm-$VMName"
 
         New-AzResource -ResourceId $scheduledShutdownResourceId `
-                      -Properties $properties `
-                      -Location $Location `
-                      -ApiVersion "2018-10-15-preview" `
-                      -Force
+            -Properties $properties `
+            -Location $Location `
+            -ApiVersion "2018-10-15-preview" `
+            -Force
 
         Write-Log "Auto-shutdown schedule configured successfully." -Level INFO
     }
@@ -128,3 +135,6 @@ function Set-VMAutoShutdown {
         throw
     }
 }
+
+# Export functions
+Export-ModuleMember -Function New-DCEnvironment, Set-VMAutoShutdown
