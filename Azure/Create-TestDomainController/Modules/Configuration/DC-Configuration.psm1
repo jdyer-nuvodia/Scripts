@@ -2,10 +2,10 @@
 # Script: DC-Configuration.psm1
 # Created: 2025-02-12 00:25:18 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 17:32:27 UTC
+# Last Updated: 2025-02-12 18:54:46 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6
-# Additional Info: Enhanced module structure and error handling
+# Version: 1.7
+# Additional Info: Fixed logging scope and path handling
 # =============================================================================
 
 function Write-Log {
@@ -16,8 +16,15 @@ function Write-Log {
         
         [Parameter()]
         [ValidateSet('INFO', 'WARNING', 'ERROR', 'VALIDATION')]
-        [string]$Level = 'INFO'
+        [string]$Level = 'INFO',
+        
+        [Parameter()]
+        [string]$LogFile = $Script:LogFile
     )
+    
+    if ([string]::IsNullOrEmpty($LogFile)) {
+        $LogFile = Join-Path -Path $PSScriptRoot -ChildPath "DC-Configuration.log"
+    }
     
     $LogMessage = "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
@@ -27,6 +34,16 @@ function Write-Log {
     } elseif ($VerbosePreference -eq 'Continue') {
         Write-Verbose $Message
     }
+}
+
+function Set-DCLogFile {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    $Script:LogFile = $Path
+    Write-Log "Log file path set to: $Path" -Level INFO
 }
 
 function Initialize-DCConfiguration {
@@ -65,4 +82,4 @@ function Initialize-DCConfiguration {
 }
 
 # Export functions
-Export-ModuleMember -Function Write-Log, Initialize-DCConfiguration
+Export-ModuleMember -Function Write-Log, Initialize-DCConfiguration, Set-DCLogFile

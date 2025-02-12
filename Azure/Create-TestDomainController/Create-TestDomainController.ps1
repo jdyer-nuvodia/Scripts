@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:53:14 UTC
+# Last Updated: 2025-02-12 18:54:46 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.2
-# Additional Info: Fixed module path concatenation issue
+# Version: 4.3
+# Additional Info: Fixed log file scope and module logging
 # =============================================================================
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -94,6 +94,7 @@ function Import-RequiredModule {
     try {
         $manifestPath = Join-Path -Path $fullPath -ChildPath "$ModuleName.psd1"
         Import-Module -Name $manifestPath -Force -ErrorAction Stop
+        Set-DCLogFile -Path $LogFile
         Write-Log "Successfully imported module: $ModuleName from $manifestPath" -Level INFO
         return $true
     }
