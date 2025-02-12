@@ -1,5 +1,4 @@
-[2025-02-12 07:54:13] Log file reset. New log starting.
-[2025-02-12 07:54:13] [VALIDATION] Starting validation phase...
-[2025-02-12 07:54:13] [VALIDATION] Validating required modules...
-[2025-02-12 07:54:13] [VALIDATION] Validating location 'westus2'...
-[2025-02-12 07:54:17] [INFO] Script execution completed.
+[2025-02-12 09:28:49] Log file reset. New log starting.
+[2025-02-12 09:28:49] [ERROR] The term 'Initialize-DCConfiguration' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+[2025-02-12 09:28:49] [INFO] Script execution completed.
