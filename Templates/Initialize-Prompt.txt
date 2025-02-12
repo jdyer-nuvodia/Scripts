@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 23:01:29 UTC
+# Last Updated: 2025-02-12 18:13:30 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.7
-# Additional Info: Added GitHub Gist requirement for long scripts
+# Version: 2.9
+# Additional Info: Streamlined script header format
 # =============================================================================
 
 <# 
@@ -44,6 +44,9 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
 2. Complete Script Requirements (MANDATORY):
    - ALL scripts MUST be provided in their complete form
    - NO partial scripts or code snippets are allowed
+   - NEVER use phrases like "Rest of script remains the same" or "..." to indicate omitted content
+   - ALWAYS provide the ENTIRE script content when making updates or changes
+   - When updating a script, the COMPLETE updated version MUST be provided
    - Scripts MUST include proper error handling
    - Scripts MUST include proper logging mechanisms
    - Scripts MUST include all necessary function declarations
@@ -52,6 +55,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Scripts MUST include proper resource cleanup where applicable
    - Scripts MUST enforce TCP connections for network operations to ensure data integrity
    - Scripts MUST include connection validation and retry logic
+   - IMPORTANT: Any reference to existing content being unchanged MUST still include that content in full
     
 3. Long Script Handling (MANDATORY):
    - For scripts exceeding 100 lines, content MUST be provided via GitHub Gist
@@ -65,6 +69,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - IMPORTANT: Ensure the entire script is available in a single Gist
    - For scripts under 100 lines, content may be provided directly in the conversation
    - ALL scripts, regardless of length, MUST maintain proper formatting and documentation
+   - IMPORTANT: Even when using Gists, the ENTIRE script content must be included
 
 4. Repository Update Notes (MANDATORY):
    - ALL changes MUST be documented in a separate txt file, regardless of file type.
@@ -74,8 +79,18 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - Update notes MUST be created before script implementation.
     
 # -----------------------------------------------------------------------------
-# SCRIPT HEADER TEMPLATE
+# MANDATORY SCRIPT HEADER FORMAT
 # -----------------------------------------------------------------------------
+# =============================================================================
+# Script: <ScriptName>.ps1
+# Created: <YYYY-MM-DD HH:MM:SS UTC>
+# Author: <AuthorName>
+# Last Updated: <YYYY-MM-DD HH:MM:SS UTC>
+# Updated By: <AuthorName or Collaborator>
+# Version: <VersionNumber>
+# Additional Info: <Additional contextual data>
+# =============================================================================
+
 <#
 .SYNOPSIS
     [Brief statement of the script's purpose]
@@ -90,17 +105,6 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
     .\<ScriptName>.ps1
     [Example usage, describing outcomes or key steps]
 #>
-
-# Example Header Block:
-# =============================================================================
-# Script: <ScriptName>.ps1
-# Created: <YYYY-MM-DD HH:MM:SS UTC>
-# Author: <AuthorName>
-# Last Updated: <YYYY-MM-DD HH:MM:SS UTC>
-# Updated By: <AuthorName or Collaborator>
-# Version: <VersionNumber>
-# Additional Info: <Additional contextual data>
-# =============================================================================
 
 # -----------------------------------------------------------------------------
 # REPOSITORY UPDATE NOTES TEMPLATE (MANDATORY)
