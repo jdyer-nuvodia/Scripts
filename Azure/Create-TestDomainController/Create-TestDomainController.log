@@ -1,5 +1,6 @@
-[2025-02-12 11:52:51] Log file reset. New log starting.
-[2025-02-12 11:52:51] [ERROR] Module path not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration
-[2025-02-12 11:52:51] [ERROR] Module path not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\DC-Validation
-[2025-02-12 11:52:51] [ERROR] Module path not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\DC-Deployment
-[2025-02-12 11:52:51] [ERROR] Critical error during module import: Failed to import 3 required module(s). Please check the log for details.
+[2025-02-12 11:54:32] Log file reset. New log starting.
+[2025-02-12 11:54:32] [INFO] Successfully imported module: DC-Configuration from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration.psd1
+[2025-02-12 11:54:32] [INFO] Successfully imported module: DC-Validation from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\DC-Validation.psd1
+[2025-02-12 11:54:32] [INFO] Successfully imported module: DC-Deployment from C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\DC-Deployment.psd1
+[2025-02-12 11:54:32] [ERROR] Cannot bind argument to parameter 'Path' because it is null.
+[2025-02-12 11:54:32] [INFO] Script execution completed.
