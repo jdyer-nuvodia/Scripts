@@ -15,3 +15,7 @@
 [2025-02-12 13:36:45] [DEPLOYMENT] Creating Network Interface for VM: JB-TEST-DC01
 [2025-02-12 13:36:46] [DEPLOYMENT] Configuring VM settings
 [2025-02-12 13:36:47] [DEPLOYMENT] Creating Virtual Machine: JB-TEST-DC01
+[2025-02-12 13:38:50] [DEPLOYMENT] Virtual Machine deployment completed successfully
+[2025-02-12 13:38:50] [DEPLOYMENT] Configuring auto-shutdown schedule
+[2025-02-12 13:38:50] [ERROR] Deployment failed: The term 'Enable-AzVmAutoShutdown' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
