@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: DC-Configuration.ps1
-# Created: 2025-02-11 23:45:10 UTC
+# Created: 2025-02-12 00:07:30 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-11 23:45:10 UTC
+# Last Updated: 2025-02-12 00:07:30 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Configuration module for Domain Controller deployment
+# Version: 1.1
+# Additional Info: Updated VM size to Standard_D2s_v3 for Trusted Launch support
 # =============================================================================
 
 function Write-Log {
@@ -39,7 +39,7 @@ function Initialize-DCConfiguration {
         NsgName            = 'JB-TEST-NSG'
         VnetAddressSpace   = '10.0.0.0/16'
         SubnetAddressSpace = '10.0.1.0/24'
-        VMSize             = 'Standard_DS2_v2'
+        VMSize             = 'Standard_D2s_v3'  # Updated to Trusted Launch compatible size
         ShutdownTime       = '21:00'
         TimeZone           = 'UTC-07:00'
         ImagePublisher     = 'MicrosoftWindowsServer'
