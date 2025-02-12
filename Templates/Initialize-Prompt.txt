@@ -2,10 +2,10 @@
 # File: Initialize-Prompt.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:13:30 UTC
+# Last Updated: 2025-02-12 18:17:30 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.9
-# Additional Info: Streamlined script header format
+# Version: 3.0
+# Additional Info: Updated update notes filename format to include full timestamp
 # =============================================================================
 
 <# 
@@ -112,7 +112,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
 # Update notes MUST be provided in a separate txt file using this format:
 #
 # -----------------------------------------------------------------------------
-# Date: <YYYY-MM-DD>
+# Date: <YYYY-MM-DD HH:MM:SS UTC>
 # Commit: <Brief description of the commit or change>
 # Author: <AuthorName or Collaborator>
 #
@@ -123,5 +123,5 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
 # - <Note how these changes affect functionality, dependencies, or users>
 # - <Highlight any potential risks or required follow-up actions>
 #
-# File Name: <ScriptName>_UpdateNotes_<YYYYMMDD>.txt
+# File Name: <ScriptName>_UpdateNotes_<YYYYMMDD_HHMMSS>.txt
 # -----------------------------------------------------------------------------
