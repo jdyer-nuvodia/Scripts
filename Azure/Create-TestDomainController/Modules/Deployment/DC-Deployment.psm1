@@ -1,239 +1,245 @@
 # =============================================================================
 # Script: DC-Deployment.psm1
-# Created: 2025-02-12 00:25:18 UTC
+# Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 20:38:20 UTC
+# Last Updated: 2025-02-12 20:51:01 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1
-# Additional Info: Updated Public IP configuration for Standard SKU compliance
+# Version: 2.2
+# Additional Info: Complete module implementation with all required functions
 # =============================================================================
 
-# Script-scoped variables
-$Script:LogFile = $null
+<#
+.SYNOPSIS
+    Provides deployment functionality for Azure Domain Controller creation
+.DESCRIPTION
+    This module contains functions for deploying and configuring domain controllers in Azure,
+    including VM creation, network configuration, domain services installation, and auto-shutdown scheduling.
+    
+    Required Azure PowerShell modules:
+    - Az.Compute
+    - Az.Network
+    - Az.Resources
+    - Az.Storage
+    
+    Functions included:
+    - New-DCEnvironment: Creates the complete DC environment
+    - Enable-AzVmAutoShutdown: Configures VM auto-shutdown schedule
+    - Install-DomainServices: Installs and configures AD DS roles
+    - Set-DCNetworkConfiguration: Configures network settings
+    - Initialize-DCStorage: Sets up required storage configuration
+#>
 
-function Write-Log {
-    [CmdletBinding()]
-    param(
+function New-DCEnvironment {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param (
         [Parameter(Mandatory = $true)]
-        [string]$Message,
-        [Parameter()]
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEPLOYMENT')]
-        [string]$Level = 'INFO',
-        [Parameter()]
-        [string]$LogFile = $Script:LogFile
+        [ValidateNotNull()]
+        [PSCustomObject]$Config
     )
-    if ([string]::IsNullOrEmpty($LogFile)) {
-        $LogFile = Join-Path -Path $PSScriptRoot -ChildPath "DC-Deployment.log"
+    try {
+        # Validate Azure connection
+        $context = Get-AzContext
+        if (-not $context) {
+            throw "Not connected to Azure. Please run Connect-AzAccount first."
+        }
+        # Create Resource Group if it doesn't exist
+        if (-not (Get-AzResourceGroup -Name $Config.ResourceGroupName -ErrorAction SilentlyContinue)) {
+            New-AzResourceGroup -Name $Config.ResourceGroupName -Location $Config.Location
+        }
+        # Initialize network configuration
+        $networkConfig = Set-DCNetworkConfiguration -Config $Config
+        # Initialize storage configuration
+        $storageConfig = Initialize-DCStorage -Config $Config
+        # Create the VM
+        $vmParams = @{
+            ResourceGroupName = $Config.ResourceGroupName
+            Location = $Config.Location
+            Name = $Config.VmName
+            Size = $Config.VMSize
+            NetworkInterface = $networkConfig.NetworkInterface
+            Credential = New-Object System.Management.Automation.PSCredential ($Config.AdminUsername, (ConvertTo-SecureString $Config.AdminPassword -AsPlainText -Force))
+            ImageName = "Win2022Datacenter"
+            OSDiskType = "Premium_LRS"
+            DataDiskSizeInGb = 128
+        }
+        $vm = New-AzVM @vmParams
+        # Install Domain Services
+        Install-DomainServices -Config $Config -VM $vm
+        # Configure auto-shutdown
+        Enable-AzVmAutoShutdown -ResourceGroupName $Config.ResourceGroupName -VmName $Config.VmName
+        return $vm
     }
-    $LogMessage = "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] [$Level] $Message"
-    Add-Content -Path $LogFile -Value $LogMessage
-    Write-Host $LogMessage
-    if ($Level -eq 'ERROR') {
-        Write-Error $Message
-    } elseif ($VerbosePreference -eq 'Continue') {
-        Write-Verbose $Message
+    catch {
+        Write-Error "Failed to create DC environment: $_"
+        throw
     }
 }
 
-function Set-DCLogFile {
+function Set-DCNetworkConfiguration {
     [CmdletBinding()]
-    param(
+    param (
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [ValidateNotNull()]
+        [PSCustomObject]$Config
     )
-    $Script:LogFile = $Path
-    Write-Log "Log file path set to: $Path" -Level INFO
+    try {
+        # Create or get Virtual Network
+        $vnetParams = @{
+            Name = $Config.VnetName
+            ResourceGroupName = $Config.ResourceGroupName
+            Location = $Config.Location
+            AddressPrefix = "10.0.0.0/16"
+        }
+        $vnet = Get-AzVirtualNetwork -Name $Config.VnetName -ResourceGroupName $Config.ResourceGroupName -ErrorAction SilentlyContinue
+        if (-not $vnet) {
+            $vnet = New-AzVirtualNetwork @vnetParams
+        }
+        # Create or get Subnet
+        $subnetConfig = @{
+            Name = $Config.SubnetName
+            AddressPrefix = "10.0.0.0/24"
+            VirtualNetwork = $vnet
+        }
+        $subnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vnet -Name $Config.SubnetName -ErrorAction SilentlyContinue
+        if (-not $subnet) {
+            $subnet = Add-AzVirtualNetworkSubnetConfig @subnetConfig
+            $vnet | Set-AzVirtualNetwork
+        }
+        # Create Network Interface
+        $nicParams = @{
+            Name = "$($Config.VmName)-nic"
+            ResourceGroupName = $Config.ResourceGroupName
+            Location = $Config.Location
+            SubnetId = $subnet.Id
+        }
+        $nic = New-AzNetworkInterface @nicParams
+        return @{
+            VirtualNetwork = $vnet
+            Subnet = $subnet
+            NetworkInterface = $nic
+        }
+    }
+    catch {
+        Write-Error "Failed to configure network: $_"
+        throw
+    }
 }
 
 function Initialize-DCStorage {
     [CmdletBinding()]
-    param(
+    param (
         [Parameter(Mandatory = $true)]
-        [hashtable]$Config
+        [ValidateNotNull()]
+        [PSCustomObject]$Config
     )
     try {
-        Write-Log "Initializing storage account: $($Config.StorageAccountName)" -Level DEPLOYMENT
-        $storageAccount = Get-AzStorageAccount -ResourceGroupName $Config.ResourceGroupName `
-            -Name $Config.StorageAccountName -ErrorAction SilentlyContinue
-        if (-not $storageAccount) {
-            Write-Log "Storage account does not exist. Creating new storage account." -Level DEPLOYMENT
-            $storageAccount = New-AzStorageAccount -ResourceGroupName $Config.ResourceGroupName `
-                -Name $Config.StorageAccountName `
-                -Location $Config.Location `
-                -SkuName Standard_LRS `
-                -Kind StorageV2
-            Write-Log "Storage account created successfully" -Level DEPLOYMENT
-        } else {
-            Write-Log "Using existing storage account" -Level DEPLOYMENT
-        }
-        return $storageAccount
-    }
-    catch {
-        Write-Log "Failed to initialize storage account: $_" -Level ERROR
-        throw
-    }
-}
-
-function New-DCPublicIP {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param(
-        [Parameter(Mandatory = $true)]
-        [hashtable]$Config
-    )
-    try {
-        Write-Log "Creating Public IP with Standard SKU: $($Config.PublicIpName)" -Level DEPLOYMENT
-        $publicIpParams = @{
-            Name              = $Config.PublicIpName
+        # Create storage account for diagnostics
+        $saName = ($Config.VmName + "diag").ToLower() -replace '[^a-z0-9]', ''
+        $storageParams = @{
             ResourceGroupName = $Config.ResourceGroupName
-            Location         = $Config.Location
-            Sku              = 'Standard'
-            AllocationMethod = 'Static'
-            IpAddressVersion = 'IPv4'
-            Zone             = 1
+            Name = $saName
+            Location = $Config.Location
+            SkuName = "Standard_LRS"
+            Kind = "StorageV2"
         }
-        if ($PSCmdlet.ShouldProcess("Public IP $($Config.PublicIpName)", "Create")) {
-            $publicIp = New-AzPublicIpAddress @publicIpParams
-            Write-Log "Successfully created Public IP: $($Config.PublicIpName)" -Level DEPLOYMENT
-            return $publicIp
+        $storageAccount = New-AzStorageAccount @storageParams
+        return @{
+            StorageAccount = $storageAccount
+            StorageAccountName = $saName
         }
     }
     catch {
-        Write-Log "Failed to create Public IP: $_" -Level ERROR
+        Write-Error "Failed to initialize storage: $_"
         throw
     }
 }
 
-function New-DCEnvironment {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param(
+function Install-DomainServices {
+    [CmdletBinding()]
+    param (
         [Parameter(Mandatory = $true)]
-        [hashtable]$Config
+        [ValidateNotNull()]
+        [PSCustomObject]$Config,
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNull()]
+        [Microsoft.Azure.Commands.Compute.Models.PSVirtualMachine]$VM
     )
     try {
-        Write-Log "Starting Domain Controller environment deployment" -Level DEPLOYMENT
-        
-        # Create Resource Group if it doesn't exist
-        if (-not (Get-AzResourceGroup -Name $Config.ResourceGroupName -ErrorAction SilentlyContinue)) {
-            if ($PSCmdlet.ShouldProcess("Resource Group $($Config.ResourceGroupName)", "Create")) {
-                Write-Log "Creating Resource Group: $($Config.ResourceGroupName)" -Level DEPLOYMENT
-                New-AzResourceGroup -Name $Config.ResourceGroupName -Location $Config.Location
-            }
+        # Prepare custom script extension parameters
+        $scriptContent = @'
+Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+Install-ADDSForest `
+    -DomainName "test.local" `
+    -InstallDns `
+    -Force `
+    -SafeModeAdministratorPassword (ConvertTo-SecureString "TemporaryPassword123!" -AsPlainText -Force)
+'@
+        $scriptParams = @{
+            ResourceGroupName = $Config.ResourceGroupName
+            VMName = $Config.VmName
+            Location = $Config.Location
+            Name = "InstallADDS"
+            TypeHandlerVersion = "1.10"
+            Publisher = "Microsoft.Compute"
+            FileUri = "script.ps1"
+            Run = $scriptContent
+            Argument = ""
         }
-
-        # Initialize Storage Account
-        if ($PSCmdlet.ShouldProcess("Storage Account $($Config.StorageAccountName)", "Initialize")) {
-            $storageAccount = Initialize-DCStorage -Config $Config
-        }
-
-        # Create Virtual Network
-        if ($PSCmdlet.ShouldProcess("Virtual Network $($Config.VnetName)", "Create")) {
-            Write-Log "Creating Virtual Network: $($Config.VnetName)" -Level DEPLOYMENT
-            $subnetConfig = New-AzVirtualNetworkSubnetConfig -Name $Config.SubnetName `
-                -AddressPrefix $Config.SubnetAddressSpace
-            $vnet = New-AzVirtualNetwork -Name $Config.VnetName `
-                -ResourceGroupName $Config.ResourceGroupName `
-                -Location $Config.Location `
-                -AddressPrefix $Config.VnetAddressSpace `
-                -Subnet $subnetConfig
-        }
-
-        # Create Public IP
-        if ($PSCmdlet.ShouldProcess("Public IP $($Config.PublicIpName)", "Create")) {
-            $publicIp = New-DCPublicIP -Config $Config
-        }
-
-        # Create Network Security Group
-        if ($PSCmdlet.ShouldProcess("NSG $($Config.NsgName)", "Create")) {
-            Write-Log "Creating Network Security Group: $($Config.NsgName)" -Level DEPLOYMENT
-            $nsgRuleRDP = New-AzNetworkSecurityRuleConfig -Name "Allow-RDP" `
-                -Description "Allow RDP" `
-                -Access Allow `
-                -Protocol Tcp `
-                -Direction Inbound `
-                -Priority 100 `
-                -SourceAddressPrefix Internet `
-                -SourcePortRange * `
-                -DestinationAddressPrefix * `
-                -DestinationPortRange 3389
-            
-            $nsg = New-AzNetworkSecurityGroup -Name $Config.NsgName `
-                -ResourceGroupName $Config.ResourceGroupName `
-                -Location $Config.Location `
-                -SecurityRules $nsgRuleRDP
-        }
-
-        # Create Network Interface
-        if ($PSCmdlet.ShouldProcess("Network Interface for VM $($Config.VmName)", "Create")) {
-            Write-Log "Creating Network Interface for VM: $($Config.VmName)" -Level DEPLOYMENT
-            $subnet = $vnet.Subnets[0]
-            $nicName = "$($Config.VmName)-NIC"
-            $nic = New-AzNetworkInterface -Name $nicName `
-                -ResourceGroupName $Config.ResourceGroupName `
-                -Location $Config.Location `
-                -SubnetId $subnet.Id `
-                -PublicIpAddressId $publicIp.Id `
-                -NetworkSecurityGroupId $nsg.Id
-        }
-
-        # Create VM Configuration
-        Write-Log "Configuring VM settings" -Level DEPLOYMENT
-        $vmConfig = New-AzVMConfig -VMName $Config.VmName -VMSize $Config.VMSize
-        
-        # Configure boot diagnostics with existing storage account
-        $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig `
-            -Enable `
-            -ResourceGroupName $Config.ResourceGroupName `
-            -StorageAccountName $Config.StorageAccountName
-        
-        $securePassword = ConvertTo-SecureString $Config.AdminPassword -AsPlainText -Force
-        $cred = New-Object System.Management.Automation.PSCredential ($Config.AdminUsername, $securePassword)
-
-        $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig `
-            -Windows `
-            -ComputerName $Config.VmName `
-            -Credential $cred `
-            -ProvisionVMAgent `
-            -EnableAutoUpdate
-
-        $vmConfig = Set-AzVMSourceImage -VM $vmConfig `
-            -PublisherName $Config.ImagePublisher `
-            -Offer $Config.ImageOffer `
-            -Skus $Config.ImageSku `
-            -Version $Config.ImageVersion
-
-        $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
-
-        # Create Virtual Machine
-        if ($PSCmdlet.ShouldProcess("Virtual Machine $($Config.VmName)", "Create")) {
-            Write-Log "Creating Virtual Machine: $($Config.VmName)" -Level DEPLOYMENT
-            $vm = New-AzVM -ResourceGroupName $Config.ResourceGroupName `
-                -Location $Config.Location `
-                -VM $vmConfig
-            
-            Write-Log "Virtual Machine deployment completed successfully" -Level DEPLOYMENT
-            
-            # Configure Auto-Shutdown
-            if ($Config.ShutdownTime) {
-                Write-Log "Configuring auto-shutdown schedule" -Level DEPLOYMENT
-                $scheduleConfig = @{
-                    Location              = $Config.Location
-                    Name                  = "$($Config.VmName)-Shutdown"
-                    DailyRecurrence      = $Config.ShutdownTime
-                    TargetResourceId     = $vm.Id
-                    TimeZoneId           = $Config.TimeZone
-                }
-                Enable-AzVmAutoShutdown @scheduleConfig
-            }
-        }
-
-        Write-Log "Domain Controller environment deployment completed successfully" -Level DEPLOYMENT
-        return $true
+        Set-AzVMCustomScriptExtension @scriptParams
     }
     catch {
-        Write-Log "Deployment failed: $_" -Level ERROR
+        Write-Error "Failed to install domain services: $_"
         throw
     }
 }
 
-# Export functions
-Export-ModuleMember -Function Write-Log, Set-DCLogFile, New-DCEnvironment
+function Enable-AzVmAutoShutdown {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$ResourceGroupName,
+        [Parameter(Mandatory = $true)]
+        [string]$VmName,
+        [Parameter(Mandatory = $false)]
+        [string]$ScheduledShutdownTime = "2200",
+        [Parameter(Mandatory = $false)]
+        [string]$TimeZoneId = "US Mountain Standard Time"
+    )
+    try {
+        if (-not (Get-Module -ListAvailable -Name Az.Compute)) {
+            throw "The Az.Compute module is required for this operation. Please install it using: Install-Module -Name Az -Scope CurrentUser"
+        }
+        $vm = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VmName
+        if (-not $vm) {
+            throw "VM '$VmName' not found in resource group '$ResourceGroupName'"
+        }
+        $scheduleParams = @{
+            Location = $vm.Location
+            Name = "shutdown-computevm-$VmName"
+            ResourceGroupName = $ResourceGroupName
+            TargetResourceId = $vm.Id
+            DailyRecurrence = "true"
+            TimeZoneId = $TimeZoneId
+            Time = $ScheduledShutdownTime
+            NotificationSettings = @{
+                Enabled = $false
+            }
+        }
+        $schedule = New-AzAutomationSchedule @scheduleParams
+        Write-Verbose "Auto-shutdown schedule created successfully for VM '$VmName'"
+        return $schedule
+    }
+    catch {
+        Write-Error "Failed to enable auto-shutdown for VM '$VmName': $_"
+        throw
+    }
+}
+
+# Export module members
+Export-ModuleMember -Function @(
+    'New-DCEnvironment',
+    'Enable-AzVmAutoShutdown',
+    'Install-DomainServices',
+    'Set-DCNetworkConfiguration',
+    'Initialize-DCStorage'
+)
