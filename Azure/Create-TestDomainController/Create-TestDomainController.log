@@ -1,3 +1,8 @@
-[2025-02-12 11:19:21] Log file reset. New log starting.
-[2025-02-12 11:19:21] [INFO] Successfully imported module: Configuration\DC-Configuration.psd1
-[2025-02-12 11:19:21] [ERROR] Failed to import required modules: Module manifest not found: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration\Validation\DC-Validation.psd1
+[2025-02-12 11:22:57] Log file reset. New log starting.
+[2025-02-12 11:22:57] [INFO] Checking for module at: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration\DC-Configuration.psd1
+[2025-02-12 11:22:57] [ERROR] Neither module manifest nor module file found at: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration\DC-Configuration.psd1 or C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Configuration\DC-Configuration\DC-Configuration.psm1
+[2025-02-12 11:22:57] [INFO] Checking for module at: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\DC-Validation\DC-Validation.psd1
+[2025-02-12 11:22:57] [ERROR] Neither module manifest nor module file found at: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\DC-Validation\DC-Validation.psd1 or C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Validation\DC-Validation\DC-Validation.psm1
+[2025-02-12 11:22:57] [INFO] Checking for module at: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\DC-Deployment\DC-Deployment.psd1
+[2025-02-12 11:22:57] [ERROR] Neither module manifest nor module file found at: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\DC-Deployment\DC-Deployment.psd1 or C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Create-TestDomainController\Modules\Deployment\DC-Deployment\DC-Deployment.psm1
+[2025-02-12 11:22:57] [ERROR] Failed to import required modules: Failed to import 3 required module(s). Please check the log for details.
