@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:47:21 UTC
+# Last Updated: 2025-02-12 18:50:53 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0
-# Additional Info: Updated module paths to use full OneDrive paths
+# Version: 4.1
+# Additional Info: Fixed module names to match actual file names with DC- prefix
 # =============================================================================
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -107,9 +107,9 @@ function Import-RequiredModule {
 # Verify and import required modules
 try {
     $requiredModules = @(
-        "Configuration\",
-        "Validation\",
-        "Deployment\"
+        "Configuration\DC-Configuration",
+        "Validation\DC-Validation",
+        "Deployment\DC-Deployment"
     )
     
     $failedImports = 0
