@@ -2,10 +2,10 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 17:34:57 UTC
+# Last Updated: 2025-02-12 18:08:19 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.5
-# Additional Info: Implemented module path fixes and enhanced error handling
+# Version: 3.6
+# Additional Info: Fixed module path joining logic
 # =============================================================================
 
 <#
@@ -39,6 +39,7 @@
     .\Create-TestDomainController.ps1 -ValidateOnly
     Performs validation of all components without deployment.
 #>
+
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param (
@@ -85,24 +86,26 @@ function Write-Log {
 
 # Import required modules with error handling
 try {
-    $modules = @(
+    $requiredModules = @(
         "Configuration\DC-Configuration",
         "Validation\DC-Validation",
         "Deployment\DC-Deployment"
     )
-    
-    foreach ($module in $modules) {
+
+    foreach ($module in $requiredModules) {
         $modulePath = Join-Path $ModulePath $module
-        if (Test-Path "$modulePath.psd1") {
-            Import-Module "$modulePath.psd1" -Force -ErrorAction Stop
+        $manifestPath = "$modulePath.psd1"
+        
+        if (Test-Path $manifestPath) {
+            Import-Module $manifestPath -Force -ErrorAction Stop
             Write-Log "Successfully imported module: $module.psd1" -Level INFO
         } else {
-            throw "Module manifest not found: $modulePath.psd1"
+            throw "Module manifest not found: $manifestPath"
         }
     }
 } catch {
     Write-Log "Failed to import required modules: $_" -Level ERROR
-    throw
+    return
 }
 
 try {
