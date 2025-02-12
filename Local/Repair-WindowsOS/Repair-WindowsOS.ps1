@@ -2,7 +2,10 @@
 .SYNOPSIS
     Windows OS Repair and Maintenance Script
 .DESCRIPTION
-    Performs various Windows OS repairs and maintenance tasks
+    Performs various Windows OS repairs and maintenance tasks in the correct order:
+    1. DISM - Repairs Windows component store
+    2. SFC - Repairs system files using the repaired component store
+    3. Windows Update cache cleanup
 .NOTES
     Created: 2025-02-06
     Author: Updated by jdyer-nuvodia
@@ -41,19 +44,6 @@ function Write-RepairLog {
     Add-Content -Path $logFile -Value $logEntry
 }
 
-# Function to check system file integrity
-function Test-SystemFileIntegrity {
-    Write-RepairLog "Checking system file integrity..." -Color Cyan
-    $sfc = Start-Process "sfc.exe" -ArgumentList "/scannow" -Wait -PassThru
-    if ($sfc.ExitCode -eq 0) {
-        Write-RepairLog "System File Checker completed successfully." -Color Green
-    } else {
-        Write-RepairLog "System File Checker encountered issues." -Color Yellow
-        $global:repairsMade = $true
-        $global:restartNeeded = $true
-    }
-}
-
 # Function to repair Windows image
 function Repair-WindowsImage {
     Write-RepairLog "Scanning Windows image for corruption..." -Color Cyan
@@ -72,6 +62,19 @@ function Repair-WindowsImage {
         }
     } else {
         Write-RepairLog "DISM scan encountered issues." -Color Yellow
+    }
+}
+
+# Function to check system file integrity
+function Test-SystemFileIntegrity {
+    Write-RepairLog "Checking system file integrity..." -Color Cyan
+    $sfc = Start-Process "sfc.exe" -ArgumentList "/scannow" -Wait -PassThru
+    if ($sfc.ExitCode -eq 0) {
+        Write-RepairLog "System File Checker completed successfully." -Color Green
+    } else {
+        Write-RepairLog "System File Checker encountered issues." -Color Yellow
+        $global:repairsMade = $true
+        $global:restartNeeded = $true
     }
 }
 
@@ -114,9 +117,9 @@ try {
         throw "This script requires administrator privileges."
     }
     
-    # Execute repair functions
-    Test-SystemFileIntegrity
-    Repair-WindowsImage
+    # Execute repair functions in correct order
+    Repair-WindowsImage    # Run DISM first to repair component store
+    Test-SystemFileIntegrity    # Run SFC after DISM to repair system files
     Clear-WindowsUpdateCache
     
     # Report results
