@@ -1,15 +1,15 @@
 @{
     RootModule = 'DC-Deployment.psm1'
-    ModuleVersion = '3.5'
-    GUID = 'f8b0e1c0-5c1a-4e1b-9b1a-1c2b3d4e5f6a'  # This GUID is already valid
+    ModuleVersion = '1.8'
+    GUID = '1a2b3c4d-5e6f-4321-9876-543210abcdef'
     Author = 'jdyer-nuvodia'
-    Description = 'Module for deploying and configuring Domain Controller VMs in Azure'
+    Description = 'Module for Domain Controller deployment in Azure'
     PowerShellVersion = '7.0'
-    FunctionsToExport = @('New-DCEnvironment', 'Set-VMAutoShutdown')
+    FunctionsToExport = @('New-DCEnvironment')
     PrivateData = @{
         PSData = @{
-            Tags = @('Azure', 'DomainController', 'VM')
-            LastUpdated = '2025-02-12 17:50:17'
+            Tags = @('Azure', 'DomainController', 'Deployment')
+            LastUpdated = '2025-02-12 18:24:19'
             UpdatedBy = 'jdyer-nuvodia'
         }
     }

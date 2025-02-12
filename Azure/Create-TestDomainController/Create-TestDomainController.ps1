@@ -2,43 +2,11 @@
 # Script: Create-TestDomainController.ps1
 # Created: 2025-02-11 23:45:10 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:21:08 UTC
+# Last Updated: 2025-02-12 18:24:19 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.7
-# Additional Info: Enhanced module import handling and validation
+# Version: 3.8
+# Additional Info: Enhanced path handling and module version sync
 # =============================================================================
-
-<#
-.SYNOPSIS
-    Creates a test domain controller as a Trusted Launch VM in Azure.
-.DESCRIPTION
-    This script orchestrates the creation of a domain controller VM in Azure using modular components.
-    The process is split into validation, deployment, and configuration phases, each handled by
-    separate modules for better maintainability and clarity.
-.PARAMETER resourceGroupName
-    The name of the resource group where the VM and related resources will be created.
-.PARAMETER location
-    The Azure region (location) to deploy the resources.
-.PARAMETER vmName
-    The name of the VM to create.
-.PARAMETER VMSize
-    The size of the VM (e.g., 'Standard_DS2_v2').
-.PARAMETER vnetName
-    The virtual network name for the VM.
-.PARAMETER subnetName
-    The name of the subnet within the virtual network.
-.PARAMETER adminUsername
-    The administrator username for the VM.
-.PARAMETER adminPassword
-    The administrator password for the VM.
-.PARAMETER timeZoneId
-    The timezone ID for VM auto-shutdown scheduling. Defaults to US Mountain Standard Time (Arizona).
-.PARAMETER ValidateOnly
-    Performs validation only without deploying resources.
-.EXAMPLE
-    .\Create-TestDomainController.ps1 -ValidateOnly
-    Performs validation of all components without deployment.
-#>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param (
@@ -64,13 +32,18 @@ param (
     [switch]$ValidateOnly
 )
 
-# Get the script path for relative module imports
-$ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ModulePath = Join-Path $ScriptPath "Modules"
-$LogFile = Join-Path $ScriptPath "Create-TestDomainController.log"
+# Get the absolute script path
+$ScriptPath = $PSScriptRoot
+if (-not $ScriptPath) {
+    $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
 
-# Initialize logging
-Set-Content -Path $LogFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Log file reset. New log starting."
+$ModulePath = Join-Path -Path $ScriptPath -ChildPath "Modules"
+$LogFile = Join-Path -Path $ScriptPath -ChildPath "Create-TestDomainController.log"
+
+# Initialize logging with timestamp
+$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+Set-Content -Path $LogFile -Value "[$timestamp] Log file reset. New log starting."
 
 function Write-Log {
     param(
@@ -78,9 +51,37 @@ function Write-Log {
         [ValidateSet('INFO', 'ERROR', 'VALIDATION', 'WARNING')]
         [string]$Level = 'INFO'
     )
-    $logMessage = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$Level] $Message"
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] [$Level] $Message"
     Add-Content -Path $LogFile -Value $logMessage
     Write-Host $logMessage
+}
+
+function Test-ModulePath {
+    param (
+        [string]$Path,
+        [string]$ModuleName
+    )
+    
+    if (-not (Test-Path -Path $Path)) {
+        Write-Log "Module path not found: $Path" -Level ERROR
+        return $false
+    }
+    
+    $manifestPath = Join-Path -Path $Path -ChildPath "$ModuleName.psd1"
+    $modulePath = Join-Path -Path $Path -ChildPath "$ModuleName.psm1"
+    
+    if (-not (Test-Path -Path $manifestPath)) {
+        Write-Log "Module manifest not found: $manifestPath" -Level ERROR
+        return $false
+    }
+    
+    if (-not (Test-Path -Path $modulePath)) {
+        Write-Log "Module file not found: $modulePath" -Level ERROR
+        return $false
+    }
+    
+    return $true
 }
 
 function Import-RequiredModule {
@@ -89,27 +90,26 @@ function Import-RequiredModule {
         [string]$BasePath
     )
     
-    $modulePath = Join-Path $BasePath $ModuleName
-    $manifestPath = Join-Path $modulePath "$($ModuleName.Split('\')[-1]).psd1"
-    $modulePath = Join-Path $modulePath "$($ModuleName.Split('\')[-1]).psm1"
+    $moduleFolder = $ModuleName.Split('\')[-1]
+    $fullPath = Join-Path -Path $BasePath -ChildPath $ModuleName
     
-    Write-Log "Checking for module at: $manifestPath" -Level INFO
+    if (-not (Test-ModulePath -Path $fullPath -ModuleName $moduleFolder)) {
+        return $false
+    }
     
-    if (Test-Path $manifestPath) {
-        Import-Module $manifestPath -Force -ErrorAction Stop
-        Write-Log "Successfully imported module manifest: $manifestPath" -Level INFO
+    try {
+        $manifestPath = Join-Path -Path $fullPath -ChildPath "$moduleFolder.psd1"
+        Import-Module -Name $manifestPath -Force -ErrorAction Stop
+        Write-Log "Successfully imported module: $moduleFolder" -Level INFO
         return $true
-    } elseif (Test-Path $modulePath) {
-        Import-Module $modulePath -Force -ErrorAction Stop
-        Write-Log "Successfully imported module: $modulePath" -Level INFO
-        return $true
-    } else {
-        Write-Log "Neither module manifest nor module file found at: $manifestPath or $modulePath" -Level ERROR
+    }
+    catch {
+        Write-Log "Failed to import module $moduleFolder: $_" -Level ERROR
         return $false
     }
 }
 
-# Import required modules with error handling
+# Verify and import required modules
 try {
     $requiredModules = @(
         "Configuration\DC-Configuration",
@@ -129,7 +129,7 @@ try {
         throw "Failed to import $failedImports required module(s). Please check the log for details."
     }
 } catch {
-    Write-Log "Failed to import required modules: $_" -Level ERROR
+    Write-Log "Critical error during module import: $_" -Level ERROR
     return
 }
 
