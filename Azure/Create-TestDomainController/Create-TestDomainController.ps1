@@ -65,10 +65,9 @@ param (
 )
 
 # Import required modules
-$modulePath = Split-Path -Parent $MyInvocation.MyCommand.Path
-. "$modulePath\Modules\DC-Configuration.ps1"
-. "$modulePath\Modules\DC-Validation.ps1"
-. "$modulePath\Modules\DC-Deployment.ps1"
+Import-Module -Name ".\Modules\DC-Configuration.psm1" -Force
+Import-Module -Name ".\Modules\DC-Validation.psm1" -Force
+Import-Module -Name ".\Modules\DC-Deployment.psm1" -Force
 
 # Initialize logging
 $LogFile = Join-Path $PSScriptRoot "Create-TestDomainController.log"

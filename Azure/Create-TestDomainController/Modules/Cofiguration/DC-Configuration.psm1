@@ -1,19 +1,24 @@
 # =============================================================================
-# Script: DC-Configuration.ps1
+# Script: DC-Configuration.psm1
 # Created: 2025-02-12 00:25:18 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 00:25:18 UTC
+# Last Updated: 2025-02-12 15:03:43 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4
-# Additional Info: Updated to use confirmed Trusted Launch compatible VM size
+# Version: 1.5
+# Additional Info: Converted to PowerShell module format
 # =============================================================================
 
 function Write-Log {
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory = $true)]
         [string]$Message,
+        
+        [Parameter()]
         [ValidateSet('INFO', 'WARNING', 'ERROR', 'VALIDATION')]
         [string]$Level = 'INFO'
     )
+    
     $LogMessage = "[$([DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))] [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
     Write-Host $LogMessage
@@ -25,6 +30,9 @@ function Write-Log {
 }
 
 function Initialize-DCConfiguration {
+    [CmdletBinding()]
+    param()
+    
     $config = @{
         ResourceGroupName     = 'JB-TEST-RG2'
         Location             = 'westus2'
@@ -39,7 +47,7 @@ function Initialize-DCConfiguration {
         NsgName            = 'JB-TEST-NSG'
         VnetAddressSpace   = '10.0.0.0/16'
         SubnetAddressSpace = '10.0.1.0/24'
-        VMSize             = 'Standard_D2s_v4'  # Updated to confirmed Trusted Launch compatible size
+        VMSize             = 'Standard_D2s_v4'
         ShutdownTime       = '21:00'
         TimeZone           = 'UTC-07:00'
         ImagePublisher     = 'MicrosoftWindowsServer'
@@ -49,3 +57,6 @@ function Initialize-DCConfiguration {
     }
     return $config
 }
+
+# Export functions
+Export-ModuleMember -Function Write-Log, Initialize-DCConfiguration
