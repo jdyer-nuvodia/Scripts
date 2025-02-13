@@ -91,8 +91,7 @@ $transcriptPath = "C:\temp"
 if (-not (Test-Path $transcriptPath)) {
     New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
 }
-$transcriptFile = Join-Path $transcriptPath "FolderScan_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
-Start-Transcript -Path $transcriptFile -Force
+$transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"Start-Transcript -Path $transcriptFile -Force
 
 # Add script header to transcript
 Write-Host "======================================================"
