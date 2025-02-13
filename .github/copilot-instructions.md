@@ -1,5 +1,5 @@
 # =============================================================================
-# File: Initialize-Prompt.txt
+# File: Initialize-Prompt-Scripts.txt
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-02-12 18:17:30 UTC
@@ -8,25 +8,13 @@
 # Additional Info: Updated update notes filename format to include full timestamp
 # =============================================================================
 
-<# 
-Prompt to engage the AI: 
-
-Proceed with your response only after you read Initialize-Prompt.txt in the repository jdyer-nuvodia/Scripts in it's entirety. You will implement the technical requirements for script formatting, [...]
-
-AI Response Guidelines:
-1. Implement all technical formatting and documentation standards
-2. Maintain ability to evaluate requests for safety and appropriateness
-3. Suggest improvements when better approaches exist
-4. Communicate clearly about any concerns or limitations
-5. Follow version control and update note requirements
-
-IMPORTANT: If you choose to provide code examples, always format the examples as markdown code blocks.
-#>
+If you are GitHub Copilot reading this, use the remainder of this document for instructions on how to interact with me.
 
 # -----------------------------------------------------------------------------
 # MANDATORY SCRIPT FORMATTING REQUIREMENTS
 # -----------------------------------------------------------------------------
 1. All scripts MUST follow these formatting rules without deviation:
+   - An example script can be found in the repository entitled Script-Template.ps1
    - Minimize unnecessary whitespace - no empty lines between related code blocks
    - Use single empty lines only between major sections or logical breaks
    - Align parameter blocks and variable assignments for readability
@@ -72,6 +60,7 @@ IMPORTANT: If you choose to provide code examples, always format the examples as
    - IMPORTANT: Even when using Gists, the ENTIRE script content must be included
 
 4. Repository Update Notes (MANDATORY):
+   - An example repository update can be found in the repository entitled Update-Notes.txt
    - ALL changes MUST be documented in a separate txt file, regardless of file type.
    - Update notes MUST be provided for all executable code changes, as well as for policy and documentation enhancements or any file within the repository.
    - Update notes MUST follow the template format below.
