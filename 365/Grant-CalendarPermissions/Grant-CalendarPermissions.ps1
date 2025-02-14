@@ -4,23 +4,24 @@ Import-Module ExchangeOnlineManagement
 # Connect to Exchange Online
 Connect-ExchangeOnline
 
-#Set variable for SG if adding to a group, be sure to change the $userName variable in the for loop to $securityGroupName
-#$securityGroupName = "ConfRmCal-Author"
-
-#Set variable for user to receive access
+# Set variable for user to receive access
 $userName = "mailbox"
 
-# Read the list of mailboxes from a text file, set this to the folder where this script 
+# Read the list of mailboxes from a text file, set this to the folder where this script is located
 $mailboxes = Get-Content "C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\365\Grant-CalendarPermissions\mailboxes.txt"
 
-foreach ($mailbox in $mailboxes) {
-    $identity = $mailbox.UserPrincipalName + ":\Calendar"
+foreach ($mailboxEmail in $mailboxes) {
+    $identity = "${mailboxEmail}:\Calendar"
     
     try {
+        # Check if the mailbox exists
+        $mailbox = Get-Mailbox -Identity $mailboxEmail -ErrorAction Stop
+        
+        # Set calendar permissions
         Set-MailboxFolderPermission -Identity $identity -User $userName -AccessRights Editor -SharingPermissionFlags Delegate,CanViewPrivateItems
-        Write-Host "Successfully granted $calendarPermission access to $($mailbox.UserPrincipalName)'s calendar for group $securityGroupName" -ForegroundColor Green
+        Write-Host "Successfully granted Editor access to $mailboxEmail's calendar for user $userName" -ForegroundColor Green
     }
     catch {
-        Write-Host "Error granting access to $($mailbox.UserPrincipalName)'s calendar: $_" -ForegroundColor Red
+        Write-Host "Error granting access to $mailboxEmail's calendar: $_" -ForegroundColor Red
     }
 }
