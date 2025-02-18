@@ -59,6 +59,26 @@ param (
     [int]$MaxDepth = 10
 )
 
+# Setup transcript logging
+$transcriptPath = "C:\temp"
+if (-not (Test-Path $transcriptPath)) {
+    New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
+}
+$transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+Start-Transcript -Path $transcriptFile -Force
+
+# Add script header to transcript
+Write-Host "======================================================"
+Write-Host "Folder Size Scanner - Execution Log"
+Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
+Write-Host "User: $env:USERNAME"
+Write-Host "Computer: $env:COMPUTERNAME"
+Write-Host "Target Path: $Path"
+Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
+Write-Host "======================================================"
+Write-Host ""
+
 # Check for ThreadJob module
 $threadJobModule = Get-Module -ListAvailable -Name ThreadJob
 if (-not $threadJobModule) {
@@ -85,25 +105,6 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" `"$Path`"" -Verb RunAs
     Exit
 }
-
-# Setup transcript logging
-$transcriptPath = "C:\temp"
-if (-not (Test-Path $transcriptPath)) {
-    New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
-}
-$transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"Start-Transcript -Path $transcriptFile -Force
-
-# Add script header to transcript
-Write-Host "======================================================"
-Write-Host "Folder Size Scanner - Execution Log"
-Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
-Write-Host "User: $env:USERNAME"
-Write-Host "Computer: $env:COMPUTERNAME"
-Write-Host "Target Path: $Path"
-Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
-Write-Host "======================================================"
-Write-Host ""
 
 # Remove existing type if it exists
 Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
