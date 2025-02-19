@@ -18,16 +18,30 @@
     - Downloads latest Forticlient VPN installer
     - Installs new Forticlient VPN client
     - Cleans up temporary files
+
+    By default, runs in silent mode with no UI. Use parameters to show installation window or run interactively.
 .PARAMETER Verbose
     When specified, provides detailed information about script execution.
+.PARAMETER ShowWindow
+    Shows the installation window instead of running hidden.
+.PARAMETER Interactive
+    Runs the installer in interactive mode instead of silent mode.
 .EXAMPLE
     .\Reinstall-ForticlientVPN.ps1
+    Runs completely silently with no UI
 .EXAMPLE
-    .\Reinstall-ForticlientVPN.ps1 -Verbose
+    .\Reinstall-ForticlientVPN.ps1 -ShowWindow
+    Shows the installation window but still runs silently
+.EXAMPLE
+    .\Reinstall-ForticlientVPN.ps1 -Interactive
+    Runs the installer in interactive mode with UI
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [switch]$ShowWindow,
+    [switch]$Interactive
+)
 
 # Ensure running as administrator
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -85,8 +99,28 @@ function Install-ForticlientVPN {
         Write-Verbose "Saving to: $installerPath"
         Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath
         Write-Host "Installing Forticlient VPN..."
-        Write-Verbose "Executing installer with quiet parameters"
-        Start-Process -FilePath $installerPath -ArgumentList "/quiet /norestart" -Wait
+
+        # Build installation arguments based on parameters
+        $installArgs = @()
+        if (-not $Interactive) {
+            $installArgs += "/quiet", "/accepteula"
+        }
+        $installArgs += "/norestart"
+        
+        Write-Verbose "Install arguments: $($installArgs -join ' ')"
+        
+        $startProcessParams = @{
+            FilePath = $installerPath
+            ArgumentList = $installArgs
+            Wait = $true
+        }
+        
+        if (-not $ShowWindow) {
+            $startProcessParams.WindowStyle = 'Hidden'
+        }
+        
+        Write-Verbose "Starting installation process with parameters: $($startProcessParams | ConvertTo-Json)"
+        Start-Process @startProcessParams
         Write-Host "Installation completed successfully"
     }
     catch {
