@@ -63,8 +63,8 @@ function Uninstall-ExistingForticlient {
                     $productCode = $uninstallCmd -replace ".*({.*})", '$1'
                     Write-Verbose "Found product code: $productCode"
                     Write-Host "Uninstalling: $($app.DisplayName)"
-                    Write-Verbose "Executing: msiexec.exe /x $productCode /qn"
-                    Start-Process "msiexec.exe" -ArgumentList "/x $productCode /qn" -Wait
+                    Write-Verbose "Executing: msiexec.exe /x $productCode /qn /norestart"
+                    Start-Process "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait
                 }
             }
         }
