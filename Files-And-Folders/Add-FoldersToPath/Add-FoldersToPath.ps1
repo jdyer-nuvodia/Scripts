@@ -23,23 +23,23 @@
 #
 # .EXAMPLE
 #   # Add single folder to user PATH
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts"
+#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts"
 #
 # .EXAMPLE
 #   # Add folder and subfolders to system PATH (requires admin)
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -Scope Machine
+#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -Scope Machine
 #
 # .EXAMPLE
 #   # Test what would happen without making changes
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -WhatIf
+#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -WhatIf
 #
 # .EXAMPLE
 #   # Add folder without subfolders
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -NoRecurse
+#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -NoRecurse
 #
 # .EXAMPLE
 #   # See detailed operation information
-#   .\Add-FolderToPath.ps1 -RootPath "C:\Scripts" -Verbose
+#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -Verbose
 #
 
 [CmdletBinding(SupportsShouldProcess=$true)]
