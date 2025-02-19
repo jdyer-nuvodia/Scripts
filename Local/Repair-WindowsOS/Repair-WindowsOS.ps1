@@ -44,6 +44,28 @@ function Write-RepairLog {
     Add-Content -Path $logFile -Value $logEntry
 }
 
+# Function to check disk health
+function Test-DiskHealth {
+    Write-RepairLog "Checking disk health..." -Color Cyan
+    
+    # Get system drive letter
+    $systemDrive = $env:SystemDrive
+    
+    # Run chkdsk in read-only mode first
+    Write-RepairLog "Running initial disk check on $systemDrive..." -Color Cyan
+    $chkdsk = Start-Process "chkdsk.exe" -ArgumentList "$systemDrive /scan" -Wait -PassThru -WindowStyle Hidden
+    
+    if ($chkdsk.ExitCode -ne 0) {
+        Write-RepairLog "Disk errors detected. Scheduling full chkdsk on next restart..." -Color Yellow
+        # Schedule full chkdsk with fix on next reboot
+        $fullChk = Start-Process "chkdsk.exe" -ArgumentList "$systemDrive /f /r" -Wait -PassThru -WindowStyle Hidden
+        $global:restartNeeded = $true
+        $global:repairsMade = $true
+    } else {
+        Write-RepairLog "No disk errors detected." -Color Green
+    }
+}
+
 # Function to repair Windows image
 function Repair-WindowsImage {
     Write-RepairLog "Scanning Windows image for corruption..." -Color Cyan
@@ -118,8 +140,9 @@ try {
     }
     
     # Execute repair functions in correct order
-    Repair-WindowsImage    # Run DISM first to repair component store
-    Test-SystemFileIntegrity    # Run SFC after DISM to repair system files
+    Test-DiskHealth         # Run disk check first
+    Repair-WindowsImage     # Run DISM second to repair component store
+    Test-SystemFileIntegrity # Run SFC last to repair system files
     Clear-WindowsUpdateCache
     
     # Report results
