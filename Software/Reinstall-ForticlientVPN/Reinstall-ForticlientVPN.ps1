@@ -177,27 +177,59 @@ function Install-ForticlientVPN {
         
         Write-Host "Installing Forticlient VPN..."
 
-        # Build installation arguments based on parameters
-        $installArgs = @()
-        if (-not $Interactive) {
-            $installArgs += "/quiet", "/accepteula"
+        # Build installation arguments for completely silent installation
+        $installArgs = if ($Interactive) {
+            @("/norestart")
+        } else {
+            @(
+                "/quiet",
+                "/passive",
+                "/norestart",
+                "/accepteula",
+                "/q",
+                "/qn",
+                "/silent",
+                "/verysilent",
+                "/suppressmsgboxes",
+                "/nocloseapplications",
+                "/nocancel"
+            )
         }
-        $installArgs += "/norestart"
         
         Write-Verbose "Install arguments: $($installArgs -join ' ')"
         
-        $startProcessParams = @{
-            FilePath = $installerPath
-            ArgumentList = $installArgs
-            Wait = $true
+        if (-not $ShowWindow -and -not $Interactive) {
+            # Use ProcessStartInfo for maximum control over window visibility
+            $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+            $pinfo.FileName = $installerPath
+            $pinfo.Arguments = $installArgs -join ' '
+            $pinfo.UseShellExecute = $false
+            $pinfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+            $pinfo.CreateNoWindow = $true
+            $pinfo.RedirectStandardOutput = $true
+            $pinfo.RedirectStandardError = $true
+            
+            Write-Verbose "Starting installation with ProcessStartInfo"
+            $process = [System.Diagnostics.Process]::Start($pinfo)
+            $process.WaitForExit()
+            
+            Write-Verbose "Installation process exit code: $($process.ExitCode)"
+        } else {
+            # Use Start-Process for interactive/visible installations
+            $startProcessParams = @{
+                FilePath = $installerPath
+                ArgumentList = $installArgs
+                Wait = $true
+                PassThru = $true
+            }
+            
+            if (-not $ShowWindow) {
+                $startProcessParams.WindowStyle = 'Hidden'
+            }
+            
+            Write-Verbose "Starting installation with Start-Process"
+            $process = Start-Process @startProcessParams
         }
-        
-        if (-not $ShowWindow) {
-            $startProcessParams.WindowStyle = 'Hidden'
-        }
-        
-        Write-Verbose "Starting installation process with parameters: $($startProcessParams | ConvertTo-Json)"
-        Start-Process @startProcessParams
         
         # Wait for installation to complete and verify
         Start-Sleep -Seconds 10  # Initial wait for installer to start
