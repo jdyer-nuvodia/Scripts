@@ -55,6 +55,7 @@ function Get-TimeStamp {
 try {
     # Initialize variables
     $startTime = (Get-Date).AddHours(-$Hours)
+    $startTimeFormatted = $startTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
     
     # Ensure output directory exists
     Initialize-OutputDirectory
@@ -64,15 +65,21 @@ try {
         $outputFile = "C:\Temp\${logName}_$(Get-TimeStamp).evtx"
         
         # Create query string for time filter
-        $timeQuery = "*[System[TimeCreated[@SystemTime>='$(Get-Date $startTime -Format o)']]"
+        $timeQuery = "*[System[TimeCreated[@SystemTime>=`'$startTimeFormatted`']]]"
         
-        # Export events using wevtutil
-        $result = wevtutil.exe export-log $logName $outputFile /q:$timeQuery
+        Write-Verbose "Using query: $timeQuery"
         
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Events from $logName exported to: $outputFile"
-        } else {
-            Write-Warning "Failed to export events from $logName"
+        try {
+            # Export events using wevtutil
+            $result = wevtutil.exe export-log $logName $outputFile "/q:$timeQuery" 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Events from $logName exported to: $outputFile"
+            } else {
+                Write-Warning "Failed to export events from $logName. Error: $result"
+            }
+        } catch {
+            Write-Warning "Error processing $logName : $_"
         }
     }
 } catch {
