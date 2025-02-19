@@ -13,7 +13,7 @@
     Collects Windows Event Logs for a specified time period and exports to file.
 .DESCRIPTION
     This script retrieves Windows Event Logs from specified log names for a defined
-    time period (default last hour) and exports them to a file in C:\Temp.
+    time period (default last hour) and exports them to a file in C:\Temp as .evtx format.
 .PARAMETER LogNames
     Array of event log names to collect. Defaults to Application and System.
 .PARAMETER Hours
@@ -55,27 +55,25 @@ function Get-TimeStamp {
 try {
     # Initialize variables
     $startTime = (Get-Date).AddHours(-$Hours)
-    $outputFile = "C:\Temp\EventLogs_$(Get-TimeStamp).csv"
     
     # Ensure output directory exists
     Initialize-OutputDirectory
     
-    # Collect events from specified logs
-    $events = foreach ($logName in $LogNames) {
-        Write-Verbose "Collecting events from $logName"
-        Get-WinEvent -FilterHashtable @{
-            LogName = $logName
-            StartTime = $startTime
-        } -ErrorAction SilentlyContinue
-    }
-    
-    # Export events to CSV
-    if ($events) {
-        $events | Select-Object TimeCreated, LogName, Id, LevelDisplayName, Message |
-            Export-Csv -Path $outputFile -NoTypeInformation
-        Write-Host "Events exported to: $outputFile"
-    } else {
-        Write-Warning "No events found for the specified time period"
+    foreach ($logName in $LogNames) {
+        Write-Verbose "Exporting events from $logName"
+        $outputFile = "C:\Temp\${logName}_$(Get-TimeStamp).evtx"
+        
+        # Create query string for time filter
+        $timeQuery = "*[System[TimeCreated[@SystemTime>='$(Get-Date $startTime -Format o)']]"
+        
+        # Export events using wevtutil
+        $result = wevtutil.exe export-log $logName $outputFile /q:$timeQuery
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Events from $logName exported to: $outputFile"
+        } else {
+            Write-Warning "Failed to export events from $logName"
+        }
     }
 } catch {
     Write-Error "Error collecting event logs: $_"
