@@ -91,7 +91,7 @@ function Uninstall-ExistingForticlient {
     }
 }
 
-function Verify-Installation {
+function Test-Installation {
     Write-Verbose "Verifying FortiClient installation..."
     $maxAttempts = 3
     $retryDelay = 10 # seconds
@@ -240,7 +240,7 @@ function Install-ForticlientVPN {
         
         for ($i = 1; $i -le $verificationAttempts; $i++) {
             Write-Verbose "Verification attempt $i of $verificationAttempts"
-            if (Verify-Installation) {
+            if (Test-Installation) {
                 Write-Host "Installation completed and verified successfully"
                 return
             }
@@ -320,7 +320,7 @@ Uninstall-ExistingForticlient
 Write-LogEntry "Installing new Forticlient VPN..." -Type "Info"
 Install-ForticlientVPN
 Write-Verbose "=== Forticlient VPN reinstallation process completed ==="
-if (Verify-Installation) {
+if (Test-Installation) {
     Write-Host "FortiClient VPN reinstallation completed and verified"
 } else {
     Write-Error "FortiClient VPN reinstallation could not be verified"
