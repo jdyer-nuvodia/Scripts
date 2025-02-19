@@ -177,60 +177,44 @@ function Install-ForticlientVPN {
         
         Write-Host "Installing Forticlient VPN..."
 
-        # Build installation arguments for completely silent installation
+        # Simplified installation arguments that work with FortiClient installer
         $installArgs = if ($Interactive) {
-            @("/norestart")
+            @()  # No arguments for interactive mode
         } else {
             @(
                 "/quiet",
-                "/passive",
                 "/norestart",
-                "/accepteula",
-                "/q",
-                "/qn",
-                "/silent",
-                "/verysilent",
-                "/suppressmsgboxes",
-                "/nocloseapplications",
-                "/nocancel"
+                "ALLUSERS=1",
+                "REBOOT=ReallySuppress"
             )
         }
         
         Write-Verbose "Install arguments: $($installArgs -join ' ')"
         
         if (-not $ShowWindow -and -not $Interactive) {
-            # Use ProcessStartInfo for maximum control over window visibility
-            $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-            $pinfo.FileName = $installerPath
-            $pinfo.Arguments = $installArgs -join ' '
-            $pinfo.UseShellExecute = $false
-            $pinfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-            $pinfo.CreateNoWindow = $true
-            $pinfo.RedirectStandardOutput = $true
-            $pinfo.RedirectStandardError = $true
-            
-            Write-Verbose "Starting installation with ProcessStartInfo"
-            $process = [System.Diagnostics.Process]::Start($pinfo)
-            $process.WaitForExit()
-            
-            Write-Verbose "Installation process exit code: $($process.ExitCode)"
-        } else {
-            # Use Start-Process for interactive/visible installations
+            # Use Start-Process with simplified parameters
             $startProcessParams = @{
                 FilePath = $installerPath
                 ArgumentList = $installArgs
                 Wait = $true
                 PassThru = $true
-            }
-            
-            if (-not $ShowWindow) {
-                $startProcessParams.WindowStyle = 'Hidden'
+                WindowStyle = 'Hidden'
             }
             
             Write-Verbose "Starting installation with Start-Process"
             $process = Start-Process @startProcessParams
+            
+            if ($process.ExitCode -ne 0) {
+                Write-Warning "Installation process exited with code: $($process.ExitCode)"
+            }
+        } else {
+            # Interactive installation
+            Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait
         }
-        
+
+        # Add small delay after installation
+        Start-Sleep -Seconds 15
+
         # Wait for installation to complete and verify
         Start-Sleep -Seconds 10  # Initial wait for installer to start
         $timeout = 300  # 5 minutes timeout
