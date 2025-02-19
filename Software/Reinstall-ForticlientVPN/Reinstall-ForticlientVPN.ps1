@@ -4,7 +4,7 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2024-02-13 18:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
+# Version: 1.1
 # Additional Info: Script to remove and reinstall Forticlient VPN
 # =============================================================================
 
@@ -51,6 +51,12 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 function Stop-ForticlientServices {
+    Write-Verbose "Searching for Forticlient processes..."
+    Get-Process | Where-Object { $_.Name -like "*Forti*" } | ForEach-Object {
+        Write-Verbose "Attempting to stop process: $($_.Name)"
+        $_ | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+    
     Write-Verbose "Searching for Forticlient services..."
     $services = Get-Service -Name "Forticlient*" -ErrorAction SilentlyContinue
     foreach ($service in $services) {
@@ -83,6 +89,24 @@ function Uninstall-ExistingForticlient {
             }
         }
     }
+}
+
+function Verify-Installation {
+    Write-Verbose "Verifying FortiClient installation..."
+    $installed = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+                Where-Object { $_.DisplayName -like "*FortiClient*" }
+    
+    if (-not $installed) {
+        $installed = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+                    Where-Object { $_.DisplayName -like "*FortiClient*" }
+    }
+    
+    if ($installed) {
+        Write-Host "FortiClient installation verified successfully"
+        return $true
+    }
+    Write-Warning "FortiClient installation could not be verified"
+    return $false
 }
 
 function Install-ForticlientVPN {
@@ -121,7 +145,30 @@ function Install-ForticlientVPN {
         
         Write-Verbose "Starting installation process with parameters: $($startProcessParams | ConvertTo-Json)"
         Start-Process @startProcessParams
-        Write-Host "Installation completed successfully"
+        
+        # Wait for installation to complete and verify
+        Start-Sleep -Seconds 10  # Initial wait for installer to start
+        $timeout = 300  # 5 minutes timeout
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        
+        while ($timer.Elapsed.TotalSeconds -lt $timeout) {
+            if (-not (Get-Process | Where-Object { $_.Name -like "*FortiClient*Installer*" })) {
+                Write-Verbose "Installation process completed"
+                break
+            }
+            Start-Sleep -Seconds 5
+        }
+        
+        if ($timer.Elapsed.TotalSeconds -ge $timeout) {
+            throw "Installation timed out after 5 minutes"
+        }
+        
+        # Verify installation
+        if (Verify-Installation) {
+            Write-Host "Installation completed and verified successfully"
+        } else {
+            throw "Installation could not be verified"
+        }
     }
     catch {
         Write-Error "Error during installation: $_"
@@ -142,4 +189,8 @@ Uninstall-ExistingForticlient
 Write-Verbose "Uninstallation completed"
 Install-ForticlientVPN
 Write-Verbose "=== Forticlient VPN reinstallation process completed ==="
-Write-Host "Forticlient VPN reinstallation completed"
+if (Verify-Installation) {
+    Write-Host "FortiClient VPN reinstallation completed and verified"
+} else {
+    Write-Error "FortiClient VPN reinstallation could not be verified"
+}
