@@ -130,9 +130,9 @@ function Test-Installation {
     }
     
     Write-Warning "FortiClient installation verification failed after $maxAttempts attempts"
-    Write-Verbose "Registry check: $($installed -ne $null)"
-    Write-Verbose "Files check: $($filesExist -ne $null)"
-    Write-Verbose "Service check: $($serviceExists -ne $null)"
+    Write-Verbose "Registry check: $($null -ne $installed)"
+    Write-Verbose "Files check: $($null -ne $filesExist)"
+    Write-Verbose "Service check: $($null -ne $serviceExists)"
     return $false
 }
 
@@ -304,7 +304,7 @@ function Get-InstallerError {
 
 function Get-ScriptDirectory {
     $scriptPath = $PSScriptRoot
-    if (!$scriptPath) {
+    if ($null -eq $scriptPath) {
         $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
     }
     return $scriptPath
