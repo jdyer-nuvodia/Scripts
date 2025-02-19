@@ -43,6 +43,11 @@ param(
     [switch]$Interactive
 )
 
+# Set verbose preference and transcript
+$VerbosePreference = 'Continue'
+$logFile = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) "FortiClientVPN_Install.log"
+Start-Transcript -Path $logFile -Append
+
 # Ensure running as administrator
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Verbose "Restarting script with elevated privileges..."
@@ -177,32 +182,40 @@ function Install-ForticlientVPN {
         
         Write-Host "Installing Forticlient VPN..."
 
-        # Simplified installation arguments that work with FortiClient installer
+        # Define installation arguments
         $installArgs = if ($Interactive) {
-            @()  # No arguments for interactive mode
+            @()
         } else {
             @(
                 "/quiet",
                 "/norestart",
                 "ALLUSERS=1",
-                "REBOOT=ReallySuppress"
+                "REBOOT=ReallySuppress",
+                "/S",
+                "/passive"
             )
         }
         
         Write-Verbose "Install arguments: $($installArgs -join ' ')"
         
         if (-not $ShowWindow -and -not $Interactive) {
-            # Use Start-Process with simplified parameters
-            $startProcessParams = @{
-                FilePath = $installerPath
-                ArgumentList = $installArgs
-                Wait = $true
-                PassThru = $true
-                WindowStyle = 'Hidden'
-            }
+            # Create process start info
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $installerPath
+            $psi.Arguments = $installArgs -join ' '
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+            $psi.CreateNoWindow = $true
+
+            # Start process with no window
+            $process = New-Object System.Diagnostics.Process
+            $process.StartInfo = $psi
             
-            Write-Verbose "Starting installation with Start-Process"
-            $process = Start-Process @startProcessParams
+            Write-Verbose "Starting installation process with no window"
+            [void]$process.Start()
+            $process.WaitForExit()
             
             if ($process.ExitCode -ne 0) {
                 $errorDescription = Get-InstallerError -ExitCode $process.ExitCode
@@ -210,8 +223,12 @@ function Install-ForticlientVPN {
                 throw "Installation failed: $errorDescription"
             }
         } else {
-            # Interactive installation
-            Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait
+            # Interactive or ShowWindow mode
+            if ($ShowWindow) {
+                Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait
+            } else {
+                Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -WindowStyle Hidden
+            }
         }
 
         # Add small delay after installation
@@ -270,14 +287,24 @@ function Write-LogEntry {
         [string]$Message,
         [string]$Type = "Info"
     )
+    
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Type] $Message"
+    
+    # Write to both verbose stream and log file
     Write-Verbose $logMessage
     
-    # Log to script directory
+    # Ensure log directory exists
     $scriptDir = Get-ScriptDirectory
     $logPath = Join-Path $scriptDir "FortiClientVPN_Install.log"
-    $logMessage | Out-File -FilePath $logPath -Append
+    
+    # Write to log file
+    try {
+        $logMessage | Out-File -FilePath $logPath -Append -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Failed to write to log file: $_"
+    }
 }
 
 function Get-InstallerError {
@@ -311,17 +338,24 @@ function Get-ScriptDirectory {
 }
 
 # Main execution
-Write-LogEntry "=== Starting Forticlient VPN reinstallation process ===" -Type "Info"
-Write-Host "Starting Forticlient VPN reinstallation..."
-Write-LogEntry "Stopping Forticlient services..." -Type "Info"
-Stop-ForticlientServices
-Write-LogEntry "Uninstalling existing Forticlient..." -Type "Info"
-Uninstall-ExistingForticlient
-Write-LogEntry "Installing new Forticlient VPN..." -Type "Info"
-Install-ForticlientVPN
-Write-Verbose "=== Forticlient VPN reinstallation process completed ==="
-if (Test-Installation) {
-    Write-Host "FortiClient VPN reinstallation completed and verified"
-} else {
-    Write-Error "FortiClient VPN reinstallation could not be verified"
+try {
+    Write-LogEntry "=== Starting Forticlient VPN reinstallation process ===" -Type "Info"
+    Write-Host "Starting Forticlient VPN reinstallation..."
+    Write-LogEntry "Stopping Forticlient services..." -Type "Info"
+    Stop-ForticlientServices
+    Write-LogEntry "Uninstalling existing Forticlient..." -Type "Info"
+    Uninstall-ExistingForticlient
+    Write-LogEntry "Installing new Forticlient VPN..." -Type "Info"
+    Install-ForticlientVPN
+    Write-LogEntry "=== Forticlient VPN reinstallation process completed ===" -Type "Info"
+    if (Test-Installation) {
+        Write-LogEntry "FortiClient VPN reinstallation completed and verified" -Type "Info"
+        Write-Host "FortiClient VPN reinstallation completed and verified"
+    } else {
+        Write-LogEntry "FortiClient VPN reinstallation could not be verified" -Type "Error"
+        Write-Error "FortiClient VPN reinstallation could not be verified"
+    }
+}
+finally {
+    Stop-Transcript
 }
