@@ -205,7 +205,9 @@ function Install-ForticlientVPN {
             $process = Start-Process @startProcessParams
             
             if ($process.ExitCode -ne 0) {
-                Write-Warning "Installation process exited with code: $($process.ExitCode)"
+                $errorDescription = Get-InstallerError -ExitCode $process.ExitCode
+                Write-LogEntry "Installation failed with exit code $($process.ExitCode): $errorDescription" -Type "Error"
+                throw "Installation failed: $errorDescription"
             }
         } else {
             # Interactive installation
@@ -251,8 +253,11 @@ function Install-ForticlientVPN {
         throw "Installation could not be verified after $verificationAttempts attempts"
     }
     catch {
-        Write-Error "Error during installation: $_"
-        Write-Verbose "Stack trace: $($_.ScriptStackTrace)"
+        Write-LogEntry "Error during installation: $_" -Type "Error"
+        Write-LogEntry "Stack trace: $($_.ScriptStackTrace)" -Type "Error"
+        $logPath = Join-Path (Get-ScriptDirectory) "FortiClientVPN_Install.log"
+        Write-Host "Installation log can be found at: $logPath"
+        throw
     }
     finally {
         Write-Verbose "Cleaning up temporary directory: $tempPath"
@@ -260,13 +265,59 @@ function Install-ForticlientVPN {
     }
 }
 
+function Write-LogEntry {
+    param(
+        [string]$Message,
+        [string]$Type = "Info"
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] [$Type] $Message"
+    Write-Verbose $logMessage
+    
+    # Log to script directory
+    $scriptDir = Get-ScriptDirectory
+    $logPath = Join-Path $scriptDir "FortiClientVPN_Install.log"
+    $logMessage | Out-File -FilePath $logPath -Append
+}
+
+function Get-InstallerError {
+    param(
+        [int]$ExitCode
+    )
+    
+    $errorCodes = @{
+        1602 = "User cancel installation"
+        1603 = "Fatal error during installation"
+        1618 = "Another installation is already in progress"
+        1619 = "Installation package could not be opened"
+        1620 = "Installation package invalid"
+        1622 = "Error opening installation log file"
+        1623 = "Language not supported"
+        1625 = "This installation is forbidden by system policy"
+    }
+    
+    if ($errorCodes.ContainsKey($ExitCode)) {
+        return $errorCodes[$ExitCode]
+    }
+    return "Unknown error code: $ExitCode"
+}
+
+function Get-ScriptDirectory {
+    $scriptPath = $PSScriptRoot
+    if (!$scriptPath) {
+        $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    }
+    return $scriptPath
+}
+
 # Main execution
-Write-Verbose "=== Starting Forticlient VPN reinstallation process ==="
+Write-LogEntry "=== Starting Forticlient VPN reinstallation process ===" -Type "Info"
 Write-Host "Starting Forticlient VPN reinstallation..."
+Write-LogEntry "Stopping Forticlient services..." -Type "Info"
 Stop-ForticlientServices
-Write-Verbose "Services stopped successfully"
+Write-LogEntry "Uninstalling existing Forticlient..." -Type "Info"
 Uninstall-ExistingForticlient
-Write-Verbose "Uninstallation completed"
+Write-LogEntry "Installing new Forticlient VPN..." -Type "Info"
 Install-ForticlientVPN
 Write-Verbose "=== Forticlient VPN reinstallation process completed ==="
 if (Verify-Installation) {
