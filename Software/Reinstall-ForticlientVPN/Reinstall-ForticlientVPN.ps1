@@ -93,19 +93,46 @@ function Uninstall-ExistingForticlient {
 
 function Verify-Installation {
     Write-Verbose "Verifying FortiClient installation..."
-    $installed = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
-                Where-Object { $_.DisplayName -like "*FortiClient*" }
+    $maxAttempts = 3
+    $retryDelay = 10 # seconds
     
-    if (-not $installed) {
-        $installed = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Write-Verbose "Verification attempt $attempt of $maxAttempts"
+        
+        # Check registry
+        $installed = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
                     Where-Object { $_.DisplayName -like "*FortiClient*" }
+        
+        if (-not $installed) {
+            $installed = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+                        Where-Object { $_.DisplayName -like "*FortiClient*" }
+        }
+        
+        # Check file system
+        $programFiles = @(
+            "${env:ProgramFiles}\Fortinet\FortiClient",
+            "${env:ProgramFiles(x86)}\Fortinet\FortiClient"
+        )
+        $filesExist = $programFiles | Where-Object { Test-Path $_ } | Select-Object -First 1
+        
+        # Check services
+        $serviceExists = Get-Service -Name "FortiClient*" -ErrorAction SilentlyContinue
+
+        if ($installed -and $filesExist -and $serviceExists) {
+            Write-Host "FortiClient installation verified successfully"
+            return $true
+        }
+        
+        if ($attempt -lt $maxAttempts) {
+            Write-Verbose "Waiting $retryDelay seconds before next verification attempt..."
+            Start-Sleep -Seconds $retryDelay
+        }
     }
     
-    if ($installed) {
-        Write-Host "FortiClient installation verified successfully"
-        return $true
-    }
-    Write-Warning "FortiClient installation could not be verified"
+    Write-Warning "FortiClient installation verification failed after $maxAttempts attempts"
+    Write-Verbose "Registry check: $($installed -ne $null)"
+    Write-Verbose "Files check: $($filesExist -ne $null)"
+    Write-Verbose "Service check: $($serviceExists -ne $null)"
     return $false
 }
 
@@ -121,7 +148,33 @@ function Install-ForticlientVPN {
     try {
         Write-Verbose "Downloading from: $downloadUrl"
         Write-Verbose "Saving to: $installerPath"
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath
+        
+        # Add timeout and retry for download
+        $downloadAttempts = 3
+        $success = $false
+        
+        for ($i = 1; $i -le $downloadAttempts; $i++) {
+            try {
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -TimeoutSec 60
+                $success = $true
+                break
+            }
+            catch {
+                Write-Warning "Download attempt $i failed: $_"
+                if ($i -lt $downloadAttempts) {
+                    Start-Sleep -Seconds 10
+                }
+            }
+        }
+        
+        if (-not $success) {
+            throw "Failed to download installer after $downloadAttempts attempts"
+        }
+        
+        if (-not (Test-Path $installerPath)) {
+            throw "Installer file not found at $installerPath"
+        }
+        
         Write-Host "Installing Forticlient VPN..."
 
         # Build installation arguments based on parameters
@@ -163,12 +216,23 @@ function Install-ForticlientVPN {
             throw "Installation timed out after 5 minutes"
         }
         
-        # Verify installation
-        if (Verify-Installation) {
-            Write-Host "Installation completed and verified successfully"
-        } else {
-            throw "Installation could not be verified"
+        # Extended wait and verification
+        $verificationAttempts = 6
+        $verificationDelay = 30
+        
+        for ($i = 1; $i -le $verificationAttempts; $i++) {
+            Write-Verbose "Verification attempt $i of $verificationAttempts"
+            if (Verify-Installation) {
+                Write-Host "Installation completed and verified successfully"
+                return
+            }
+            if ($i -lt $verificationAttempts) {
+                Write-Verbose "Waiting $verificationDelay seconds before next verification..."
+                Start-Sleep -Seconds $verificationDelay
+            }
         }
+        
+        throw "Installation could not be verified after $verificationAttempts attempts"
     }
     catch {
         Write-Error "Error during installation: $_"
