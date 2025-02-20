@@ -151,104 +151,102 @@ function Install-ForticlientVPN {
         Write-Host "Downloading Forticlient VPN installer..."
         $downloadUrl = "https://links.fortinet.com/forticlient/win/vpnagent"
         
-        try {
-            Write-Verbose "Downloading from: $downloadUrl"
-            Write-Verbose "Saving to: $exePath"
-            
-            # Download with retry logic
-            $downloadAttempts = 3
-            $success = $false
-            
-            for ($i = 1; $i -le $downloadAttempts; $i++) {
-                try {
-                    Invoke-WebRequest -Uri $downloadUrl -OutFile $exePath -TimeoutSec 60
-                    $success = $true
-                    break
-                }
-                catch {
-                    Write-Warning "Download attempt $i failed: $_"
-                    if ($i -lt $downloadAttempts) {
-                        Start-Sleep -Seconds 10
-                    }
+        Write-Verbose "Downloading from: $downloadUrl"
+        Write-Verbose "Saving to: $exePath"
+        
+        # Download with retry logic
+        $downloadAttempts = 3
+        $success = $false
+        
+        for ($i = 1; $i -le $downloadAttempts; $i++) {
+            try {
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $exePath -TimeoutSec 60
+                $success = $true
+                break
+            }
+            catch {
+                Write-Warning "Download attempt $i failed: $_"
+                if ($i -lt $downloadAttempts) {
+                    Start-Sleep -Seconds 10
                 }
             }
-            
-            if (-not $success) {
-                throw "Failed to download installer after $downloadAttempts attempts"
-            }
+        }
+        
+        if (-not $success) {
+            throw "Failed to download installer after $downloadAttempts attempts"
+        }
 
-            Write-Host "Extracting MSI from EXE installer..."
+        Write-Host "Extracting MSI from EXE installer..."
+        
+        # Run the exe with extract parameter and wait for completion
+        $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/extract" -PassThru -NoNewWindow
+        
+        # Wait up to 60 seconds for extraction
+        $timeoutSeconds = 60
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        
+        while (!$extractProcess.HasExited -and $timer.Elapsed.TotalSeconds -lt $timeoutSeconds) {
+            Start-Sleep -Seconds 1
+        }
+        
+        if (!$extractProcess.HasExited) {
+            Write-Verbose "Extraction process timed out, killing process..."
+            $extractProcess | Stop-Process -Force
+            throw "MSI extraction timed out after $timeoutSeconds seconds"
+        }
+        
+        # Wait additional time for file system
+        Start-Sleep -Seconds 5
+        
+        # Search for MSI in common locations
+        $searchPaths = @(
+            $env:TEMP,
+            $env:LOCALAPPDATA + "\Temp",
+            $tempPath
+        )
+        
+        $msiFile = $null
+        foreach ($path in $searchPaths) {
+            Write-Verbose "Searching for MSI in: $path"
+            $msiFile = Get-ChildItem -Path $path -Filter "FortiClientVPN*.msi" -Recurse -ErrorAction SilentlyContinue |
+                      Where-Object { $_.LastWriteTime -gt $timer.StartTime } |
+                      Sort-Object LastWriteTime -Descending |
+                      Select-Object -First 1
             
-            # Run the exe with extract parameter and wait for completion
-            $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/extract" -PassThru -NoNewWindow
-            
-            # Wait up to 60 seconds for extraction
-            $timeoutSeconds = 60
-            $timer = [Diagnostics.Stopwatch]::StartNew()
-            
-            while (!$extractProcess.HasExited -and $timer.Elapsed.TotalSeconds -lt $timeoutSeconds) {
-                Start-Sleep -Seconds 1
+            if ($msiFile) {
+                Write-Verbose "Found MSI: $($msiFile.FullName)"
+                break
             }
-            
-            if (!$extractProcess.HasExited) {
-                Write-Verbose "Extraction process timed out, killing process..."
-                $extractProcess | Stop-Process -Force
-                throw "MSI extraction timed out after $timeoutSeconds seconds"
-            }
-            
-            # Wait additional time for file system
-            Start-Sleep -Seconds 5
-            
-            # Search for MSI in common locations
-            $searchPaths = @(
-                $env:TEMP,
-                $env:LOCALAPPDATA + "\Temp",
-                $tempPath
-            )
-            
-            $msiFile = $null
-            foreach ($path in $searchPaths) {
-                Write-Verbose "Searching for MSI in: $path"
-                $msiFile = Get-ChildItem -Path $path -Filter "FortiClientVPN*.msi" -Recurse -ErrorAction SilentlyContinue |
-                          Where-Object { $_.LastWriteTime -gt $timer.StartTime } |
-                          Sort-Object LastWriteTime -Descending |
-                          Select-Object -First 1
-                
-                if ($msiFile) {
-                    Write-Verbose "Found MSI: $($msiFile.FullName)"
-                    break
-                }
-            }
-            
-            if (-not $msiFile) {
-                throw "Could not find extracted MSI file"
-            }
-            
-            # Install MSI silently
-            Write-Host "Installing Forticlient VPN from MSI..."
-            $msiArgs = "/i `"$($msiFile.FullName)`" REBOOT=ReallySuppress /qn"
-            $installProcess = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -WindowStyle Hidden
-            
-            if ($installProcess.ExitCode -ne 0) {
-                throw "MSI installation failed with exit code: $($installProcess.ExitCode)"
-            }
+        }
+        
+        if (-not $msiFile) {
+            throw "Could not find extracted MSI file"
+        }
+        
+        # Install MSI silently
+        Write-Host "Installing Forticlient VPN from MSI..."
+        $msiArgs = "/i `"$($msiFile.FullName)`" REBOOT=ReallySuppress /qn"
+        $installProcess = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -WindowStyle Hidden
+        
+        if ($installProcess.ExitCode -ne 0) {
+            throw "MSI installation failed with exit code: $($installProcess.ExitCode)"
+        }
 
-            # Verify installation
-            if (Test-Installation) {
-                Write-Host "FortiClient VPN installation completed successfully"
-            } else {
-                throw "Installation verification failed"
-            }
+        # Verify installation
+        if (Test-Installation) {
+            Write-Host "FortiClient VPN installation completed successfully"
+        } else {
+            throw "Installation verification failed"
         }
-        catch {
-            Write-LogEntry "Error during installation: $_" -Type "Error"
-            throw
-        }
-        finally {
-            Write-Verbose "Cleaning up temporary files..."
-            Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
-            Remove-Item -Path "$env:LOCALAPPDATA\Temp\FortiClient*" -Recurse -Force -ErrorAction SilentlyContinue
-        }
+    }
+    catch {
+        Write-LogEntry "Error during installation: $_" -Type "Error"
+        throw
+    }
+    finally {
+        Write-Verbose "Cleaning up temporary files..."
+        Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "$env:LOCALAPPDATA\Temp\FortiClient*" -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
