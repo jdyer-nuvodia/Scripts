@@ -22,6 +22,9 @@
 .PARAMETER MaxDepth
     Maximum depth of recursion for the directory scan. Defaults to 10 levels deep.
 
+.PARAMETER Top
+    Number of largest folders to display at each level. Defaults to 3. Range: 1-50.
+
 .EXAMPLE
     .\Get-FolderSizes.ps1
     Scans the C:\ drive with default settings
@@ -33,6 +36,10 @@
 .EXAMPLE
     .\Get-FolderSizes.ps1 -Path "\\server\share"
     Scans a network share starting from the root
+
+.EXAMPLE
+    .\Get-FolderSizes.ps1 -Top 10
+    Scans the C:\ drive and shows the 10 largest folders at each level
 
 .NOTES
     Author:  jdyer-nuvodia
@@ -56,7 +63,9 @@
 
 param (
     [string]$Path = "C:\",
-    [int]$MaxDepth = 10
+    [int]$MaxDepth = 10,
+    [ValidateRange(1, 50)]
+    [int]$Top = 3
 )
 
 # Setup transcript logging
@@ -330,14 +339,14 @@ while ($true) {
         break
     }
 
-    # Display the top 3 largest folders in a table format
-    Write-Host "`nTop 3 Largest Folders in: $currentPath`n"
+    # Display the top N largest folders in a table format
+    Write-Host "`nTop $Top Largest Folders in: $currentPath`n"
     Write-TableLine
     $format = "{0,-50} | {1,10} | {2,15} | {3,12} | {4,-50}"
     Write-Host ($format -f "Folder Path", "Size (GB)", "Subfolders", "Files", "Largest File (in this directory)")
     Write-TableLine
 
-    $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First 3
+    $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First $Top
     foreach ($folder in $topFolders) {
         $largestFileInfo = if ($folder.LargestFile) {
             if ($folder.LargestFile.SizeGB -ge 1) {
