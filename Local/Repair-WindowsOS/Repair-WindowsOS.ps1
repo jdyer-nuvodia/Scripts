@@ -113,21 +113,74 @@ Shell.ShellExecute "cmd.exe", "/c " & cmd, "", "runas", 1
 # Function to repair Windows image
 function Repair-WindowsImage {
     Write-RepairLog "Scanning Windows image for corruption..." -Color Cyan
-    $dism = Start-Process "DISM.exe" -ArgumentList "/Online /Cleanup-Image /ScanHealth" -Wait -PassThru
-    if ($dism.ExitCode -eq 0) {
-        Write-RepairLog "DISM scan completed successfully." -Color Green
+    
+    # Function to run DISM with timeout
+    function Start-DISMWithTimeout {
+        param (
+            [string]$Arguments,
+            [int]$TimeoutMinutes = 30
+        )
         
-        Write-RepairLog "Attempting to repair Windows image..." -Color Cyan
-        $dismRepair = Start-Process "DISM.exe" -ArgumentList "/Online /Cleanup-Image /RestoreHealth" -Wait -PassThru
-        if ($dismRepair.ExitCode -eq 0) {
-            Write-RepairLog "Windows image repair completed successfully." -Color Green
-        } else {
-            Write-RepairLog "Windows image repair encountered issues." -Color Yellow
-            $global:repairsMade = $true
-            $global:restartNeeded = $true
+        try {
+            $process = Start-Process "DISM.exe" -ArgumentList $Arguments -PassThru -NoNewWindow -Wait:$false
+            $timeoutSeconds = $TimeoutMinutes * 60
+            $processExited = $process.WaitForExit($timeoutSeconds * 1000)  # WaitForExit takes milliseconds
+            
+            if (-not $processExited) {
+                Write-RepairLog "DISM operation timed out after $TimeoutMinutes minutes. Terminating process..." -Color Red
+                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+                return $false
+            }
+            
+            return ($process.ExitCode -eq 0)
         }
+        catch {
+            Write-RepairLog "Error running DISM: $_" -Color Red
+            return $false
+        }
+    }
+    
+    # Check DISM process is not already running
+    $existingDISM = Get-Process "DISM" -ErrorAction SilentlyContinue
+    if ($existingDISM) {
+        Write-RepairLog "WARNING: Existing DISM process detected. Attempting to clean up..." -Color Yellow
+        $existingDISM | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 5
+    }
+    
+    # Clear any potential pending operations
+    Write-RepairLog "Cleaning up any pending DISM operations..." -Color Cyan
+    Start-DISMWithTimeout "/Online /Cleanup-Image /RevertPendingActions" | Out-Null
+    
+    # Perform the scan
+    Write-RepairLog "Starting DISM scan..." -Color Cyan
+    $scanSuccess = Start-DISMWithTimeout "/Online /Cleanup-Image /ScanHealth"
+    
+    if (-not $scanSuccess) {
+        Write-RepairLog "DISM scan failed. Attempting alternative repair approach..." -Color Yellow
+        # Try checking component store
+        $checkStoreSuccess = Start-DISMWithTimeout "/Online /Cleanup-Image /CheckHealth"
+        if (-not $checkStoreSuccess) {
+            Write-RepairLog "Component store check failed. Attempting forced cleanup..." -Color Yellow
+            Start-DISMWithTimeout "/Online /Cleanup-Image /StartComponentCleanup /ResetBase" | Out-Null
+        }
+    }
+    
+    # Attempt repair
+    Write-RepairLog "Attempting to repair Windows image..." -Color Cyan
+    $repairSuccess = Start-DISMWithTimeout "/Online /Cleanup-Image /RestoreHealth /LimitAccess"
+    
+    if (-not $repairSuccess) {
+        Write-RepairLog "Initial repair attempt failed. Trying without /LimitAccess..." -Color Yellow
+        $repairSuccess = Start-DISMWithTimeout "/Online /Cleanup-Image /RestoreHealth"
+    }
+    
+    if ($repairSuccess) {
+        Write-RepairLog "Windows image repair completed successfully." -Color Green
     } else {
-        Write-RepairLog "DISM scan encountered issues." -Color Yellow
+        Write-RepairLog "Windows image repair encountered issues. System may require offline repair." -Color Red
+        $global:repairsMade = $true
+        $global:restartNeeded = $true
     }
 }
 
