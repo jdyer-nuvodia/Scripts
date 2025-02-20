@@ -145,14 +145,15 @@ function Install-ForticlientVPN {
     $tempPath = Join-Path $env:TEMP "ForticlientVPN"
     Write-Verbose "Creating temporary directory: $tempPath"
     New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
-    $installerPath = Join-Path $tempPath "FortiClientVPN.msi"
+    $exePath = Join-Path $tempPath "FortiClientVPN.exe"
+    $msiPath = Join-Path $tempPath "FortiClientVPN.msi"
 
     Write-Host "Downloading Forticlient VPN installer..."
-    $downloadUrl = "https://filestore.fortinet.com/forticlient/downloads/FortiClientVPN.msi"
+    $downloadUrl = "https://links.fortinet.com/forticlient/win/vpnagent"
     
     try {
         Write-Verbose "Downloading from: $downloadUrl"
-        Write-Verbose "Saving to: $installerPath"
+        Write-Verbose "Saving to: $exePath"
         
         # Add timeout and retry for download
         $downloadAttempts = 3
@@ -160,7 +161,7 @@ function Install-ForticlientVPN {
         
         for ($i = 1; $i -le $downloadAttempts; $i++) {
             try {
-                Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -TimeoutSec 60
+                Invoke-WebRequest -Uri $downloadUrl -OutFile $exePath -TimeoutSec 60
                 $success = $true
                 break
             }
@@ -176,19 +177,40 @@ function Install-ForticlientVPN {
             throw "Failed to download installer after $downloadAttempts attempts"
         }
         
-        if (-not (Test-Path $installerPath)) {
-            throw "Installer file not found at $installerPath"
+        if (-not (Test-Path $exePath)) {
+            throw "Installer file not found at $exePath"
         }
         
-        Write-Host "Installing Forticlient VPN..."
+        Write-Host "Extracting MSI from EXE installer..."
+        $extractArgs = @(
+            "/s",              # Silent mode
+            "/a",              # Administrative install
+            "/extract",        # Extract files
+            "`"$tempPath`""    # Extract path
+        )
+        
+        # Extract MSI from EXE
+        $extractProcess = Start-Process -FilePath $exePath -ArgumentList $extractArgs -Wait -PassThru -WindowStyle Hidden
+        
+        if ($extractProcess.ExitCode -ne 0) {
+            throw "Failed to extract MSI from installer"
+        }
+        
+        # Find the extracted MSI file
+        $extractedMsi = Get-ChildItem -Path $tempPath -Filter "*.msi" | Select-Object -First 1
+        if (-not $extractedMsi) {
+            throw "Could not find extracted MSI file"
+        }
+        
+        Write-Host "Installing Forticlient VPN from MSI..."
 
-        # Define installation arguments
+        # Define MSI installation arguments
         $installArgs = if ($Interactive) {
-            @("/i", "`"$installerPath`"")
+            @("/i", "`"$($extractedMsi.FullName)`"")
         } else {
             @(
                 "/i",
-                "`"$installerPath`"",
+                "`"$($extractedMsi.FullName)`"",
                 "/qn",
                 "REBOOT=ReallySuppress",
                 "SCHEDULEDTASK=0",
@@ -196,11 +218,11 @@ function Install-ForticlientVPN {
                 "STARTMENU_SHORTCUT=0"
             )
         }
-        
+
         Write-Verbose "Install arguments: $($installArgs -join ' ')"
         
         if (-not $ShowWindow -and -not $Interactive) {
-            # Create process start info
+            # Create process start info for MSI installation
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = "msiexec.exe"
             $psi.Arguments = $installArgs -join ' '
@@ -208,11 +230,11 @@ function Install-ForticlientVPN {
             $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
             $psi.CreateNoWindow = $true
 
-            # Start process with no window
+            # Start MSI installation
             $process = New-Object System.Diagnostics.Process
             $process.StartInfo = $psi
             
-            Write-Verbose "Starting installation process with no window"
+            Write-Verbose "Starting MSI installation process with no window"
             [void]$process.Start()
             $process.WaitForExit()
             
