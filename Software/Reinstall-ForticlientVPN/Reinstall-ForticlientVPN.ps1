@@ -142,7 +142,7 @@ function Test-Installation {
 }
 
 function Install-ForticlientVPN {
-    $tempPath = Join-Path $env:TEMP "ForticlientVPN"
+    $tempPath = Join-Path $env:LOCALAPPDATA "Temp\ForticlientVPN"
     Write-Verbose "Creating temporary directory: $tempPath"
     New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
     $exePath = Join-Path $tempPath "FortiClientVPN.exe"
@@ -155,7 +155,7 @@ function Install-ForticlientVPN {
         Write-Verbose "Downloading from: $downloadUrl"
         Write-Verbose "Saving to: $exePath"
         
-        # Add timeout and retry for download
+        # Download with retry logic
         $downloadAttempts = 3
         $success = $false
         
@@ -176,130 +176,63 @@ function Install-ForticlientVPN {
         if (-not $success) {
             throw "Failed to download installer after $downloadAttempts attempts"
         }
-        
-        if (-not (Test-Path $exePath)) {
-            throw "Installer file not found at $exePath"
-        }
-        
+
         Write-Host "Extracting MSI from EXE installer..."
-        $extractArgs = @(
-            "/s",              # Silent mode
-            "/a",              # Administrative install
-            "/extract",        # Extract files
-            "`"$tempPath`""    # Extract path
-        )
+        Start-Process -FilePath $exePath -ArgumentList "/extract" -NoNewWindow -Wait
         
-        # Extract MSI from EXE
-        $extractProcess = Start-Process -FilePath $exePath -ArgumentList $extractArgs -Wait -PassThru -WindowStyle Hidden
+        # Find the extracted MSI in temp directory
+        Start-Sleep -Seconds 10
+        $latestFolder = Get-ChildItem -Path $env:LOCALAPPDATA\Temp | 
+                       Where-Object {$_.PSIsContainer} | 
+                       Sort-Object CreationTime -Descending | 
+                       Select-Object -First 1
         
-        if ($extractProcess.ExitCode -ne 0) {
-            throw "Failed to extract MSI from installer"
-        }
+        $extractedMsi = Get-ChildItem -Path $latestFolder.FullName -Filter "*.msi" | Select-Object -First 1
         
-        # Find the extracted MSI file
-        $extractedMsi = Get-ChildItem -Path $tempPath -Filter "*.msi" | Select-Object -First 1
         if (-not $extractedMsi) {
             throw "Could not find extracted MSI file"
         }
         
+        # Copy MSI to our temp location
+        Copy-Item -Path $extractedMsi.FullName -Destination $msiPath -Force
+        
+        # Stop any remaining installer processes
+        Stop-Process -Name FortiClientVPNOnlineInstaller -ErrorAction SilentlyContinue
+        
         Write-Host "Installing Forticlient VPN from MSI..."
+        $installArgs = @(
+            "/i",
+            "`"$msiPath`"",
+            "REBOOT=ReallySuppress",
+            "SCHEDULEDTASK=0",
+            "DESKTOP_SHORTCUT=0",
+            "STARTMENU_SHORTCUT=0",
+            "/qn"
+        )
+        
+        # Install MSI silently
+        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -PassThru -WindowStyle Hidden
+        
+        if ($process.ExitCode -ne 0) {
+            $errorDescription = Get-InstallerError -ExitCode $process.ExitCode
+            throw "Installation failed: $errorDescription"
+        }
 
-        # Define MSI installation arguments
-        $installArgs = if ($Interactive) {
-            @("/i", "`"$($extractedMsi.FullName)`"")
+        # Verify installation
+        if (Test-Installation) {
+            Write-Host "FortiClient VPN installation completed successfully"
         } else {
-            @(
-                "/i",
-                "`"$($extractedMsi.FullName)`"",
-                "/qn",
-                "REBOOT=ReallySuppress",
-                "SCHEDULEDTASK=0",
-                "DESKTOP_SHORTCUT=0",
-                "STARTMENU_SHORTCUT=0"
-            )
+            throw "Installation verification failed"
         }
-
-        Write-Verbose "Install arguments: $($installArgs -join ' ')"
-        
-        if (-not $ShowWindow -and -not $Interactive) {
-            # Create process start info for MSI installation
-            $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = "msiexec.exe"
-            $psi.Arguments = $installArgs -join ' '
-            $psi.UseShellExecute = $false
-            $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-            $psi.CreateNoWindow = $true
-
-            # Start MSI installation
-            $process = New-Object System.Diagnostics.Process
-            $process.StartInfo = $psi
-            
-            Write-Verbose "Starting MSI installation process with no window"
-            [void]$process.Start()
-            $process.WaitForExit()
-            
-            if ($process.ExitCode -ne 0) {
-                $errorDescription = Get-InstallerError -ExitCode $process.ExitCode
-                Write-LogEntry "Installation failed with exit code $($process.ExitCode): $errorDescription" -Type "Error"
-                throw "Installation failed: $errorDescription"
-            }
-        } else {
-            # Interactive or ShowWindow mode
-            if ($ShowWindow) {
-                Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait
-            } else {
-                Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -WindowStyle Hidden
-            }
-        }
-
-        # Add small delay after installation
-        Start-Sleep -Seconds 15
-
-        # Wait for installation to complete and verify
-        Start-Sleep -Seconds 10  # Initial wait for installer to start
-        $timeout = 300  # 5 minutes timeout
-        $timer = [Diagnostics.Stopwatch]::StartNew()
-        
-        while ($timer.Elapsed.TotalSeconds -lt $timeout) {
-            if (-not (Get-Process | Where-Object { $_.Name -like "*FortiClient*Installer*" })) {
-                Write-Verbose "Installation process completed"
-                break
-            }
-            Start-Sleep -Seconds 5
-        }
-        
-        if ($timer.Elapsed.TotalSeconds -ge $timeout) {
-            throw "Installation timed out after 5 minutes"
-        }
-        
-        # Extended wait and verification
-        $verificationAttempts = 6
-        $verificationDelay = 30
-        
-        for ($i = 1; $i -le $verificationAttempts; $i++) {
-            Write-Verbose "Verification attempt $i of $verificationAttempts"
-            if (Test-Installation) {
-                Write-Host "Installation completed and verified successfully"
-                return
-            }
-            if ($i -lt $verificationAttempts) {
-                Write-Verbose "Waiting $verificationDelay seconds before next verification..."
-                Start-Sleep -Seconds $verificationDelay
-            }
-        }
-        
-        throw "Installation could not be verified after $verificationAttempts attempts"
     }
     catch {
         Write-LogEntry "Error during installation: $_" -Type "Error"
-        Write-LogEntry "Stack trace: $($_.ScriptStackTrace)" -Type "Error"
-        $logPath = Join-Path (Get-ScriptDirectory) "FortiClientVPN_Install.log"
-        Write-Host "Installation log can be found at: $logPath"
         throw
     }
     finally {
-        Write-Verbose "Cleaning up temporary directory: $tempPath"
+        Write-Verbose "Cleaning up temporary files..."
         Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "$env:LOCALAPPDATA\Temp\FortiClient*" -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
