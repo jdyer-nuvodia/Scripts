@@ -101,3 +101,126 @@ PS>TerminatingError(): "The pipeline has been stopped."
 PowerShell transcript end
 End time: 20250219172215
 **********************
+**********************
+PowerShell transcript start
+Start time: 20250219172256
+Username: NUVODIA\jdyer
+RunAs User: NUVODIA\jdyer
+Configuration Name: 
+Machine: LT-JBDYER (Microsoft Windows NT 10.0.22631.0)
+Host Application: C:\Program Files\PowerShell\7\pwsh.dll -noexit -command try { . "c:\Users\jdyer\AppData\Local\Programs\Microsoft VS Code Insiders\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1" } catch {}
+Process ID: 23308
+PSVersion: 7.5.0
+PSEdition: Core
+GitCommitId: 7.5.0
+OS: Microsoft Windows 10.0.22631
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+Transcript started, output file is C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log
+VERBOSE: [2025-02-19 17:22:56] [Info] === Starting Forticlient VPN reinstallation process ===
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+Starting Forticlient VPN reinstallation...
+VERBOSE: [2025-02-19 17:22:56] [Info] Stopping Forticlient services...
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+VERBOSE: Searching for Forticlient processes...
+VERBOSE: Searching for Forticlient services...
+VERBOSE: [2025-02-19 17:22:56] [Info] Uninstalling existing Forticlient...
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+VERBOSE: Searching for installed Forticlient applications...
+VERBOSE: Checking registry key: HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
+VERBOSE: Checking registry key: HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
+VERBOSE: [2025-02-19 17:22:56] [Info] Installing new Forticlient VPN...
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+VERBOSE: Creating temporary directory: C:\Users\jdyer\AppData\Local\Temp\ForticlientVPN
+Downloading Forticlient VPN installer...
+VERBOSE: Downloading from: https://links.fortinet.com/forticlient/win/vpnagent
+VERBOSE: Saving to: C:\Users\jdyer\AppData\Local\Temp\ForticlientVPN\ForticlientVPN.exe
+VERBOSE: Requested HTTP/1.1 GET with 0-byte payload
+VERBOSE: Received HTTP/1.1 2794560-byte response of content type application/octet-stream
+VERBOSE: File Name: ForticlientVPN.exe
+Installing Forticlient VPN...
+VERBOSE: Install arguments: /S /v"/qn REBOOT=ReallySuppress"
+VERBOSE: Starting installation process with no window
+VERBOSE: Installation process completed
+VERBOSE: Verification attempt 1 of 6
+VERBOSE: Verifying FortiClient installation...
+VERBOSE: Verification attempt 1 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 2 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 3 of 3
+WARNING: FortiClient installation verification failed after 3 attempts
+VERBOSE: Registry check: False
+VERBOSE: Files check: False
+VERBOSE: Service check: False
+VERBOSE: Waiting 30 seconds before next verification...
+VERBOSE: Verification attempt 2 of 6
+VERBOSE: Verifying FortiClient installation...
+VERBOSE: Verification attempt 1 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 2 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 3 of 3
+WARNING: FortiClient installation verification failed after 3 attempts
+VERBOSE: Registry check: False
+VERBOSE: Files check: False
+VERBOSE: Service check: False
+VERBOSE: Waiting 30 seconds before next verification...
+VERBOSE: Verification attempt 3 of 6
+VERBOSE: Verifying FortiClient installation...
+VERBOSE: Verification attempt 1 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 2 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 3 of 3
+WARNING: FortiClient installation verification failed after 3 attempts
+VERBOSE: Registry check: False
+VERBOSE: Files check: False
+VERBOSE: Service check: False
+VERBOSE: Waiting 30 seconds before next verification...
+VERBOSE: Verification attempt 4 of 6
+VERBOSE: Verifying FortiClient installation...
+VERBOSE: Verification attempt 1 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 2 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 3 of 3
+WARNING: FortiClient installation verification failed after 3 attempts
+VERBOSE: Registry check: False
+VERBOSE: Files check: False
+VERBOSE: Service check: False
+VERBOSE: Waiting 30 seconds before next verification...
+VERBOSE: Verification attempt 5 of 6
+VERBOSE: Verifying FortiClient installation...
+VERBOSE: Verification attempt 1 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 2 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 3 of 3
+WARNING: FortiClient installation verification failed after 3 attempts
+VERBOSE: Registry check: False
+VERBOSE: Files check: False
+VERBOSE: Service check: False
+VERBOSE: Waiting 30 seconds before next verification...
+VERBOSE: Verification attempt 6 of 6
+VERBOSE: Verifying FortiClient installation...
+VERBOSE: Verification attempt 1 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+VERBOSE: Verification attempt 2 of 3
+VERBOSE: Waiting 10 seconds before next verification attempt...
+PS>TerminatingError(): "The pipeline has been stopped."
+>> TerminatingError(): "The pipeline has been stopped."
+VERBOSE: Cleaning up temporary directory: C:\Users\jdyer\AppData\Local\Temp\ForticlientVPN
+PS>TerminatingError(): "The pipeline has been stopped."
+**********************
+PowerShell transcript end
+End time: 20250219173317
+**********************
