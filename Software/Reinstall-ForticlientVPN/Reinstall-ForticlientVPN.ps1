@@ -145,10 +145,10 @@ function Install-ForticlientVPN {
     $tempPath = Join-Path $env:TEMP "ForticlientVPN"
     Write-Verbose "Creating temporary directory: $tempPath"
     New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
-    $installerPath = Join-Path $tempPath "ForticlientVPN.exe"
+    $installerPath = Join-Path $tempPath "FortiClientVPN.msi"
 
     Write-Host "Downloading Forticlient VPN installer..."
-    $downloadUrl = "https://links.fortinet.com/forticlient/win/vpnagent"
+    $downloadUrl = "https://filestore.fortinet.com/forticlient/downloads/FortiClientVPN.msi"
     
     try {
         Write-Verbose "Downloading from: $downloadUrl"
@@ -184,11 +184,16 @@ function Install-ForticlientVPN {
 
         # Define installation arguments
         $installArgs = if ($Interactive) {
-            @()
+            @("/i", "`"$installerPath`"")
         } else {
             @(
-                "/S",
-                "/v`"/qn REBOOT=ReallySuppress`""
+                "/i",
+                "`"$installerPath`"",
+                "/qn",
+                "REBOOT=ReallySuppress",
+                "SCHEDULEDTASK=0",
+                "DESKTOP_SHORTCUT=0",
+                "STARTMENU_SHORTCUT=0"
             )
         }
         
@@ -197,9 +202,9 @@ function Install-ForticlientVPN {
         if (-not $ShowWindow -and -not $Interactive) {
             # Create process start info
             $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = $installerPath
+            $psi.FileName = "msiexec.exe"
             $psi.Arguments = $installArgs -join ' '
-            $psi.UseShellExecute = $true  # Changed to true
+            $psi.UseShellExecute = $false
             $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
             $psi.CreateNoWindow = $true
 
@@ -219,9 +224,9 @@ function Install-ForticlientVPN {
         } else {
             # Interactive or ShowWindow mode
             if ($ShowWindow) {
-                Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait
+                Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait
             } else {
-                Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -WindowStyle Hidden
+                Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -WindowStyle Hidden
             }
         }
 
