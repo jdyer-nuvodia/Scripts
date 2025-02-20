@@ -187,12 +187,8 @@ function Install-ForticlientVPN {
             @()
         } else {
             @(
-                "/quiet",
-                "/norestart",
-                "ALLUSERS=1",
-                "REBOOT=ReallySuppress",
                 "/S",
-                "/passive"
+                "/v`"/qn REBOOT=ReallySuppress`""
             )
         }
         
@@ -203,9 +199,7 @@ function Install-ForticlientVPN {
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = $installerPath
             $psi.Arguments = $installArgs -join ' '
-            $psi.UseShellExecute = $false
-            $psi.RedirectStandardOutput = $true
-            $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $true  # Changed to true
             $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
             $psi.CreateNoWindow = $true
 
