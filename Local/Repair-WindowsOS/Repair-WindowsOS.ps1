@@ -49,20 +49,64 @@ function Test-DiskHealth {
     Write-RepairLog "Checking disk health..." -Color Cyan
     
     # Get system drive letter
-    $systemDrive = $env:SystemDrive
+    $systemDrive = $env:SystemDrive.TrimEnd(':')
     
-    # Run chkdsk in read-only mode first
-    Write-RepairLog "Running initial disk check on $systemDrive..." -Color Cyan
-    $chkdsk = Start-Process "chkdsk.exe" -ArgumentList "$systemDrive /scan" -Wait -PassThru -WindowStyle Hidden
-    
-    if ($chkdsk.ExitCode -ne 0) {
-        Write-RepairLog "Disk errors detected. Scheduling full chkdsk on next restart..." -Color Yellow
-        # Schedule full chkdsk with fix on next reboot
-        $fullChk = Start-Process "chkdsk.exe" -ArgumentList "$systemDrive /f /r" -Wait -PassThru -WindowStyle Hidden
-        $global:restartNeeded = $true
-        $global:repairsMade = $true
-    } else {
-        Write-RepairLog "No disk errors detected." -Color Green
+    try {
+        # First check if chkdsk is already scheduled
+        $fsutil = Start-Process "fsutil" -ArgumentList "dirty query $systemDrive`:" -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\fsutil.txt"
+        $isDirty = Get-Content "$env:TEMP\fsutil.txt" | Select-String "dirty bit"
+        
+        if ($isDirty) {
+            Write-RepairLog "Disk check is already scheduled for next restart." -Color Yellow
+            $global:restartNeeded = $true
+            return
+        }
+
+        # Run initial disk analysis
+        Write-RepairLog "Running disk analysis on $systemDrive..." -Color Cyan
+        $chkdskOutput = & chkdsk.exe $systemDrive`: /scan
+        
+        # Display chkdsk findings
+        Write-RepairLog "Disk Analysis Results:" -Color White
+        foreach ($line in $chkdskOutput) {
+            if ($line -match "Windows has scanned the file system" -or
+                $line -match "found \d+ problems" -or
+                $line -match "Windows needs to repair") {
+                Write-RepairLog "`t$line" -Color Yellow
+            }
+        }
+
+        # If problems found, schedule full chkdsk
+        if ($chkdskOutput -match "found \d+ problems" -or $chkdskOutput -match "Windows needs to repair") {
+            Write-RepairLog "Disk errors detected. Scheduling full disk check..." -Color Yellow
+            
+            # Create temporary VBScript to handle UAC and show progress
+            $vbsScript = @"
+Set Shell = CreateObject("Shell.Application")
+Set FSO = CreateObject("Scripting.FileSystemObject")
+cmd = "cmd /c chkdsk $systemDrive`: /f /r & pause"
+Shell.ShellExecute "cmd.exe", "/c " & cmd, "", "runas", 1
+"@
+            $vbsPath = Join-Path $env:TEMP "RunChkDsk.vbs"
+            $vbsScript | Out-File -FilePath $vbsPath -Encoding ASCII
+            
+            # Run the VBScript to schedule chkdsk
+            Start-Process "wscript.exe" -ArgumentList $vbsPath -Wait
+            Remove-Item $vbsPath -Force
+            
+            Write-RepairLog "Full disk check has been scheduled for next system restart" -Color Yellow
+            $global:restartNeeded = $true
+            $global:repairsMade = $true
+        } else {
+            Write-RepairLog "No significant disk issues detected." -Color Green
+        }
+    }
+    catch {
+        Write-RepairLog "Error during disk check: $_" -Color Red
+        throw
+    }
+    finally {
+        Remove-Item "$env:TEMP\fsutil.txt" -Force -ErrorAction SilentlyContinue
     }
 }
 
