@@ -1,0 +1,28 @@
+[2025-02-19 17:12:53] === Windows OS Repair Script ===
+[2025-02-19 17:12:53] Started by: jdyer
+[2025-02-19 17:12:53] Start Time (UTC): 2025-02-19 17:12:53
+[2025-02-19 17:12:53] ----------------------------------------
+[2025-02-19 17:12:53] Checking disk health...
+[2025-02-19 17:12:54] Running disk analysis on C...
+[2025-02-19 17:13:32] Disk Analysis Results:
+[2025-02-19 17:13:32] 	Windows has scanned the file system and found no problems.
+[2025-02-19 17:13:32] No significant disk issues detected.
+[2025-02-19 17:13:32] Scanning Windows image for corruption...
+[2025-02-19 17:19:55] DISM scan encountered issues.
+[2025-02-19 17:19:55] Checking system file integrity...
+[2025-02-19 17:21:32] System File Checker completed successfully.
+[2025-02-19 17:21:32] Clearing Windows Update cache...
+[2025-02-19 17:21:34] Stopped service: wuauserv
+[2025-02-19 17:21:34] Stopped service: cryptSvc
+[2025-02-19 17:21:34] Stopped service: bits
+[2025-02-19 17:21:34] Stopped service: msiserver
+[2025-02-19 17:22:14] Started service: wuauserv
+[2025-02-19 17:22:14] Started service: cryptSvc
+[2025-02-19 17:22:15] Started service: bits
+[2025-02-19 17:22:15] Started service: msiserver
+[2025-02-19 17:22:15] Windows Update cache cleared.
+[2025-02-19 17:22:15] ----------------------------------------
+[2025-02-19 17:22:15] Repairs performed: Yes
+[2025-02-19 17:22:15] Restart required: No
+[2025-02-19 17:22:15] End Time (UTC): 2025-02-19 17:22:15
+[2025-02-19 17:22:15] Log file: C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Local\Repair-WindowsOS\WindowsRepair_20250219_171253.log
