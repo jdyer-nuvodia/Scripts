@@ -1180,3 +1180,73 @@ PS>TerminatingError(): "Unable to extract MSI from installer package"
 PowerShell transcript end
 End time: 20250221162144
 **********************
+**********************
+PowerShell transcript start
+Start time: 20250221162538
+Username: NUVODIA\jdyer
+RunAs User: NUVODIA\jdyer
+Configuration Name: 
+Machine: LT-JBDYER (Microsoft Windows NT 10.0.22631.0)
+Host Application: C:\Program Files\PowerShell\7\pwsh.dll -NoProfile -ExecutionPolicy Bypass -Command Import-Module 'c:\Users\jdyer\.vscode-insiders\extensions\ms-vscode.powershell-2025.1.0\modules\PowerShellEditorServices\PowerShellEditorServices.psd1'; Start-EditorServices -HostName 'Visual Studio Code Host' -HostProfileId 'Microsoft.VSCode' -HostVersion '2025.1.0' -BundledModulesPath 'c:\Users\jdyer\.vscode-insiders\extensions\ms-vscode.powershell-2025.1.0\modules' -EnableConsoleRepl -StartupBanner "PowerShell Extension v2025.1.0
+Copyright (c) Microsoft Corporation.
+
+https://aka.ms/vscode-powershell
+Type 'help' to get help.
+" -LogLevel 'Warning' -LogPath 'c:\Users\jdyer\AppData\Roaming\Code - Insiders\logs\20250221T162015\window1\exthost\ms-vscode.powershell' -SessionDetailsPath 'c:\Users\jdyer\AppData\Roaming\Code - Insiders\User\globalStorage\ms-vscode.powershell\sessions\PSES-VSCode-912-343180.json' -FeatureFlags @() 
+Process ID: 18744
+PSVersion: 7.5.0
+PSEdition: Core
+GitCommitId: 7.5.0
+OS: Microsoft Windows 10.0.22631
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+Transcript started, output file is C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log
+VERBOSE: [2025-02-21 16:25:38] [Info] === Starting Forticlient VPN reinstallation process ===
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file after 3 attempts: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+Starting Forticlient VPN reinstallation...
+VERBOSE: [2025-02-21 16:25:42] [Info] Stopping Forticlient services...
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file after 3 attempts: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+VERBOSE: Searching for Forticlient processes...
+VERBOSE: Searching for Forticlient services...
+VERBOSE: [2025-02-21 16:25:46] [Info] Uninstalling existing Forticlient...
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file after 3 attempts: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+VERBOSE: Searching for installed Forticlient applications...
+VERBOSE: Checking registry key: HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
+VERBOSE: Checking registry key: HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*
+VERBOSE: [2025-02-21 16:25:50] [Info] Installing new Forticlient VPN...
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file after 3 attempts: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+VERBOSE: Creating temporary directory: C:\Users\jdyer\AppData\Local\Temp\ForticlientVPN
+Downloading Forticlient VPN installer...
+VERBOSE: Downloading from: https://links.fortinet.com/forticlient/win/vpnagent
+VERBOSE: Saving to: C:\Users\jdyer\AppData\Local\Temp\ForticlientVPN\FortiClientVPN.exe
+VERBOSE: Requested HTTP/1.1 GET with 0-byte payload
+VERBOSE: Received HTTP/1.1 2794560-byte response of content type application/octet-stream
+VERBOSE: File Name: FortiClientVPN.exe
+Extracting MSI from FortiClient VPN installer...
+VERBOSE: [2025-02-21 16:27:40] [Error] Error during installation: Unable to find MSI file after extraction attempts
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+PS>TerminatingError(Out-File): "The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process."
+WARNING: Failed to write to log file after 3 attempts: The process cannot access the file 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Software\Reinstall-ForticlientVPN\FortiClientVPN_Install.log' because it is being used by another process.
+VERBOSE: Cleaning up temporary files...
+PS>TerminatingError(): "Unable to find MSI file after extraction attempts"
+**********************
+PowerShell transcript end
+End time: 20250221162744
+**********************
