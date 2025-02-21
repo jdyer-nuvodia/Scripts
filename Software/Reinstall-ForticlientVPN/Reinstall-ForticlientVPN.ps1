@@ -146,7 +146,7 @@ function Install-ForticlientVPN {
     Write-Verbose "Creating temporary directory: $tempPath"
     New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
     $exePath = Join-Path $tempPath "FortiClientVPN.exe"
-    $msiPath = Join-Path $tempPath "FortiClient.msi"
+    $extractPath = Join-Path $tempPath "Extracted"
 
     try {
         Write-Host "Downloading Forticlient VPN installer..."
@@ -178,49 +178,56 @@ function Install-ForticlientVPN {
         }
 
         Write-Host "Extracting MSI from FortiClient VPN installer..."
+        New-Item -ItemType Directory -Force -Path $extractPath | Out-Null
         
-        # Start the installer with extraction parameters and hidden window
-        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-        $startInfo.FileName = $exePath
-        $startInfo.Arguments = "/quiet /extract-msi `"$msiPath`""
-        $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-        $startInfo.UseShellExecute = $false
+        # First attempt - try using /extract switch
+        Write-Verbose "Attempting MSI extraction using /extract switch..."
+        $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/extract=`"$extractPath`"" -PassThru -Wait -NoNewWindow
+        Start-Sleep -Seconds 5 # Give time for extraction to complete
 
-        $process = [System.Diagnostics.Process]::Start($startInfo)
-        $process.WaitForExit(30000) # Wait up to 30 seconds
-
-        if (!$process.HasExited) {
-            Write-Verbose "Extraction process taking too long, attempting to kill..."
-            $process | Stop-Process -Force
-        }
-
-        # Verify MSI exists
-        $retryCount = 0
-        $maxRetries = 3
-        while ((-not (Test-Path $msiPath)) -and ($retryCount -lt $maxRetries)) {
-            Write-Verbose "MSI not found, waiting 5 seconds... (Attempt $($retryCount + 1))"
+        # Look for MSI files in extract path
+        $msiFiles = Get-ChildItem -Path $extractPath -Filter "*.msi" -Recurse
+        if (-not $msiFiles) {
+            Write-Verbose "No MSI found with /extract switch, trying /extract-msi..."
+            # Second attempt - try using /extract-msi switch
+            $msiPath = Join-Path $extractPath "FortiClient.msi"
+            $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/extract-msi `"$msiPath`"" -PassThru -Wait -NoNewWindow
             Start-Sleep -Seconds 5
-            $retryCount++
+            
+            if (-not (Test-Path $msiPath)) {
+                Write-Verbose "No MSI found with /extract-msi, trying alternative extraction..."
+                # Third attempt - try extracting using 7-zip style switches
+                $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/s /x:`"$extractPath`"" -PassThru -Wait -NoNewWindow
+                Start-Sleep -Seconds 5
+                $msiFiles = Get-ChildItem -Path $extractPath -Filter "*.msi" -Recurse
+            } else {
+                $msiFiles = @(Get-Item $msiPath)
+            }
         }
 
-        if (-not (Test-Path $msiPath)) {
-            throw "MSI file not found at expected location: $msiPath"
+        # Verify MSI extraction
+        if (-not $msiFiles -or $msiFiles.Count -eq 0) {
+            throw "Unable to extract MSI from installer package"
         }
+
+        $msiPath = $msiFiles[0].FullName
+        Write-Verbose "Found MSI file: $msiPath"
 
         Write-Host "Installing FortiClient VPN using MSI..."
+        $arguments = "/i `"$msiPath`" /qn /norestart ALLUSERS=1"
+        if ($ShowWindow) {
+            $arguments = "/i `"$msiPath`" /qb! /norestart ALLUSERS=1"
+        }
+        if ($Interactive) {
+            $arguments = "/i `"$msiPath`" /norestart ALLUSERS=1"
+        }
+
+        Write-Verbose "Starting MSI installation with arguments: $arguments"
+        $installProcess = Start-Process "msiexec.exe" -ArgumentList $arguments -PassThru -Wait -NoNewWindow
         
-        # Install using MSI with hidden window
-        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-        $startInfo.FileName = "msiexec.exe"
-        $startInfo.Arguments = "/i `"$msiPath`" /quiet /norestart ALLUSERS=1"
-        $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-        $startInfo.UseShellExecute = $false
-
-        $process = [System.Diagnostics.Process]::Start($startInfo)
-        $process.WaitForExit()
-
-        if ($process.ExitCode -ne 0) {
-            throw "MSI installation failed with exit code: $($process.ExitCode)"
+        if ($installProcess.ExitCode -ne 0) {
+            $errorMessage = Get-InstallerError $installProcess.ExitCode
+            throw "MSI installation failed with exit code $($installProcess.ExitCode): $errorMessage"
         }
 
         # Allow time for installation to complete
