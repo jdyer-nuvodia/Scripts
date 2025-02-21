@@ -146,7 +146,6 @@ function Install-ForticlientVPN {
     Write-Verbose "Creating temporary directory: $tempPath"
     New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
     $exePath = Join-Path $tempPath "FortiClientVPN.exe"
-    $extractPath = Join-Path $tempPath "Extracted"
 
     try {
         Write-Host "Downloading Forticlient VPN installer..."
@@ -178,71 +177,68 @@ function Install-ForticlientVPN {
         }
 
         Write-Host "Extracting MSI from FortiClient VPN installer..."
-        New-Item -ItemType Directory -Force -Path $extractPath | Out-Null
         
-        # Configure process start info for completely silent operation
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $exePath
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.UseShellExecute = $false
-        $psi.CreateNoWindow = $true
-        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        # Run the installer with the /? switch first to prevent auto-execution
+        $helpProcess = Start-Process -FilePath $exePath -ArgumentList "/?" -PassThru -WindowStyle Hidden
+        Start-Sleep -Seconds 2
+        Stop-Process -Id $helpProcess.Id -Force -ErrorAction SilentlyContinue
 
-        # First attempt - use /extract switch with silent parameters
-        Write-Verbose "Attempting MSI extraction using /extract switch..."
-        $psi.Arguments = "/quiet /extract=`"$extractPath`""
-        $extractProcess = [System.Diagnostics.Process]::Start($psi)
-        $extractProcess.WaitForExit(30000)  # 30 second timeout
+        # Create a temporary response file for silent extraction
+        $responseFile = Join-Path $tempPath "extract.txt"
+        @"
+/S
+/x:`"$tempPath\Extracted`"
+/v"/qn"
+"@ | Out-File $responseFile -Encoding ASCII
 
-        # Look for MSI files in extract path
-        $msiFiles = Get-ChildItem -Path $extractPath -Filter "*.msi" -Recurse
+        # Run installer with response file
+        $extractProcess = Start-Process -FilePath $exePath -ArgumentList "@`"$responseFile`"" -PassThru -WindowStyle Hidden -Wait
+        Start-Sleep -Seconds 5
+
+        # Search for MSI recursively
+        $msiFiles = Get-ChildItem -Path $tempPath -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
+        
         if (-not $msiFiles) {
-            Write-Verbose "No MSI found with /extract switch, trying /extract-msi..."
-            # Second attempt - try using /extract-msi switch
-            $msiPath = Join-Path $extractPath "FortiClient.msi"
-            $psi.Arguments = "/quiet /extract-msi `"$msiPath`""
-            $extractProcess = [System.Diagnostics.Process]::Start($psi)
-            $extractProcess.WaitForExit(30000)
-            
-            if (-not (Test-Path $msiPath)) {
-                Write-Verbose "No MSI found with /extract-msi, trying alternative extraction..."
-                # Third attempt - try extracting using silent extraction switches
-                $psi.Arguments = "/quiet /s /x:`"$extractPath`" /norestart"
-                $extractProcess = [System.Diagnostics.Process]::Start($psi)
-                $extractProcess.WaitForExit(30000)
-                $msiFiles = Get-ChildItem -Path $extractPath -Filter "*.msi" -Recurse
-            } else {
-                $msiFiles = @(Get-Item $msiPath)
+            # Try alternative extraction method
+            $cabFiles = Get-ChildItem -Path $tempPath -Filter "*.cab" -Recurse -ErrorAction SilentlyContinue
+            if ($cabFiles) {
+                foreach ($cab in $cabFiles) {
+                    try {
+                        $cabPath = $cab.FullName
+                        $cabFolder = Join-Path $tempPath "CabExtract"
+                        New-Item -ItemType Directory -Force -Path $cabFolder | Out-Null
+                        
+                        # Extract CAB file
+                        $expandProcess = Start-Process -FilePath "expand.exe" -ArgumentList "`"$cabPath`" -F:* `"$cabFolder`"" -PassThru -WindowStyle Hidden -Wait
+                        
+                        # Look for MSI in extracted contents
+                        $msiFiles = Get-ChildItem -Path $cabFolder -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
+                        if ($msiFiles) { break }
+                    }
+                    catch {
+                        Write-Verbose "Failed to extract CAB file: $_"
+                        continue
+                    }
+                }
             }
         }
 
-        # Verify MSI extraction
-        if (-not $msiFiles -or $msiFiles.Count -eq 0) {
-            throw "Unable to extract MSI from installer package"
+        if (-not $msiFiles) {
+            throw "Unable to find MSI file after extraction attempts"
         }
 
         $msiPath = $msiFiles[0].FullName
         Write-Verbose "Found MSI file: $msiPath"
 
         Write-Host "Installing FortiClient VPN using MSI..."
-        # Configure MSI installation process for silent operation
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = "msiexec.exe"
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.UseShellExecute = $false
-        $psi.CreateNoWindow = $true
-        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-        $psi.Arguments = "/i `"$msiPath`" /qn /norestart ALLUSERS=1"
-
-        Write-Verbose "Starting MSI installation with arguments: $($psi.Arguments)"
-        $installProcess = [System.Diagnostics.Process]::Start($psi)
-        $installProcess.WaitForExit()
-
+        $installArgs = "/i `"$msiPath`" /qn /norestart ALLUSERS=1 REBOOT=ReallySuppress"
+        Write-Verbose "Install arguments: $installArgs"
+        
+        $installProcess = Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -PassThru -WindowStyle Hidden -Wait
+        
         if ($installProcess.ExitCode -ne 0) {
-            $errorMessage = Get-InstallerError($installProcess.ExitCode)
-            throw "MSI installation failed with exit code $($installProcess.ExitCode): $errorMessage"
+            $errorMessage = Get-InstallerError $installProcess.ExitCode
+            throw "Installation failed with exit code: $($installProcess.ExitCode) - $errorMessage"
         }
 
         # Allow time for installation to complete
