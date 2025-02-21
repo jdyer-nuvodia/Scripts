@@ -176,65 +176,13 @@ function Install-ForticlientVPN {
             throw "Failed to download installer after $downloadAttempts attempts"
         }
 
-        Write-Host "Extracting MSI from FortiClient VPN installer..."
+        Write-Host "Installing Forticlient VPN..."
         
-        # Run the installer with the /? switch first to prevent auto-execution
-        $helpProcess = Start-Process -FilePath $exePath -ArgumentList "/?" -PassThru -WindowStyle Hidden
-        Start-Sleep -Seconds 2
-        Stop-Process -Id $helpProcess.Id -Force -ErrorAction SilentlyContinue
-
-        # Create a temporary response file for silent extraction
-        $responseFile = Join-Path $tempPath "extract.txt"
-        @"
-/S
-/x:`"$tempPath\Extracted`"
-/v"/qn"
-"@ | Out-File $responseFile -Encoding ASCII
-
-        # Run installer with response file
-        $extractProcess = Start-Process -FilePath $exePath -ArgumentList "@`"$responseFile`"" -PassThru -WindowStyle Hidden -Wait
-        Start-Sleep -Seconds 5
-
-        # Search for MSI recursively
-        $msiFiles = Get-ChildItem -Path $tempPath -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
-        
-        if (-not $msiFiles) {
-            # Try alternative extraction method
-            $cabFiles = Get-ChildItem -Path $tempPath -Filter "*.cab" -Recurse -ErrorAction SilentlyContinue
-            if ($cabFiles) {
-                foreach ($cab in $cabFiles) {
-                    try {
-                        $cabPath = $cab.FullName
-                        $cabFolder = Join-Path $tempPath "CabExtract"
-                        New-Item -ItemType Directory -Force -Path $cabFolder | Out-Null
-                        
-                        # Extract CAB file
-                        $expandProcess = Start-Process -FilePath "expand.exe" -ArgumentList "`"$cabPath`" -F:* `"$cabFolder`"" -PassThru -WindowStyle Hidden -Wait
-                        
-                        # Look for MSI in extracted contents
-                        $msiFiles = Get-ChildItem -Path $cabFolder -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
-                        if ($msiFiles) { break }
-                    }
-                    catch {
-                        Write-Verbose "Failed to extract CAB file: $_"
-                        continue
-                    }
-                }
-            }
-        }
-
-        if (-not $msiFiles) {
-            throw "Unable to find MSI file after extraction attempts"
-        }
-
-        $msiPath = $msiFiles[0].FullName
-        Write-Verbose "Found MSI file: $msiPath"
-
-        Write-Host "Installing FortiClient VPN using MSI..."
-        $installArgs = "/i `"$msiPath`" /qn /norestart ALLUSERS=1 REBOOT=ReallySuppress"
+        # Direct installation using the EXE instead of trying to extract MSI
+        $installArgs = "/quiet /norestart"
         Write-Verbose "Install arguments: $installArgs"
         
-        $installProcess = Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -PassThru -WindowStyle Hidden -Wait
+        $installProcess = Start-Process -FilePath $exePath -ArgumentList $installArgs -PassThru -WindowStyle Hidden -Wait
         
         if ($installProcess.ExitCode -ne 0) {
             $errorMessage = Get-InstallerError $installProcess.ExitCode
