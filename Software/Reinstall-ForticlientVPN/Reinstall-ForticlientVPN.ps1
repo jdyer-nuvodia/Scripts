@@ -176,17 +176,34 @@ function Install-ForticlientVPN {
             throw "Failed to download installer after $downloadAttempts attempts"
         }
 
-        Write-Host "Installing Forticlient VPN..."
+        Write-Host "Extracting MSI from FortiClient VPN installer..."
         
-        # Install directly using EXE with silent parameters
-        $installArgs = "/quiet /norestart ALLUSERS=1"
-        Write-Verbose "Install arguments: $installArgs"
-        Write-Verbose "Starting installation process..."
+        # Start the installer with extraction parameters
+        $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/quiet /extract-msi" -PassThru
         
-        $installProcess = Start-Process -FilePath $exePath -ArgumentList $installArgs -Wait -PassThru -WindowStyle Hidden
+        # Wait for MSI extraction (usually takes a few seconds)
+        Start-Sleep -Seconds 10
         
-        if ($installProcess.ExitCode -ne 0) {
-            throw "Installation failed with exit code: $($installProcess.ExitCode)"
+        # Kill the installer process
+        if (!$extractProcess.HasExited) {
+            $extractProcess | Stop-Process -Force
+        }
+        
+        # Look for the extracted MSI
+        $msiFile = Get-ChildItem -Path $env:TEMP -Filter "FortiClient.msi" -Recurse | Select-Object -First 1
+        
+        if (-not $msiFile) {
+            throw "MSI file not found after extraction"
+        }
+        
+        Write-Host "Installing FortiClient VPN using MSI..."
+        
+        # Install using MSI
+        $msiArgs = "/i `"$($msiFile.FullName)`" /quiet /norestart ALLUSERS=1"
+        $msiProcess = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru
+        
+        if ($msiProcess.ExitCode -ne 0) {
+            throw "MSI installation failed with exit code: $($msiProcess.ExitCode)"
         }
 
         # Allow time for installation to complete
