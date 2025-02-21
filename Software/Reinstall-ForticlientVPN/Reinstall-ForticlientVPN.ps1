@@ -229,12 +229,15 @@ function Install-ForticlientVPN {
         }
     }
     catch {
-        Write-LogEntry "Error during installation: $_" -Type "Error"
+        Write-LogEntry "Error during FortiClient VPN installation: $_" -Type "Error"
+        Write-Error $_
         throw
     }
     finally {
         Write-Verbose "Cleaning up temporary files..."
-        Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path $tempPath) {
+            Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
