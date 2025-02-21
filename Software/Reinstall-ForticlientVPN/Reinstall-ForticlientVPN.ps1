@@ -178,11 +178,23 @@ function Install-ForticlientVPN {
 
         Write-Host "Installing Forticlient VPN..."
         
-        # Direct installation using the EXE instead of trying to extract MSI
-        $installArgs = "/quiet /norestart"
+        # Install directly using EXE with proper switches
+        $installArgs = if ($Interactive) {
+            "/passive"
+        } else {
+            "/quiet /norestart ALLUSERS=1"
+        }
+
+        if ($ShowWindow) {
+            $windowStyle = "Normal"
+        } else {
+            $windowStyle = "Hidden"
+        }
+
         Write-Verbose "Install arguments: $installArgs"
+        Write-Verbose "Window style: $windowStyle"
         
-        $installProcess = Start-Process -FilePath $exePath -ArgumentList $installArgs -PassThru -WindowStyle Hidden -Wait
+        $installProcess = Start-Process -FilePath $exePath -ArgumentList $installArgs -PassThru -WindowStyle $windowStyle -Wait
         
         if ($installProcess.ExitCode -ne 0) {
             $errorMessage = Get-InstallerError $installProcess.ExitCode
@@ -194,14 +206,16 @@ function Install-ForticlientVPN {
         Start-Sleep -Seconds 30
 
         # Verify installation
+        $verified = $false
         $verificationAttempts = 6
         $verificationDelay = 30
         
         for ($i = 1; $i -le $verificationAttempts; $i++) {
             Write-Verbose "Verification attempt $i of $verificationAttempts"
             if (Test-Installation) {
+                $verified = $true
                 Write-Host "FortiClient VPN installation verified successfully"
-                return
+                break
             }
             
             if ($i -lt $verificationAttempts) {
@@ -210,7 +224,9 @@ function Install-ForticlientVPN {
             }
         }
         
-        throw "Installation verification failed after $verificationAttempts attempts"
+        if (-not $verified) {
+            throw "Installation verification failed after $verificationAttempts attempts"
+        }
     }
     catch {
         Write-LogEntry "Error during installation: $_" -Type "Error"
@@ -238,13 +254,17 @@ function Write-LogEntry {
     $scriptDir = Get-ScriptDirectory
     $logPath = Join-Path $scriptDir "FortiClientVPN_Install.log"
     
-    # Write to log file with retry logic
+    # Write to log file with retry logic and file locking prevention
     $maxAttempts = 3
     $retryDelay = 2
     
     for ($i = 1; $i -le $maxAttempts; $i++) {
         try {
-            $logMessage | Out-File -FilePath $logPath -Append -ErrorAction Stop
+            $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+            $sw = [System.IO.StreamWriter]::new($fs)
+            $sw.WriteLine($logMessage)
+            $sw.Close()
+            $fs.Close()
             break
         }
         catch {
@@ -254,6 +274,10 @@ function Write-LogEntry {
             else {
                 Start-Sleep -Seconds $retryDelay
             }
+        }
+        finally {
+            if ($sw) { $sw.Dispose() }
+            if ($fs) { $fs.Dispose() }
         }
     }
 }
