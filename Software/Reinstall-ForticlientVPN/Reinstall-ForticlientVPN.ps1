@@ -176,69 +176,41 @@ function Install-ForticlientVPN {
             throw "Failed to download installer after $downloadAttempts attempts"
         }
 
-        Write-Host "Extracting MSI from EXE installer..."
+        Write-Host "Installing Forticlient VPN..."
         
-        # Run the exe with extract parameter and wait for completion
-        $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/extract" -PassThru -NoNewWindow
+        # Install directly using EXE with silent parameters
+        $installArgs = "/quiet /norestart ALLUSERS=1"
+        Write-Verbose "Install arguments: $installArgs"
+        Write-Verbose "Starting installation process..."
         
-        # Increase timeout to 180 seconds (3 minutes)
-        $timeoutSeconds = 180
-        $timer = [Diagnostics.Stopwatch]::StartNew()
+        $installProcess = Start-Process -FilePath $exePath -ArgumentList $installArgs -Wait -PassThru -WindowStyle Hidden
         
-        while (!$extractProcess.HasExited -and $timer.Elapsed.TotalSeconds -lt $timeoutSeconds) {
-            Start-Sleep -Seconds 1
-            Write-Verbose "Waiting for extraction... Elapsed time: $($timer.Elapsed.TotalSeconds) seconds"
+        if ($installProcess.ExitCode -ne 0) {
+            throw "Installation failed with exit code: $($installProcess.ExitCode)"
         }
+
+        # Allow time for installation to complete
+        Write-Verbose "Waiting for installation to settle..."
+        Start-Sleep -Seconds 30
+
+        # Verify installation
+        $verificationAttempts = 6
+        $verificationDelay = 30
         
-        if (!$extractProcess.HasExited) {
-            Write-Verbose "Extraction process timed out, killing process..."
-            $extractProcess | Stop-Process -Force
-            throw "MSI extraction timed out after $timeoutSeconds seconds"
-        }
-        
-        # Wait additional time for file system
-        Start-Sleep -Seconds 5
-        
-        # Search for MSI in common locations
-        $searchPaths = @(
-            $env:TEMP,
-            $env:LOCALAPPDATA + "\Temp",
-            $tempPath
-        )
-        
-        $msiFile = $null
-        foreach ($path in $searchPaths) {
-            Write-Verbose "Searching for MSI in: $path"
-            $msiFile = Get-ChildItem -Path $path -Filter "FortiClientVPN*.msi" -Recurse -ErrorAction SilentlyContinue |
-                      Where-Object { $_.LastWriteTime -gt $timer.StartTime } |
-                      Sort-Object LastWriteTime -Descending |
-                      Select-Object -First 1
+        for ($i = 1; $i -le $verificationAttempts; $i++) {
+            Write-Verbose "Verification attempt $i of $verificationAttempts"
+            if (Test-Installation) {
+                Write-Host "FortiClient VPN installation verified successfully"
+                return
+            }
             
-            if ($msiFile) {
-                Write-Verbose "Found MSI: $($msiFile.FullName)"
-                break
+            if ($i -lt $verificationAttempts) {
+                Write-Verbose "Waiting $verificationDelay seconds before next verification..."
+                Start-Sleep -Seconds $verificationDelay
             }
         }
         
-        if (-not $msiFile) {
-            throw "Could not find extracted MSI file"
-        }
-        
-        # Install MSI silently
-        Write-Host "Installing Forticlient VPN from MSI..."
-        $msiArgs = "/i `"$($msiFile.FullName)`" REBOOT=ReallySuppress /qn"
-        $installProcess = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -WindowStyle Hidden
-        
-        if ($installProcess.ExitCode -ne 0) {
-            throw "MSI installation failed with exit code: $($installProcess.ExitCode)"
-        }
-
-        # Verify installation
-        if (Test-Installation) {
-            Write-Host "FortiClient VPN installation completed successfully"
-        } else {
-            throw "Installation verification failed"
-        }
+        throw "Installation verification failed after $verificationAttempts attempts"
     }
     catch {
         Write-LogEntry "Error during installation: $_" -Type "Error"
@@ -247,7 +219,6 @@ function Install-ForticlientVPN {
     finally {
         Write-Verbose "Cleaning up temporary files..."
         Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "$env:LOCALAPPDATA\Temp\FortiClient*" -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
