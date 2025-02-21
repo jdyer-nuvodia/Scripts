@@ -181,12 +181,13 @@ function Install-ForticlientVPN {
         # Run the exe with extract parameter and wait for completion
         $extractProcess = Start-Process -FilePath $exePath -ArgumentList "/extract" -PassThru -NoNewWindow
         
-        # Wait up to 60 seconds for extraction
-        $timeoutSeconds = 60
+        # Increase timeout to 180 seconds (3 minutes)
+        $timeoutSeconds = 180
         $timer = [Diagnostics.Stopwatch]::StartNew()
         
         while (!$extractProcess.HasExited -and $timer.Elapsed.TotalSeconds -lt $timeoutSeconds) {
             Start-Sleep -Seconds 1
+            Write-Verbose "Waiting for extraction... Elapsed time: $($timer.Elapsed.TotalSeconds) seconds"
         }
         
         if (!$extractProcess.HasExited) {
@@ -266,12 +267,23 @@ function Write-LogEntry {
     $scriptDir = Get-ScriptDirectory
     $logPath = Join-Path $scriptDir "FortiClientVPN_Install.log"
     
-    # Write to log file
-    try {
-        $logMessage | Out-File -FilePath $logPath -Append -ErrorAction Stop
-    }
-    catch {
-        Write-Warning "Failed to write to log file: $_"
+    # Write to log file with retry logic
+    $maxAttempts = 3
+    $retryDelay = 2
+    
+    for ($i = 1; $i -le $maxAttempts; $i++) {
+        try {
+            $logMessage | Out-File -FilePath $logPath -Append -ErrorAction Stop
+            break
+        }
+        catch {
+            if ($i -eq $maxAttempts) {
+                Write-Warning "Failed to write to log file after $maxAttempts attempts: $_"
+            }
+            else {
+                Start-Sleep -Seconds $retryDelay
+            }
+        }
     }
 }
 
