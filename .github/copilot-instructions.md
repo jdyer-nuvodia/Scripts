@@ -9,6 +9,7 @@
 # =============================================================================
 
 Always give me a commit message when writing, editing, or providing a script.
+Make sure all additional functionlity and examples, parameters, etc. are included in the header of any script when updating and the versioning is increased accordingly each time it is updated.
 
 # -----------------------------------------------------------------------------
 # MANDATORY SCRIPT HEADER FORMAT
