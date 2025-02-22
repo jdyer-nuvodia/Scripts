@@ -1,14 +1,14 @@
 # =============================================================================
-# File: Initialize-Prompt-Scripts.txt
+# File: copilot-instructions.md
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-12 18:17:30 UTC
+# Last Updated: 2025-02-20 17:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.0
-# Additional Info: Updated update notes filename format to include full timestamp
+# Version: 3.1
+# Additional Info: Added instruction for commit messages.
 # =============================================================================
 
-If you are GitHub Copilot reading this, use the remainder of this document for instructions on how to interact with me.
+Always give me a commit message when writing, editing, or providing a script.
 
 # -----------------------------------------------------------------------------
 # MANDATORY SCRIPT HEADER FORMAT
