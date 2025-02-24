@@ -2,10 +2,10 @@
 # Script: Get-EventLogs.ps1
 # Created: 2024-02-12 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-21 00:00:00 UTC
+# Last Updated: 2024-02-21 01:00:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.1.1
-# Additional Info: Fixed syntax errors
+# Version: 1.1.2
+# Additional Info: Improved date parameter validation and error messages
 # =============================================================================
 
 <#
@@ -39,11 +39,23 @@ param(
     [int]$Hours = 1,
 
     [Parameter()]
-    [ValidatePattern('^\d{14}$')]
+    [ValidateScript({
+        if ($_ -match '^\d{14}$') { 
+            $true 
+        } else { 
+            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959" 
+        }
+    })]
     [string]$StartDate,
 
     [Parameter()]
-    [ValidatePattern('^\d{14}$')]
+    [ValidateScript({
+        if ($_ -match '^\d{14}$') { 
+            $true 
+        } else { 
+            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959" 
+        }
+    })]
     [string]$EndDate
 )
 
