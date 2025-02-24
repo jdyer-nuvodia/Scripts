@@ -215,6 +215,25 @@ function Format-SizeWithPadding {
     return "{0:F$DecimalPlaces}" -f $Size
 }
 
+function Write-ProgressBar {
+    param (
+        [int]$Current,
+        [int]$Total,
+        [string]$Status,
+        [int]$BarLength = 50
+    )
+    
+    $percentComplete = if ($Total -eq 0) { 100 } else { [math]::Min(100, ($Current / $Total * 100)) }
+    $filled = [math]::Round($BarLength * ($percentComplete / 100))
+    $unfilled = $BarLength - $filled
+    
+    $progressBar = "[" + ("=" * $filled) + (" " * $unfilled) + "]"
+    $percentage = "{0,3:N0}%" -f $percentComplete
+    
+    Write-Host "`r$progressBar $percentage | $Status" -NoNewline
+    if ($Current -eq $Total) { Write-Host "" }
+}
+
 function Get-FolderSizes {
     param (
         [string]$FolderPath,
@@ -249,6 +268,8 @@ function Get-FolderSizes {
         for ($i = 0; $i -lt $folders.Count; $i += $batchSize) {
             $batch = $folders | Select-Object -Skip $i -First $batchSize
             $results = @()
+
+            Write-ProgressBar -Current $processedCount -Total $totalDirs -Status "Processing folder batch $([math]::Floor($i/$batchSize + 1)) of $([math]::Ceiling($totalDirs/$batchSize))"
 
             if ($global:useThreadJobs -and -not $script:isLegacyPowerShell) {
                 $jobs = @()
@@ -319,8 +340,10 @@ function Get-FolderSizes {
 
             $folderSizes += @($results | Where-Object { $_ -ne $null })
             $processedCount += $batch.Count
-            Write-Host "`rProcessed $processedCount of $totalDirs folders..." -NoNewline
         }
+
+        Write-ProgressBar -Current $totalDirs -Total $totalDirs -Status "Completed processing all folders"
+        Write-Host ""
 
         Write-Host "`nCompleted processing all folders."
         return $folderSizes
