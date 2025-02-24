@@ -2,10 +2,10 @@
 # Script: Get-EventLogs.ps1
 # Created: 2024-02-12 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-12 18:30:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation for event log collection
+# Last Updated: 2024-02-21 00:00:00 UTC
+# Updated By: GitHub Copilot
+# Version: 1.1.1
+# Additional Info: Fixed syntax errors
 # =============================================================================
 
 <#
@@ -13,17 +13,21 @@
     Collects Windows Event Logs for a specified time period and exports to file.
 .DESCRIPTION
     This script retrieves Windows Event Logs from specified log names for a defined
-    time period (default last hour) and exports them to a file in C:\Temp as .evtx format.
+    time period (either by hours or specific dates) and exports them to a file in C:\Temp as .evtx format.
 .PARAMETER LogNames
     Array of event log names to collect. Defaults to Application and System.
 .PARAMETER Hours
     Number of hours to look back for events. Defaults to 1 hour.
+.PARAMETER StartDate
+    Start date in format YYYYMMDDHHMMSS. If specified, overrides Hours parameter.
+.PARAMETER EndDate
+    End date in format YYYYMMDDHHMMSS. If not specified when using StartDate, defaults to current time.
 .EXAMPLE
     .\Get-EventLogs.ps1
     Collects last hour of Application and System logs
 .EXAMPLE
-    .\Get-EventLogs.ps1 -LogNames "Application","System","Security" -Hours 24
-    Collects last 24 hours of specified logs
+    .\Get-EventLogs.ps1 -StartDate "20240220000000" -EndDate "20240220235959"
+    Collects logs for entire day of February 20, 2024
 #>
 
 [CmdletBinding()]
@@ -32,7 +36,15 @@ param(
     [string[]]$LogNames = @("Application", "System"),
     
     [Parameter()]
-    [int]$Hours = 1
+    [int]$Hours = 1,
+
+    [Parameter()]
+    [ValidatePattern('^\d{14}$')]
+    [string]$StartDate,
+
+    [Parameter()]
+    [ValidatePattern('^\d{14}$')]
+    [string]$EndDate
 )
 
 # Function to ensure output directory exists
@@ -54,8 +66,24 @@ function Get-TimeStamp {
 # Main script execution
 try {
     # Initialize variables
-    $startTime = (Get-Date).AddHours(-$Hours)
+    if ($StartDate) {
+        try {
+            $startTime = [datetime]::ParseExact($StartDate, "yyyyMMddHHmmss", $null)
+            $endTime = if ($EndDate) {
+                [datetime]::ParseExact($EndDate, "yyyyMMddHHmmss", $null)
+            } else {
+                Get-Date
+            }
+        } catch {
+            throw "Invalid date format. Use YYYYMMDDHHMMSS format."
+        }
+    } else {
+        $startTime = (Get-Date).AddHours(-$Hours)
+        $endTime = Get-Date
+    }
+
     $startTimeFormatted = $startTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
+    $endTimeFormatted = $endTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
     
     # Ensure output directory exists
     Initialize-OutputDirectory
@@ -65,7 +93,7 @@ try {
         $outputFile = "C:\Temp\${logName}_$(Get-TimeStamp).evtx"
         
         # Create query string for time filter
-        $timeQuery = "*[System[TimeCreated[@SystemTime>=`'$startTimeFormatted`']]]"
+        $timeQuery = "*[System[TimeCreated[@SystemTime>=`'$startTimeFormatted`'] and TimeCreated[@SystemTime<=`'$endTimeFormatted`']]]"
         
         Write-Verbose "Using query: $timeQuery"
         
