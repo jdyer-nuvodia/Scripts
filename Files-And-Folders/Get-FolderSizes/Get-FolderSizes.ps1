@@ -59,7 +59,6 @@
 #>
 
 #Requires -RunAsAdministrator
-#Requires -Version 5.1
 
 param (
     [string]$Path = "C:\",
@@ -67,6 +66,33 @@ param (
     [ValidateRange(1, 50)]
     [int]$Top = 3
 )
+
+# Check PowerShell version and set compatibility mode
+$script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
+if ($script:isLegacyPowerShell) {
+    Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
+    $global:useThreadJobs = $false
+} else {
+    # Check for ThreadJob module only on PS 5.0+
+    $threadJobModule = Get-Module -ListAvailable -Name ThreadJob
+    if (-not $threadJobModule) {
+        try {
+            Write-Host "ThreadJob module not found. Attempting to install..."
+            Install-Module -Name ThreadJob -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+            Import-Module ThreadJob -ErrorAction Stop
+            Write-Host "ThreadJob module installed successfully."
+            $global:useThreadJobs = $true
+        }
+        catch {
+            Write-Warning "Could not install ThreadJob module. Using fallback method."
+            $global:useThreadJobs = $false
+        }
+    }
+    else {
+        Import-Module ThreadJob -ErrorAction Stop
+        $global:useThreadJobs = $true
+    }
+}
 
 # Setup transcript logging
 $transcriptPath = "C:\temp"
@@ -87,26 +113,6 @@ Write-Host "Target Path: $Path"
 Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
 Write-Host "======================================================"
 Write-Host ""
-
-# Check for ThreadJob module
-$threadJobModule = Get-Module -ListAvailable -Name ThreadJob
-if (-not $threadJobModule) {
-    try {
-        Write-Host "ThreadJob module not found. Attempting to install..."
-        Install-Module -Name ThreadJob -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
-        Import-Module ThreadJob -ErrorAction Stop
-        Write-Host "ThreadJob module installed successfully."
-        $global:useThreadJobs = $true
-    }
-    catch {
-        Write-Warning "Could not install ThreadJob module. Using fallback method."
-        $global:useThreadJobs = $false
-    }
-}
-else {
-    Import-Module ThreadJob -ErrorAction Stop
-    $global:useThreadJobs = $true
-}
 
 # Check for elevated privileges and restart if necessary
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -218,10 +224,11 @@ function Get-FolderSizes {
     if ($CurrentDepth -ge $MaxDepth) { return $null }
 
     try {
-        # Get all subdirectories
-        $folders = @(Get-ChildItem -Path $FolderPath -Directory -Force -ErrorAction SilentlyContinue)
-        if (-not $folders) {
-            $folders = @([System.IO.Directory]::GetDirectories($FolderPath))
+        # Get all subdirectories - compatibility mode handling
+        $folders = if ($script:isLegacyPowerShell) {
+            @([System.IO.Directory]::GetDirectories($FolderPath))
+        } else {
+            @(Get-ChildItem -Path $FolderPath -Directory -Force -ErrorAction SilentlyContinue)
         }
 
         # Get largest file in current directory
@@ -238,12 +245,12 @@ function Get-FolderSizes {
         $totalDirs = $folders.Count
 
         # Process in smaller batches
-        $batchSize = 10
+        $batchSize = if ($script:isLegacyPowerShell) { 5 } else { 10 }
         for ($i = 0; $i -lt $folders.Count; $i += $batchSize) {
             $batch = $folders | Select-Object -Skip $i -First $batchSize
             $results = @()
 
-            if ($global:useThreadJobs) {
+            if ($global:useThreadJobs -and -not $script:isLegacyPowerShell) {
                 $jobs = @()
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
@@ -281,7 +288,7 @@ function Get-FolderSizes {
                 $jobs | Remove-Job -Force
             }
             else {
-                # Fallback method - direct processing
+                # Fallback method - optimized for PS 4.0
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
                     try {
