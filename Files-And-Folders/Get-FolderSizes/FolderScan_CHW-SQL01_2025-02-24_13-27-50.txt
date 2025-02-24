@@ -1,0 +1,127 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20250224132750
+Username: NEWHP\SYSTEM
+RunAs User: NEWHP\SYSTEM
+Configuration Name: 
+Machine: CHW-SQL01 (Microsoft Windows NT 10.0.17763.0)
+Host Application: powershell
+Process ID: 16820
+PSVersion: 5.1.17763.6766
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.17763.6766
+BuildVersion: 10.0.17763.6766
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is C:\temp\FolderScan_CHW-SQL01_2025-02-24_13-27-50.txt
+======================================================
+Folder Size Scanner - Execution Log
+Started: 2025-02-24 13:27:50
+Started (UTC): 2025-02-24 21:27:50
+User: CHW-SQL01$
+Computer: CHW-SQL01
+Target Path: L:\
+Threading Mode: Single-threaded
+======================================================
+
+ThreadJob module not found. Attempting to install...
+PS C:\Program Files (x86)\BeAnywhere Support Express\GetSupportService_N-Central> TerminatingError(Import-Module): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: The specified module 'ThreadJob' was not loaded because no valid module file was found in any module directory."
+WARNING: Could not install ThreadJob module. Using fallback method.
+Ultra-fast folder analysis starting at: L:\
+Script started by: CHW-SQL01$ at 2025-02-24 13:27:53
+
+Found 4 subfolders to process...
+Processed 4 of 4 folders...
+
+Completed processing all folders.
+
+Top 3 Largest Folders in: L:\
+------------------------------------------------------------------------------------------------------------------------------------------------------
+Folder Path                                        |  Size (GB) |      Subfolders |        Files | Largest File (in this directory)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+L:\Program Files                                   |      53.67 |               7 |            7 | No files
+L:\System Volume Information                       |       0.91 |               0 |            4 | ...76b-c176-4e48-b7ae-04046e6cc752} (928.00 MB)
+L:\$FEC0E3760F1A46C29DA61B7BFDA1D8FF               |       0.00 |              15 |          225 | No files
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Descending into: L:\Program Files
+
+Found 1 subfolders to process...
+Processed 1 of 1 folders...
+
+Completed processing all folders.
+
+Top 3 Largest Folders in: L:\Program Files
+------------------------------------------------------------------------------------------------------------------------------------------------------
+Folder Path                                        |  Size (GB) |      Subfolders |        Files | Largest File (in this directory)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+L:\Program Files\Microsoft SQL Server              |      53.67 |               6 |            7 | No files
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Descending into: L:\Program Files\Microsoft SQL Server
+
+Found 2 subfolders to process...
+Processed 2 of 2 folders...
+
+Completed processing all folders.
+
+Top 3 Largest Folders in: L:\Program Files\Microsoft SQL Server
+------------------------------------------------------------------------------------------------------------------------------------------------------
+Folder Path                                        |  Size (GB) |      Subfolders |        Files | Largest File (in this directory)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+...les\Microsoft SQL Server\MSSQL15.MSSQLSERVER    |      53.67 |               2 |            4 | No files
+...iles\Microsoft SQL Server\MSAS15.MSSQLSERVER    |       0.00 |               2 |            3 | No files
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Descending into: L:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER
+
+Found 1 subfolders to process...
+Processed 1 of 1 folders...
+
+Completed processing all folders.
+
+Top 3 Largest Folders in: L:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER
+------------------------------------------------------------------------------------------------------------------------------------------------------
+Folder Path                                        |  Size (GB) |      Subfolders |        Files | Largest File (in this directory)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+...crosoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL    |      53.67 |               1 |            4 | No files
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Descending into: L:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL
+
+Found 1 subfolders to process...
+Processed 1 of 1 folders...
+
+Completed processing all folders.
+
+Top 3 Largest Folders in: L:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL
+------------------------------------------------------------------------------------------------------------------------------------------------------
+Folder Path                                        |  Size (GB) |      Subfolders |        Files | Largest File (in this directory)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+...oft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\Log    |      53.67 |               0 |            4 | NEWH_1.ldf (30.67 GB)
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Descending into: L:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\Log
+
+Largest file in L:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\Log :
+Name: NEWH_1.ldf
+Size: 30.67 GB
+
+Found 0 subfolders to process...
+
+Completed processing all folders.
+
+Reached end of directory tree at: L:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\Log
+
+Script completed at 2025-02-24 13:27:54
+Script completed (UTC): 2025-02-24 21:27:54
+
+Transcript log file can be found here: C:\temp\FolderScan_CHW-SQL01_2025-02-24_13-27-50.txt
+======================================================
+**********************
+Windows PowerShell transcript end
+End time: 20250224132754
+**********************
