@@ -414,6 +414,8 @@ while ($true) {
     $currentPath = $largestFolder.Folder
 }
 
+Get-Volume $Path.Substring(0, [Math]::Min($my_string.Length, 1))
+
 Write-Host "`nScript completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Host "Script completed (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
 Write-Host "`nTranscript log file can be found here: $transcriptFile"
