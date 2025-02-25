@@ -18,4 +18,4 @@ foreach ($file in $oldFiles) {
     Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
 }
 
-Get-Volume
+Get-Volume $folderPath.Substring(0, [Math]::Min($folderPath.Length, 1))
