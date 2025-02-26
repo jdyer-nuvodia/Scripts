@@ -1,3 +1,42 @@
+# =============================================================================
+# Script: Remove-GroupsFromDisabledUsers.ps1
+# Created: 2024-02-20 17:15:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2024-02-20 17:15:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script documentation
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Manages disabled AD user accounts by removing group memberships and moving them to a designated OU.
+.DESCRIPTION
+    This script performs the following actions on disabled AD user accounts:
+     - Sets DisabledPrimary as the primary group
+     - Removes all other group memberships
+     - Moves the user to a designated Disabled Users OU
+     - Updates the user description with disabled date
+     - Key actions are logged to a transcript file
+     
+    Dependencies:
+     - Active Directory PowerShell module
+     - Appropriate AD permissions to modify users and groups
+     - Windows Forms assembly for completion notification
+.PARAMETER None
+    This script does not accept parameters. Configuration is done via variables.
+.EXAMPLE
+    .\Remove-GroupsFromDisabledUsers.ps1
+    Processes all disabled users, logging actions to C:\Temp\DisabledUsers_[timestamp].log
+.NOTES
+    Security Level: High
+    Required Permissions: Domain Admin or delegated AD permissions
+    Validation Requirements: 
+    - Verify $ReportOnly is set correctly before execution
+    - Review log file after completion
+    - Verify users are in correct OU with appropriate group membership
+#>
+
 # Set static variables
 $PrimaryGroupName = "DisabledPrimary"
 $TargetOU = "OU=Disabled Users,DC=YourDomain,DC=com"
