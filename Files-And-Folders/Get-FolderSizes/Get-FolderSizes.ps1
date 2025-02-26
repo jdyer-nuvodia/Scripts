@@ -1,3 +1,13 @@
+# =============================================================================
+# Script: Get-FolderSizes.ps1
+# Created: 2025-02-05 00:55:03 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-07 21:15:22 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0.3
+# Additional Info: Added complete header information and security notes
+# =============================================================================
+
 <#
 .SYNOPSIS
     Ultra-fast directory scanner that analyzes folder sizes and identifies largest files.
@@ -15,6 +25,18 @@
     - Creates detailed log file of the scan
     - Requires administrative privileges
     - Supports custom depth limitation
+
+    Dependencies:
+    - Windows PowerShell 5.1 or later
+    - ThreadJob module (optional - will be installed if not present)
+    - Administrative privileges
+    - Minimum 4GB RAM recommended
+
+    Performance Impact:
+    - CPU: Medium to High during scan
+    - Memory: Medium (4GB+ recommended)
+    - Disk I/O: Low to Medium
+    - Network: Low (unless scanning network paths)
 
 .PARAMETER Path
     The root directory path to start scanning from. Defaults to "C:\"
@@ -42,6 +64,18 @@
     Scans the C:\ drive and shows the 10 largest folders at each level
 
 .NOTES
+    Security Level: Medium
+    Required Permissions: 
+    - Administrative access
+    - Read access to scanned directories
+    - Write access to C:\temp for logging
+    
+    Validation Requirements:
+    - Verify administrative privileges
+    - Check available memory (4GB+)
+    - Validate write access to log directory
+    - Test ThreadJob module availability
+
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
     Updated: 2025-02-07 15:41:22 UTC
