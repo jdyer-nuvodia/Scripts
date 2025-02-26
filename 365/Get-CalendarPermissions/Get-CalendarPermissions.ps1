@@ -30,8 +30,17 @@
     Validation Requirements: Verify Exchange Online connection before running
 #>
 
-# Read the list of mailboxes from a text file
-$mailboxes = Get-Content "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\getCalendarPermissions\mailboxes.txt"
+# Read the list of mailboxes from a text file in the same directory as the script
+$mailboxesFile = Join-Path $PSScriptRoot "mailboxes.txt"
+
+Write-Host "Reading mailboxes from: $mailboxesFile" -ForegroundColor Cyan
+
+if (-not (Test-Path $mailboxesFile)) {
+    Write-Error "Mailboxes file not found: $mailboxesFile"
+    exit
+}
+
+$mailboxes = Get-Content $mailboxesFile
 
 foreach ($mailbox in $mailboxes) {
     $identity = $mailbox.UserPrincipalName + ":\Calendar"
@@ -40,6 +49,6 @@ foreach ($mailbox in $mailboxes) {
         Get-MailboxFolderPermission -Identity $identity -ErrorAction Stop
     }
     catch {
-        Write-Host "Error granting access to $($mailbox.UserPrincipalName)'s calendar: $_" -ForegroundColor Red
+        Write-Error "Error accessing $($mailbox.UserPrincipalName)'s calendar: $_"
     }
 }
