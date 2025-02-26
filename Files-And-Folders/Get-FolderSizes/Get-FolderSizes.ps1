@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-02-07 21:15:22 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.3
-# Additional Info: Added complete header information and security notes
+# Version: 1.0.4
+# Additional Info: Added automatic NuGet provider installation
 # =============================================================================
 
 <#
@@ -101,8 +101,33 @@ param (
     [int]$Top = 3
 )
 
+function Initialize-NuGetProvider {
+    try {
+        # Check if NuGet provider is installed and meets minimum version
+        $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+        $minimumVersion = [Version]"2.8.5.201"
+
+        if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
+            Write-Host "Installing NuGet provider..." -ForegroundColor Cyan
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+            Write-Host "NuGet provider installed successfully." -ForegroundColor Green
+        }
+        return $true
+    }
+    catch {
+        Write-Error "Failed to install NuGet provider: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Initialize-ThreadJobModule {
     try {
+        # Ensure NuGet provider is installed first
+        if (-not (Initialize-NuGetProvider)) {
+            Write-Warning "Could not initialize NuGet provider. ThreadJob installation may fail."
+            return $false
+        }
+
         # First try to import if it exists
         Import-Module ThreadJob -ErrorAction Stop
         return $true
