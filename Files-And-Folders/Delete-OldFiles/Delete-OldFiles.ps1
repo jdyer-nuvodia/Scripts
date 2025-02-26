@@ -1,3 +1,36 @@
+# =============================================================================
+# Script: Delete-OldFiles.ps1
+# Created: 2024-02-20 17:15:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2024-02-20 17:15:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script creation with standard header
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Deletes files older than specified number of days from a target folder.
+.DESCRIPTION
+    This script performs the following actions:
+    - Takes a specified folder path and number of days as input
+    - Calculates cutoff date based on current date minus specified days
+    - Finds all files older than cutoff date
+    - Deletes found files and displays volume information
+    - Silent operation with error suppression
+.PARAMETER folderPath
+    The path to the folder containing files to be cleaned up
+.PARAMETER daysOld
+    Number of days old the files must be to be deleted
+.EXAMPLE
+    .\Delete-OldFiles.ps1
+    Deletes files older than 30 days from C:\windows\System32\winevt\logs
+.NOTES
+    Security Level: Medium
+    Required Permissions: Administrator rights on target folder
+    Validation Requirements: Verify folder path exists before execution
+#>
+
 # Set the folder path
 $folderPath = "C:\windows\System32\winevt\logs"
 
