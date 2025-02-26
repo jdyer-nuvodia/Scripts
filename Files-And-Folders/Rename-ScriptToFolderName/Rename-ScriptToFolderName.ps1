@@ -1,38 +1,56 @@
+# =============================================================================
 # Script: Rename-ScriptToFolderName.ps1
-# Version: 1.2
-# Description: Renames PowerShell scripts to match their parent folder names and case
+# Created: 2025-02-05 23:22:49 UTC
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 23:22:49
-#
-# .SYNOPSIS
-#   Renames PowerShell scripts to match their parent folder names and case exactly
-#
-# .DESCRIPTION
-#   This script searches through folders and renames any .ps1 files to match
-#   their parent folder name and case exactly. It can process a single folder or recursively
-#   process all subfolders. If multiple .ps1 files exist in a folder,
-#   it will prompt for confirmation.
-#
-# .PARAMETER Path
-#   The path to the folder to process
-#
-# .PARAMETER Recursive
-#   If specified, processes all subfolders
-#
-# .EXAMPLE
-#   # Process single folder
-#   .\Rename-ScriptToFolderName.ps1 -Path "C:\Scripts\Test-Folder"
-#
-# .EXAMPLE
-#   # Process folder and all subfolders
-#   .\Rename-ScriptToFolderName.ps1 -Path "C:\Scripts" -Recursive
-#
-# .NOTES
-#   - Requires appropriate permissions to rename files
-#   - Will prompt for confirmation if multiple .ps1 files exist in a folder
-#   - Uses WhatIf support for testing before making changes
-#   - Maintains exact case of parent folder name
-#
+# Last Updated: 2025-02-26 23:14:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.3
+# Additional Info: Updated header format to meet new standards
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Renames PowerShell scripts to match their parent folder names and case exactly
+.DESCRIPTION
+    This script searches through folders and renames any .ps1 files to match
+    their parent folder name and case exactly. It can process a single folder or recursively
+    process all subfolders. If multiple .ps1 files exist in a folder,
+    it will prompt for confirmation.
+    
+    Key actions:
+    - Preserves exact case of folder names
+    - Handles single or multiple .ps1 files
+    - Supports recursive folder processing
+    
+    Dependencies:
+    - PowerShell 5.1 or higher
+    - Write/Modify permissions on target folders
+    
+    Security considerations:
+    - Requires appropriate file system permissions
+    - No elevated privileges required
+    
+    Performance impact:
+    - Minimal CPU and memory usage
+    - File system operations are sequential
+.PARAMETER Path
+    The path to the folder to process. Must be a valid filesystem path.
+.PARAMETER Recursive
+    If specified, processes all subfolders recursively
+.EXAMPLE
+    .\Rename-ScriptToFolderName.ps1 -Path "C:\Scripts\Test-Folder"
+    Process a single folder and rename any .ps1 files to match the folder name
+.EXAMPLE
+    .\Rename-ScriptToFolderName.ps1 -Path "C:\Scripts" -Recursive
+    Process all folders recursively and rename .ps1 files to match their parent folders
+.NOTES
+    Security Level: Low
+    Required Permissions: File system read/write access
+    Validation Requirements:
+    - Verify path exists
+    - Confirm file rename operations
+    - Check for file naming conflicts
+#>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param(
