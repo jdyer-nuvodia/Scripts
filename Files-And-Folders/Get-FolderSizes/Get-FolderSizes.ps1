@@ -67,31 +67,36 @@ param (
     [int]$Top = 3
 )
 
+function Initialize-ThreadJobModule {
+    try {
+        # First try to import if it exists
+        Import-Module ThreadJob -ErrorAction Stop
+        return $true
+    }
+    catch {
+        try {
+            Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
+            # Force installation without prompts
+            Install-Module -Name ThreadJob -Force -AllowClobber -Scope CurrentUser -Confirm:$false -ErrorAction Stop
+            Import-Module ThreadJob -Force -ErrorAction Stop
+            Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
+            return $true
+        }
+        catch {
+            Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
+            Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow
+            return $false
+        }
+    }
+}
+
 # Check PowerShell version and set compatibility mode
 $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
 if ($script:isLegacyPowerShell) {
     Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
     $global:useThreadJobs = $false
 } else {
-    # Check for ThreadJob module only on PS 5.0+
-    $threadJobModule = Get-Module -ListAvailable -Name ThreadJob
-    if (-not $threadJobModule) {
-        try {
-            Write-Host "ThreadJob module not found. Attempting to install..."
-            Install-Module -Name ThreadJob -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
-            Import-Module ThreadJob -ErrorAction Stop
-            Write-Host "ThreadJob module installed successfully."
-            $global:useThreadJobs = $true
-        }
-        catch {
-            Write-Warning "Could not install ThreadJob module. Using fallback method."
-            $global:useThreadJobs = $false
-        }
-    }
-    else {
-        Import-Module ThreadJob -ErrorAction Stop
-        $global:useThreadJobs = $true
-    }
+    $global:useThreadJobs = Initialize-ThreadJobModule
 }
 
 # Setup transcript logging
