@@ -5,9 +5,9 @@ Import-Module ExchangeOnlineManagement
 Connect-ExchangeOnline
 
 # Read the list of mailboxes from a text file
-$mailboxes = $mailboxes = Get-Content "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\grantRMToMailbox+EditCalendarPermissions\mailboxes.txt"
+$mailboxes = Get-Content (Join-Path $PSScriptRoot "mailboxes.txt")
 
-#Set the user to receive the permissions
+# Set the user to receive the permissions
 $user = "chagan@workwith.com"
 
 foreach ($mailbox in $mailboxes) {    
