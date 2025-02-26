@@ -3,7 +3,7 @@
 # Created: 2025-02-12 18:30:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-02-21 01:00:00 UTC
-# Updated By: GitHub Copilot
+# Updated By: jdyer-nuvodia
 # Version: 1.1.2
 # Additional Info: Improved date parameter validation and error messages
 # =============================================================================
