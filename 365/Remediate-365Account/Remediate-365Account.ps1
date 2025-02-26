@@ -1,3 +1,13 @@
+# =============================================================================
+# Script: Remediate-365Account.ps1
+# Created: 2024-02-21 10:00:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2024-02-21 10:00:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script for remediating compromised O365 accounts
+# =============================================================================
+
 #Requires -Version 5.1
 #Requires -Modules Microsoft.Graph
 
@@ -14,12 +24,34 @@
     - Removes global mailbox forwarding
     - Enables MFA (if client uses it)
     - Generates audit logs
+
+    Dependencies:
+    - Microsoft.Graph PowerShell module
+    - PowerShell 5.1 or higher
+    - Office 365 Global Admin permissions
+
+    Security considerations:
+    - Requires elevated permissions in Office 365
+    - Handles sensitive password information
+    - Generates audit logs for compliance
+
+    Performance impact:
+    - Minimal impact on system resources
+    - May take 5-10 minutes to complete all actions
 .PARAMETER UserPrincipalName
     The email address (UPN) of the compromised account to remediate.
 .PARAMETER TranscriptPath
     Optional. The path where the transcript log will be saved. Defaults to current directory.
 .EXAMPLE
-    .\remediate-365account.ps1 -UserPrincipalName "user@domain.com"
+    .\Remediate-365Account.ps1 -UserPrincipalName "user@domain.com"
+    Remediates the specified account and saves logs to the current directory.
+.NOTES
+    Security Level: High
+    Required Permissions: Global Administrator
+    Validation Requirements: 
+    - Verify successful password reset
+    - Confirm removal of suspicious rules
+    - Check audit log generation
 #>
 
 [CmdletBinding()]
