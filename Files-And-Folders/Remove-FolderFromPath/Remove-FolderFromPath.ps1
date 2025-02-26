@@ -1,41 +1,50 @@
-# Script: Set-MachinePath.ps1
-# Version: 1.0
-# Description: Sets the machine PATH to a predefined set of directories
+# =============================================================================
+# Script: Remove-FolderFromPath.ps1
+# Created: 2025-02-05 22:57:12 UTC
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 22:57:12
-#
-# .SYNOPSIS
-#   Sets the machine PATH environment variable to a specific set of directories
-#
-# .DESCRIPTION
-#   This script sets the machine (system) PATH environment variable to a predefined
-#   set of directories. It includes safety checks, creates a backup of the current
-#   PATH, and verifies the existence of directories before setting them.
-#
-# .PARAMETER BackupOnly
-#   If specified, only creates a backup of the current PATH without making changes
-#
-# .PARAMETER RestoreFromBackup
-#   If specified, restores the PATH from the most recent backup file
-#
-# .EXAMPLE
-#   # Set the machine PATH
-#   .\Set-MachinePath.ps1
-#
-# .EXAMPLE
-#   # Create backup only
-#   .\Set-MachinePath.ps1 -BackupOnly
-#
-# .EXAMPLE
-#   # Restore from backup
-#   .\Set-MachinePath.ps1 -RestoreFromBackup
-#
-# .NOTES
-#   - Requires administrative privileges
-#   - Creates backup before making changes
-#   - Verifies directory existence
-#   - Maintains proper PATH format
-#
+# Last Updated: 2025-02-26 15:30:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.1
+# Additional Info: Updated header format to match standard template
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Sets the machine PATH environment variable to a specific set of directories
+
+.DESCRIPTION
+    This script sets the machine (system) PATH environment variable to a predefined
+    set of directories. It includes safety checks, creates a backup of the current
+    PATH, and verifies the existence of directories before setting them.
+    
+    Key actions:
+    - Creates backup of current PATH
+    - Validates directory existence
+    - Updates system PATH
+    - Provides restore capability
+    
+    Dependencies:
+    - Must be run with administrative privileges
+    - Windows PowerShell 5.1 or later
+
+.PARAMETER BackupOnly
+    If specified, only creates a backup of the current PATH without making changes
+
+.PARAMETER RestoreFromBackup
+    If specified, restores the PATH from the most recent backup file
+
+.EXAMPLE
+    .\Remove-FolderFromPath.ps1
+    Sets the machine PATH to the predefined directories
+
+.NOTES
+    Security Level: High
+    Required Permissions: Administrative privileges
+    Validation Requirements:
+    - Verify administrator access
+    - Validate directory existence
+    - Confirm PATH backup creation
+#>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param(
