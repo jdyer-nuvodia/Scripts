@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2024-02-20 17:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation with standard header
+# Version: 1.1
+# Additional Info: Added parameter support with default values
 # =============================================================================
 
 <#
@@ -31,11 +31,13 @@
     Validation Requirements: Verify folder path exists before execution
 #>
 
-# Set the folder path
-$folderPath = "C:\windows\System32\winevt\logs"
-
-# Set the number of days old for files to be deleted
-$daysOld = 30
+param(
+    [Parameter(Mandatory=$false)]
+    [string]$folderPath = "C:\windows\System32\winevt\logs",
+    
+    [Parameter(Mandatory=$false)]
+    [int]$daysOld = 30
+)
 
 # Get the current date
 $currentDate = Get-Date
