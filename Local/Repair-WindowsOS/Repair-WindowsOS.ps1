@@ -1,14 +1,45 @@
+# =============================================================================
+# Script: Repair-WindowsOS.ps1
+# Created: 2025-02-06 00:00:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-26 23:42:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.1
+# Additional Info: Added standardized header and security information
+# =============================================================================
+
 <#
 .SYNOPSIS
     Windows OS Repair and Maintenance Script
 .DESCRIPTION
     Performs various Windows OS repairs and maintenance tasks in the correct order:
-    1. DISM - Repairs Windows component store
-    2. SFC - Repairs system files using the repaired component store
-    3. Windows Update cache cleanup
+    - Key actions:
+        1. DISM - Repairs Windows component store
+        2. SFC - Repairs system files using the repaired component store
+        3. Windows Update cache cleanup
+        4. Disk health verification
+    
+    Dependencies:
+    - Windows PowerShell 5.1 or later
+    - Administrative privileges
+    - Windows built-in repair tools (DISM, SFC, CHKDSK)
+    
+    Security considerations:
+    - Requires elevation to run as Administrator
+    - Modifies system files and Windows components
+    - Interacts with critical Windows services
+    
+    Performance impact:
+    - CPU intensive during repairs
+    - May take 30+ minutes to complete
+    - Requires system restart after completion
 .NOTES
-    Created: 2025-02-06
-    Author: Updated by jdyer-nuvodia
+    Security Level: High
+    Required Permissions: Local Administrator
+    Validation Requirements:
+    - Verify script is running as Administrator
+    - Check log file for completion status
+    - Confirm system stability after repairs
 #>
 
 # Script Variables
