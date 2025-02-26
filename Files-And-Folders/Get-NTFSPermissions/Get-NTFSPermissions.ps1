@@ -1,8 +1,8 @@
 # =============================================================================
 # Script: Get-NTFSPermissions.ps1
-# Created: 2024-02-07 22:30:00 UTC
+# Created: 2025-02-25 23:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-07 22:30:00 UTC
+# Last Updated: 2025-02-25 23:15:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.1
 # Additional Info: Added parameters and documentation
