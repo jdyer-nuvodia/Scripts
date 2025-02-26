@@ -36,7 +36,7 @@
     - Verify current user has appropriate permissions
 #>
 
-$csvPath = "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\addUserListTo365Group\users.csv"
+$csvPath = Join-Path $PSScriptRoot "users.csv"
 $groupName = "ConfRmCal - Author"
 
 $users = Import-Csv -Path $csvPath
