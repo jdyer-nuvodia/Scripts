@@ -2,10 +2,10 @@
 # Script: Remove-AllMailboxPermissions.ps1
 # Created: 2024-02-21 12:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-21 12:00:00 UTC
+# Last Updated: 2024-02-21 13:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation for removing mailbox permissions
+# Version: 1.1
+# Additional Info: Added parameter support and relative path for mailboxes.txt
 # =============================================================================
 
 <#
@@ -20,20 +20,28 @@
      Dependencies:
      - Exchange Online PowerShell module
      - Connection to Exchange Online
-     - Text file containing mailbox list
-.PARAMETER None
-    Script uses a hardcoded path to mailboxes.txt file
+     - Optional: mailboxes.txt file in script directory
+.PARAMETER MailboxIdentity
+    Optional. Specify a single mailbox to process. If not specified, script will read from mailboxes.txt in the script directory.
 .EXAMPLE
     .\Remove-AllMailboxPermissions.ps1
-    Removes all permissions for mailboxes listed in the mailboxes.txt file
+    Removes permissions for all mailboxes listed in mailboxes.txt
+.EXAMPLE
+    .\Remove-AllMailboxPermissions.ps1 -MailboxIdentity "user@domain.com"
+    Removes all permissions for the specified mailbox
 .NOTES
     Security Level: High
     Required Permissions: Exchange Administrator
     Validation Requirements: 
     - Verify Exchange Online PowerShell module is installed
-    - Verify access to mailboxes.txt file
     - Verify Exchange Online connection credentials
+    - If using mailboxes.txt, verify file exists in script directory
 #>
+
+param(
+    [Parameter(Mandatory=$false)]
+    [string]$MailboxIdentity
+)
 
 # Import the Exchange Online PowerShell module
 Import-Module ExchangeOnlineManagement
@@ -41,8 +49,22 @@ Import-Module ExchangeOnlineManagement
 # Connect to Exchange Online
 Connect-ExchangeOnline
 
-# Read the list of mailboxes from a text file
-$mailboxes = Get-Content "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\removeAllMailboxPermissions\mailboxes.txt"
+# Determine mailbox source
+if ($MailboxIdentity) {
+    $mailboxes = @($MailboxIdentity)
+    Write-Host "Processing single mailbox: $MailboxIdentity" -ForegroundColor Cyan
+} else {
+    $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $mailboxListPath = Join-Path $scriptPath "mailboxes.txt"
+    
+    if (Test-Path $mailboxListPath) {
+        $mailboxes = Get-Content $mailboxListPath
+        Write-Host "Processing mailboxes from: $mailboxListPath" -ForegroundColor Cyan
+    } else {
+        Write-Error "mailboxes.txt not found in script directory and no mailbox specified."
+        exit 1
+    }
+}
 
 foreach ($mailbox in $mailboxes) {
     # Get all delegates with FullAccess permissions
