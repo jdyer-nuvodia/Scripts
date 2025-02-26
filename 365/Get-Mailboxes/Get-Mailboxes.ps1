@@ -1,8 +1,45 @@
-# Script: get-mailboxesexist.ps1
-# Version: 2.0
-# Description: Checks existence of mailboxes and provides detailed information
+# =============================================================================
+# Script: Get-Mailboxes.ps1
+# Created: 2025-02-05 21:58:42 UTC
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 21:58:42
+# Last Updated: 2025-02-20 17:15:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 2.1
+# Additional Info: Updated header format and documentation
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Checks existence of mailboxes in Microsoft 365 and provides detailed information
+.DESCRIPTION
+    This script verifies the existence of mailboxes from an input list and generates
+    detailed information about each mailbox including:
+     - Primary SMTP address
+     - Display name
+     - Mailbox type
+     - Existence status
+     
+    Dependencies:
+     - Exchange Online PowerShell Module
+     - Active Exchange Online connection
+     
+    The script provides color-coded output for better visibility and exports
+    detailed results to a CSV file if specified.
+.PARAMETER InputFile
+    Path to the text file containing list of mailboxes to check (one per line)
+.PARAMETER OutputFile
+    (Optional) Path to export the detailed results in CSV format
+.EXAMPLE
+    .\Get-Mailboxes.ps1 -InputFile ".\mailboxes.txt" -OutputFile ".\results.csv"
+    Checks mailboxes listed in mailboxes.txt and exports results to results.csv
+.NOTES
+    Security Level: Medium
+    Required Permissions: Exchange Online View-Only Recipients role
+    Validation Requirements: 
+     - Verify Exchange Online connection
+     - Validate input file exists and is readable
+     - Ensure write permissions if using OutputFile parameter
+#>
 
 # Parameters
 param(
