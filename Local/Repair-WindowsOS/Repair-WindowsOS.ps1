@@ -84,7 +84,7 @@ function Test-DiskHealth {
     
     try {
         # First check if chkdsk is already scheduled
-        $fsutil = Start-Process "fsutil" -ArgumentList "dirty query $systemDrive`:" -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\fsutil.txt"
+        Start-Process "fsutil" -ArgumentList "dirty query $systemDrive`:" -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\fsutil.txt" | Out-Null
         $isDirty = Get-Content "$env:TEMP\fsutil.txt" | Select-String "dirty bit"
         
         if ($isDirty) {
@@ -114,7 +114,6 @@ function Test-DiskHealth {
             # Create temporary VBScript to handle UAC and show progress
             $vbsScript = @"
 Set Shell = CreateObject("Shell.Application")
-Set FSO = CreateObject("Scripting.FileSystemObject")
 cmd = "cmd /c chkdsk $systemDrive`: /f /r & pause"
 Shell.ShellExecute "cmd.exe", "/c " & cmd, "", "runas", 1
 "@
