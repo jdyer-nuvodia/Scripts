@@ -1,3 +1,35 @@
+# =============================================================================
+# Script: Delete-OldScreenshots.ps1
+# Created: 2024-02-07 13:45:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-26 23:45:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script creation with standard header format
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Deletes screenshot files older than a specified number of days.
+.DESCRIPTION
+    This script automatically removes screenshot files from a specified folder
+    that are older than a defined threshold (default 30 days).
+    - Searches specified screenshots folder
+    - Removes files older than threshold
+    - Runs silently without user interaction
+.PARAMETER folderPath
+    The path to the screenshots folder
+.PARAMETER daysOld
+    Number of days old the files must be before deletion
+.EXAMPLE
+    .\Delete-OldScreenshots.ps1
+    Deletes all screenshots older than 30 days from the specified folder
+.NOTES
+    Security Level: Low
+    Required Permissions: File system read/write access to screenshots folder
+    Validation Requirements: Verify folder path exists before execution
+#>
+
 # Set the folder path
 $folderPath = "C:\Users\jdyer\OneDrive - Nuvodia\Pictures\Screenshots"
 
