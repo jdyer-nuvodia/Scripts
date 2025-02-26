@@ -2,7 +2,7 @@
 # Script: Delete-ShadowCopies.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2024-02-25 23:07:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.0
 # Additional Info: Initial script creation with standard header
