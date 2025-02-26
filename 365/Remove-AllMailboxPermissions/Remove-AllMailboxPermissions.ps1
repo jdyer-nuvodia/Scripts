@@ -1,4 +1,41 @@
-﻿# Import the Exchange Online PowerShell module
+﻿# =============================================================================
+# Script: Remove-AllMailboxPermissions.ps1
+# Created: 2024-02-21 12:00:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2024-02-21 12:00:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script creation for removing mailbox permissions
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Removes all mailbox permissions including FullAccess, SendAs, Send on Behalf, and Calendar permissions.
+.DESCRIPTION
+    This script removes various mailbox permissions for specified mailboxes:
+     - Removes FullAccess permissions for all delegates
+     - Removes SendAs permissions for all trustees
+     - Removes Send on Behalf permissions
+     - Removes Calendar permissions (except Default and Anonymous)
+     Dependencies:
+     - Exchange Online PowerShell module
+     - Connection to Exchange Online
+     - Text file containing mailbox list
+.PARAMETER None
+    Script uses a hardcoded path to mailboxes.txt file
+.EXAMPLE
+    .\Remove-AllMailboxPermissions.ps1
+    Removes all permissions for mailboxes listed in the mailboxes.txt file
+.NOTES
+    Security Level: High
+    Required Permissions: Exchange Administrator
+    Validation Requirements: 
+    - Verify Exchange Online PowerShell module is installed
+    - Verify access to mailboxes.txt file
+    - Verify Exchange Online connection credentials
+#>
+
+# Import the Exchange Online PowerShell module
 Import-Module ExchangeOnlineManagement
 
 # Connect to Exchange Online
