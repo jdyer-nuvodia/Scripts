@@ -2,10 +2,10 @@
 # Script: Copy-ADUser.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2024-02-20 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation with standard header format
+# Version: 1.1
+# Additional Info: Updated to use parameters instead of hard-coded values
 # =============================================================================
 
 <#
@@ -20,59 +20,88 @@
     Dependencies:
     - Active Directory PowerShell module
     - Domain Admin or appropriate AD delegation rights
-.PARAMETER sourceUser
+.PARAMETER SourceUser
     The username of the existing AD user to copy from
-.PARAMETER newUserName
+.PARAMETER NewUserName
     The new username to be created
-.PARAMETER newUserGivenName
+.PARAMETER NewUserGivenName
     The given name for the new user
-.PARAMETER newUserSurname
+.PARAMETER NewUserSurname
     The surname for the new user
-.PARAMETER newUserPassword
+.PARAMETER NewUserPassword
     The initial password for the new user
-.PARAMETER newUserDescription
+.PARAMETER NewUserDescription
     The description for the new user account
 .EXAMPLE
-    .\Copy-ADUser.ps1
-    Creates a new user with predefined parameters and copies group memberships
+    .\Copy-ADUser.ps1 -SourceUser "john.doe" -NewUserName "jane.doe" -NewUserGivenName "Jane" -NewUserSurname "Doe" -NewUserPassword "P@ssw0rd123!" -NewUserDescription "Sales Department"
 .NOTES
     Security Level: High
     Required Permissions: Domain Admin or delegated AD user creation rights
     Validation Requirements: Verify source user exists, new username doesn't exist
 #>
 
-# Define the source user and the new user's details
-$sourceUser = "pa-gbullock"   # Replace with the username of the user to be copied
-$newUserName = "pa-jdyer"     # Replace with the new user's username
-$newUserGivenName = "JB"  # Replace with the new user's given name
-$newUserSurname = "Dyer"      # Replace with the new user's surname
-$newUserPassword = "12ravenousgiantpandaS!" # Replace with the new user's password
-$newUserDescription = "Nuvodia" # Replace with the new user's description
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$SourceUser,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$NewUserName,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$NewUserGivenName,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$NewUserSurname,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$NewUserPassword,
+    
+    [Parameter(Mandatory = $true)]
+    [string]$NewUserDescription
+)
 
 # Load the Active Directory module
 Import-Module ActiveDirectory
 
-# Get the source user's details
-$sourceUserDetails = Get-ADUser -Identity $sourceUser -Properties *
+# Verify source user exists
+try {
+    Write-Host "Verifying source user exists..." -ForegroundColor Cyan
+    $sourceUserDetails = Get-ADUser -Identity $SourceUser -Properties * -ErrorAction Stop
+} catch {
+    Write-Error "Source user '$SourceUser' not found. Please verify the username and try again."
+    exit 1
+}
+
+# Verify new username doesn't exist
+if (Get-ADUser -Filter "SamAccountName -eq '$NewUserName'" -ErrorAction SilentlyContinue) {
+    Write-Error "User '$NewUserName' already exists. Please choose a different username."
+    exit 1
+}
+
+Write-Host "Creating new user account..." -ForegroundColor Cyan
 
 # Create the new user with the different name properties and description
 New-ADUser `
-    -Name "$newUserGivenName $newUserSurname" `
-    -GivenName $newUserGivenName `
-    -Surname $newUserSurname `
-    -SamAccountName $newUserName `
-    -UserPrincipalName "$newUserName@$(($sourceUserDetails.UserPrincipalName).Split('@')[1])" `
+    -Name "$NewUserGivenName $NewUserSurname" `
+    -GivenName $NewUserGivenName `
+    -Surname $NewUserSurname `
+    -SamAccountName $NewUserName `
+    -UserPrincipalName "$NewUserName@$(($sourceUserDetails.UserPrincipalName).Split('@')[1])" `
     -Path $sourceUserDetails.DistinguishedName `
     -Enabled $true `
-    -AccountPassword (ConvertTo-SecureString $newUserPassword -AsPlainText -Force) `
-    -Description $newUserDescription
+    -AccountPassword (ConvertTo-SecureString $NewUserPassword -AsPlainText -Force) `
+    -Description $NewUserDescription
 
 # Add the new user to the same groups as the source user
-$sourceUserGroups = Get-ADUser -Identity $sourceUser -Properties MemberOf | Select-Object -ExpandProperty MemberOf
+$sourceUserGroups = Get-ADUser -Identity $SourceUser -Properties MemberOf | Select-Object -ExpandProperty MemberOf
 foreach ($group in $sourceUserGroups) {
-    Add-ADGroupMember -Identity $group -Members $newUserName
-    Write-Host "Added $newUserName to group $group" -ForegroundColor Cyan
+    try {
+        Add-ADGroupMember -Identity $group -Members $NewUserName
+        Write-Host "Added $NewUserName to group $group" -ForegroundColor Cyan
+    } catch {
+        Write-Warning "Failed to add user to group $group"
+    }
 }
 
-Write-Host "New user $newUserName created successfully!" -ForegroundColor Green
-Write-Host "Group memberships copied from $sourceUser" -ForegroundColor Green
+Write-Host "New user $NewUserName created successfully!" -ForegroundColor Green
+Write-Host "Group memberships copied from $SourceUser" -ForegroundColor Green
