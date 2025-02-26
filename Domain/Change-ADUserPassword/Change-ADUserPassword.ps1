@@ -2,10 +2,10 @@
 # Script: Change-ADUserPassword.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2024-02-20 17:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation with standard header
+# Version: 1.1
+# Additional Info: Added parameter support and color-coded output
 # =============================================================================
 
 <#
@@ -16,27 +16,35 @@
     - Requires Active Directory PowerShell module
     - Must be run with appropriate AD permissions
     - Handles errors during password reset process
-.PARAMETER username
+.PARAMETER Username
     The SAM account name of the AD user whose password needs to be changed
-.PARAMETER newPassword
+.PARAMETER NewPassword
     The new password to set for the user account
 .EXAMPLE
-    .\Change-ADUserPassword.ps1
-    Changes password for hard-coded username to specified password
+    .\Change-ADUserPassword.ps1 -Username "jsmith" -NewPassword "NewP@ssw0rd123!"
+    Changes password for user jsmith to the specified password
 .NOTES
     Security Level: High
     Required Permissions: Domain Admin or delegated AD password reset rights
     Validation Requirements: Verify user can login with new password
 #>
 
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$Username,
+    
+    [Parameter(Mandatory=$true)]
+    [string]$NewPassword
+)
+
 Import-Module ActiveDirectory
 
-$username = "username"
-$newPassword = ConvertTo-SecureString "Password123!" -AsPlainText -Force
+Write-Host "Starting password change process for user $Username..." -ForegroundColor Cyan
 
 try {
-    Set-ADAccountPassword -Identity $username -NewPassword $newPassword -Reset
-    Write-Host "Password changed successfully for user $username"
+    $SecurePassword = ConvertTo-SecureString $NewPassword -AsPlainText -Force
+    Set-ADAccountPassword -Identity $Username -NewPassword $SecurePassword -Reset
+    Write-Host "Password changed successfully for user $Username" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to change password. Error: $($_.Exception.Message)"
+    Write-Error "Failed to change password: $($_.Exception.Message)"
 }
