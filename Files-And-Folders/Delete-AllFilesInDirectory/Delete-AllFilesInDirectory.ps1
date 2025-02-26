@@ -2,10 +2,10 @@
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2024-02-20 17:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script version with proper documentation
+# Version: 1.1
+# Additional Info: Added parameter support for target directory
 # =============================================================================
 
 <#
@@ -20,33 +20,36 @@
     Dependencies:
     - PowerShell 5.1 or higher
     - Appropriate permissions on target directory
-.PARAMETER targetDir
-    The target directory path to clean up. Default is "./clouddrive/scripts"
+.PARAMETER TargetPath
+    The target directory path to clean up. This parameter is mandatory.
 .EXAMPLE
-    .\Delete-AllFilesInDirectory.ps1
-    Deletes all contents in the default directory "./clouddrive/scripts"
+    .\Delete-AllFilesInDirectory.ps1 -TargetPath "C:\TempFiles"
+    Deletes all contents in the specified directory "C:\TempFiles"
 .NOTES
     Security Level: High
     Required Permissions: Write access to target directory
     Validation Requirements: Verify target directory before execution
 #>
 
-$targetDir = "./clouddrive/scripts"
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$TargetPath
+)
 
 Write-Host "Starting directory cleanup process..." -ForegroundColor Cyan
-Write-Host "Target directory: $targetDir" -ForegroundColor Cyan
+Write-Host "Target directory: $TargetPath" -ForegroundColor Cyan
 
 try {
     # Remove all files
     Write-Host "Removing files..." -ForegroundColor Cyan
-    Get-ChildItem -Path $targetDir -File -Recurse | ForEach-Object {
+    Get-ChildItem -Path $TargetPath -File -Recurse | ForEach-Object {
         Write-Host "Deleting file: $($_.FullName)" -ForegroundColor Yellow
         Remove-Item -Path $_.FullName -Force
     }
 
     # Remove all folders
     Write-Host "Removing folders..." -ForegroundColor Cyan
-    Get-ChildItem -Path $targetDir -Directory -Recurse | Sort-Object -Property FullName -Descending | ForEach-Object {
+    Get-ChildItem -Path $TargetPath -Directory -Recurse | Sort-Object -Property FullName -Descending | ForEach-Object {
         Write-Host "Deleting folder: $($_.FullName)" -ForegroundColor Yellow
         Remove-Item -Path $_.FullName -Force
     }
