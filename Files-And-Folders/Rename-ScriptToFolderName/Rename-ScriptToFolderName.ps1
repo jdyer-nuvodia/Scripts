@@ -153,7 +153,8 @@ function Rename-ScriptFile {
                     }
                 }
                 else {
-                    Write-Warning "  Invalid selection, skipping folder"
+                    Write-Warning "Invalid file selection '$fileChoice'. Please enter a number between 0 and $($psFiles.Count - 1)"
+                    Write-Host "  Skipping folder: $FolderPath" -ForegroundColor Yellow
                 }
             }
         }
