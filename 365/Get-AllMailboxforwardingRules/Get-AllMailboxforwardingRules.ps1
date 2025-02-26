@@ -43,7 +43,7 @@ param (
 # Verify Exchange Online connection
 try {
     Write-Host "Checking Exchange Online connection..." -ForegroundColor Cyan
-    $organization = Get-OrganizationConfig -ErrorAction Stop
+    Get-OrganizationConfig -ErrorAction Stop | Out-Null
     Write-Host "Successfully connected to Exchange Online" -ForegroundColor Green
 } catch {
     Write-Error "Not connected to Exchange Online. Please run Connect-ExchangeOnline first."
