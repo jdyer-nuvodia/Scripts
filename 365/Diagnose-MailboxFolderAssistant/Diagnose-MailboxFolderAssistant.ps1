@@ -2,10 +2,10 @@
 # Script: Diagnose-MailboxFolderAssistant.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2024-02-20 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation with diagnostic capabilities
+# Version: 1.1
+# Additional Info: Added error handling, parameter validation, and formatted output
 # =============================================================================
 
 <#
@@ -27,13 +27,54 @@
 .PARAMETER mailbox
     The email address of the mailbox to diagnose
 .EXAMPLE
-    .\Diagnose-MailboxFolderAssistant.ps1
+    .\Diagnose-MailboxFolderAssistant.ps1 -Mailbox "leadership@leadershipspokane.org"
     Analyzes the folder assistant settings for the specified mailbox
 #>
 
-$mailbox = "leadership@leadershipspokane.org"
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$Mailbox
+)
 
-[xml]$diag = (Export-MailboxDiagnosticLogs $mailbox -ExtendedProperties).MailboxLog
-$diag.Properties.MailboxTable.Property | Where-Object {$_.Name -like "ELC*"}
+# Function to test Exchange Online connectivity
+function Test-ExchangeOnlineConnection {
+    try {
+        $null = Get-ConnectionInformation -ErrorAction Stop
+        return $true
+    }
+    catch {
+        Write-Error "Not connected to Exchange Online. Please run Connect-ExchangeOnline first."
+        return $false
+    }
+}
 
-Export-MailboxDiagnosticLogs $mailbox -ComponentName MRM
+# Main script execution
+try {
+    Write-Host "Starting mailbox folder assistant diagnostics..." -ForegroundColor Cyan
+
+    if (-not (Test-ExchangeOnlineConnection)) {
+        exit 1
+    }
+
+    Write-Host "Analyzing mailbox: $Mailbox" -ForegroundColor Cyan
+
+    # Export and analyze diagnostic logs
+    [xml]$diag = (Export-MailboxDiagnosticLogs $Mailbox -ExtendedProperties -ErrorAction Stop).MailboxLog
+    
+    Write-Host "`nELC Properties:" -ForegroundColor Cyan
+    $elcProperties = $diag.Properties.MailboxTable.Property | Where-Object {$_.Name -like "ELC*"} | 
+        Select-Object @{N='Property';E={$_.Name}}, @{N='Value';E={$_.Value}}
+    $elcProperties | Format-Table -AutoSize
+
+    Write-Host "`nExporting MRM diagnostic logs..." -ForegroundColor Cyan
+    $mrmLogs = Export-MailboxDiagnosticLogs $Mailbox -ComponentName MRM -ErrorAction Stop
+    $mrmLogs | Format-List
+
+    Write-Host "`nDiagnostic analysis completed successfully." -ForegroundColor Green
+}
+catch {
+    Write-Error "An error occurred during diagnostic analysis: $_"
+    exit 1
+}
