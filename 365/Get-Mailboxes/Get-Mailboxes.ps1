@@ -2,10 +2,10 @@
 # Script: Get-Mailboxes.ps1
 # Created: 2025-02-05 21:58:42 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-20 17:15:00 UTC
+# Last Updated: 2025-02-21 17:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1
-# Additional Info: Updated header format and documentation
+# Version: 2.2
+# Additional Info: Added default names.txt file handling
 # =============================================================================
 
 <#
@@ -26,7 +26,8 @@
     The script provides color-coded output for better visibility and exports
     detailed results to a CSV file if specified.
 .PARAMETER InputFile
-    Path to the text file containing list of mailboxes to check (one per line)
+    (Optional) Path to the text file containing list of mailboxes to check (one per line)
+    Default: names.txt in the same directory as the script
 .PARAMETER OutputFile
     (Optional) Path to export the detailed results in CSV format
 .EXAMPLE
@@ -43,8 +44,8 @@
 
 # Parameters
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$InputFile,
+    [Parameter(Mandatory=$false)]
+    [string]$InputFile = (Join-Path $PSScriptRoot "names.txt"),
     
     [Parameter(Mandatory=$false)]
     [string]$OutputFile
@@ -56,10 +57,26 @@ $nonExistingMailboxes = @()
 
 # Import the list of mailboxes to check
 try {
+    if (-not (Test-Path -Path $InputFile)) {
+        Write-Host "Warning: Input file not found at: $InputFile" -ForegroundColor Yellow
+        if ($InputFile -ne (Join-Path $PSScriptRoot "names.txt")) {
+            $defaultFile = Join-Path $PSScriptRoot "names.txt"
+            if (Test-Path -Path $defaultFile) {
+                Write-Host "Using default names.txt file instead" -ForegroundColor Cyan
+                $InputFile = $defaultFile
+            } else {
+                Write-Error "Neither specified input file nor default names.txt exists"
+                exit 1
+            }
+        } else {
+            Write-Error "Default names.txt file not found in script directory"
+            exit 1
+        }
+    }
     $mailboxList = Get-Content -Path $InputFile -ErrorAction Stop
     Write-Host "Successfully loaded $($mailboxList.Count) mailboxes from $InputFile" -ForegroundColor Cyan
 } catch {
-    Write-Host "Error loading input file: $_" -ForegroundColor Red
+    Write-Error "Error loading input file: $_"
     exit 1
 }
 
