@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Reset-MachinePATH.ps1
-# Created: 2024-01-09 15:30:00 UTC
-# Author: John Dyer
-# Last Updated: 2024-01-09 15:30:00 UTC
-# Updated By: John Dyer
-# Version: 1.0
-# Additional Info: Resets Machine PATH to a predefined list of directories
+# Created: 2025-01-09 15:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-25 23:26:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.1
+# Additional Info: Added security considerations and performance impact details
 # =============================================================================
 
 <#
@@ -15,13 +15,35 @@
     This script modifies the system-wide (Machine) PATH environment variable.
     It creates a backup of the existing PATH and sets a new predefined list of directories.
     The script requires administrative privileges to modify the Machine PATH.
+    
+    Key actions:
+     - Verifies administrative privileges
+     - Creates backup of current PATH
+     - Sets new Machine PATH with predefined directories
+    
+    Dependencies:
+     - Windows Operating System
+     - Administrative privileges
+     
+    Security considerations:
+     - Modifies system-wide environment variables
+     - Requires elevation to run
+     - Creates backup file in script directory
+     
+    Performance impact:
+     - Minimal system impact
+     - One-time environment variable modification
+     - No ongoing resource usage
 .EXAMPLE
     .\Reset-MachinePATH.ps1
     Resets the Machine PATH to the predefined list of directories.
 .NOTES
     Security Level: High
     Required Permissions: Administrative privileges
-    Validation Requirements: Verify PATH after modification
+    Validation Requirements: 
+     - Verify PATH after modification
+     - Ensure critical system paths are included
+     - Test environment variable accessibility
 #>
 
 # Verify running as Administrator
