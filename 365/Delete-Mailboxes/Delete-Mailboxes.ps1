@@ -1,3 +1,41 @@
+# =============================================================================
+# Script: Delete-Mailboxes.ps1
+# Created: 2024-02-20 17:15:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2024-02-20 17:15:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script creation with standard header format
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Deletes multiple Exchange mailboxes from a list provided in a text file.
+.DESCRIPTION
+    This script automates the process of deleting multiple Exchange mailboxes by:
+     - Reading a list of users from a specified text file
+     - Verifying Exchange Management Shell is loaded
+     - Deleting each mailbox and providing status updates
+     - Generating a summary of successful and failed deletions
+     
+    Dependencies:
+     - Exchange Management Shell
+     - Text file containing list of mailboxes (one per line)
+     
+    Security considerations:
+     - Requires Exchange administrator privileges
+     - No confirmation prompt when deleting mailboxes
+.PARAMETER userListPath
+    Path to the text file containing the list of mailboxes to delete (default: C:\Temp\UserList.txt)
+.EXAMPLE
+    .\Delete-Mailboxes.ps1
+    Reads C:\Temp\UserList.txt and attempts to delete all mailboxes listed in the file
+.NOTES
+    Security Level: High
+    Required Permissions: Exchange Administrator
+    Validation Requirements: Verify mailbox list before execution
+#>
+
 # Script to delete multiple mailboxes from a list in a text file
 
 # Path to the text file containing the list of users
