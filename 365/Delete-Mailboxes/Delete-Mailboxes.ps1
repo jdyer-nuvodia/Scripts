@@ -2,10 +2,10 @@
 # Script: Delete-Mailboxes.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2024-02-21 17:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation with standard header format
+# Version: 1.1
+# Additional Info: Updated UserList.txt path to use script directory
 # =============================================================================
 
 <#
@@ -39,7 +39,7 @@
 # Script to delete multiple mailboxes from a list in a text file
 
 # Path to the text file containing the list of users
-$userListPath = "C:\Temp\UserList.txt"
+$userListPath = Join-Path $PSScriptRoot "UserList.txt"
 
 # Function to check if Exchange Management Shell is loaded
 function Test-ExchangeShell {
