@@ -1,46 +1,56 @@
-# Script: Add-FolderToPath.ps1
-# Version: 2.0
-# Description: Adds folders and subfolders to system PATH environment variable
+# =============================================================================
+# Script: Add-FoldersToPath.ps1
+# Created: 2025-02-05 22:15:38 UTC
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-05 22:15:38
-#
-# .SYNOPSIS
-#   Adds specified folder and optionally its subfolders to the system or user PATH.
-#
-# .DESCRIPTION
-#   This script adds a specified folder and optionally its subfolders to either the
-#   system (Machine) or user PATH environment variable. It includes validation,
-#   duplicate checking, and supports WhatIf operations.
-#
-# .PARAMETER RootPath
-#   The root directory to add to PATH
-#
-# .PARAMETER NoRecurse
-#   If specified, only adds the root folder without subfolders
-#
-# .PARAMETER Scope
-#   Whether to modify Machine (system) or User PATH. Default is User
-#
-# .EXAMPLE
-#   # Add single folder to user PATH
-#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts"
-#
-# .EXAMPLE
-#   # Add folder and subfolders to system PATH (requires admin)
-#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -Scope Machine
-#
-# .EXAMPLE
-#   # Test what would happen without making changes
-#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -WhatIf
-#
-# .EXAMPLE
-#   # Add folder without subfolders
-#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -NoRecurse
-#
-# .EXAMPLE
-#   # See detailed operation information
-#   .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts" -Verbose
-#
+# Last Updated: 2025-02-20 17:15:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 2.1
+# Additional Info: Updated header format to match standardization requirements
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Adds specified folder and optionally its subfolders to the system or user PATH.
+.DESCRIPTION
+    This script adds a specified folder and optionally its subfolders to either the
+    system (Machine) or user PATH environment variable. It includes validation,
+    duplicate checking, and supports WhatIf operations.
+    
+    Key actions:
+     - Validates input paths and permissions
+     - Checks for duplicates in PATH
+     - Supports recursive folder addition
+     - Provides verbose logging
+    
+    Dependencies:
+     - PowerShell 5.1 or higher
+     - Administrator rights (for Machine scope only)
+    
+    Security considerations:
+     - Requires admin rights for Machine scope
+     - Validates all paths before addition
+     - Uses secure environment variable methods
+    
+    Performance impact:
+     - Minimal for single folders
+     - May take longer with recursive operations on deep folder structures
+.PARAMETER RootPath
+    The root directory to add to PATH. Must be a valid directory path.
+.PARAMETER NoRecurse
+    If specified, only adds the root folder without subfolders.
+.PARAMETER Scope
+    Whether to modify Machine (system) or User PATH. Default is User.
+.EXAMPLE
+    .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts"
+    Adds C:\Scripts to the user PATH
+.NOTES
+    Security Level: Medium
+    Required Permissions: Local Admin (for Machine scope), User (for User scope)
+    Validation Requirements: 
+     - Verify path exists
+     - Check for admin rights when using Machine scope
+     - Validate no duplicate entries
+#>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param(
