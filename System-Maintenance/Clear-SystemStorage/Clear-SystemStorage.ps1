@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-27 19:00:00 UTC
+# Last Updated: 2025-02-27 20:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Fixed script formatting and structure
+# Version: 1.2
+# Additional Info: Added SYSTEM context execution capability
 # =============================================================================
 
 <#
@@ -31,6 +31,45 @@
     - Verify shadow copy retention
     - Check disk space recovery
 #>
+
+function Test-RunningAsSystem {
+    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return $currentUser.User.Value -eq "S-1-5-18"
+}
+
+function Start-SystemContext {
+    param(
+        [string]$ScriptPath = $MyInvocation.PSCommandPath
+    )
+
+    if (Test-RunningAsSystem) {
+        return $true
+    }
+
+    Write-Host "Elevating to SYSTEM context..." -ForegroundColor Cyan
+    
+    try {
+        $jobName = "SystemContextJob_$([Guid]::NewGuid())"
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
+        $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount
+        $task = New-ScheduledTask -Action $action -Principal $principal
+        
+        # Register and start the task
+        Register-ScheduledTask -TaskName $jobName -InputObject $task | Out-Null
+        Start-ScheduledTask -TaskName $jobName
+        
+        # Wait for completion
+        Start-Sleep -Seconds 2
+        
+        # Cleanup
+        Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
+        exit 0
+    }
+    catch {
+        Write-Error "Failed to elevate to SYSTEM context: $_"
+        return $false
+    }
+}
 
 function Start-DiskCleanup {
     Write-Host "Starting Disk Cleanup process..." -ForegroundColor Cyan
@@ -90,6 +129,12 @@ function Start-ShadowCopyCleanup {
 }
 
 # Main execution
+if (-not (Test-RunningAsSystem)) {
+    Start-SystemContext
+    exit
+}
+
+Write-Host "Executing as SYSTEM account" -ForegroundColor Cyan
 Write-Host "Starting system storage cleanup..." -ForegroundColor Cyan
 
 $diskCleanupSuccess = Start-DiskCleanup
