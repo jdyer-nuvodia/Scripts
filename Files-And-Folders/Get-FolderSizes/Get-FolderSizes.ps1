@@ -306,6 +306,19 @@ function Write-ProgressBar {
     if ($Current -eq $Total) { Write-Host "" }
 }
 
+function Sanitize-Path {
+    param (
+        [string]$Path
+    )
+    # Escape special characters for PowerShell execution
+    $escaped = [Management.Automation.WildcardPattern]::Escape($Path)
+    # Double escape backlashes for .NET calls
+    $escaped = $escaped.Replace('\', '\\')
+    # Escape single quotes for string literals
+    $escaped = $escaped.Replace("'", "''")
+    return $escaped
+}
+
 function Get-FolderSizes {
     param (
         [string]$FolderPath,
@@ -347,15 +360,16 @@ function Get-FolderSizes {
                 $jobs = @()
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
-                    $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $typeName -ScriptBlock {
-                        param($path, $className)
+                    $sanitizedPath = Sanitize-Path $dirPath
+                    $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath, $typeName -ScriptBlock {
+                        param($originalPath, $path, $className)
                         try {
                             $size = Invoke-Expression "[$className]::GetDirectorySize('$path')"
                             $counts = Invoke-Expression "[$className]::GetDirectoryCounts('$path')"
                             $largestFile = Invoke-Expression "[$className]::GetLargestFile('$path')"
 
                             return [PSCustomObject]@{
-                                Folder = $path
+                                Folder = $originalPath  # Use original path for display
                                 SizeGB = $size / 1GB
                                 TotalFiles = $counts.Item1
                                 TotalSubfolders = $counts.Item2
@@ -384,10 +398,11 @@ function Get-FolderSizes {
                 # Fallback method - optimized for PS 4.0
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
+                    $sanitizedPath = Sanitize-Path $dirPath
                     try {
-                        $size = Invoke-Expression "[$typeName]::GetDirectorySize('$dirPath')"
-                        $counts = Invoke-Expression "[$typeName]::GetDirectoryCounts('$dirPath')"
-                        $largestFile = Invoke-Expression "[$typeName]::GetLargestFile('$dirPath')"
+                        $size = Invoke-Expression "[$typeName]::GetDirectorySize('$sanitizedPath')"
+                        $counts = Invoke-Expression "[$typeName]::GetDirectoryCounts('$sanitizedPath')"
+                        $largestFile = Invoke-Expression "[$typeName]::GetLargestFile('$sanitizedPath')"
 
                         $results += [PSCustomObject]@{
                             Folder = $dirPath
