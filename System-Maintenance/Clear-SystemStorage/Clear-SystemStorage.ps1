@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-27 20:30:00 UTC
+# Last Updated: 2025-02-27 21:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2
-# Additional Info: Added SYSTEM context execution capability
+# Version: 1.3
+# Additional Info: Enhanced SYSTEM context execution with better completion tracking
 # =============================================================================
 
 <#
@@ -39,7 +39,8 @@ function Test-RunningAsSystem {
 
 function Start-SystemContext {
     param(
-        [string]$ScriptPath = $MyInvocation.PSCommandPath
+        [string]$ScriptPath = $MyInvocation.PSCommandPath,
+        [int]$TimeoutSeconds = 300
     )
 
     if (Test-RunningAsSystem) {
@@ -50,20 +51,48 @@ function Start-SystemContext {
     
     try {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
-        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
-        $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount
-        $task = New-ScheduledTask -Action $action -Principal $principal
+        $logFile = Join-Path $env:TEMP "$jobName.log"
+        
+        # Create action with logging
+        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; . '$ScriptPath'; Stop-Transcript}`""
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argument
+        $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings
         
         # Register and start the task
         Register-ScheduledTask -TaskName $jobName -InputObject $task | Out-Null
         Start-ScheduledTask -TaskName $jobName
+
+        # Wait for completion with progress bar
+        $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
+        $completed = $false
         
-        # Wait for completion
-        Start-Sleep -Seconds 2
-        
+        while ((Get-Date) -lt $timeout -and -not $completed) {
+            $status = Get-ScheduledTask -TaskName $jobName
+            $completed = $status.State -eq "Ready"
+            
+            Write-Host "Waiting for system cleanup to complete..." -ForegroundColor Cyan
+            Start-Sleep -Seconds 5
+            
+            if (Test-Path $logFile) {
+                Get-Content $logFile -Tail 1
+            }
+        }
+
+        # Check final status
+        if (-not $completed) {
+            Write-Error "Task did not complete within timeout period"
+        }
+        elseif (Test-Path $logFile) {
+            Get-Content $logFile | Write-Host
+        }
+
         # Cleanup
         Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
-        exit 0
+        if (Test-Path $logFile) { Remove-Item $logFile -Force }
+        
+        if ($completed) { exit 0 } else { exit 1 }
     }
     catch {
         Write-Error "Failed to elevate to SYSTEM context: $_"
