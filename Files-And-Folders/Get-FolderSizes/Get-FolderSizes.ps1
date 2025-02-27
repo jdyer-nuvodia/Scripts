@@ -523,7 +523,50 @@ while ($true) {
     $currentPath = $largestFolder.Folder
 }
 
-Get-Volume $Path.Substring(0, [Math]::Min($Path.Length, 1))
+function Show-DriveInfo {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$Volume
+    )
+    
+    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
+    Write-Host "------------------------" -ForegroundColor Green
+    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
+    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
+    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
+    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
+    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
+}
+
+try {
+    # Extract the drive letter from the provided path
+    $driveLetter = if ($Path.Length -gt 0 -and $Path[1] -eq ':') {
+        $Path[0].ToString().ToUpper()  # Get the first character as a drive letter
+    } elseif ($Path.StartsWith('\\')) {
+        Write-Host "Network path detected. Cannot retrieve local volume information for network paths." -ForegroundColor Yellow
+        $null
+    } else {
+        Write-Host "Unable to determine drive letter from path: $Path" -ForegroundColor Yellow
+        $null
+    }
+
+    if ($driveLetter) {
+        # Get the volume information for the specified drive letter
+        $targetVolume = Get-Volume -DriveLetter $driveLetter -ErrorAction Stop
+        
+        if ($targetVolume) {
+            Write-Host "Found volume for drive $driveLetter" -ForegroundColor Green
+            Show-DriveInfo -Volume $targetVolume
+        } else {
+            Write-Error "No volume information found for drive $driveLetter."
+        }
+    }
+}
+catch {
+    Write-Error "Error accessing drive information. Error: $_"
+}
 
 Write-Host "`nScript completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Host "Script completed (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
