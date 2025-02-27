@@ -221,18 +221,22 @@ public class $typeName {
         while (stack.Count > 0) {
             string dir = stack.Pop();
             try {
-                size += Directory.GetFiles(dir).Sum(f => {
-                    try { return new FileInfo(f).Length; }
-                    catch { return 0; }
-                });
+                // Use GetFiles with SearchOption.TopDirectoryOnly for better reliability
+                foreach (string file in Directory.GetFiles(dir)) {
+                    try {
+                        size += new FileInfo(file).Length;
+                    }
+                    catch (Exception) { }
+                }
 
-                foreach (var subDir in Directory.GetDirectories(dir)) {
+                foreach (string subDir in Directory.GetDirectories(dir)) {
                     stack.Push(subDir);
                 }
             }
             catch (UnauthorizedAccessException) { }
             catch (SecurityException) { }
             catch (IOException) { }
+            catch (Exception) { }
         }
         return size;
     }
@@ -314,18 +318,12 @@ function Format-Path {
         # Convert to full path and normalize separators
         $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
         
-        # Handle spaces and special characters
-        if ($fullPath -match '[\s\(\)\[\]\{\}\^\#\$\%\&\+\,\;\=\@]' -or $fullPath.Contains('"')) {
-            # Use special Unicode prefix for paths with spaces/special chars
-            $fullPath = "\\?\$fullPath"
+        # Handle special characters by using .NET path normalization
+        if ($fullPath -match '[&\s\(\)\[\]\{\}\^\#\$\%\+\,\;\=\@]' -or $fullPath.Contains('"')) {
+            return [System.IO.Path]::GetFullPath($fullPath)
         }
         
-        # Escape for PowerShell and .NET
-        $escaped = $fullPath.Replace('"', '\"').Replace("'", "''")
-        $escaped = [Management.Automation.WildcardPattern]::Escape($escaped)
-        $escaped = $escaped.Replace('\', '\\')
-        
-        return $escaped
+        return $fullPath
     }
     catch {
         Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
@@ -378,7 +376,17 @@ function Get-FolderSizes {
                     $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath, $typeName -ScriptBlock {
                         param($originalPath, $path, $className)
                         try {
-                            $size = Invoke-Expression "[$className]::GetDirectorySize('$path')"
+                            $size = & {
+                                Add-Type -TypeDefinition @"
+                                    using System.IO;
+                                    public static class PathHelper {
+                                        public static string NormalizePath(string path) {
+                                            return Path.GetFullPath(path);
+                                        }
+                                    }
+"@
+                                Invoke-Expression "[$className]::GetDirectorySize('$([PathHelper]::NormalizePath($path))')"
+                            }
                             $counts = Invoke-Expression "[$className]::GetDirectoryCounts('$path')"
                             $largestFile = Invoke-Expression "[$className]::GetLargestFile('$path')"
 
