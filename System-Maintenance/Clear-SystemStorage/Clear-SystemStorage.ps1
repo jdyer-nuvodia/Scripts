@@ -40,8 +40,8 @@ function Start-DiskCleanup {
         New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
             -Name StateFlags0001 -Value 2 -PropertyType DWord -Force | Out-Null
 
-        # Run Disk Cleanup silently
-        Start-Process -FilePath cleanmgr -ArgumentList "/sagerun:1" -WindowStyle Hidden -Wait
+        # Run Disk Cleanup silently with LOWDISK parameter to prevent GUI
+        Start-Process -FilePath cleanmgr -ArgumentList '/sagerun:1 /LOWDISK' -WindowStyle Hidden -Wait -NoNewWindow
 
         # Clean up registry settings
         Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
