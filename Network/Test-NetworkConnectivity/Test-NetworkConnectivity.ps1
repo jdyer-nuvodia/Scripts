@@ -1,9 +1,52 @@
+# =============================================================================
 # Script: Test-NetworkConnectivity.ps1
-# Version: 2.14
-# Description: Extended ping test with network configuration logging and continuous mode
+# Created: 2025-02-06 21:24:00 UTC
 # Author: jdyer-nuvodia
-# Last Modified: 2025-02-06 21:24:00
-# Modified By: jdyer-nuvodia
+# Last Updated: 2025-02-27 15:37:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 2.15
+# Additional Info: Updated script header format and documentation
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Extended network connectivity test with detailed logging capabilities.
+.DESCRIPTION
+    Performs comprehensive network connectivity testing with the following features:
+     - Continuous or count-based ping testing
+     - Detailed network configuration logging
+     - Statistical analysis of connectivity
+     - Formatted output with color-coded status
+     - Automatic log file generation
+     
+    Dependencies:
+     - Windows PowerShell 5.1 or higher
+     - Administrator rights for network configuration
+     
+    Security considerations:
+     - Requires network access to target
+     - Creates log files in specified directory
+     
+    Performance impact:
+     - Minimal CPU usage
+     - Network bandwidth based on ICMP packet size
+.PARAMETER Target
+    The IP address or hostname to test connectivity against. Default is 8.8.8.8
+.PARAMETER Count
+    Number of pings to send. 0 means continuous mode. Default is 0
+.PARAMETER OutputPath
+    Directory path for log files. Default is C:\PingLogs
+.EXAMPLE
+    .\Test-NetworkConnectivity.ps1
+    Tests connectivity to 8.8.8.8 continuously
+.EXAMPLE
+    .\Test-NetworkConnectivity.ps1 -Target "microsoft.com" -Count 100
+    Sends 100 pings to microsoft.com
+.NOTES
+    Security Level: Low
+    Required Permissions: Network access
+    Validation Requirements: Verify network connectivity, file system access
+#>
 
 [CmdletBinding()]
 param(
