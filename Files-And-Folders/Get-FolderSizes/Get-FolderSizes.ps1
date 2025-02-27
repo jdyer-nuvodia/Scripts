@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 14:30:00 UTC
+# Last Updated: 2025-03-07 17:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.7
-# Additional Info: Fixed handling of paths with special characters in folder names
+# Version: 1.0.8
+# Additional Info: Fixed handling of special characters in ThreadJobs processing
 # =============================================================================
 
 <#
@@ -493,88 +493,118 @@ function Get-FolderSizes {
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
                     $sanitizedPath = Format-Path $dirPath
-                    $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath, $typeName -ScriptBlock {
-                        param($originalPath, $path, $className)
+                    $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath -ScriptBlock {
+                        param($originalPath, $path)
                         try {
-                            # Use .NET method directly instead of through Invoke-Expression where possible
-                            $size = [long]0
-                            $type = Add-Type -TypeDefinition @"
-                                using System.IO;
-                                public static class DirectorySizeHelper {
-                                    public static long GetSize(string path) {
-                                        long size = 0;
-                                        var stack = new System.Collections.Generic.Stack<string>();
-                                        stack.Push(path);
+                            # Import the FolderSizeHelper type to ensure it exists in this thread
+                            Add-Type -TypeDefinition @"
+using System;
+using System.IO;
+using System.Linq;
+using System.Security;
+using System.Collections.Generic;
 
-                                        while (stack.Count > 0) {
-                                            string dir = stack.Pop();
-                                            try {
-                                                foreach (string file in Directory.GetFiles(dir)) {
-                                                    try {
-                                                        size += new FileInfo(file).Length;
-                                                    }
-                                                    catch (System.Exception) { }
-                                                }
+public static class ThreadFolderSizeHelper
+{
+    public static long GetDirectorySize(string path)
+    {
+        long size = 0;
+        var stack = new Stack<string>();
+        stack.Push(path);
 
-                                                foreach (string subDir in Directory.GetDirectories(dir)) {
-                                                    stack.Push(subDir);
-                                                }
-                                            }
-                                            catch (System.Exception) { }
-                                        }
-                                        return size;
-                                    }
-                                }
-"@ -PassThru
+        while (stack.Count > 0)
+        {
+            string dir = stack.Pop();
+            try
+            {
+                foreach (string file in Directory.GetFiles(dir))
+                {
+                    try
+                    {
+                        size += new FileInfo(file).Length;
+                    }
+                    catch (Exception) { }
+                }
 
-                            $size = [DirectorySizeHelper]::GetSize($path)
-                            
-                            # For other calls, use dynamic type loading
-                            $dynamicType = Add-Type -TypeDefinition @"
-                                using System.IO;
-                                using System.Linq;
-                                using System.Security;
-                                using System.Collections.Generic;
-                                using System.Runtime.InteropServices;
+                foreach (string subDir in Directory.GetDirectories(dir))
+                {
+                    stack.Push(subDir);
+                }
+            }
+            catch (UnauthorizedAccessException) { }
+            catch (SecurityException) { }
+            catch (IOException) { }
+            catch (Exception) { }
+        }
+        return size;
+    }
 
-                                public class DynamicHelper {
-                                    public static Tuple<int, int> GetCounts(string path) {
-                                        int files = 0;
-                                        int folders = 0;
-                                        var stack = new Stack<string>();
-                                        stack.Push(path);
+    public static Tuple<int, int> GetDirectoryCounts(string path)
+    {
+        int files = 0;
+        int folders = 0;
+        var stack = new Stack<string>();
+        stack.Push(path);
 
-                                        while (stack.Count > 0) {
-                                            string dir = stack.Pop();
-                                            try {
-                                                files += Directory.GetFiles(dir).Length;
-                                                var subDirs = Directory.GetDirectories(dir);
-                                                folders += subDirs.Length;
-                                                foreach (var subDir in subDirs) {
-                                                    stack.Push(subDir);
-                                                }
-                                            }
-                                            catch (Exception) { }
-                                        }
-                                        return new Tuple<int, int>(files, folders);
-                                    }
+        while (stack.Count > 0)
+        {
+            string dir = stack.Pop();
+            try
+            {
+                files += Directory.GetFiles(dir).Length;
+                var subDirs = Directory.GetDirectories(dir);
+                folders += subDirs.Length;
+                foreach (var subDir in subDirs)
+                {
+                    stack.Push(subDir);
+                }
+            }
+            catch (UnauthorizedAccessException) { }
+            catch (SecurityException) { }
+            catch (IOException) { }
+            catch (Exception) { }
+        }
+        return new Tuple<int, int>(files, folders);
+    }
 
-                                    public static FileInfo GetLargestFile(string path) {
-                                        try {
-                                            return new DirectoryInfo(path)
-                                                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
-                                                .OrderByDescending(f => f.Length)
-                                                .FirstOrDefault();
-                                        }
-                                        catch {
-                                            return null;
-                                        }
-                                    }
-                                }
-"@ -PassThru
-
-                            $counts = [DynamicHelper]::GetCounts($path)
-                            $largestFile = [DynamicHelper]::GetLargestFile($path)
+    public static FileDetails GetLargestFile(string path)
+    {
+        try
+        {
+            var fileInfo = new DirectoryInfo(path)
+                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(f => f.Length)
+                .FirstOrDefault();
+                
+            if (fileInfo == null)
+                return null;
+                
+            return new FileDetails
+            {
+                Name = fileInfo.Name,
+                Path = fileInfo.FullName,
+                Size = fileInfo.Length
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+    
+    public class FileDetails
+    {
+        public string Name { get; set; }
+        public string Path { get; set; }
+        public long Size { get; set; }
+    }
+}
+"@ -ErrorAction Stop
+                
+                            # Use the thread-local helper class for processing
+                            $size = [ThreadFolderSizeHelper]::GetDirectorySize($path)
+                            $counts = [ThreadFolderSizeHelper]::GetDirectoryCounts($path)
+                            $largestFile = [ThreadFolderSizeHelper]::GetLargestFile($path)
 
                             return [PSCustomObject]@{
                                 Folder = $originalPath  # Use original path for display
@@ -584,23 +614,44 @@ function Get-FolderSizes {
                                 LargestFile = if ($largestFile) {
                                     [PSCustomObject]@{
                                         Name = $largestFile.Name
-                                        Path = $largestFile.FullName
-                                        SizeGB = $largestFile.Length / 1GB
-                                        SizeMB = $largestFile.Length / 1MB
+                                        Path = $largestFile.Path
+                                        SizeGB = $largestFile.Size / 1GB
+                                        SizeMB = $largestFile.Size / 1MB
                                     }
                                 } else { $null }
                             }
                         }
                         catch {
-                            Write-Warning "Error processing $path : $_"
-                            return $null
+                            # Return a minimal object with error information
+                            return [PSCustomObject]@{
+                                Folder = $originalPath
+                                SizeGB = 0
+                                TotalFiles = 0
+                                TotalSubfolders = 0
+                                LargestFile = $null
+                                Error = "Error processing: $_"
+                            }
                         }
                     }
                 }
 
-                # Wait for batch completion
-                $results = $jobs | Wait-Job | Receive-Job
-                $jobs | Remove-Job -Force
+                # Wait for batch completion with better error handling
+                $results = @()
+                foreach ($job in $jobs) {
+                    try {
+                        $jobResult = $job | Wait-Job -Timeout 60 | Receive-Job
+                        if ($jobResult) {
+                            if ($jobResult.Error) {
+                                Write-Warning "Job error: $($jobResult.Error)"
+                            } else {
+                                $results += $jobResult
+                            }
+                        }
+                    } catch {
+                        Write-Warning "Thread job processing error: $_"
+                    }
+                }
+                $jobs | Remove-Job -Force -ErrorAction SilentlyContinue
             }
             else {
                 # Fallback method - use static helper class instead of dynamic type creation
