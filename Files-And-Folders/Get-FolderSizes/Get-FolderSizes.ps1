@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-27 20:34:00 UTC
+# Last Updated: 2025-02-27 22:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.5
-# Additional Info: Enhanced path handling for special characters and spaces
+# Version: 1.0.6
+# Additional Info: Fixed handling of paths with single quotes and special characters
 # =============================================================================
 
 <#
@@ -317,18 +317,21 @@ function Format-Path {
     try {
         # Convert to full path and normalize separators
         $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
-        
-        # Handle special characters by using .NET path normalization
-        if ($fullPath -match '[&\s\(\)\[\]\{\}\^\#\$\%\+\,\;\=\@]' -or $fullPath.Contains('"')) {
-            return [System.IO.Path]::GetFullPath($fullPath)
-        }
-        
         return $fullPath
     }
     catch {
         Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
         return $Path
     }
+}
+
+function Escape-StringForInvokeExpression {
+    param (
+        [string]$InputString
+    )
+    # Escape single quotes by doubling them for PowerShell string literals
+    $escaped = $InputString -replace "'", "''"
+    return $escaped
 }
 
 function Get-FolderSizes {
@@ -347,8 +350,9 @@ function Get-FolderSizes {
             @(Get-ChildItem -Path $FolderPath -Directory -Force -ErrorAction SilentlyContinue)
         }
 
-        # Get largest file in current directory
-        $largestFile = & { Invoke-Expression "[$typeName]::GetLargestFile('$FolderPath')" }
+        # Get largest file in current directory - using SafeInvoke pattern instead of direct Invoke-Expression
+        $safePathForInvoke = Escape-StringForInvokeExpression -InputString $FolderPath
+        $largestFile = & { Invoke-Expression "[$typeName]::GetLargestFile('$safePathForInvoke')" }
         if ($largestFile) {
             Write-Host "`nLargest file in $FolderPath :"
             Write-Host "Name: $($largestFile.Name)"
@@ -376,19 +380,85 @@ function Get-FolderSizes {
                     $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath, $typeName -ScriptBlock {
                         param($originalPath, $path, $className)
                         try {
-                            $size = & {
-                                Add-Type -TypeDefinition @"
-                                    using System.IO;
-                                    public static class PathHelper {
-                                        public static string NormalizePath(string path) {
-                                            return Path.GetFullPath(path);
+                            # Use .NET method directly instead of through Invoke-Expression where possible
+                            $size = [long]0
+                            $type = Add-Type -TypeDefinition @"
+                                using System.IO;
+                                public static class DirectorySizeHelper {
+                                    public static long GetSize(string path) {
+                                        long size = 0;
+                                        var stack = new System.Collections.Generic.Stack<string>();
+                                        stack.Push(path);
+
+                                        while (stack.Count > 0) {
+                                            string dir = stack.Pop();
+                                            try {
+                                                foreach (string file in Directory.GetFiles(dir)) {
+                                                    try {
+                                                        size += new FileInfo(file).Length;
+                                                    }
+                                                    catch (System.Exception) { }
+                                                }
+
+                                                foreach (string subDir in Directory.GetDirectories(dir)) {
+                                                    stack.Push(subDir);
+                                                }
+                                            }
+                                            catch (System.Exception) { }
+                                        }
+                                        return size;
+                                    }
+                                }
+"@ -PassThru
+
+                            $size = [DirectorySizeHelper]::GetSize($path)
+                            
+                            # For other calls, use dynamic type loading
+                            $dynamicType = Add-Type -TypeDefinition @"
+                                using System.IO;
+                                using System.Linq;
+                                using System.Security;
+                                using System.Collections.Generic;
+                                using System.Runtime.InteropServices;
+
+                                public class DynamicHelper {
+                                    public static Tuple<int, int> GetCounts(string path) {
+                                        int files = 0;
+                                        int folders = 0;
+                                        var stack = new Stack<string>();
+                                        stack.Push(path);
+
+                                        while (stack.Count > 0) {
+                                            string dir = stack.Pop();
+                                            try {
+                                                files += Directory.GetFiles(dir).Length;
+                                                var subDirs = Directory.GetDirectories(dir);
+                                                folders += subDirs.Length;
+                                                foreach (var subDir in subDirs) {
+                                                    stack.Push(subDir);
+                                                }
+                                            }
+                                            catch (Exception) { }
+                                        }
+                                        return new Tuple<int, int>(files, folders);
+                                    }
+
+                                    public static FileInfo GetLargestFile(string path) {
+                                        try {
+                                            return new DirectoryInfo(path)
+                                                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                                                .OrderByDescending(f => f.Length)
+                                                .FirstOrDefault();
+                                        }
+                                        catch {
+                                            return null;
                                         }
                                     }
-"@
-                                Invoke-Expression "[$className]::GetDirectorySize('$([PathHelper]::NormalizePath($path))')"
-                            }
-                            $counts = Invoke-Expression "[$className]::GetDirectoryCounts('$path')"
-                            $largestFile = Invoke-Expression "[$className]::GetLargestFile('$path')"
+                                }
+"@ -PassThru
+
+                            $counts = [DynamicHelper]::GetCounts($path)
+                            $largestFile = [DynamicHelper]::GetLargestFile($path)
 
                             return [PSCustomObject]@{
                                 Folder = $originalPath  # Use original path for display
@@ -417,14 +487,85 @@ function Get-FolderSizes {
                 $jobs | Remove-Job -Force
             }
             else {
-                # Fallback method - optimized for PS 4.0
+                # Fallback method - safer approach without direct Invoke-Expression
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
                     $sanitizedPath = Format-Path $dirPath
                     try {
-                        $size = Invoke-Expression "[$typeName]::GetDirectorySize('$sanitizedPath')"
-                        $counts = Invoke-Expression "[$typeName]::GetDirectoryCounts('$sanitizedPath')"
-                        $largestFile = Invoke-Expression "[$typeName]::GetLargestFile('$sanitizedPath')"
+                        # Add a temporary type to safely handle the path
+                        $guid = [System.Guid]::NewGuid().ToString().Replace("-", "")
+                        $tempTypeName = "PathHandler$guid"
+                        
+                        Add-Type -TypeDefinition @"
+                            using System;
+                            using System.IO;
+                            using System.Linq;
+                            using System.Security;
+                            using System.Collections.Generic;
+
+                            public class $tempTypeName {
+                                public static long GetDirectorySize(string path) {
+                                    long size = 0;
+                                    var stack = new Stack<string>();
+                                    stack.Push(path);
+
+                                    while (stack.Count > 0) {
+                                        string dir = stack.Pop();
+                                        try {
+                                            foreach (string file in Directory.GetFiles(dir)) {
+                                                try {
+                                                    size += new FileInfo(file).Length;
+                                                }
+                                                catch (Exception) { }
+                                            }
+
+                                            foreach (string subDir in Directory.GetDirectories(dir)) {
+                                                stack.Push(subDir);
+                                            }
+                                        }
+                                        catch (Exception) { }
+                                    }
+                                    return size;
+                                }
+
+                                public static Tuple<int, int> GetDirectoryCounts(string path) {
+                                    int files = 0;
+                                    int folders = 0;
+                                    var stack = new Stack<string>();
+                                    stack.Push(path);
+
+                                    while (stack.Count > 0) {
+                                        string dir = stack.Pop();
+                                        try {
+                                            files += Directory.GetFiles(dir).Length;
+                                            var subDirs = Directory.GetDirectories(dir);
+                                            folders += subDirs.Length;
+                                            foreach (var subDir in subDirs) {
+                                                stack.Push(subDir);
+                                            }
+                                        }
+                                        catch (Exception) { }
+                                    }
+                                    return new Tuple<int, int>(files, folders);
+                                }
+
+                                public static FileInfo GetLargestFile(string path) {
+                                    try {
+                                        return new DirectoryInfo(path)
+                                            .GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                                            .OrderByDescending(f => f.Length)
+                                            .FirstOrDefault();
+                                    }
+                                    catch {
+                                        return null;
+                                    }
+                                }
+                            }
+"@
+
+                        $size = Invoke-Expression "[$tempTypeName]::GetDirectorySize('$sanitizedPath')"
+                        $counts = Invoke-Expression "[$tempTypeName]::GetDirectoryCounts('$sanitizedPath')"
+                        $largestFile = Invoke-Expression "[$tempTypeName]::GetLargestFile('$sanitizedPath')"
 
                         $results += [PSCustomObject]@{
                             Folder = $dirPath
