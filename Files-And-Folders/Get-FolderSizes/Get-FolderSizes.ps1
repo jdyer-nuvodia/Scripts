@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-07 21:15:22 UTC
+# Last Updated: 2025-02-27 20:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.4
-# Additional Info: Added automatic NuGet provider installation
+# Version: 1.0.5
+# Additional Info: Enhanced path handling for special characters and spaces
 # =============================================================================
 
 <#
@@ -310,17 +310,27 @@ function Format-Path {
     param (
         [string]$Path
     )
-    # Replace single quotes with double quotes
-    $escaped = $Path.Replace("'", "''")
-    # Escape special characters for PowerShell execution
-    $escaped = [Management.Automation.WildcardPattern]::Escape($escaped)
-    # Double escape backlashes for .NET calls
-    $escaped = $escaped.Replace('\', '\\')
-    # Wrap path in quotes if it contains spaces
-    if ($escaped -match '\s') {
-        $escaped = "`"$escaped`""
+    try {
+        # Convert to full path and normalize separators
+        $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
+        
+        # Handle spaces and special characters
+        if ($fullPath -match '[\s\(\)\[\]\{\}\^\#\$\%\&\+\,\;\=\@\']' -or $fullPath.Contains('"')) {
+            # Use special Unicode prefix for paths with spaces/special chars
+            $fullPath = "\\?\$fullPath"
+        }
+        
+        # Escape for PowerShell and .NET
+        $escaped = $fullPath.Replace('"', '\"').Replace("'", "''")
+        $escaped = [Management.Automation.WildcardPattern]::Escape($escaped)
+        $escaped = $escaped.Replace('\', '\\')
+        
+        return $escaped
     }
-    return $escaped
+    catch {
+        Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
+        return $Path
+    }
 }
 
 function Get-FolderSizes {
