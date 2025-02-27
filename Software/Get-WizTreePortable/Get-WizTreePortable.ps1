@@ -39,18 +39,17 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     exit 1
 }
 
-# Define variables
-$downloadUrl = Get-LatestWizTreeUrl
-$zipFilePath = "C:\temp\wiztreeportable.zip"
-$extractPath = "C:\temp\WizTree"
-$exePath = "$extractPath\WizTree64.exe"
+# Verify running with admin privileges
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script requires Administrator privileges. Please run as Administrator."
+    exit 1
+}
 
 try {
-    # Verify running with admin privileges
-    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Error "This script requires Administrator privileges. Please run as Administrator."
-        exit 1
-    }
+    [string]$downloadUrl = Get-LatestWizTreeUrl
+    [string]$zipFilePath = "C:\temp\wiztreeportable.zip"
+    [string]$extractPath = "C:\temp\WizTree"
+    [string]$exePath = "$extractPath\WizTree64.exe"
 
     # Create temp directory if it doesn't exist
     if (-Not (Test-Path -Path "C:\temp")) {
