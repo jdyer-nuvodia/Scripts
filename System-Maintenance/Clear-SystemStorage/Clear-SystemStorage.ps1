@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 16:30:00 UTC
+# Last Updated: 2025-04-02 20:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4
-# Additional Info: Added drive information display functionality
+# Version: 1.5
+# Additional Info: Added before/after drive information comparison functionality
 # =============================================================================
 
 <#
@@ -20,6 +20,7 @@
     - Executes disk cleanup with predefined settings
     - Lists and manages shadow copies
     - Maintains the most recent shadow copy while removing others
+    - Displays drive information before and after cleanup for comparison
     
     Dependencies:
     - Windows Volume Shadow Copy Service
@@ -158,32 +159,16 @@ function Start-ShadowCopyCleanup {
     }
 }
 
-# Main execution
-if (-not (Test-RunningAsSystem)) {
-    Start-SystemContext
-    exit
-}
-
-Write-Host "Executing as SYSTEM account" -ForegroundColor Cyan
-Write-Host "Starting system storage cleanup..." -ForegroundColor Cyan
-
-$diskCleanupSuccess = Start-DiskCleanup
-$shadowCopySuccess = Start-ShadowCopyCleanup
-
-if ($diskCleanupSuccess -and $shadowCopySuccess) {
-    Write-Host "System storage cleanup completed successfully!" -ForegroundColor Green
-}
-else {
-    Write-Error "System storage cleanup encountered issues. Please check the logs."
-}
-
 function Show-DriveInfo {
     param (
         [Parameter(Mandatory=$true)]
-        [object]$Volume
+        [object]$Volume,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$State = "Current"
     )
     
-    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
+    Write-Host "`n$State Drive Volume Details:" -ForegroundColor Green
     Write-Host "------------------------" -ForegroundColor Green
     Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
     Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
@@ -194,6 +179,16 @@ function Show-DriveInfo {
     Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
 }
 
+# Main execution
+if (-not (Test-RunningAsSystem)) {
+    Start-SystemContext
+    exit
+}
+
+Write-Host "Executing as SYSTEM account" -ForegroundColor Cyan
+Write-Host "Starting system storage cleanup..." -ForegroundColor Cyan
+
+# Get drive information before cleanup
 try {
     # Get all available volumes with drive letters and sort them
     $volumes = Get-Volume | 
@@ -209,7 +204,40 @@ try {
     $lowestVolume = $volumes[0]
     
     Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
-    Show-DriveInfo -Volume $lowestVolume
+    Show-DriveInfo -Volume $lowestVolume -State "Before Cleanup"
+}
+catch {
+    Write-Error "Error accessing drive information. Error: $_"
+}
+
+# Perform cleanup operations
+$diskCleanupSuccess = Start-DiskCleanup
+$shadowCopySuccess = Start-ShadowCopyCleanup
+
+if ($diskCleanupSuccess -and $shadowCopySuccess) {
+    Write-Host "System storage cleanup completed successfully!" -ForegroundColor Green
+}
+else {
+    Write-Error "System storage cleanup encountered issues. Please check the logs."
+}
+
+# Get drive information after cleanup
+try {
+    # Get all available volumes with drive letters and sort them
+    $volumes = Get-Volume | 
+        Where-Object { $_.DriveLetter } | 
+        Sort-Object DriveLetter
+
+    if ($volumes.Count -eq 0) {
+        Write-Error "No drives with letters found on the system."
+        exit
+    }
+
+    # Select the volume with lowest drive letter
+    $lowestVolume = $volumes[0]
+    
+    Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
+    Show-DriveInfo -Volume $lowestVolume -State "After Cleanup"
 }
 catch {
     Write-Error "Error accessing drive information. Error: $_"
