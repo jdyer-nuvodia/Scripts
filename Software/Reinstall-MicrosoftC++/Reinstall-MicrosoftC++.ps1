@@ -1,3 +1,35 @@
+# =============================================================================
+# Script: Reinstall-MicrosoftC++.ps1
+# Created: 2025-02-27 18:51:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-27 18:51:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script with standard header format
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Downloads and installs Microsoft Visual C++ Redistributables (x86 and x64).
+.DESCRIPTION
+    This script automates the process of downloading and installing the latest Microsoft Visual C++ Redistributables.
+    Key actions:
+     - Creates a temporary directory for downloads
+     - Downloads both x86 and x64 versions of Visual C++ Redistributables
+     - Installs the redistributables silently
+     - No system restart is forced after installation
+    Dependencies:
+     - Requires internet connection
+     - Requires administrative privileges
+.EXAMPLE
+    .\Reinstall-MicrosoftC++.ps1
+    Downloads and installs both x86 and x64 Visual C++ Redistributables
+.NOTES
+    Security Level: Medium
+    Required Permissions: Administrative privileges
+    Validation Requirements: Verify successful installation in Programs and Features
+#>
+
 # Define the path where the redistributable installers will be saved
 $downloadPath = "$env:TEMP\Redistributables"
 
