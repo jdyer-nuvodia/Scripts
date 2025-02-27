@@ -60,7 +60,7 @@ function Start-SystemContext {
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
         $task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings
         
-        # Register and start the task
+        # Register task using the task object
         Register-ScheduledTask -TaskName $jobName -InputObject $task | Out-Null
         Start-ScheduledTask -TaskName $jobName
 
