@@ -51,7 +51,8 @@ function Start-SystemContext {
     
     try {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
-        $logFile = Join-Path $env:TEMP "$jobName.log"
+        $scriptDirectory = Split-Path -Parent $ScriptPath
+        $logFile = Join-Path $scriptDirectory "$jobName.log"
         
         # Create action with logging
         $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; . '$ScriptPath'; Stop-Transcript}`""
