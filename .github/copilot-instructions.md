@@ -2,12 +2,13 @@
 # File: copilot-instructions.md
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-25 22:52:00 UTC
+# Last Updated: 2025-02-27 18:49:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 3.1
 # Additional Info: Added instruction for commit messages.
 # =============================================================================
 
+The current year is 2025.
 When creating a script or file, make sure the header format below is used and the created date is set to the current timestamp, use a reliable time server to get the current time.
 Always give me a commit message when writing, editing, or providing a script. Read this webpage for instructions on how to give me the best commit message you can: https://www.gitkraken.com/learn/git/best-practices/git-commit-message
 Make sure all additional functionlity and examples, parameters, etc. are included in the header of any script when updating and the versioning is increased accordingly each time it is updated. Also update the last updated field in the header each time.
