@@ -306,7 +306,7 @@ function Write-ProgressBar {
     if ($Current -eq $Total) { Write-Host "" }
 }
 
-function Sanitize-Path {
+function Format-Path {
     param (
         [string]$Path
     )
@@ -364,7 +364,7 @@ function Get-FolderSizes {
                 $jobs = @()
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
-                    $sanitizedPath = Sanitize-Path $dirPath
+                    $sanitizedPath = Format-Path $dirPath
                     $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath, $typeName -ScriptBlock {
                         param($originalPath, $path, $className)
                         try {
@@ -402,7 +402,7 @@ function Get-FolderSizes {
                 # Fallback method - optimized for PS 4.0
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
-                    $sanitizedPath = Sanitize-Path $dirPath
+                    $sanitizedPath = Format-Path $dirPath
                     try {
                         $size = Invoke-Expression "[$typeName]::GetDirectorySize('$sanitizedPath')"
                         $counts = Invoke-Expression "[$typeName]::GetDirectoryCounts('$sanitizedPath')"
