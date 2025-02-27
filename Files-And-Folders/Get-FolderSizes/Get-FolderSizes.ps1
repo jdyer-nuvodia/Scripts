@@ -310,12 +310,16 @@ function Sanitize-Path {
     param (
         [string]$Path
     )
+    # Replace single quotes with double quotes
+    $escaped = $Path.Replace("'", "''")
     # Escape special characters for PowerShell execution
-    $escaped = [Management.Automation.WildcardPattern]::Escape($Path)
+    $escaped = [Management.Automation.WildcardPattern]::Escape($escaped)
     # Double escape backlashes for .NET calls
     $escaped = $escaped.Replace('\', '\\')
-    # Escape single quotes for string literals
-    $escaped = $escaped.Replace("'", "''")
+    # Wrap path in quotes if it contains spaces
+    if ($escaped -match '\s') {
+        $escaped = "`"$escaped`""
+    }
     return $escaped
 }
 
