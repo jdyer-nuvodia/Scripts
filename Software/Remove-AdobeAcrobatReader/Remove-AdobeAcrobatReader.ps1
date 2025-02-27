@@ -1,3 +1,46 @@
+# =============================================================================
+# Script: Remove-AdobeAcrobatReader.ps1
+# Created: 2025-02-27 18:52:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-27 18:52:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script with standardized header
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Removes Adobe Acrobat Reader and related components from a Windows system.
+.DESCRIPTION
+    This script performs a comprehensive removal of Adobe Acrobat Reader by:
+     - Uninstalling via MSI product codes
+     - Removing associated directories
+     - Cleaning registry entries
+     - Removing Creative Cloud Files shortcuts
+     
+    Dependencies:
+     - Must be run with administrative privileges
+     - Windows PowerShell 5.1 or later
+     
+    Security considerations:
+     - Requires registry modification permissions
+     - Requires file system modification permissions
+     
+    Performance impact:
+     - Minimal system impact
+     - May take several minutes depending on installed versions
+.EXAMPLE
+    .\Remove-AdobeAcrobatReader.ps1
+    Performs complete removal of Adobe Acrobat Reader from the system.
+.NOTES
+    Security Level: Medium
+    Required Permissions: Local Administrator
+    Validation Requirements: 
+    - Verify Adobe Reader is uninstalled
+    - Check for removal of specified directories
+    - Validate registry cleanup
+#>
+
 # Run this script as an administrator
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))  
 {  
