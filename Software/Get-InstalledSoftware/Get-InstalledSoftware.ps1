@@ -1,3 +1,37 @@
+# =============================================================================
+# Script: Get-InstalledSoftware.ps1
+# Created: 2024-01-18 15:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-27 15:45:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Initial script creation for software inventory
+# =============================================================================
+
+<#
+.SYNOPSIS
+    Retrieves installed software information from Windows registry and exports to CSV.
+.DESCRIPTION
+    This script performs the following actions:
+    - Queries multiple registry paths for installed software information
+    - Retrieves DisplayName and DisplayVersion for each installed application
+    - Sorts the results alphabetically by DisplayName
+    - Exports the results to a CSV file named with the computer's FQDN
+    - Displays the results in the console
+    
+    Dependencies:
+    - PowerShell 5.1 or higher
+    - Write access to C:\Temp directory
+    - Registry read access
+.EXAMPLE
+    .\Get-InstalledSoftware.ps1
+    Retrieves all installed software and exports to C:\Temp\InstalledSoftware_<FQDN>.csv
+.NOTES
+    Security Level: Low
+    Required Permissions: Registry read access, filesystem write access
+    Validation Requirements: Verify CSV output contains expected software entries
+#>
+
 # Define paths for installed software
 $paths = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
