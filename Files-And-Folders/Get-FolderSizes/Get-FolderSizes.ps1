@@ -129,23 +129,31 @@ function Initialize-ThreadJobModule {
         }
 
         # First try to import if it exists
-        Import-Module ThreadJob -ErrorAction Stop
+        if (Get-Module -ListAvailable -Name ThreadJob) {
+            Import-Module ThreadJob -ErrorAction Stop
+            return $true
+        }
+
+        Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
+        
+        # Set up PSGallery as trusted repository if needed
+        if (-not (Get-PSRepository -Name "PSGallery" -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default -ErrorAction Stop
+        }
+        if ((Get-PSRepository -Name "PSGallery").InstallationPolicy -ne "Trusted") {
+            Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction Stop
+        }
+
+        # Install the module
+        Install-Module -Name ThreadJob -Repository PSGallery -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+        Import-Module ThreadJob -Force -ErrorAction Stop
+        Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
         return $true
     }
     catch {
-        try {
-            Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
-            # Force installation without prompts
-            Install-Module -Name ThreadJob -Force -AllowClobber -Scope CurrentUser -Confirm:$false -ErrorAction Stop
-            Import-Module ThreadJob -Force -ErrorAction Stop
-            Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
-            return $true
-        }
-        catch {
-            Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
-            Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow
-            return $false
-        }
+        Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
+        Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow
+        return $false
     }
 }
 
