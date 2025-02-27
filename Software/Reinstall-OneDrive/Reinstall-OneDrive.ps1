@@ -1,8 +1,34 @@
-# Requires administrator privileges
+# =============================================================================
+# Script: Reinstall-OneDrive.ps1
+# Created: 2025-02-27 18:50:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-02-27 18:50:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.0
+# Additional Info: Script to uninstall and reinstall OneDrive
+# =============================================================================
 
-# Check if running as administrator
+<#
+.SYNOPSIS
+    Uninstalls existing OneDrive installations and installs the latest version.
+.DESCRIPTION
+    This script performs the following actions:
+     - Uninstalls all existing OneDrive installations
+     - Downloads and installs the latest version of OneDrive
+     - Includes timeout protection for long-running operations
+     - Requires administrator privileges
+.EXAMPLE
+    .\Reinstall-OneDrive.ps1
+    Completely reinstalls OneDrive with the latest version
+.NOTES
+    Security Level: Medium
+    Required Permissions: Administrator
+    Validation Requirements: Verify OneDrive is running after installation
+#>
+
+# Requires administrator privileges
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Output "Script is not running as Administrator. Restarting with elevated privileges..."
+    Write-Host "Script is not running as Administrator. Restarting with elevated privileges..." -ForegroundColor Yellow
     Start-Process powershell.exe -Verb RunAs -ArgumentList "-File `"$($MyInvocation.MyCommand.Path)`""
     Exit
 }
@@ -11,7 +37,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $job = Start-Job -ScriptBlock {
     # Function to uninstall OneDrive
     function Uninstall-OneDrive {
-        Write-Output "Stopping OneDrive processes..."
+        Write-Host "Stopping OneDrive processes..." -ForegroundColor Cyan
         Stop-Process -Name OneDrive* -Force -ErrorAction SilentlyContinue
 
         $oneDrivePaths = @(
@@ -23,12 +49,12 @@ $job = Start-Job -ScriptBlock {
 
         foreach ($path in $oneDrivePaths) {
             if (Test-Path $path) {
-                Write-Output "Uninstalling OneDrive from $path"
+                Write-Host "Uninstalling OneDrive from $path" -ForegroundColor Cyan
                 Start-Process $path -ArgumentList "/uninstall" -Wait
             }
         }
 
-        Write-Output "Uninstalling OneDrive using WinGet..."
+        Write-Host "Uninstalling OneDrive using WinGet..." -ForegroundColor Cyan
         winget uninstall Microsoft.OneDrive
     }
 
@@ -37,28 +63,28 @@ $job = Start-Job -ScriptBlock {
         $url = "https://go.microsoft.com/fwlink/p/?LinkID=2182910"
         $outPath = "$env:TEMP\OneDriveSetup.exe"
 
-        Write-Output "Downloading the latest OneDrive installer..."
+        Write-Host "Downloading the latest OneDrive installer..." -ForegroundColor Cyan
         Invoke-WebRequest -Uri $url -OutFile $outPath
 
-        Write-Output "Installing the latest version of OneDrive..."
+        Write-Host "Installing the latest version of OneDrive..." -ForegroundColor Cyan
         Start-Process $outPath -ArgumentList "/allusers" -Wait
     }
 
     # Execute the functions
-    Write-Output "Uninstalling all versions of OneDrive..."
+    Write-Host "Starting OneDrive reinstallation process..." -ForegroundColor Cyan
     Uninstall-OneDrive
 
-    Write-Output "Installing the latest version of OneDrive..."
+    Write-Host "Installing the latest version of OneDrive..." -ForegroundColor Cyan
     Install-LatestOneDrive
 
-    Write-Output "OneDrive update process completed."
+    Write-Host "OneDrive update process completed successfully." -ForegroundColor Green
 }
 
 $timeout = 300 # 5 minutes in seconds
 $completed = Wait-Job $job -Timeout $timeout
 
 if ($completed -eq $null) {
-    Write-Output "The script did not complete within 10 minutes. Stopping the process..."
+    Write-Host "The script did not complete within 5 minutes. Stopping the process..." -ForegroundColor Red
     Stop-Job $job
     Remove-Job $job
 } else {
