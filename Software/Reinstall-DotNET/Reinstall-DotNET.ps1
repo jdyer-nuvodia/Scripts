@@ -118,10 +118,20 @@ function Update-DotNetFramework {
 
 function Test-DotNetUpdates {
     Write-Verbose "Verifying .NET Framework updates..."
-    $versions = Get-InstalledDotNetVersions
+    $currentVersions = Get-InstalledDotNetVersions
     
-    foreach ($version in $versions) {
-        Write-Host "Detected .NET Framework $($version.Family) - Version: $($version.Version)"
+    Write-Host "`nComparing .NET Framework versions:"
+    Write-Host "----------------------------------------"
+    
+    foreach ($version in $currentVersions) {
+        $original = $originalVersions | Where-Object { $_.Family -eq $version.Family }
+        if ($original) {
+            Write-Host "Family $($version.Family):"
+            Write-Host "  Original: $($original.Version)"
+            Write-Host "  Current:  $($version.Version)"
+        } else {
+            Write-Host "Family $($version.Family) - Version: $($version.Version) (Newly installed)"
+        }
     }
 }
 
