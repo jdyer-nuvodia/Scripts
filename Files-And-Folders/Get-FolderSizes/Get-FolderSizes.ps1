@@ -315,7 +315,7 @@ function Format-Path {
         $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
         
         # Handle spaces and special characters
-        if ($fullPath -match '[\s\(\)\[\]\{\}\^\#\$\%\&\+\,\;\=\@\']' -or $fullPath.Contains('"')) {
+        if ($fullPath -match '[\s\(\)\[\]\{\}\^\#\$\%\&\+\,\;\=\@]' -or $fullPath.Contains('"')) {
             # Use special Unicode prefix for paths with spaces/special chars
             $fullPath = "\\?\$fullPath"
         }
