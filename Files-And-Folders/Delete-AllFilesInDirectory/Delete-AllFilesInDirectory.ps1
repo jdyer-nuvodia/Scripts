@@ -2,10 +2,10 @@
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-14 12:45:23 UTC
+# Last Updated: 2025-06-14 14:30:21 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2
-# Additional Info: Added functionality to take ownership before deletion
+# Version: 1.2.1
+# Additional Info: Fixed syntax error with missing closing brace
 # =============================================================================
 
 <#
@@ -138,7 +138,8 @@ try {
         }
 
     Write-Host "Directory cleanup completed successfully!" -ForegroundColor Green
-} catch {
+} 
+catch {
     Write-Error "An error occurred during the cleanup process: $_"
     exit 1
 }
