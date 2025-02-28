@@ -47,12 +47,50 @@ try {
         Remove-Item -Path $_.FullName -Force
     }
 
-    # Remove all folders
+    # Remove all folders with improved error handling and long path support
     Write-Host "Removing folders..." -ForegroundColor Cyan
-    Get-ChildItem -Path $TargetPath -Directory -Recurse | Sort-Object -Property FullName -Descending | ForEach-Object {
-        Write-Host "Deleting folder: $($_.FullName)" -ForegroundColor Yellow
-        Remove-Item -Path $_.FullName -Recurse -Force
-    }
+    Get-ChildItem -Path $TargetPath -Directory -Recurse -ErrorAction SilentlyContinue | 
+        Sort-Object -Property FullName -Descending | 
+        ForEach-Object {
+            $folderPath = $_.FullName
+            Write-Host "Attempting to delete folder: $folderPath" -ForegroundColor Yellow
+            try {
+                # Enable long path support if needed
+                if ($folderPath.Length -ge 260) {
+                    $folderPath = "\\?\$folderPath"
+                    Write-Host "Using long path format: $folderPath" -ForegroundColor Yellow
+                }
+                
+                # Try up to 3 times with a small delay between attempts
+                $maxAttempts = 3
+                $attempt = 1
+                $success = $false
+                
+                while (-not $success -and $attempt -le $maxAttempts) {
+                    try {
+                        Remove-Item -LiteralPath $folderPath -Recurse -Force -ErrorAction Stop
+                        $success = $true
+                        Write-Host "Successfully deleted folder: $($_.FullName)" -ForegroundColor Green
+                    }
+                    catch {
+                        if ($attempt -lt $maxAttempts) {
+                            Write-Host "Attempt $attempt failed, retrying in 2 seconds..." -ForegroundColor Yellow
+                            Start-Sleep -Seconds 2
+                            $attempt++
+                        }
+                        else {
+                            Write-Host "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -ForegroundColor Yellow
+                            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Yellow
+                            # Continue with other folders instead of stopping
+                        }
+                    }
+                }
+            }
+            catch {
+                Write-Host "Error processing folder $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
+                # Continue with other folders
+            }
+        }
 
     Write-Host "Directory cleanup completed successfully!" -ForegroundColor Green
 } catch {
