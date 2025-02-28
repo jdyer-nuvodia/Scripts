@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 20:12:00 UTC
+# Last Updated: 2025-02-28 21:49:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5
-# Additional Info: Added before/after drive information comparison functionality
+# Version: 1.6
+# Additional Info: Fixed system context execution loop issue
 # =============================================================================
 
 <#
@@ -25,6 +25,8 @@
     Dependencies:
     - Windows Volume Shadow Copy Service
     - Administrative privileges
+.PARAMETER NoElevate
+    Prevents the script from attempting to elevate to SYSTEM context when already running as a scheduled task
 .NOTES
     Security Level: High
     Required Permissions: Administrative privileges
@@ -32,6 +34,9 @@
     - Verify shadow copy retention
     - Check disk space recovery
 #>
+param(
+    [switch]$NoElevate
+)
 
 function Test-RunningAsSystem {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -45,6 +50,7 @@ function Start-SystemContext {
     )
 
     if (Test-RunningAsSystem) {
+        Write-Host "Already running as SYSTEM account." -ForegroundColor Green
         return $true
     }
 
@@ -55,8 +61,8 @@ function Start-SystemContext {
         $scriptDirectory = Split-Path -Parent $ScriptPath
         $logFile = Join-Path $scriptDirectory "$jobName.log"
         
-        # Create action with logging
-        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; . '$ScriptPath'; Stop-Transcript}`""
+        # Create action with logging and pass NoElevate parameter to prevent re-elevation
+        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; & '$ScriptPath' -NoElevate; Stop-Transcript}`""
         $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argument
         $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -69,6 +75,7 @@ function Start-SystemContext {
         # Wait for completion with progress bar
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
+        $lastLogLine = ""
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
             $status = Get-ScheduledTask -TaskName $jobName
@@ -78,16 +85,19 @@ function Start-SystemContext {
             Start-Sleep -Seconds 5
             
             if (Test-Path $logFile) {
-                Get-Content $logFile -Tail 1
+                $currentLines = Get-Content $logFile -Tail 5
+                foreach ($line in $currentLines) {
+                    if ($line -ne $lastLogLine -and $line -notmatch "^Transcript started|^Transcript ended") {
+                        Write-Host $line
+                        $lastLogLine = $line
+                    }
+                }
             }
         }
 
         # Check final status
         if (-not $completed) {
             Write-Error "Task did not complete within timeout period"
-        }
-        elseif (Test-Path $logFile) {
-            Get-Content $logFile | Write-Host
         }
 
         # Cleanup
@@ -180,7 +190,8 @@ function Show-DriveInfo {
 }
 
 # Main execution
-if (-not (Test-RunningAsSystem)) {
+if (-not $NoElevate -and -not (Test-RunningAsSystem)) {
+    Write-Host "Initial execution - will elevate to SYSTEM" -ForegroundColor Cyan
     Start-SystemContext
     exit
 }
