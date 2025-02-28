@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 22:45:00 UTC
+# Last Updated: 2025-02-28 22:54:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Modified for silent non-interactive operation with automatic dependency installation
+# Version: 1.2.0
+# Additional Info: Updated output formatting to display results in tabular format with progress indicators
 # =============================================================================
 
 # Requires -Version 5.1
@@ -82,7 +82,7 @@
 
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
-    Updated: 2025-03-12 18:30:00 UTC
+    Updated: 2025-04-01 21:35:00 UTC
 
     Requirements:
     - Windows PowerShell 5.1 or later
@@ -95,6 +95,7 @@
     1.0.2 - Added ThreadJob module handling and fallback mechanism
     1.0.8 - Fixed handling of special characters in ThreadJobs processing
     1.1.0 - Modified for silent non-interactive operation with automatic dependency installation
+    1.2.0 - Updated output formatting to display results in tabular format with progress indicators
 #>
 
 param (
@@ -160,9 +161,18 @@ function Initialize-ThreadJobModule {
 function Format-SizeWithPadding {
     param (
         [double]$Size,
-        [int]$DecimalPlaces = 2
+        [int]$DecimalPlaces = 2,
+        [string]$Unit = "GB"
     )
-    return "{0:F$DecimalPlaces}" -f $Size
+    
+    switch ($Unit) {
+        "GB" { $divider = 1GB }
+        "MB" { $divider = 1MB }
+        "KB" { $divider = 1KB }
+        default { $divider = 1GB }
+    }
+    
+    return "{0:F$DecimalPlaces}" -f ($Size / $divider)
 }
 
 function Format-Path {
@@ -176,6 +186,59 @@ function Format-Path {
     catch {
         Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
         return $Path
+    }
+}
+
+function Write-TableHeader {
+    param([int]$Width = 150)
+    
+    Write-Host ("-" * $Width)
+    Write-Host ("Folder Path".PadRight(50) + " | " + 
+                "Size (GB)".PadLeft(11) + " | " + 
+                "Subfolders".PadLeft(15) + " | " + 
+                "Files".PadLeft(12) + " | " + 
+                "Largest File (in this directory)")
+    Write-Host ("-" * $Width)
+}
+
+function Write-TableRow {
+    param(
+        [string]$FolderPath,
+        [long]$Size,
+        [int]$SubfolderCount,
+        [int]$FileCount,
+        [object]$LargestFile
+    )
+    
+    $sizeGB = Format-SizeWithPadding -Size $Size -DecimalPlaces 2 -Unit "GB"
+    $largestFileInfo = if ($LargestFile) {
+        $largestFileSize = Format-SizeWithPadding -Size $LargestFile.Size -DecimalPlaces 2 -Unit "MB"
+        "$($LargestFile.Name) ($largestFileSize MB)"
+    } else {
+        "No files found"
+    }
+    
+    Write-Host ($FolderPath.PadRight(50) + " | " + 
+                $sizeGB.PadLeft(11) + " | " + 
+                $SubfolderCount.ToString().PadLeft(15) + " | " + 
+                $FileCount.ToString().PadLeft(12) + " | " + 
+                $largestFileInfo)
+}
+
+function Write-ProgressBar {
+    param (
+        [int]$Completed,
+        [int]$Total,
+        [int]$Width = 50
+    )
+    
+    $percentComplete = [math]::Min(100, [math]::Floor(($Completed / $Total) * 100))
+    $filledWidth = [math]::Floor($Width * ($percentComplete / 100))
+    $bar = "[" + ("=" * $filledWidth).PadRight($Width) + "] $percentComplete% | Completed processing $Completed of $Total folders"
+    
+    Write-Host "`r$bar" -NoNewline
+    if ($Completed -eq $Total) {
+        Write-Host ""  # Add a newline when complete
     }
 }
 
@@ -446,7 +509,8 @@ function Get-FolderSize {
             return
         }
 
-        Write-Host "Scanning: $folderPath (Depth: $CurrentDepth)"
+        Write-Host "`nTop $Top Largest Folders in: $folderPath" -ForegroundColor Cyan
+        Write-Host ""
 
         # Get Folder Size and Counts using .NET methods
         $size = [FolderSizeHelper]::GetDirectorySize($folderPath)
@@ -457,33 +521,69 @@ function Get-FolderSize {
         # Get Largest File
         $largestFile = [FolderSizeHelper]::GetLargestFile($folderPath)
 
-        # Output Folder Information
-        Write-Host "  Size: $(Format-SizeWithPadding ($size / 1MB)) MB"
-        Write-Host "  Files: $fileCount, Folders: $folderCount"
-
+        # Display largest file information
         if ($largestFile) {
-            Write-Host "  Largest File: $($largestFile.Name) ($((Format-SizeWithPadding ($largestFile.Size / 1MB)) ) MB)"
-        }
-        else {
-            Write-Host "  No files found."
+            Write-Host "`nLargest file in $folderPath :" -ForegroundColor Green
+            Write-Host "Name: $($largestFile.Name)"
+            $fileSize = if ($largestFile.Size -gt 1MB) {
+                "$([Math]::Round($largestFile.Size / 1MB, 2)) MB"
+            } elseif ($largestFile.Size -gt 1KB) {
+                "$([Math]::Round($largestFile.Size / 1KB, 2)) KB"
+            } else {
+                "$($largestFile.Size) bytes"
+            }
+            Write-Host "Size: $fileSize"
         }
 
         # Get Subfolders and Process
         $subFolders = try { Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop } catch { Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"; @() }
 
-        if ($subFolders) {
+        if ($subFolders -and $subFolders.Count -gt 0) {
+            $folderCount = $subFolders.Count
+            Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan
+            
+            # Calculate folder sizes for sorting
             $sortedFolders = $subFolders | ForEach-Object {
                 $subFolderPath = $_.FullName
                 $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
+                $subFolderCounts = try { [FolderSizeHelper]::GetDirectoryCounts($subFolderPath) } catch { New-Object -TypeName 'System.Tuple[int,int]'(0, 0) }
+                $subFolderLargestFile = try { [FolderSizeHelper]::GetLargestFile($subFolderPath) } catch { $null }
+                
                 [PSCustomObject]@{
                     Path = $subFolderPath
                     Size = $subFolderSize
+                    FileCount = $subFolderCounts.Item1
+                    FolderCount = $subFolderCounts.Item2
+                    LargestFile = $subFolderLargestFile
                 }
-            } | Sort-Object -Property Size -Descending | Select-Object -First $Top
-
-            foreach ($subFolder in $sortedFolders) {
-                Get-FolderSize -FolderPath $subFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
+            } | Sort-Object -Property Size -Descending
+            
+            # Display top folders in table format
+            Write-TableHeader
+            
+            $topFolders = $sortedFolders | Select-Object -First $Top
+            foreach ($folder in $topFolders) {
+                Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
             }
+            
+            Write-Host ("-" * 150)
+            Write-Host ""
+            
+            # Process subfolders if within depth limit
+            if ($CurrentDepth + 1 -le $MaxDepth) {
+                $processedCount = 0
+                
+                foreach ($folder in $topFolders) {
+                    Write-Host "`nDescending into: $($folder.Path)" -ForegroundColor Cyan
+                    Get-FolderSize -FolderPath $folder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
+                    $processedCount++
+                    Write-ProgressBar -Completed $processedCount -Total $topFolders.Count
+                }
+                
+                Write-Host "`nCompleted processing all folders." -ForegroundColor Green
+            }
+        } else {
+            Write-Host "No subfolders found to process." -ForegroundColor Yellow
         }
     }
     catch {
@@ -504,4 +604,4 @@ try {
     Write-Warning "Failed to stop transcript: $_"
 }
 
-Write-Host "Script finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
