@@ -114,17 +114,37 @@ function Initialize-NuGetProvider {
 
         if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
             Write-Host "Installing NuGet provider..." -ForegroundColor Cyan
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
-            Write-Host "NuGet provider installed successfully." -ForegroundColor Green
-            return $true
+
+            # Attempt to install using Find-PackageProvider
+            try {
+                Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -ErrorAction Stop | Install-PackageProvider -Force -ErrorAction Stop
+                Write-Host "NuGet provider installed successfully using Find-PackageProvider." -ForegroundColor Green
+                return $true
+            }
+            catch {
+                Write-Warning "Find-PackageProvider method failed: $($_.Exception.Message)"
+                Write-Host "Attempting direct Install-PackageProvider..." -ForegroundColor Yellow
+                # Attempt direct install with Install-PackageProvider
+                try {
+                    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction Stop
+                    Write-Host "NuGet provider installed successfully using Install-PackageProvider." -ForegroundColor Green
+                    return $true
+                }
+                catch {
+                    Write-Warning "Install-PackageProvider method failed: $($_.Exception.Message)"
+                    Write-Host "Failed to install NuGet provider. Please install manually." -ForegroundColor Red
+                    return $false
+                }
+            }
         }
         return $true
     }
     catch {
-        Write-Host "Failed to install NuGet provider: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "Failed to initialize NuGet provider: $($_.Exception.Message)" -ForegroundColor Yellow
         return $false
     }
 }
+
 
 
 function Initialize-ThreadJobModule {
@@ -134,26 +154,28 @@ function Initialize-ThreadJobModule {
             return $false
         }
 
+        # Check if ThreadJob module is already available
         if (Get-Module -ListAvailable -Name ThreadJob) {
             Import-Module ThreadJob -ErrorAction Stop
+            Write-Host "ThreadJob module already installed and imported successfully." -ForegroundColor Green
             return $true
         }
 
         Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
         
-        # Check if PSRepository exists and set to trusted
-        if (-not (Get-PSRepository -Name "PSGallery" -ErrorAction SilentlyContinue)) {
-            Register-PSRepository -Default -ErrorAction Stop
+        # Set PSGallery as trusted
+        if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+            Register-PSRepository -Default -InstallationPolicy Trusted
+        } else {
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
         }
-        
-        # Set repository to trusted
-        Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction Stop
 
         # Install ThreadJob module
-        Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Force -ErrorAction Stop
-        
+        Install-Module -Name ThreadJob -Repository PSGallery -Scope AllUsers -Force -AllowClobber
+
+        # Import the module
         Import-Module ThreadJob -ErrorAction Stop
-        Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
+        Write-Host "ThreadJob module installed and imported successfully." -ForegroundColor Green
         return $true
     }
     catch {
@@ -162,6 +184,7 @@ function Initialize-ThreadJobModule {
         return $false
     }
 }
+
 
 
 function Format-SizeWithPadding {
