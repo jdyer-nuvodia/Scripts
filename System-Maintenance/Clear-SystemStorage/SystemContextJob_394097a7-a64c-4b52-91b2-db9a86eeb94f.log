@@ -1,0 +1,33 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20250228144555
+Username: NUVODIA\SYSTEM
+RunAs User: NUVODIA\SYSTEM
+Configuration Name: 
+Machine: LT-JBDYER (Microsoft Windows NT 10.0.22631.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -Command & {Start-Transcript 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\System-Maintenance\Clear-SystemStorage\SystemContextJob_394097a7-a64c-4b52-91b2-db9a86eeb94f.log'; . 'C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\System-Maintenance\Clear-SystemStorage\Clear-SystemStorage.ps1'; Stop-Transcript}
+Process ID: 23148
+PSVersion: 5.1.22621.4391
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.22621.4391
+BuildVersion: 10.0.22621.4391
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\System-Maintenance\Clear-SystemStorage\SystemContextJob_394097a7-a64c-4b52-91b2-db9a86eeb94f.log
+Executing as SYSTEM account
+Starting system storage cleanup...
+Found lowest drive letter: C
+
+Before Cleanup Drive Volume Details:
+------------------------
+Drive Letter: C
+Drive Label: OS
+File System: NTFS
+Drive Type: Fixed
+Size: 474.08 GB
+Free Space: 326.19 GB
+Health Status: Healthy
+Starting Disk Cleanup process...

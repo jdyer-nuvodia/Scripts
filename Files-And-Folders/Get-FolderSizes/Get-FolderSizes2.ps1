@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 14:38:00 UTC
+# Last Updated: 2025-02-28 14:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Updated output formatting to match original script while maintaining low disk space optimizations
+# Version: 1.2.1
+# Additional Info: Fixed function ordering and comment syntax
 # =============================================================================
 
 <#
@@ -122,23 +122,6 @@ param (
     [switch]$LowDiskMode
 )
 
-# Check if we need to operate in low disk space mode
-if ($LowDiskMode) {
-    Write-Host "Running in low disk space mode. Optimizing for minimal disk usage." -ForegroundColor Yellow
-    $NoLog = $true                    # Disable logging in low disk space mode
-    $global:useThreadJobs = $false    # Disable threading in low disk space mode
-} else {
-    # Check PowerShell version and set compatibility mode
-    $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
-    if ($script:isLegacyPowerShell) {
-        Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
-        $global:useThreadJobs = $false
-    } else {
-        # Only try to use thread jobs if not in low disk space mode
-        $global:useThreadJobs = Initialize-ThreadJobModule
-    }
-}
-
 # Modified Initialize-NuGetProvider to run silently (and skip in low disk space mode)
 function Initialize-NuGetProvider {
     if ($LowDiskMode) {
@@ -228,6 +211,23 @@ function Initialize-ThreadJobModule {
         Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
         Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow
         return $false
+    }
+}
+
+# Check if we need to operate in low disk space mode
+if ($LowDiskMode) {
+    Write-Host "Running in low disk space mode. Optimizing for minimal disk usage." -ForegroundColor Yellow
+    $NoLog = $true                    # Disable logging in low disk space mode
+    $global:useThreadJobs = $false    # Disable threading in low disk space mode
+} else {
+    # Check PowerShell version and set compatibility mode
+    $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
+    if ($script:isLegacyPowerShell) {
+        Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
+        $global:useThreadJobs = $false
+    } else {
+        # Only try to use thread jobs if not in low disk space mode
+        $global:useThreadJobs = Initialize-ThreadJobModule
     }
 }
 
