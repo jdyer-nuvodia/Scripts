@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 14:45:00 UTC
+# Last Updated: 2025-02-28 22:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Fixed function ordering and comment syntax
+# Version: 1.2.2
+# Additional Info: Fixed type name conflict causing compilation error
 # =============================================================================
 
 <#
@@ -261,83 +261,7 @@ if (-not $NoLog) {
 }
 
 # Remove existing type if it exists
-Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
-
-# Add .NET methods with unique type name
-Add-Type -TypeDefinition @"
-using System;
-using System.IO;
-using System.Linq;
-using System.Security;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-
-public class FastFileScanner {
-    public static long GetDirectorySize(string path) {
-        long size = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
-
-        while (stack.Count > 0) {
-            string dir = stack.Pop();
-            try {
-                # Use GetFiles with SearchOption.TopDirectoryOnly for better reliability
-                foreach (string file in Directory.GetFiles(dir)) {
-                    try {
-                        size += new FileInfo(file).Length;
-                    }
-                    catch (Exception) { }
-                }
-
-                foreach (string subDir in Directory.GetDirectories(dir)) {
-                    stack.Push(subDir);
-                }
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
-        }
-        return size;
-    }
-
-    public static Tuple<int, int> GetDirectoryCounts(string path) {
-        int files = 0;
-        int folders = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
-
-        while (stack.Count > 0) {
-            string dir = stack.Pop();
-            try {
-                files += Directory.GetFiles(dir).Length;
-                var subDirs = Directory.GetDirectories(dir);
-                folders += subDirs.Length;
-                foreach (var subDir in subDirs) {
-                    stack.Push(subDir);
-                }
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
-        }
-        return new Tuple<int, int>(files, folders);
-    }
-
-    public static FileInfo GetLargestFile(string path) {
-        try {
-            return new DirectoryInfo(path)
-                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(f => f.Length)
-                .FirstOrDefault();
-        }
-        catch {
-            return null;
-        }
-    }
-}
-"@
+Remove-TypeData -TypeName "FolderSizeHelper" -ErrorAction SilentlyContinue
 
 # Add a static helper type for folder processing
 Add-Type -TypeDefinition @"
@@ -346,6 +270,7 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 public static class FolderSizeHelper
 {
