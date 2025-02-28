@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 23:15:00 UTC
+# Last Updated: 2025-02-28 23:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Fixed folder size display to consistently show top folders table at each directory level
+# Version: 1.4.0
+# Additional Info: Modified to only descend into the largest folder at each directory level
 # =============================================================================
 
 # Requires -Version 5.1
@@ -587,18 +587,14 @@ function Get-FolderSize {
             Write-Host ("-" * 150)
             Write-Host ""
             
-            # Process subfolders if within depth limit
-            if ($CurrentDepth + 1 -le $MaxDepth) {
-                $processedCount = 0
+            # Process only the largest subfolder if within depth limit
+            if ($CurrentDepth + 1 -le $MaxDepth -and $sortedFolders.Count -gt 0) {
+                $largestFolder = $sortedFolders[0] # Get the single largest folder
                 
-                foreach ($folder in $topFolders) {
-                    Write-Host "`nDescending into: $($folder.Path)" -ForegroundColor Cyan
-                    Get-FolderSize -FolderPath $folder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
-                    $processedCount++
-                    Write-ProgressBar -Completed $processedCount -Total $topFolders.Count
-                }
+                Write-Host "`nDescending into largest subfolder: $($largestFolder.Path)" -ForegroundColor Cyan
+                Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
                 
-                Write-Host "`nCompleted processing all folders." -ForegroundColor Green
+                Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
             }
         } else {
             Write-Host "No subfolders found to process." -ForegroundColor Yellow
