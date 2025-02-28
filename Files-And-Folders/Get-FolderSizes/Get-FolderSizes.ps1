@@ -513,9 +513,7 @@ function Get-FolderSize {
         Write-Host ""
 
         # Get Folder Size and Counts using .NET methods
-        $size = [FolderSizeHelper]::GetDirectorySize($folderPath)
         $counts = [FolderSizeHelper]::GetDirectoryCounts($folderPath)
-        $fileCount = $counts.Item1
         $folderCount = $counts.Item2
 
         # Get Largest File
