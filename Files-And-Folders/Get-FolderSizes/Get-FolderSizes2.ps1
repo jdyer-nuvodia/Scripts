@@ -2,7 +2,7 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 22:22:00 UTC
+# Last Updated: 2025-02-28 22:23:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.2.3
 # Additional Info: Fixed FolderSizeHelper type name collision with unique suffix
@@ -109,6 +109,9 @@
             - Improved progress bar display
             - Added interactive folder navigation
             - Enhanced largest file display
+    1.2.1 - Fixed function ordering and comment syntax
+    1.2.2 - Removed duplicate FastFileScanner class causing type conflicts
+    1.2.3 - Added version suffixes to helper class names to prevent type name collisions
 #>
 
 #Requires -RunAsAdministrator
