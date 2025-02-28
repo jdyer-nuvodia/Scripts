@@ -51,7 +51,7 @@ try {
     Write-Host "Removing folders..." -ForegroundColor Cyan
     Get-ChildItem -Path $TargetPath -Directory -Recurse | Sort-Object -Property FullName -Descending | ForEach-Object {
         Write-Host "Deleting folder: $($_.FullName)" -ForegroundColor Yellow
-        Remove-Item -Path $_.FullName -Force
+        Remove-Item -Path $_.FullName -Recurse -Force
     }
 
     Write-Host "Directory cleanup completed successfully!" -ForegroundColor Green
