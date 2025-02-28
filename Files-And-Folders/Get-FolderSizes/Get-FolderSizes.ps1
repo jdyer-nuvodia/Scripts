@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 17:45:00 UTC
+# Last Updated: 2025-03-12 18:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.8
-# Additional Info: Fixed handling of special characters in ThreadJobs processing
+# Version: 1.1.0
+# Additional Info: Modified for silent non-interactive operation with automatic dependency installation
 # =============================================================================
 
 <#
@@ -16,20 +16,23 @@
     This script performs a high-performance recursive directory scan to identify the largest
     folders and files in a given directory path. It uses multi-threading when available
     and optimized .NET methods for maximum performance, even when scanning system directories.
+    
+    All dependencies are installed automatically without user interaction.
 
     Features:
     - Multi-threaded scanning when ThreadJob module is available
+    - Silent installation of required modules without user interaction
     - Fallback to single-threaded mode when ThreadJob is not available
     - Handles access-denied errors gracefully
     - Identifies largest files in each directory
     - Creates detailed log file of the scan
-    - Requires administrative privileges
+    - Continues with limited functionality if admin rights unavailable
     - Supports custom depth limitation
 
     Dependencies:
     - Windows PowerShell 5.1 or later
-    - ThreadJob module (optional - will be installed if not present)
-    - Administrative privileges
+    - ThreadJob module (optional - will be installed automatically if not present)
+    - Administrative privileges recommended but not required
     - Minimum 4GB RAM recommended
 
     Performance Impact:
@@ -66,33 +69,33 @@
 .NOTES
     Security Level: Medium
     Required Permissions: 
-    - Administrative access
+    - Administrative access (recommended but not required)
     - Read access to scanned directories
     - Write access to C:\temp for logging
     
     Validation Requirements:
-    - Verify administrative privileges
     - Check available memory (4GB+)
     - Validate write access to log directory
     - Test ThreadJob module availability
 
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
-    Updated: 2025-02-07 15:41:22 UTC
+    Updated: 2025-03-12 18:30:00 UTC
 
     Requirements:
     - Windows PowerShell 5.1 or later
-    - Administrative privileges
+    - Administrative privileges recommended
     - Minimum 4GB RAM recommended for large directory structures
-    - ThreadJob module (optional - will be installed if not present)
 
     Version History:
     1.0.0 - Initial release
     1.0.1 - Fixed compatibility issues with older PowerShell versions
     1.0.2 - Added ThreadJob module handling and fallback mechanism
+    1.0.8 - Fixed handling of special characters in ThreadJobs processing
+    1.1.0 - Modified for silent non-interactive operation with automatic dependency installation
 #>
 
-#Requires -RunAsAdministrator
+#Requires -Version 3.0
 
 param (
     [string]$Path = "C:\",
@@ -100,6 +103,12 @@ param (
     [ValidateRange(1, 50)]
     [int]$Top = 3
 )
+
+# Check for elevated privileges but don't prompt user - continue with limited functionality
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+if (-not $isAdmin) {
+    Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
+}
 
 function Initialize-NuGetProvider {
     try {
@@ -109,13 +118,14 @@ function Initialize-NuGetProvider {
 
         if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
             Write-Host "Installing NuGet provider..." -ForegroundColor Cyan
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false | Out-Null
+            # Force installation without any prompts
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false -SkipPublisherCheck | Out-Null
             Write-Host "NuGet provider installed successfully." -ForegroundColor Green
         }
         return $true
     }
     catch {
-        Write-Error "Failed to install NuGet provider: $($_.Exception.Message)"
+        Write-Host "Failed to install NuGet provider: $($_.Exception.Message)" -ForegroundColor Yellow
         return $false
     }
 }
@@ -136,16 +146,16 @@ function Initialize-ThreadJobModule {
 
         Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
         
-        # Set up PSGallery as trusted repository if needed
+        # Set up PSGallery as trusted repository if needed - force without prompts
         if (-not (Get-PSRepository -Name "PSGallery" -ErrorAction SilentlyContinue)) {
-            Register-PSRepository -Default -ErrorAction Stop
+            Register-PSRepository -Default -Force -ErrorAction Stop
         }
-        if ((Get-PSRepository -Name "PSGallery").InstallationPolicy -ne "Trusted") {
-            Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction Stop
-        }
+        
+        # Force trust the repository without prompting
+        Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -Force -ErrorAction SilentlyContinue
 
-        # Install the module
-        Install-Module -Name ThreadJob -Repository PSGallery -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop
+        # Install the module silently without any prompts
+        Install-Module -Name ThreadJob -Repository PSGallery -Force -AllowClobber -Scope CurrentUser -SkipPublisherCheck -Confirm:$false -ErrorAction Stop
         Import-Module ThreadJob -Force -ErrorAction Stop
         Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
         return $true
@@ -166,13 +176,24 @@ if ($script:isLegacyPowerShell) {
     $global:useThreadJobs = Initialize-ThreadJobModule
 }
 
-# Setup transcript logging
+# Setup transcript logging with better error handling
 $transcriptPath = "C:\temp"
-if (-not (Test-Path $transcriptPath)) {
-    New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
+try {
+    if (-not (Test-Path $transcriptPath)) {
+        New-Item -ItemType Directory -Path $transcriptPath -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+    
+    if (Test-Path $transcriptPath) {
+        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
+    } else {
+        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
+        Write-Warning "Could not create transcript in C:\temp, using $transcriptFile instead"
+    }
+} catch {
+    Write-Warning "Failed to start transcript: $_"
 }
-$transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
-Start-Transcript -Path $transcriptFile -Force
 
 # Add script header to transcript
 Write-Host "======================================================"
@@ -182,16 +203,10 @@ Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd H
 Write-Host "User: $env:USERNAME"
 Write-Host "Computer: $env:COMPUTERNAME"
 Write-Host "Target Path: $Path"
+Write-Host "Admin Privileges: $isAdmin"
 Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
 Write-Host "======================================================"
 Write-Host ""
-
-# Check for elevated privileges and restart if necessary
-if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Warning "Elevated privileges required. Attempting to restart script as Administrator..."
-    Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" `"$Path`"" -Verb RunAs
-    Exit
-}
 
 # Remove existing type if it exists
 Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
@@ -276,7 +291,7 @@ public class $typeName {
         }
     }
 }
-"@
+"@ -ErrorAction SilentlyContinue
 
 # Add a static helper type for folder processing
 Add-Type -TypeDefinition @"
@@ -381,7 +396,7 @@ public static class FolderSizeHelper
         public long Size { get; set; }
     }
 }
-"@ -ErrorAction Stop
+"@ -ErrorAction SilentlyContinue
 
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -599,7 +614,7 @@ public static class ThreadFolderSizeHelper
         public long Size { get; set; }
     }
 }
-"@ -ErrorAction Stop
+"@ -ErrorAction SilentlyContinue
                 
                             # Use the thread-local helper class for processing
                             $size = [ThreadFolderSizeHelper]::GetDirectorySize($path)
@@ -639,6 +654,7 @@ public static class ThreadFolderSizeHelper
                 $results = @()
                 foreach ($job in $jobs) {
                     try {
+                        # Use Wait-Job with timeout to avoid hanging
                         $jobResult = $job | Wait-Job -Timeout 60 | Receive-Job
                         if ($jobResult) {
                             if ($jobResult.Error) {
@@ -649,12 +665,14 @@ public static class ThreadFolderSizeHelper
                         }
                     } catch {
                         Write-Warning "Thread job processing error: $_"
+                    } finally {
+                        # Ensure job is removed even on error
+                        $job | Remove-Job -Force -ErrorAction SilentlyContinue
                     }
                 }
-                $jobs | Remove-Job -Force -ErrorAction SilentlyContinue
             }
             else {
-                # Fallback method - use static helper class instead of dynamic type creation
+                # Fallback method - use static helper class
                 foreach ($dir in $batch) {
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
                     
@@ -811,4 +829,10 @@ Write-Host "Script completed (UTC): $((Get-Date).ToUniversalTime().ToString('yyy
 Write-Host "`nTranscript log file can be found here: $transcriptFile"
 Write-Host "======================================================"
 
-Stop-Transcript
+# Safely stop transcript at the end
+try {
+    Stop-Transcript -ErrorAction SilentlyContinue
+}
+catch {
+    Write-Warning "Error stopping transcript: $_"
+}
