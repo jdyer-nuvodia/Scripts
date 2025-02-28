@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 21:00 UTC
+# Last Updated: 2025-03-04 18:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.9
-# Additional Info: Fixed ThreadJob path issues in recursive directory scanning
+# Version: 1.0.10
+# Additional Info: Fixed JobSourceAdapter errors when scanning protected directories
 # =============================================================================
 
 <#
@@ -121,7 +121,7 @@ function Initialize-NuGetProvider {
     }
 }
 
-# Modified Initialize-ThreadJobModule to run silently
+# Modified Initialize-ThreadJobModule to ensure proper registration
 function Initialize-ThreadJobModule {
     try {
         # Ensure NuGet provider is installed first
@@ -132,7 +132,20 @@ function Initialize-ThreadJobModule {
 
         # First try to import if it exists
         if (Get-Module -ListAvailable -Name ThreadJob) {
-            Import-Module ThreadJob -ErrorAction Stop
+            # Force import with -Global to ensure proper registration
+            Import-Module ThreadJob -ErrorAction Stop -Force -Global
+            
+            # Explicitly register the adapter types by executing a small test job
+            try {
+                $testJob = Start-ThreadJob -ScriptBlock { 1 } -ErrorAction Stop
+                $null = $testJob | Wait-Job | Receive-Job
+                Remove-Job -Id $testJob.Id -ErrorAction SilentlyContinue
+                Write-Host "ThreadJob module initialized successfully." -ForegroundColor Green
+            }
+            catch {
+                Write-Warning "ThreadJob module loaded but failed initialization test: $($_.Exception.Message)"
+                return $false
+            }
             return $true
         }
 
@@ -148,9 +161,20 @@ function Initialize-ThreadJobModule {
 
         # Install the module
         Install-Module -Name ThreadJob -Repository PSGallery -Force -AllowClobber -Scope CurrentUser -ErrorAction Stop -Confirm:$false
-        Import-Module ThreadJob -Force -ErrorAction Stop
-        Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
-        return $true
+        Import-Module ThreadJob -Force -Global -ErrorAction Stop
+        
+        # Verify the module works
+        try {
+            $testJob = Start-ThreadJob -ScriptBlock { 1 } -ErrorAction Stop
+            $null = $testJob | Wait-Job | Receive-Job
+            Remove-Job -Id $testJob.Id -ErrorAction SilentlyContinue
+            Write-Host "ThreadJob module installed and initialized successfully." -ForegroundColor Green
+            return $true
+        }
+        catch {
+            Write-Warning "ThreadJob installed but failed initialization test: $($_.Exception.Message)"
+            return $false
+        }
     }
     catch {
         Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
@@ -528,32 +552,41 @@ function Get-FolderSizes {
 
         # Recursive call for subfolders
         if ($global:useThreadJobs) {
-            # Fixed threaded recursion - directly call function within job instead of dot-sourcing script
             foreach ($sf in $sortedFolders) {
-                $formatBytes = ${function:Format-Bytes}
-                $formatPath = ${function:Format-Path}
-                $escapeString = ${function:Escape-StringForInvokeExpression}
-                
-                $job = Start-ThreadJob -ScriptBlock {
-                    param (
-                        $subFolderPath, 
-                        $currentDepth, 
-                        $maxDepth, 
-                        $top,
-                        $topLevel
-                    )
+                try {
+                    $formatBytes = ${function:Format-Bytes}
+                    $formatPath = ${function:Format-Path}
+                    $escapeString = ${function:Escape-StringForInvokeExpression}
                     
-                    # Set up needed function and variable in job context
-                    $global:useThreadJobs = $false  # Prevent nested thread jobs
-                    $MaxDepth = $maxDepth
-                    $Top = $top
+                    # Create thread job with better error handling
+                    $job = Start-ThreadJob -ScriptBlock {
+                        param (
+                            $subFolderPath, 
+                            $currentDepth, 
+                            $maxDepth, 
+                            $top,
+                            $topLevel
+                        )
+                        
+                        # Set up needed function and variable in job context
+                        $global:useThreadJobs = $false  # Prevent nested thread jobs
+                        $MaxDepth = $maxDepth
+                        $Top = $top
+                        
+                        # Recursive scan within job (without threading)
+                        & $topLevel -FolderPath $subFolderPath -CurrentDepth ($currentDepth + 1)
+                        
+                    } -ArgumentList $sf.Path, $CurrentDepth, $MaxDepth, $Top, ${function:Get-FolderSizes} -ErrorAction Stop
                     
-                    # Recursive scan within job (without threading)
-                    & $topLevel -FolderPath $subFolderPath -CurrentDepth ($currentDepth + 1)
+                    Write-Host "  " * ($CurrentDepth + 2) "Started thread job for $($sf.Path)"
+                }
+                catch {
+                    Write-Warning "Failed to create thread job for '$($sf.Path)': $($_.Exception.Message)"
+                    Write-Host "  " * ($CurrentDepth + 2) "Falling back to direct scan for $($sf.Path)" -ForegroundColor Yellow
                     
-                } -ArgumentList $sf.Path, $CurrentDepth, $MaxDepth, $Top, ${function:Get-FolderSizes}
-                
-                Write-Host "  " * ($CurrentDepth + 2) "Started thread job for $($sf.Path)"
+                    # Fall back to direct scan when thread job fails
+                    Get-FolderSizes -FolderPath $sf.Path -CurrentDepth ($CurrentDepth + 1)
+                }
             }
         } else {
             # Direct recursion
@@ -570,11 +603,28 @@ function Get-FolderSizes {
 # Start the folder size analysis
 Get-FolderSizes -FolderPath $Path -CurrentDepth 0
 
-# Wait for thread jobs to complete
+# Wait for thread jobs to complete with better error handling
 if ($global:useThreadJobs) {
     Write-Host "Waiting for all thread jobs to complete..."
-    Get-Job | Wait-Job | Receive-Job
-    Remove-Job -State Completed
+    try {
+        Get-Job | Wait-Job | ForEach-Object {
+            try {
+                $_ | Receive-Job -ErrorAction Continue
+            }
+            catch {
+                Write-Warning "Error receiving job results: $($_.Exception.Message)"
+            }
+            finally {
+                $_ | Remove-Job -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    catch {
+        Write-Warning "Error processing jobs: $($_.Exception.Message)"
+    }
+    
+    # Clean up any remaining jobs
+    Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
     Write-Host "All thread jobs completed."
 }
 
