@@ -281,7 +281,7 @@ public class FastFileScanner {
         while (stack.Count > 0) {
             string dir = stack.Pop();
             try {
-                // Use GetFiles with SearchOption.TopDirectoryOnly for better reliability
+                # Use GetFiles with SearchOption.TopDirectoryOnly for better reliability
                 foreach (string file in Directory.GetFiles(dir)) {
                     try {
                         size += new FileInfo(file).Length;
@@ -339,7 +339,7 @@ public class FastFileScanner {
 }
 "@
 
-// Add a static helper type for folder processing
+# Add a static helper type for folder processing
 Add-Type -TypeDefinition @"
 using System;
 using System.IO;
