@@ -114,16 +114,44 @@ function Initialize-NuGetProvider {
 
         if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
             Write-Host "Installing NuGet provider..." -ForegroundColor Cyan
+            
+            # Check internet connectivity first
+            try {
+                $testConnection = Test-NetConnection -ComputerName "www.powershellgallery.com" -Port 443 -InformationLevel Quiet -ErrorAction Stop
+                if (-not $testConnection) {
+                    Write-Host "ERROR: Cannot connect to PowerShell Gallery. Internet connection appears to be down." -ForegroundColor Red
+                    return $false
+                }
+            } catch {
+                Write-Host "ERROR: Failed to check internet connectivity: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "This could prevent module installation from external repositories." -ForegroundColor Yellow
+            }
+            
+            # Check execution policy
+            $executionPolicy = Get-ExecutionPolicy
+            Write-Host "Current PowerShell execution policy: $executionPolicy" -ForegroundColor Cyan
+            if ($executionPolicy -in @("Restricted", "AllSigned")) {
+                Write-Host "WARNING: Current execution policy ($executionPolicy) may prevent module installation." -ForegroundColor Yellow
+                Write-Host "Consider changing to RemoteSigned with: Set-ExecutionPolicy RemoteSigned -Scope Process" -ForegroundColor Yellow
+            }
 
             # Attempt to install using Find-PackageProvider
             try {
+                Write-Host "Attempting installation via Find-PackageProvider method..." -ForegroundColor Cyan
                 Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -ErrorAction Stop | Install-PackageProvider -Force -ErrorAction Stop
                 Write-Host "NuGet provider installed successfully using Find-PackageProvider." -ForegroundColor Green
                 return $true
             }
             catch {
-                Write-Warning "Find-PackageProvider method failed: $($_.Exception.Message)"
-                Write-Host "Attempting direct Install-PackageProvider..." -ForegroundColor Yellow
+                Write-Host "Find-PackageProvider method failed with error details:" -ForegroundColor Red
+                Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+                if ($_.Exception.InnerException) {
+                    Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
+                }
+                Write-Host "  - Command attempted: Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201" -ForegroundColor Yellow
+                
+                Write-Host "Attempting direct Install-PackageProvider method..." -ForegroundColor Yellow
                 # Attempt direct install with Install-PackageProvider
                 try {
                     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction Stop
@@ -131,8 +159,25 @@ function Initialize-NuGetProvider {
                     return $true
                 }
                 catch {
-                    Write-Warning "Install-PackageProvider method failed: $($_.Exception.Message)"
-                    Write-Host "Failed to install NuGet provider. Please install manually." -ForegroundColor Red
+                    Write-Host "Install-PackageProvider method failed with error details:" -ForegroundColor Red
+                    Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+                    Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+                    if ($_.Exception.InnerException) {
+                        Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
+                    }
+                    
+                    # Check for common issues
+                    if ($_.Exception.Message -match "proxy") {
+                        Write-Host "DIAGNOSIS: Error may be related to proxy configuration." -ForegroundColor Yellow
+                        Write-Host "Try setting proxy with: [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy('http://proxyserver:port')" -ForegroundColor Yellow
+                    }
+                    elseif ($_.Exception.Message -match "trust|certificate") {
+                        Write-Host "DIAGNOSIS: Error may be related to certificate/trust issues." -ForegroundColor Yellow
+                        Write-Host "Try: [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12" -ForegroundColor Yellow
+                    }
+                    
+                    Write-Host "MANUAL INSTALLATION: Please install NuGet provider manually with:" -ForegroundColor Yellow
+                    Write-Host "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force" -ForegroundColor Yellow
                     return $false
                 }
             }
@@ -163,20 +208,83 @@ function Initialize-ThreadJobModule {
 
         Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
         
+        # Check PSGallery availability
+        try {
+            $psGallery = Get-PSRepository -Name PSGallery -ErrorAction Stop
+            Write-Host "PSGallery repository status: $($psGallery.InstallationPolicy)" -ForegroundColor Cyan
+        }
+        catch {
+            Write-Host "ERROR: Cannot access PSGallery repository." -ForegroundColor Red
+            Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Attempting to register PSGallery..." -ForegroundColor Yellow
+        }
+        
         # Set PSGallery as trusted
         if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
-            Register-PSRepository -Default -InstallationPolicy Trusted
+            try {
+                Register-PSRepository -Default -InstallationPolicy Trusted -ErrorAction Stop
+                Write-Host "Successfully registered PSGallery repository." -ForegroundColor Green
+            }
+            catch {
+                Write-Host "ERROR: Failed to register PSGallery repository:" -ForegroundColor Red
+                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+                if ($_.Exception.InnerException) {
+                    Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
+                }
+                Write-Host "Please register PSGallery manually: Register-PSRepository -Default" -ForegroundColor Yellow
+                return $false
+            }
         } else {
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            try {
+                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+                Write-Host "Successfully set PSGallery repository as trusted." -ForegroundColor Green
+            }
+            catch {
+                Write-Host "ERROR: Failed to set PSGallery as trusted:" -ForegroundColor Red
+                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "This may prevent automatic module installation." -ForegroundColor Yellow
+            }
         }
 
-        # Install ThreadJob module
-        Install-Module -Name ThreadJob -Repository PSGallery -Scope AllUsers -Force -AllowClobber
+        # Install ThreadJob module with diagnostics
+        try {
+            Write-Host "Attempting to install ThreadJob module..." -ForegroundColor Cyan
+            Install-Module -Name ThreadJob -Repository PSGallery -Scope AllUsers -Force -AllowClobber -ErrorAction Stop -Verbose
+            Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "ERROR: Failed to install ThreadJob module:" -ForegroundColor Red
+            Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+            
+            # Additional diagnostics for common issues
+            if ($_.Exception.Message -match "administrator|elevated") {
+                Write-Host "DIAGNOSIS: Installation requires administrator privileges." -ForegroundColor Yellow
+                Write-Host "Please restart PowerShell as Administrator and try again." -ForegroundColor Yellow
+            }
+            elseif ($_.Exception.Message -match "access|denied") {
+                Write-Host "DIAGNOSIS: Access denied error. Check folder permissions." -ForegroundColor Yellow
+                Write-Host "Try using -Scope CurrentUser instead of -Scope AllUsers" -ForegroundColor Yellow
+            }
+            
+            Write-Host "MANUAL INSTALLATION: Please install ThreadJob module manually with:" -ForegroundColor Yellow
+            Write-Host "Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Force" -ForegroundColor Yellow
+            
+            return $false
+        }
 
-        # Import the module
-        Import-Module ThreadJob -ErrorAction Stop
-        Write-Host "ThreadJob module installed and imported successfully." -ForegroundColor Green
-        return $true
+        # Import the module with diagnostics
+        try {
+            Import-Module ThreadJob -ErrorAction Stop
+            Write-Host "ThreadJob module imported successfully." -ForegroundColor Green
+            return $true
+        }
+        catch {
+            Write-Host "ERROR: Failed to import ThreadJob module:" -ForegroundColor Red
+            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Module may have installed but cannot be loaded." -ForegroundColor Yellow
+            return $false
+        }
     }
     catch {
         Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
