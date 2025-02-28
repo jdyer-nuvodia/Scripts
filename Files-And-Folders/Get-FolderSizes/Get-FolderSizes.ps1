@@ -2,11 +2,13 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 18:30:00 UTC
+# Last Updated: 2025-02-28 22:45:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.1.0
 # Additional Info: Modified for silent non-interactive operation with automatic dependency installation
 # =============================================================================
+
+# Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -95,8 +97,6 @@
     1.1.0 - Modified for silent non-interactive operation with automatic dependency installation
 #>
 
-#Requires -Version 3.0
-
 param (
     [string]$Path = "C:\",
     [int]$MaxDepth = 10,
@@ -104,23 +104,18 @@ param (
     [int]$Top = 3
 )
 
-# Check for elevated privileges but don't prompt user - continue with limited functionality
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-if (-not $isAdmin) {
-    Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
-}
+#region Helper Functions
 
 function Initialize-NuGetProvider {
     try {
-        # Check if NuGet provider is installed and meets minimum version
         $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         $minimumVersion = [Version]"2.8.5.201"
 
         if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
             Write-Host "Installing NuGet provider..." -ForegroundColor Cyan
-            # Force installation without any prompts
             Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false -SkipPublisherCheck | Out-Null
             Write-Host "NuGet provider installed successfully." -ForegroundColor Green
+            return $true
         }
         return $true
     }
@@ -132,13 +127,11 @@ function Initialize-NuGetProvider {
 
 function Initialize-ThreadJobModule {
     try {
-        # Ensure NuGet provider is installed first
         if (-not (Initialize-NuGetProvider)) {
             Write-Warning "Could not initialize NuGet provider. ThreadJob installation may fail."
             return $false
         }
 
-        # First try to import if it exists
         if (Get-Module -ListAvailable -Name ThreadJob) {
             Import-Module ThreadJob -ErrorAction Stop
             return $true
@@ -146,15 +139,12 @@ function Initialize-ThreadJobModule {
 
         Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
         
-        # Set up PSGallery as trusted repository if needed - force without prompts
         if (-not (Get-PSRepository -Name "PSGallery" -ErrorAction SilentlyContinue)) {
             Register-PSRepository -Default -Force -ErrorAction Stop
         }
         
-        # Force trust the repository without prompting
         Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -Force -ErrorAction SilentlyContinue
 
-        # Install the module silently without any prompts
         Install-Module -Name ThreadJob -Repository PSGallery -Force -AllowClobber -Scope CurrentUser -SkipPublisherCheck -Confirm:$false -ErrorAction Stop
         Import-Module ThreadJob -Force -ErrorAction Stop
         Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
@@ -167,7 +157,39 @@ function Initialize-ThreadJobModule {
     }
 }
 
-# Check PowerShell version and set compatibility mode
+function Format-SizeWithPadding {
+    param (
+        [double]$Size,
+        [int]$DecimalPlaces = 2
+    )
+    return "{0:F$DecimalPlaces}" -f $Size
+}
+
+function Format-Path {
+    param (
+        [string]$Path
+    )
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
+        return $fullPath
+    }
+    catch {
+        Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
+        return $Path
+    }
+}
+
+#endregion
+
+#region Setup
+
+# Check for elevated privileges but don't prompt user - continue with limited functionality
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+if (-not $isAdmin) {
+    Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
+}
+
+# PowerShell Version Check and ThreadJob Initialization
 $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
 if ($script:isLegacyPowerShell) {
     Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
@@ -176,7 +198,7 @@ if ($script:isLegacyPowerShell) {
     $global:useThreadJobs = Initialize-ThreadJobModule
 }
 
-# Setup transcript logging with better error handling
+# Transcript Logging Setup
 $transcriptPath = "C:\temp"
 try {
     if (-not (Test-Path $transcriptPath)) {
@@ -195,7 +217,7 @@ try {
     Write-Warning "Failed to start transcript: $_"
 }
 
-# Add script header to transcript
+# Script Header in Transcript
 Write-Host "======================================================"
 Write-Host "Folder Size Scanner - Execution Log"
 Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
@@ -208,10 +230,8 @@ Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } el
 Write-Host "======================================================"
 Write-Host ""
 
-# Remove existing type if it exists
+# .NET Type Definition
 Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
-
-# Add .NET methods with unique type name
 $typeName = "FastFileScanner_" + (Get-Random)
 Add-Type -TypeDefinition @"
 using System;
@@ -236,7 +256,6 @@ public class $typeName {
         while (stack.Count > 0) {
             string dir = stack.Pop();
             try {
-                // Use GetFiles with SearchOption.TopDirectoryOnly for better reliability
                 foreach (string file in Directory.GetFiles(dir)) {
                     try {
                         size += new FileInfo(file).Length;
@@ -275,6 +294,7 @@ public class $typeName {
             catch (UnauthorizedAccessException) { }
             catch (SecurityException) { }
             catch (IOException) { }
+            catch (Exception) { }
         }
         return new Tuple<int, int>(files, folders);
     }
@@ -293,7 +313,7 @@ public class $typeName {
 }
 "@ -ErrorAction SilentlyContinue
 
-# Add a static helper type for folder processing
+# Helper Type for Folder Processing
 Add-Type -TypeDefinition @"
 using System;
 using System.IO;
@@ -403,436 +423,85 @@ $ErrorActionPreference = 'SilentlyContinue'
 Write-Host "Ultra-fast folder analysis starting at: $Path"
 Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
-function Format-SizeWithPadding {
-    param (
-        [double]$Size,
-        [int]$DecimalPlaces = 2
-    )
-    return "{0:F$DecimalPlaces}" -f $Size
-}
+#endregion
 
-function Write-ProgressBar {
-    param (
-        [int]$Current,
-        [int]$Total,
-        [string]$Status,
-        [int]$BarLength = 50
-    )
-    
-    $percentComplete = if ($Total -eq 0) { 100 } else { [math]::Min(100, ($Current / $Total * 100)) }
-    $filled = [math]::Round($BarLength * ($percentComplete / 100))
-    $unfilled = $BarLength - $filled
-    
-    $progressBar = "[" + ("=" * $filled) + (" " * $unfilled) + "]"
-    $percentage = "{0,3:N0}%" -f $percentComplete
-    
-    Write-Host "`r$progressBar $percentage | $Status" -NoNewline
-    if ($Current -eq $Total) { Write-Host "" }
-}
+#region Folder Scanning Logic
 
-function Format-Path {
-    param (
-        [string]$Path
-    )
-    try {
-        # Convert to full path and normalize separators
-        $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
-        return $fullPath
-    }
-    catch {
-        Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
-        return $Path
-    }
-}
-
-function Escape-StringForInvokeExpression {
-    param (
-        [string]$InputString
-    )
-    # Properly escape special characters for PowerShell
-    $escaped = $InputString -replace "'", "''"
-    $escaped = $escaped -replace "`$", "`$`$"  # Escape $ characters
-    $escaped = $escaped -replace "\\", "\\\\"  # Escape backslashes
-    return $escaped
-}
-
-function Get-FolderSizes {
+function Get-FolderSize {
     param (
         [string]$FolderPath,
-        [int]$CurrentDepth = 0
+        [int]$CurrentDepth,
+        [int]$MaxDepth,
+        [int]$Top
     )
-
-    if ($CurrentDepth -ge $MaxDepth) { return $null }
 
     try {
-        # Get all subdirectories - compatibility mode handling
-        $folders = if ($script:isLegacyPowerShell) {
-            @([System.IO.Directory]::GetDirectories($FolderPath))
-        } else {
-            @(Get-ChildItem -Path $FolderPath -Directory -Force -ErrorAction SilentlyContinue)
+        if ($CurrentDepth -gt $MaxDepth) {
+            return
         }
 
-        # Get largest file in current directory - using SafeInvoke pattern
-        $safePathForInvoke = Escape-StringForInvokeExpression -InputString $FolderPath
-        $largestFile = & {
-            try {
-                # Use static helper class instead of Invoke-Expression
-                [FolderSizeHelper]::GetLargestFile($FolderPath)
-            } catch {
-                Write-Warning "Error getting largest file in $FolderPath : $_"
-                $null
-            }
+        $folderPath = Format-Path $FolderPath
+        if (-not (Test-Path -Path $folderPath -PathType Container)) {
+            Write-Warning "Path '$FolderPath' does not exist or is not a directory."
+            return
         }
-        
+
+        Write-Host "Scanning: $folderPath (Depth: $CurrentDepth)"
+
+        # Get Folder Size and Counts using .NET methods
+        $size = [FolderSizeHelper]::GetDirectorySize($folderPath)
+        $counts = [FolderSizeHelper]::GetDirectoryCounts($folderPath)
+        $fileCount = $counts.Item1
+        $folderCount = $counts.Item2
+
+        # Get Largest File
+        $largestFile = [FolderSizeHelper]::GetLargestFile($folderPath)
+
+        # Output Folder Information
+        Write-Host "  Size: $(Format-SizeWithPadding ($size / 1MB)) MB"
+        Write-Host "  Files: $fileCount, Folders: $folderCount"
+
         if ($largestFile) {
-            Write-Host "`nLargest file in $FolderPath :"
-            Write-Host "Name: $($largestFile.Name)"
-            Write-Host "Size: $(Format-SizeWithPadding ($largestFile.Size / 1GB)) GB"
+            Write-Host "  Largest File: $($largestFile.Name) ($((Format-SizeWithPadding ($largestFile.Size / 1MB)) ) MB)"
+        }
+        else {
+            Write-Host "  No files found."
         }
 
-        Write-Host "`nFound $($folders.Count) subfolders to process..."
-        $folderSizes = @()
-        $processedCount = 0
-        $totalDirs = $folders.Count
+        # Get Subfolders and Process
+        $subFolders = try { Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop } catch { Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"; @() }
 
-        # Process in smaller batches
-        $batchSize = if ($script:isLegacyPowerShell) { 5 } else { 10 }
-        for ($i = 0; $i -lt $folders.Count; $i += $batchSize) {
-            $batch = $folders | Select-Object -Skip $i -First $batchSize
-            $results = @()
-
-            Write-ProgressBar -Current $processedCount -Total $totalDirs -Status "Processing folder batch $([math]::Floor($i/$batchSize + 1)) of $([math]::Ceiling($totalDirs/$batchSize))"
-
-            if ($global:useThreadJobs -and -not $script:isLegacyPowerShell) {
-                $jobs = @()
-                foreach ($dir in $batch) {
-                    $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
-                    $sanitizedPath = Format-Path $dirPath
-                    $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath -ScriptBlock {
-                        param($originalPath, $path)
-                        try {
-                            # Import the FolderSizeHelper type to ensure it exists in this thread
-                            Add-Type -TypeDefinition @"
-using System;
-using System.IO;
-using System.Linq;
-using System.Security;
-using System.Collections.Generic;
-
-public static class ThreadFolderSizeHelper
-{
-    public static long GetDirectorySize(string path)
-    {
-        long size = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
-
-        while (stack.Count > 0)
-        {
-            string dir = stack.Pop();
-            try
-            {
-                foreach (string file in Directory.GetFiles(dir))
-                {
-                    try
-                    {
-                        size += new FileInfo(file).Length;
-                    }
-                    catch (Exception) { }
+        if ($subFolders) {
+            $sortedFolders = $subFolders | ForEach-Object {
+                $subFolderPath = $_.FullName
+                $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
+                [PSCustomObject]@{
+                    Path = $subFolderPath
+                    Size = $subFolderSize
                 }
+            } | Sort-Object -Property Size -Descending | Select-Object -First $Top
 
-                foreach (string subDir in Directory.GetDirectories(dir))
-                {
-                    stack.Push(subDir);
-                }
+            foreach ($subFolder in $sortedFolders) {
+                Get-FolderSize -FolderPath $subFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
             }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
         }
-        return size;
-    }
-
-    public static Tuple<int, int> GetDirectoryCounts(string path)
-    {
-        int files = 0;
-        int folders = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
-
-        while (stack.Count > 0)
-        {
-            string dir = stack.Pop();
-            try
-            {
-                files += Directory.GetFiles(dir).Length;
-                var subDirs = Directory.GetDirectories(dir);
-                folders += subDirs.Length;
-                foreach (var subDir in subDirs)
-                {
-                    stack.Push(subDir);
-                }
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
-        }
-        return new Tuple<int, int>(files, folders);
-    }
-
-    public static FileDetails GetLargestFile(string path)
-    {
-        try
-        {
-            var fileInfo = new DirectoryInfo(path)
-                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(f => f.Length)
-                .FirstOrDefault();
-                
-            if (fileInfo == null)
-                return null;
-                
-            return new FileDetails
-            {
-                Name = fileInfo.Name,
-                Path = fileInfo.FullName,
-                Size = fileInfo.Length
-            };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-    
-    public class FileDetails
-    {
-        public string Name { get; set; }
-        public string Path { get; set; }
-        public long Size { get; set; }
-    }
-}
-"@ -ErrorAction SilentlyContinue
-                
-                            # Use the thread-local helper class for processing
-                            $size = [ThreadFolderSizeHelper]::GetDirectorySize($path)
-                            $counts = [ThreadFolderSizeHelper]::GetDirectoryCounts($path)
-                            $largestFile = [ThreadFolderSizeHelper]::GetLargestFile($path)
-
-                            return [PSCustomObject]@{
-                                Folder = $originalPath  # Use original path for display
-                                SizeGB = $size / 1GB
-                                TotalFiles = $counts.Item1
-                                TotalSubfolders = $counts.Item2
-                                LargestFile = if ($largestFile) {
-                                    [PSCustomObject]@{
-                                        Name = $largestFile.Name
-                                        Path = $largestFile.Path
-                                        SizeGB = $largestFile.Size / 1GB
-                                        SizeMB = $largestFile.Size / 1MB
-                                    }
-                                } else { $null }
-                            }
-                        }
-                        catch {
-                            # Return a minimal object with error information
-                            return [PSCustomObject]@{
-                                Folder = $originalPath
-                                SizeGB = 0
-                                TotalFiles = 0
-                                TotalSubfolders = 0
-                                LargestFile = $null
-                                Error = "Error processing: $_"
-                            }
-                        }
-                    }
-                }
-
-                # Wait for batch completion with better error handling
-                $results = @()
-                foreach ($job in $jobs) {
-                    try {
-                        # Use Wait-Job with timeout to avoid hanging
-                        $jobResult = $job | Wait-Job -Timeout 60 | Receive-Job
-                        if ($jobResult) {
-                            if ($jobResult.Error) {
-                                Write-Warning "Job error: $($jobResult.Error)"
-                            } else {
-                                $results += $jobResult
-                            }
-                        }
-                    } catch {
-                        Write-Warning "Thread job processing error: $_"
-                    } finally {
-                        # Ensure job is removed even on error
-                        $job | Remove-Job -Force -ErrorAction SilentlyContinue
-                    }
-                }
-            }
-            else {
-                # Fallback method - use static helper class
-                foreach ($dir in $batch) {
-                    $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
-                    
-                    try {
-                        # Use static helper class methods
-                        $size = [FolderSizeHelper]::GetDirectorySize($dirPath)
-                        $counts = [FolderSizeHelper]::GetDirectoryCounts($dirPath)
-                        $largestFile = [FolderSizeHelper]::GetLargestFile($dirPath)
-
-                        $results += [PSCustomObject]@{
-                            Folder = $dirPath
-                            SizeGB = $size / 1GB
-                            TotalFiles = $counts.Item1
-                            TotalSubfolders = $counts.Item2
-                            LargestFile = if ($largestFile) {
-                                [PSCustomObject]@{
-                                    Name = $largestFile.Name
-                                    Path = $largestFile.Path
-                                    SizeGB = $largestFile.Size / 1GB
-                                    SizeMB = $largestFile.Size / 1MB
-                                }
-                            } else { $null }
-                        }
-                    }
-                    catch {
-                        Write-Warning "Error processing $dirPath : $_"
-                    }
-                }
-            }
-
-            $folderSizes += @($results | Where-Object { $_ -ne $null })
-            $processedCount += $batch.Count
-        }
-
-        Write-ProgressBar -Current $totalDirs -Total $totalDirs -Status "Completed processing all folders"
-        Write-Host ""
-
-        Write-Host "`nCompleted processing all folders."
-        return $folderSizes
     }
     catch {
-        Write-Warning "Error processing directory '$FolderPath'. Error: $($_.Exception.Message)"
-        return $null
+        Write-Warning "Error processing folder '$FolderPath': $($_.Exception.Message)"
     }
 }
 
-function Write-TableLine {
-    param([int]$Length = 150)
-    Write-Host ("-" * $Length)
-}
+# Start the Recursive Scan
+Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top
 
-$currentPath = $Path
+#endregion
 
-while ($true) {
-    $folderSizes = Get-FolderSizes -FolderPath $currentPath
-
-    if ($null -eq $folderSizes -or $folderSizes.Count -eq 0) {
-        Write-Host "`nReached end of directory tree at: $currentPath"
-        break
-    }
-
-    # Display the top N largest folders in a table format
-    Write-Host "`nTop $Top Largest Folders in: $currentPath`n"
-    Write-TableLine
-    $format = "{0,-50} | {1,10} | {2,15} | {3,12} | {4,-50}"
-    Write-Host ($format -f "Folder Path", "Size (GB)", "Subfolders", "Files", "Largest File (in this directory)")
-    Write-TableLine
-
-    $topFolders = $folderSizes | Sort-Object -Property SizeGB -Descending | Select-Object -First $Top
-    foreach ($folder in $topFolders) {
-        $largestFileInfo = if ($folder.LargestFile) {
-            if ($folder.LargestFile.SizeGB -ge 1) {
-                "$($folder.LargestFile.Name) ($(Format-SizeWithPadding $folder.LargestFile.SizeGB) GB)"
-            } else {
-                "$($folder.LargestFile.Name) ($(Format-SizeWithPadding $folder.LargestFile.SizeMB) MB)"
-            }
-        } else {
-            "No files"
-        }
-        
-        $folderPathDisplay = if ($folder.Folder.Length -gt 47) {
-            "..." + $folder.Folder.Substring($folder.Folder.Length - 44)
-        } else {
-            $folder.Folder
-        }
-
-        $largestFileDisplay = if ($largestFileInfo.Length -gt 47) {
-            "..." + $largestFileInfo.Substring($largestFileInfo.Length - 44)
-        } else {
-            $largestFileInfo
-        }
-
-        Write-Host ($format -f $folderPathDisplay,
-            (Format-SizeWithPadding $folder.SizeGB),
-            $folder.TotalSubfolders,
-            $folder.TotalFiles,
-            $largestFileDisplay)
-    }
-    Write-TableLine
-
-    # Descend into the largest folder
-    $largestFolder = $topFolders | Select-Object -First 1
-    Write-Host "`nDescending into: $($largestFolder.Folder)`n"
-    $currentPath = $largestFolder.Folder
-}
-
-function Show-DriveInfo {
-    param (
-        [Parameter(Mandatory=$true)]
-        [object]$Volume
-    )
-    
-    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
-}
-
+# Stop Transcript
 try {
-    # Extract the drive letter from the provided path
-    $driveLetter = if ($Path.Length -gt 0 -and $Path[1] -eq ':') {
-        $Path[0].ToString().ToUpper()  # Get the first character as a drive letter
-    } elseif ($Path.StartsWith('\\')) {
-        Write-Host "Network path detected. Cannot retrieve local volume information for network paths." -ForegroundColor Yellow
-        $null
-    } else {
-        Write-Host "Unable to determine drive letter from path: $Path" -ForegroundColor Yellow
-        $null
-    }
-
-    if ($driveLetter) {
-        # Get the volume information for the specified drive letter
-        $targetVolume = Get-Volume -DriveLetter $driveLetter -ErrorAction Stop
-        
-        if ($targetVolume) {
-            Write-Host "Found volume for drive $driveLetter" -ForegroundColor Green
-            Show-DriveInfo -Volume $targetVolume
-        } else {
-            Write-Error "No volume information found for drive $driveLetter."
-        }
-    }
-}
-catch {
-    Write-Error "Error accessing drive information. Error: $_"
+    Stop-Transcript
+    Write-Host "Transcript stopped. Log file: $transcriptFile"
+} catch {
+    Write-Warning "Failed to stop transcript: $_"
 }
 
-Write-Host "`nScript completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Write-Host "Script completed (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
-Write-Host "`nTranscript log file can be found here: $transcriptFile"
-Write-Host "======================================================"
-
-# Safely stop transcript at the end
-try {
-    Stop-Transcript -ErrorAction SilentlyContinue
-}
-catch {
-    Write-Warning "Error stopping transcript: $_"
-}
+Write-Host "Script finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
