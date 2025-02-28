@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 22:54:00 UTC
+# Last Updated: 2025-02-28 23:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Updated output formatting to display results in tabular format with progress indicators
+# Version: 1.3.0
+# Additional Info: Fixed folder size display to consistently show top folders table at each directory level
 # =============================================================================
 
 # Requires -Version 5.1
@@ -543,25 +543,43 @@ function Get-FolderSize {
             Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan
             
             # Calculate folder sizes for sorting
-            $sortedFolders = $subFolders | ForEach-Object {
-                $subFolderPath = $_.FullName
+            $sortedFolders = @()
+            $currentIndex = 0
+            $totalFolders = $subFolders.Count
+            
+            foreach ($folder in $subFolders) {
+                $currentIndex++
+                if ($currentIndex % 10 -eq 0 -and $totalFolders -gt 50) {
+                    Write-Progress -Activity "Calculating folder sizes" -Status "$currentIndex of $totalFolders" -PercentComplete (($currentIndex / $totalFolders) * 100)
+                }
+                
+                $subFolderPath = $folder.FullName
                 $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
                 $subFolderCounts = try { [FolderSizeHelper]::GetDirectoryCounts($subFolderPath) } catch { New-Object -TypeName 'System.Tuple[int,int]'(0, 0) }
                 $subFolderLargestFile = try { [FolderSizeHelper]::GetLargestFile($subFolderPath) } catch { $null }
                 
-                [PSCustomObject]@{
+                $sortedFolders += [PSCustomObject]@{
                     Path = $subFolderPath
                     Size = $subFolderSize
                     FileCount = $subFolderCounts.Item1
                     FolderCount = $subFolderCounts.Item2
                     LargestFile = $subFolderLargestFile
                 }
-            } | Sort-Object -Property Size -Descending
+            }
             
-            # Display top folders in table format
+            Write-Progress -Activity "Calculating folder sizes" -Completed
+            
+            # Sort folders by size in descending order
+            $sortedFolders = $sortedFolders | Sort-Object -Property Size -Descending
+            
+            # Always display the table header
             Write-TableHeader
             
-            $topFolders = $sortedFolders | Select-Object -First $Top
+            # Get top folders but ensure we don't exceed available folders
+            $topFoldersCount = [Math]::Min($Top, $sortedFolders.Count)
+            $topFolders = $sortedFolders | Select-Object -First $topFoldersCount
+            
+            # Display each folder in table format
             foreach ($folder in $topFolders) {
                 Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
             }
