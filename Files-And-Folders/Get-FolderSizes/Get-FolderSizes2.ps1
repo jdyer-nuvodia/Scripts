@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 21:21:00 UTC
+# Last Updated: 2025-05-31 14:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.11
-# Additional Info: Fixed PSScriptAnalyzer issues and removed unused variables
+# Version: 1.1.0
+# Additional Info: Added low disk space optimization features
 # =============================================================================
 
 <#
@@ -22,13 +22,14 @@
     - Fallback to single-threaded mode when ThreadJob is not available
     - Handles access-denied errors gracefully
     - Identifies largest files in each directory
-    - Creates detailed log file of the scan
+    - Creates detailed log file of the scan (optional)
     - Requires administrative privileges
     - Supports custom depth limitation
+    - Low disk space operation mode
 
     Dependencies:
     - Windows PowerShell 5.1 or later
-    - ThreadJob module (optional - will be installed if not present)
+    - ThreadJob module (optional - will be installed if not present and disk space permits)
     - Administrative privileges
     - Minimum 4GB RAM recommended
 
@@ -47,6 +48,15 @@
 .PARAMETER Top
     Number of largest folders to display at each level. Defaults to 3. Range: 1-50.
 
+.PARAMETER NoLog
+    When specified, disables transcript logging to save disk space.
+
+.PARAMETER LowDiskMode
+    Enables optimizations for systems with low disk space:
+    - Disables transcript logging
+    - Prevents module installation
+    - Uses single-threaded operation
+
 .EXAMPLE
     .\Get-FolderSizes.ps1
     Scans the C:\ drive with default settings
@@ -56,19 +66,19 @@
     Scans the D:\Users directory with a maximum depth of 5 levels
 
 .EXAMPLE
-    .\Get-FolderSizes.ps1 -Path "\\server\share"
-    Scans a network share starting from the root
+    .\Get-FolderSizes.ps1 -NoLog
+    Runs without creating a transcript log file to save disk space
 
 .EXAMPLE
-    .\Get-FolderSizes.ps1 -Top 10
-    Scans the C:\ drive and shows the 10 largest folders at each level
+    .\Get-FolderSizes.ps1 -LowDiskMode
+    Runs in low disk space mode with all optimizations enabled
 
 .NOTES
     Security Level: Medium
     Required Permissions: 
     - Administrative access
     - Read access to scanned directories
-    - Write access to C:\temp for logging
+    - Write access to C:\temp for logging (unless -NoLog is specified)
     
     Validation Requirements:
     - Verify administrative privileges
@@ -78,7 +88,7 @@
 
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
-    Updated: 2025-02-07 15:41:22 UTC
+    Updated: 2025-05-31 14:22:00 UTC
 
     Requirements:
     - Windows PowerShell 5.1 or later
@@ -90,6 +100,10 @@
     1.0.0 - Initial release
     1.0.1 - Fixed compatibility issues with older PowerShell versions
     1.0.2 - Added ThreadJob module handling and fallback mechanism
+    1.0.11 - Fixed PSScriptAnalyzer issues and removed unused variables
+    1.1.0 - Added low disk space optimization features:
+            - Optional transcript logging with -NoLog parameter
+            - Low disk space mode with -LowDiskMode parameter
 #>
 
 #Requires -RunAsAdministrator
@@ -98,11 +112,35 @@ param (
     [string]$Path = "C:\",
     [int]$MaxDepth = 10,
     [ValidateRange(1, 50)]
-    [int]$Top = 3
+    [int]$Top = 3,
+    [switch]$NoLog,
+    [switch]$LowDiskMode
 )
 
-# Modified Initialize-NuGetProvider to run silently
+# Check if we need to operate in low disk space mode
+if ($LowDiskMode) {
+    Write-Host "Running in low disk space mode. Optimizing for minimal disk usage." -ForegroundColor Yellow
+    $NoLog = $true                    # Disable logging in low disk space mode
+    $global:useThreadJobs = $false    # Disable threading in low disk space mode
+} else {
+    # Check PowerShell version and set compatibility mode
+    $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
+    if ($script:isLegacyPowerShell) {
+        Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
+        $global:useThreadJobs = $false
+    } else {
+        # Only try to use thread jobs if not in low disk space mode
+        $global:useThreadJobs = Initialize-ThreadJobModule
+    }
+}
+
+# Modified Initialize-NuGetProvider to run silently (and skip in low disk space mode)
 function Initialize-NuGetProvider {
+    if ($LowDiskMode) {
+        Write-Host "Skipping NuGet provider installation in low disk space mode." -ForegroundColor Yellow
+        return $false
+    }
+    
     try {
         # Check if NuGet provider is installed and meets minimum version
         $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
@@ -121,8 +159,13 @@ function Initialize-NuGetProvider {
     }
 }
 
-# Modified Initialize-ThreadJobModule to ensure proper registration
+# Modified Initialize-ThreadJobModule to skip in low disk space mode
 function Initialize-ThreadJobModule {
+    if ($LowDiskMode) {
+        Write-Host "Skipping ThreadJob module in low disk space mode." -ForegroundColor Yellow
+        return $false
+    }
+    
     try {
         # Ensure NuGet provider is installed first
         if (-not (Initialize-NuGetProvider)) {
@@ -183,42 +226,39 @@ function Initialize-ThreadJobModule {
     }
 }
 
-# Check PowerShell version and set compatibility mode
-$script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
-if ($script:isLegacyPowerShell) {
-    Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
-    $global:useThreadJobs = $false
-} else {
-    $global:useThreadJobs = Initialize-ThreadJobModule
+# Setup transcript logging only if not in low disk space mode
+if (-not $NoLog) {
+    $transcriptPath = "C:\temp"
+    if (-not (Test-Path $transcriptPath)) {
+        New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
+    }
+    $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+    try {
+        Start-Transcript -Path $transcriptFile -Force
+    }
+    catch {
+        Write-Warning "Could not start transcript logging: $($_.Exception.Message)"
+        $NoLog = $true  # Disable logging if it fails
+    }
+
+    # Add script header to transcript
+    Write-Host "======================================================"
+    Write-Host "Folder Size Scanner - Execution Log"
+    Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
+    Write-Host "User: $env:USERNAME"
+    Write-Host "Computer: $env:COMPUTERNAME"
+    Write-Host "Target Path: $Path"
+    Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
+    Write-Host "Low Disk Mode: $($LowDiskMode)"
+    Write-Host "======================================================"
+    Write-Host ""
 }
-
-# Setup transcript logging
-$transcriptPath = "C:\temp"
-if (-not (Test-Path $transcriptPath)) {
-    New-Item -ItemType Directory -Path $transcriptPath -Force | Out-Null
-}
-$transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
-Start-Transcript -Path $transcriptFile -Force
-
-# Add script header to transcript
-Write-Host "======================================================"
-Write-Host "Folder Size Scanner - Execution Log"
-Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
-Write-Host "User: $env:USERNAME"
-Write-Host "Computer: $env:COMPUTERNAME"
-Write-Host "Target Path: $Path"
-Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
-Write-Host "======================================================"
-Write-Host ""
-
-# No longer checking/restarting for elevated privileges, assuming already run as admin
 
 # Remove existing type if it exists
 Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
 
 # Add .NET methods with unique type name
-$typeName = "FastFileScanner_" + (Get-Random)
 Add-Type -TypeDefinition @"
 using System;
 using System.IO;
@@ -227,13 +267,7 @@ using System.Security;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-public class $typeName {
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    static extern bool GetDiskFreeSpaceEx(string lpDirectoryName,
-        out ulong lpFreeBytesAvailable,
-        out ulong lpTotalNumberOfBytes,
-        out ulong lpTotalNumberOfFreeBytes);
-
+public class FastFileScanner {
     public static long GetDirectorySize(string path) {
         long size = 0;
         var stack = new Stack<string>();
@@ -300,7 +334,7 @@ public class $typeName {
 }
 "@
 
-# Add a static helper type for folder processing
+// Add a static helper type for folder processing
 Add-Type -TypeDefinition @"
 using System;
 using System.IO;
@@ -521,11 +555,16 @@ function Get-FolderSizes {
                 $folderCount = $counts.Item2
 
                 [PSCustomObject]@{
-                    Name        = $folder #$folder.Name
-                    Path        = $folder #$folder.FullName
+                    Name        = $folder
+                    Path        = $folder
                     Size        = $size
                     FileCount   = $fileCount
                     FolderCount = $folderCount
+                }
+                
+                # Force garbage collection periodically in low disk mode
+                if ($LowDiskMode -and ($folders.IndexOf($folder) % 10 -eq 0)) {
+                    [System.GC]::Collect(0)
                 }
             }
             catch {
@@ -549,8 +588,8 @@ function Get-FolderSizes {
             Write-Host "  " * ($CurrentDepth + 1) "- $($sf.Name) ($($sf.Size) bytes)"
         }
 
-        # Recursive call for subfolders
-        if ($global:useThreadJobs) {
+        # Recursive call for subfolders - disable threading in low disk mode
+        if ($global:useThreadJobs -and -not $LowDiskMode) {
             foreach ($sf in $sortedFolders) {
                 try {
                     # Create thread job with better error handling
@@ -586,6 +625,11 @@ function Get-FolderSizes {
             # Direct recursion
             foreach ($sf in $sortedFolders) {
                 Get-FolderSizes -FolderPath $sf.Path -CurrentDepth ($CurrentDepth + 1)
+                
+                # Force garbage collection periodically in low disk mode
+                if ($LowDiskMode -and ($sortedFolders.IndexOf($sf) % 3 -eq 0)) {
+                    [System.GC]::Collect(0)
+                }
             }
         }
     }
@@ -598,7 +642,7 @@ function Get-FolderSizes {
 Get-FolderSizes -FolderPath $Path -CurrentDepth 0
 
 # Wait for thread jobs to complete with better error handling
-if ($global:useThreadJobs) {
+if ($global:useThreadJobs -and -not $LowDiskMode) {
     Write-Host "Waiting for all thread jobs to complete..."
     try {
         Get-Job | Wait-Job | ForEach-Object {
@@ -622,11 +666,18 @@ if ($global:useThreadJobs) {
     Write-Host "All thread jobs completed."
 }
 
-# Stop transcript logging
-Write-Host ""
-Write-Host "======================================================"
-Write-Host "Folder Scan Completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Write-Host "======================================================"
-Stop-Transcript
-
-Write-Host "Script execution completed. Log file: $transcriptFile"
+# Stop transcript logging only if it was started
+if (-not $NoLog) {
+    Write-Host ""
+    Write-Host "======================================================"
+    Write-Host "Folder Scan Completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    Write-Host "======================================================"
+    Stop-Transcript
+    Write-Host "Script execution completed. Log file: $transcriptFile"
+} else {
+    Write-Host ""
+    Write-Host "======================================================"
+    Write-Host "Folder Scan Completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    Write-Host "======================================================"
+    Write-Host "Script execution completed with no log file (low disk space mode)."
+}
