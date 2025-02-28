@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 18:23:00 UTC
+# Last Updated: 2025-02-28 21:21:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.10
-# Additional Info: Fixed JobSourceAdapter errors when scanning protected directories
+# Version: 1.0.11
+# Additional Info: Fixed PSScriptAnalyzer issues and removed unused variables
 # =============================================================================
 
 <#
@@ -474,7 +474,7 @@ function Format-Path {
     }
 }
 
-function Escape-StringForInvokeExpression {
+function ConvertTo-EscapedString {
     param (
         [string]$InputString
     )
@@ -501,11 +501,10 @@ function Get-FolderSizes {
             @(Get-ChildItem -Path $FolderPath -Directory -Force -ErrorAction SilentlyContinue)
         }
 
-        # Get largest file in current directory - using SafeInvoke pattern
-        $safePathForInvokeExpression = Escape-StringForInvokeExpression -InputString $FolderPath
+        # Get largest file in current directory
         $largestFile = & {
             try {
-                # Use static helper class instead of Invoke-Expression
+                # Use static helper class
                 [FolderSizeHelper]::GetLargestFile($FolderPath)
             } catch {
                 Write-Warning "Error getting largest file in $FolderPath : $_"
@@ -554,12 +553,8 @@ function Get-FolderSizes {
         if ($global:useThreadJobs) {
             foreach ($sf in $sortedFolders) {
                 try {
-                    $formatBytes = ${function:Format-Bytes}
-                    $formatPath = ${function:Format-Path}
-                    $escapeString = ${function:Escape-StringForInvokeExpression}
-                    
                     # Create thread job with better error handling
-                    $job = Start-ThreadJob -ScriptBlock {
+                    Start-ThreadJob -ScriptBlock {
                         param (
                             $subFolderPath, 
                             $currentDepth, 
@@ -568,15 +563,14 @@ function Get-FolderSizes {
                             $topLevel
                         )
                         
-                        # Set up needed function and variable in job context
-                        $global:useThreadJobs = $false  # Prevent nested thread jobs
+                        # Set up needed variable in job context
                         $MaxDepth = $maxDepth
                         $Top = $top
                         
                         # Recursive scan within job (without threading)
                         & $topLevel -FolderPath $subFolderPath -CurrentDepth ($currentDepth + 1)
                         
-                    } -ArgumentList $sf.Path, $CurrentDepth, $MaxDepth, $Top, ${function:Get-FolderSizes} -ErrorAction Stop
+                    } -ArgumentList $sf.Path, $CurrentDepth, $MaxDepth, $Top, ${function:Get-FolderSizes} -ErrorAction Stop | Out-Null
                     
                     Write-Host "  " * ($CurrentDepth + 2) "Started thread job for $($sf.Path)"
                 }
