@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 21:49:00 UTC
+# Last Updated: 2025-02-28 22:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6
-# Additional Info: Fixed system context execution loop issue
+# Version: 1.7
+# Additional Info: Fixed persistent system context execution loop issue
 # =============================================================================
 
 <#
@@ -60,9 +60,17 @@ function Start-SystemContext {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
         $scriptDirectory = Split-Path -Parent $ScriptPath
         $logFile = Join-Path $scriptDirectory "$jobName.log"
+        $markerFile = Join-Path $scriptDirectory "$jobName.marker"
         
-        # Create action with logging and pass NoElevate parameter to prevent re-elevation
-        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; & '$ScriptPath' -NoElevate; Stop-Transcript}`""
+        # Create a direct execution script that doesn't invoke the original script but contains the code
+        $tempScriptPath = Join-Path $scriptDirectory "$jobName.ps1"
+        
+        # Copy script content to temp file but add the NoElevate parameter flag
+        $scriptContent = Get-Content -Path $ScriptPath -Raw
+        Set-Content -Path $tempScriptPath -Value "`$NoElevate = `$true`n$scriptContent" -Force
+        
+        # Create action with logging to execute the temp script
+        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; & '$tempScriptPath'; Set-Content -Path '$markerFile' -Value 'Complete' -Force; Stop-Transcript}`""
         $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argument
         $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -72,27 +80,49 @@ function Start-SystemContext {
         Register-ScheduledTask -TaskName $jobName -InputObject $task | Out-Null
         Start-ScheduledTask -TaskName $jobName
 
-        # Wait for completion with progress bar
+        # Wait for completion with progress indicator
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
-        $lastLogLine = ""
+        $seenLogLines = @{}
+        Write-Host "Waiting for system cleanup to complete..." -ForegroundColor Cyan
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
-            $status = Get-ScheduledTask -TaskName $jobName
-            $completed = $status.State -eq "Ready"
+            # Check for completion marker file first
+            if (Test-Path $markerFile) {
+                $completed = $true
+                continue
+            }
             
-            Write-Host "Waiting for system cleanup to complete..." -ForegroundColor Cyan
-            Start-Sleep -Seconds 5
+            # Then check task status
+            try {
+                $status = Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue
+                if ($status -and $status.State -eq "Ready") {
+                    $completed = $true
+                    continue
+                }
+            } catch {
+                # Task might be completed and already removed
+                if (Test-Path $markerFile) {
+                    $completed = $true
+                    continue
+                }
+            }
             
+            # Display log updates without duplication
             if (Test-Path $logFile) {
-                $currentLines = Get-Content $logFile -Tail 5
+                $currentLines = Get-Content $logFile -Tail 10
                 foreach ($line in $currentLines) {
-                    if ($line -ne $lastLogLine -and $line -notmatch "^Transcript started|^Transcript ended") {
-                        Write-Host $line
-                        $lastLogLine = $line
+                    $trimmedLine = $line.Trim()
+                    if ($trimmedLine -and 
+                        -not $seenLogLines.ContainsKey($trimmedLine) -and 
+                        $trimmedLine -notmatch "^Transcript started|^Transcript ended|^Windows PowerShell transcript") {
+                        Write-Host $trimmedLine
+                        $seenLogLines[$trimmedLine] = $true
                     }
                 }
             }
+            
+            Start-Sleep -Seconds 3
         }
 
         # Check final status
@@ -101,8 +131,14 @@ function Start-SystemContext {
         }
 
         # Cleanup
-        Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
-        if (Test-Path $logFile) { Remove-Item $logFile -Force }
+        if (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
+            Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
+        }
+        
+        # Cleanup files
+        if (Test-Path $logFile) { Remove-Item $logFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $markerFile) { Remove-Item $markerFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $tempScriptPath) { Remove-Item $tempScriptPath -Force -ErrorAction SilentlyContinue }
         
         if ($completed) { exit 0 } else { exit 1 }
     }
@@ -190,7 +226,7 @@ function Show-DriveInfo {
 }
 
 # Main execution
-if (-not $NoElevate -and -not (Test-RunningAsSystem)) {
+if (-not (Test-RunningAsSystem) -and -not $NoElevate) {
     Write-Host "Initial execution - will elevate to SYSTEM" -ForegroundColor Cyan
     Start-SystemContext
     exit
