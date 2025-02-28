@@ -140,14 +140,41 @@ function Initialize-ThreadJobModule {
 
         Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
         
+        # Check if PSRepository exists and set to trusted if needed
         if (-not (Get-PSRepository -Name "PSGallery" -ErrorAction SilentlyContinue)) {
-            Register-PSRepository -Default -Force -ErrorAction Stop
+            try {
+                Register-PSRepository -Default -ErrorAction Stop
+            }
+            catch {
+                Write-Warning "Failed to register PSGallery repository: $_"
+            }
         }
         
-        Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -Force -ErrorAction SilentlyContinue
+        # Try setting repository to trusted with parameter compatibility
+        try {
+            Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-Warning "Failed to set PSGallery to trusted: $_"
+        }
 
-        Install-Module -Name ThreadJob -Repository PSGallery -Force -AllowClobber -Scope CurrentUser -SkipPublisherCheck -Confirm:$false -ErrorAction Stop
-        Import-Module ThreadJob -Force -ErrorAction Stop
+        # Install ThreadJob module with compatibility for different PS versions
+        try {
+            # Try with standard parameters
+            Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Confirm:$false -ErrorAction Stop
+        }
+        catch {
+            # Attempt with fewer parameters if that fails
+            try {
+                Install-Module -Name ThreadJob -Scope CurrentUser -Confirm:$false -ErrorAction Stop
+            }
+            catch {
+                Write-Warning "Could not install ThreadJob module: $_"
+                return $false
+            }
+        }
+        
+        Import-Module ThreadJob -ErrorAction Stop
         Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
         return $true
     }
