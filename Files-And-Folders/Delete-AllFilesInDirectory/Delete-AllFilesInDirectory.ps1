@@ -2,10 +2,10 @@
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:25:00 UTC
+# Last Updated: 2025-06-14 12:45:23 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Added parameter support for target directory
+# Version: 1.2
+# Additional Info: Added functionality to take ownership before deletion
 # =============================================================================
 
 <#
@@ -13,13 +13,15 @@
     Recursively deletes all files and folders in a specified directory.
 .DESCRIPTION
     This script removes all files and folders within a specified directory.
-    It performs the deletion in two steps:
-    1. Removes all files recursively
-    2. Removes all folders in descending order to handle nested directories
+    It performs the deletion in three steps:
+    1. Takes ownership of all files and folders recursively
+    2. Removes all files recursively
+    3. Removes all folders in descending order to handle nested directories
     
     Dependencies:
     - PowerShell 5.1 or higher
     - Appropriate permissions on target directory
+    - Administrative rights (for taking ownership)
 .PARAMETER TargetPath
     The target directory path to clean up. This parameter is mandatory.
 .EXAMPLE
@@ -27,7 +29,7 @@
     Deletes all contents in the specified directory "C:\TempFiles"
 .NOTES
     Security Level: High
-    Required Permissions: Write access to target directory
+    Required Permissions: Write access to target directory, Administrative rights
     Validation Requirements: Verify target directory before execution
 #>
 
@@ -36,15 +38,58 @@ param(
     [string]$TargetPath
 )
 
+# Function to take ownership of files and folders
+function Set-Ownership {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Path
+    )
+    
+    Write-Host "Taking ownership of path: $Path" -ForegroundColor Cyan
+    
+    try {
+        # Take ownership using icacls command
+        $takeOwnResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$Path`" /takeown /T /C /Q" -NoNewWindow -PassThru -Wait
+        if ($takeOwnResult.ExitCode -ne 0) {
+            Write-Host "Warning: Failed to take ownership of $Path (Exit code: $($takeOwnResult.ExitCode))" -ForegroundColor Yellow
+        }
+        
+        # Grant full control to the current user/system
+        $grantResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$Path`" /grant *S-1-5-18:F /T /C /Q" -NoNewWindow -PassThru -Wait
+        if ($grantResult.ExitCode -ne 0) {
+            Write-Host "Warning: Failed to grant permissions on $Path (Exit code: $($grantResult.ExitCode))" -ForegroundColor Yellow
+        }
+        
+        return $true
+    }
+    catch {
+        Write-Host "Error taking ownership of $Path`: $($_.Exception.Message)" -ForegroundColor Yellow
+        return $false
+    }
+}
+
 Write-Host "Starting directory cleanup process..." -ForegroundColor Cyan
 Write-Host "Target directory: $TargetPath" -ForegroundColor Cyan
 
 try {
+    # Step 1: Take ownership of the target directory and all contents
+    Write-Host "Taking ownership of all files and folders..." -ForegroundColor Cyan
+    $ownershipResult = Set-Ownership -Path $TargetPath
+    
+    if (-not $ownershipResult) {
+        Write-Host "Continuing with deletion despite ownership issues. Some files may be skipped." -ForegroundColor Yellow
+    }
+    
     # Remove all files
     Write-Host "Removing files..." -ForegroundColor Cyan
-    Get-ChildItem -Path $TargetPath -File -Recurse | ForEach-Object {
-        Write-Host "Deleting file: $($_.FullName)" -ForegroundColor Yellow
-        Remove-Item -Path $_.FullName -Force
+    Get-ChildItem -Path $TargetPath -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            Write-Host "Deleting file: $($_.FullName)" -ForegroundColor Yellow
+            Remove-Item -Path $_.FullName -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Host "Failed to delete file $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
+        }
     }
 
     # Remove all folders with improved error handling and long path support
