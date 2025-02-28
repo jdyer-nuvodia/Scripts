@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 22:20:00 UTC
+# Last Updated: 2025-02-28 22:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.2
-# Additional Info: Fixed type name conflict causing compilation error
+# Version: 1.2.3
+# Additional Info: Fixed FolderSizeHelper type name collision with unique suffix
 # =============================================================================
 
 <#
@@ -260,10 +260,7 @@ if (-not $NoLog) {
     Write-Host ""
 }
 
-# Remove existing type if it exists
-Remove-TypeData -TypeName "FolderSizeHelper" -ErrorAction SilentlyContinue
-
-# Add a static helper type for folder processing
+# Add a static helper type for folder processing with a unique version suffix in the name
 Add-Type -TypeDefinition @"
 using System;
 using System.IO;
@@ -272,7 +269,7 @@ using System.Security;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-public static class FolderSizeHelper
+public static class FolderSizeHelper_v123
 {
     public static long GetDirectorySize(string path)
     {
@@ -474,8 +471,8 @@ function Get-FolderSizes {
         # Get largest file in current directory
         $largestFile = & {
             try {
-                # Use static helper class
-                [FolderSizeHelper]::GetLargestFile($FolderPath)
+                # Use static helper class with updated name
+                [FolderSizeHelper_v123]::GetLargestFile($FolderPath)
             } catch {
                 Write-Warning "Error getting largest file in $FolderPath : $_"
                 $null  # Ensure a null value is returned in case of error
@@ -512,7 +509,7 @@ function Get-FolderSizes {
                     $jobs += Start-ThreadJob -ThrottleLimit 10 -ArgumentList $dirPath, $sanitizedPath -ScriptBlock {
                         param($originalPath, $path)
                         try {
-                            # Import helper type for thread context
+                            # Import helper type for thread context with unique name
                             Add-Type -TypeDefinition @"
 using System;
 using System.IO;
@@ -520,7 +517,7 @@ using System.Linq;
 using System.Security;
 using System.Collections.Generic;
 
-public static class ThreadFolderSizeHelper
+public static class ThreadFolderSizeHelper_v123
 {
     public static long GetDirectorySize(string path)
     {
@@ -617,10 +614,10 @@ public static class ThreadFolderSizeHelper
 }
 "@ -ErrorAction Stop
                             
-                            # Use thread-local helper class
-                            $size = [ThreadFolderSizeHelper]::GetDirectorySize($path)
-                            $counts = [ThreadFolderSizeHelper]::GetDirectoryCounts($path)
-                            $largestFile = [ThreadFolderSizeHelper]::GetLargestFile($path)
+                            # Use thread-local helper class with updated name
+                            $size = [ThreadFolderSizeHelper_v123]::GetDirectorySize($path)
+                            $counts = [ThreadFolderSizeHelper_v123]::GetDirectoryCounts($path)
+                            $largestFile = [ThreadFolderSizeHelper_v123]::GetLargestFile($path)
                             
                             return [PSCustomObject]@{
                                 Folder = $originalPath
@@ -679,10 +676,10 @@ public static class ThreadFolderSizeHelper
                     $dirPath = if ($dir.FullName) { $dir.FullName } else { $dir }
                     
                     try {
-                        # Use static helper class methods
-                        $size = [FolderSizeHelper]::GetDirectorySize($dirPath)
-                        $counts = [FolderSizeHelper]::GetDirectoryCounts($dirPath)
-                        $largestFile = [FolderSizeHelper]::GetLargestFile($dirPath)
+                        # Use static helper class methods with updated name
+                        $size = [FolderSizeHelper_v123]::GetDirectorySize($dirPath)
+                        $counts = [FolderSizeHelper_v123]::GetDirectoryCounts($dirPath)
+                        $largestFile = [FolderSizeHelper_v123]::GetLargestFile($dirPath)
                         
                         $results += [PSCustomObject]@{
                             Folder = $dirPath
