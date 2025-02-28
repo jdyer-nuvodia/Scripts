@@ -114,7 +114,7 @@ function Initialize-NuGetProvider {
 
         if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
             Write-Host "Installing NuGet provider..." -ForegroundColor Cyan
-            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false -SkipPublisherCheck | Out-Null
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
             Write-Host "NuGet provider installed successfully." -ForegroundColor Green
             return $true
         }
@@ -125,6 +125,7 @@ function Initialize-NuGetProvider {
         return $false
     }
 }
+
 
 function Initialize-ThreadJobModule {
     try {
@@ -140,39 +141,16 @@ function Initialize-ThreadJobModule {
 
         Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
         
-        # Check if PSRepository exists and set to trusted if needed
+        # Check if PSRepository exists and set to trusted
         if (-not (Get-PSRepository -Name "PSGallery" -ErrorAction SilentlyContinue)) {
-            try {
-                Register-PSRepository -Default -ErrorAction Stop
-            }
-            catch {
-                Write-Warning "Failed to register PSGallery repository: $_"
-            }
+            Register-PSRepository -Default -ErrorAction Stop
         }
         
-        # Try setting repository to trusted with parameter compatibility
-        try {
-            Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Warning "Failed to set PSGallery to trusted: $_"
-        }
+        # Set repository to trusted
+        Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction Stop
 
-        # Install ThreadJob module with compatibility for different PS versions
-        try {
-            # Try with standard parameters
-            Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Confirm:$false -ErrorAction Stop
-        }
-        catch {
-            # Attempt with fewer parameters if that fails
-            try {
-                Install-Module -Name ThreadJob -Scope CurrentUser -Confirm:$false -ErrorAction Stop
-            }
-            catch {
-                Write-Warning "Could not install ThreadJob module: $_"
-                return $false
-            }
-        }
+        # Install ThreadJob module
+        Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Force -ErrorAction Stop
         
         Import-Module ThreadJob -ErrorAction Stop
         Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
@@ -184,6 +162,7 @@ function Initialize-ThreadJobModule {
         return $false
     }
 }
+
 
 function Format-SizeWithPadding {
     param (
