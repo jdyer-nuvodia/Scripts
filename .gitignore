@@ -1,0 +1,29 @@
+# PowerShell module directories
+**/packages/*
+**/bin/*
+**/obj/*
+
+# Local configuration files
+*.user
+*.suo
+
+# Logs and temp files
+*.log
+[Ll]ogs/
+[Tt]emp/
+[Oo]utput/
+.vscode/
+.vs/
+
+# PowerShell-specific files
+*.psm1.dll
+*.psm1.locked.json
+
+# Secrets and configuration
+*.secret
+*.config
+**/Credentials/*
+
+# Runtime files
+*.tmp
+*.lnk
