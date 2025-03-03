@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 23:25:00 UTC
+# Last Updated: 2025-05-20 15:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Modified to only descend into the largest folder at each directory level
+# Version: 1.5.0
+# Additional Info: Added support for handling symbolic links and junction points
 # =============================================================================
 
 # Requires -Version 5.1
@@ -30,6 +30,7 @@
     - Creates detailed log file of the scan
     - Continues with limited functionality if admin rights unavailable
     - Supports custom depth limitation
+    - Properly handles symbolic links and junction points
 
     Dependencies:
     - Windows PowerShell 5.1 or later
@@ -82,7 +83,7 @@
 
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
-    Updated: 2025-04-01 21:35:00 UTC
+    Updated: 2025-05-20 15:30:00 UTC
 
     Requirements:
     - Windows PowerShell 5.1 or later
@@ -96,6 +97,8 @@
     1.0.8 - Fixed handling of special characters in ThreadJobs processing
     1.1.0 - Modified for silent non-interactive operation with automatic dependency installation
     1.2.0 - Updated output formatting to display results in tabular format with progress indicators
+    1.4.0 - Modified to only descend into the largest folder at each directory level
+    1.5.0 - Added proper support for symbolic links and junction points
 #>
 
 param (
@@ -106,6 +109,61 @@ param (
 )
 
 #region Helper Functions
+
+# New function to detect symbolic links and junction points
+function Get-PathType {
+    param (
+        [string]$Path
+    )
+    
+    try {
+        $dirInfo = New-Object System.IO.DirectoryInfo $Path
+        if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            # This is a reparse point (symbolic link, junction, etc.)
+            # Get the target path using fsutil
+            $fsutil = & fsutil reparsepoint query "$Path" 2>&1
+            
+            if ($fsutil -match "Symbolic Link") {
+                return @{
+                    Type = "SymbolicLink"
+                    Target = ($fsutil | Where-Object { $_ -match "Print Name:" } | ForEach-Object { $_.Trim() -replace "^.*Print Name:\s+", "" })
+                }
+            }
+            elseif ($fsutil -match "Mount Point") {
+                return @{
+                    Type = "MountPoint"
+                    Target = ($fsutil | Where-Object { $_ -match "Print Name:" } | ForEach-Object { $_.Trim() -replace "^.*Print Name:\s+", "" })
+                }
+            }
+            elseif ($fsutil -match "Junction") {
+                return @{
+                    Type = "Junction"
+                    Target = ($fsutil | Where-Object { $_ -match "Print Name:" } | ForEach-Object { $_.Trim() -replace "^.*Print Name:\s+", "" })
+                }
+            }
+            else {
+                return @{
+                    Type = "ReparsePoint"
+                    Target = "Unknown"
+                }
+            }
+        }
+        else {
+            # Regular directory
+            return @{
+                Type = "Directory"
+                Target = $null
+            }
+        }
+    }
+    catch {
+        Write-Warning "Error determining path type for '$Path': $($_.Exception.Message)"
+        return @{
+            Type = "Unknown"
+            Target = $null
+        }
+    }
+}
 
 function Initialize-NuGetProvider {
     try {
@@ -571,8 +629,7 @@ public static class FolderSizeHelper
                 files += Directory.GetFiles(dir).Length;
                 var subDirs = Directory.GetDirectories(dir);
                 folders += subDirs.Length;
-                foreach (var subDir in subDirs)
-                {
+                foreach (var subDir in subDirs) {
                     stack.Push(subDir);
                 }
             }
@@ -646,6 +703,32 @@ function Get-FolderSize {
             return
         }
 
+        # Check if this path is a symbolic link, junction, or mount point
+        $pathType = Get-PathType -Path $folderPath
+        if ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
+            Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Yellow
+            
+            # If it's a link, try to use the target path instead
+            if ($pathType.Target -and $pathType.Target -ne "Unknown") {
+                Write-Host "Following link to target: $($pathType.Target)" -ForegroundColor Yellow
+                
+                # Handle relative paths in targets
+                if (-not [System.IO.Path]::IsPathRooted($pathType.Target)) {
+                    $targetPath = Join-Path (Split-Path $folderPath -Parent) $pathType.Target
+                } else {
+                    $targetPath = $pathType.Target
+                }
+                
+                # Check if the target exists
+                if (Test-Path -Path $targetPath -PathType Container) {
+                    $folderPath = $targetPath
+                } else {
+                    Write-Warning "Target path '$targetPath' does not exist or is not accessible."
+                    # Continue with the original path
+                }
+            }
+        }
+
         Write-Host "`nTop $Top Largest Folders in: $folderPath" -ForegroundColor Cyan
         Write-Host ""
 
@@ -689,6 +772,13 @@ function Get-FolderSize {
                 }
                 
                 $subFolderPath = $folder.FullName
+                
+                # Check if folder is a symbolic link or junction point
+                $subPathType = Get-PathType -Path $subFolderPath
+                if ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown") {
+                    Write-Host "  - $($subFolderPath): $($subPathType.Type) pointing to $($subPathType.Target)" -ForegroundColor Yellow
+                }
+                
                 $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
                 $subFolderCounts = try { [FolderSizeHelper]::GetDirectoryCounts($subFolderPath) } catch { New-Object -TypeName 'System.Tuple[int,int]'(0, 0) }
                 $subFolderLargestFile = try { [FolderSizeHelper]::GetLargestFile($subFolderPath) } catch { $null }
@@ -699,6 +789,8 @@ function Get-FolderSize {
                     FileCount = $subFolderCounts.Item1
                     FolderCount = $subFolderCounts.Item2
                     LargestFile = $subFolderLargestFile
+                    PathType = $subPathType.Type
+                    Target = $subPathType.Target
                 }
             }
             
@@ -717,6 +809,11 @@ function Get-FolderSize {
             # Display each folder in table format
             foreach ($folder in $topFolders) {
                 Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
+                
+                # If it's a special path type, add an info line
+                if ($folder.PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {
+                    Write-Host "  ^ $($folder.PathType) pointing to: $($folder.Target)" -ForegroundColor Yellow
+                }
             }
             
             Write-Host ("-" * 150)
