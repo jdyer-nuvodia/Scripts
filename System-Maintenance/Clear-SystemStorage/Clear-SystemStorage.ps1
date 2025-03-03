@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 16:30:00 UTC
+# Last Updated: 2025-03-06 17:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.6
-# Additional Info: Enhanced System context elevation with direct script execution
+# Version: 2.7
+# Additional Info: Fixed positional parameter error in scheduler task
 # =============================================================================
 
 <#
@@ -126,25 +126,45 @@ function Start-SystemContext {
         Write-Log "Copying script to system-accessible location: $systemAccessibleScriptPath" -Level Verbose
         Copy-Item -Path $ScriptPath -Destination $systemAccessibleScriptPath -Force
         
-        # Set proper permissions
-        Write-Log "Setting appropriate permissions on system-accessible script" -Level Verbose
-        $acl = Get-Acl -Path $systemAccessibleScriptPath
-        $systemAccount = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-18")
-        $permission = $systemAccount, "FullControl", "Allow"
-        $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
-        $acl.SetAccessRule($accessRule)
-        Set-Acl -Path $systemAccessibleScriptPath -AclObject $acl
+        # Create executor script that will run our main script
+        $executorScript = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName-executor.ps1"
+        $logFile = Join-Path $systemAccessibleTemp "$jobName.log"
+        $markerFile = Join-Path $systemAccessibleTemp "$jobName.marker"
         
-        $scriptDirectory = $systemAccessibleTemp
-        $logFile = Join-Path $scriptDirectory "$jobName.log"
-        $markerFile = Join-Path $scriptDirectory "$jobName.marker"
+        $executorContent = @"
+# Executor script for Clear-SystemStorage
+`$ErrorActionPreference = 'Stop'
+`$VerbosePreference = '$(if ($VerbosePreference -eq 'Continue') { 'Continue' } else { 'SilentlyContinue' })'
+
+Start-Transcript -Path "$logFile" -Force
+
+try {
+    Write-Host "Starting execution of main script as SYSTEM"
+    & "$systemAccessibleScriptPath" -NoElevate $(if ($VerbosePreference -eq 'Continue') { '-Verbose' })
+    
+    if (`$?) {
+        Write-Host "Script executed successfully"
+        Set-Content -Path "$markerFile" -Value "Complete" -Force
+    } else {
+        Write-Error "Script failed with non-zero exit code"
+    }
+}
+catch {
+    Write-Host "Error occurred: `$(`$_.Exception.Message)" -ForegroundColor Red
+    Write-Error "Error occurred: `$(`$_.Exception.Message)"
+    exit 1
+}
+finally {
+    Write-Host "Execution complete"
+    Stop-Transcript
+}
+"@
         
-        Write-Log "Creating temporary job files in $scriptDirectory" -Level Verbose
+        Write-Log "Creating executor script at $executorScript" -Level Verbose
+        Set-Content -Path $executorScript -Value $executorContent -Force
         
-        # Skip wrapper script and directly execute the main script with parameters
-        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript -Path '$logFile' -Force; try { & '$systemAccessibleScriptPath' -NoElevate $(if ($VerbosePreference -eq 'Continue') { '-Verbose' }); if (`$?) { Set-Content -Path '$markerFile' -Value 'Complete' -Force } } catch { Write-Error `"Error executing as SYSTEM: `$(`$_.Exception.Message)`"; exit 1 } finally { Stop-Transcript }}`""
-        
-        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argument
+        # Create action for scheduled task - use the executor script
+        $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$executorScript`""
         $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
         $task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings
@@ -157,6 +177,7 @@ function Start-SystemContext {
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
         $seenLogLines = @{}
+        $dotCount = 0
         Write-Log "Waiting for system cleanup to complete..." -Level Info
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
@@ -186,13 +207,12 @@ function Start-SystemContext {
             # Display log updates without duplication
             if (Test-Path $logFile) {
                 # Add logic to detect errors in the log and report them
-                $errorLines = Select-String -Path $logFile -Pattern "Error|Exception|failed" -Context 0,2 -SimpleMatch
+                $errorLines = Select-String -Path $logFile -Pattern "Error|Exception|failed" -SimpleMatch
                 foreach ($errorLine in $errorLines) {
-                    $errorContext = $errorLine.Line + "`n" + ($errorLine.Context.PostContext -join "`n")
-                    if (-not $seenLogLines.ContainsKey($errorContext)) {
-                        Write-Host "ERROR detected in script execution:" -ForegroundColor Red
-                        Write-Host $errorContext -ForegroundColor Red
-                        $seenLogLines[$errorContext] = $true
+                    $errorText = $errorLine.Line.Trim()
+                    if (-not $seenLogLines.ContainsKey($errorText)) {
+                        Write-Host "ERROR detected: $errorText" -ForegroundColor Red
+                        $seenLogLines[$errorText] = $true
                     }
                 }
                 
@@ -206,10 +226,16 @@ function Start-SystemContext {
                         $seenLogLines[$trimmedLine] = $true
                     }
                 }
+            } else {
+                # Show a simple activity indicator if no log file yet
+                $dotCount = ($dotCount + 1) % 4
+                Write-Host "`rWaiting for task to start$('.' * $dotCount)    " -NoNewline
             }
             
-            Start-Sleep -Seconds 3
+            Start-Sleep -Seconds 2
         }
+        
+        Write-Host "" # Clear the line after activity indicator
 
         # Check final status with more diagnostics
         if (-not $completed) {
@@ -247,18 +273,25 @@ function Start-SystemContext {
         # Cleanup
         Write-Log "Cleaning up temporary files and tasks" -Level Verbose
         if (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
-            Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
+            Unregister-ScheduledTask -TaskName $jobName -Confirm:$false -ErrorAction SilentlyContinue
         }
         
-        # Cleanup files
-        if (Test-Path $logFile) { 
-            # Save the log content for debugging
-            $logContent = Get-Content -Path $logFile -Raw
-            Write-Log "SYSTEM execution log content: $logContent" -Level Debug
-            Remove-Item $logFile -Force -ErrorAction SilentlyContinue 
+        # Cleanup files with better error handling
+        foreach ($filePath in @($logFile, $markerFile, $systemAccessibleScriptPath, $executorScript)) {
+            if (Test-Path $filePath) {
+                try {
+                    if ($filePath -eq $logFile) {
+                        # Save the log content for debugging
+                        $logContent = Get-Content -Path $logFile -Raw -ErrorAction SilentlyContinue
+                        Write-Log "SYSTEM execution log: $logContent" -Level Debug
+                    }
+                    Remove-Item $filePath -Force -ErrorAction SilentlyContinue
+                }
+                catch {
+                    Write-Log "Could not remove temporary file $filePath`: $_" -Level Warning
+                }
+            }
         }
-        if (Test-Path $markerFile) { Remove-Item $markerFile -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $systemAccessibleScriptPath) { Remove-Item $systemAccessibleScriptPath -Force -ErrorAction SilentlyContinue }
         
         if ($completed) { exit 0 } else { exit 1 }
     }
