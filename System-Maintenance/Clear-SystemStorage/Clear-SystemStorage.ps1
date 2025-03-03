@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:15:00 UTC
+# Last Updated: 2025-03-06 18:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.7
-# Additional Info: Fixed positional parameter error in scheduler task
+# Version: 2.8
+# Additional Info: Fixed compatibility with older PowerShell versions
 # =============================================================================
 
 <#
@@ -576,8 +576,15 @@ catch {
 # Display cleanup summary
 Write-Log "`nCleanup Summary:" -Level Info
 Write-Log "---------------" -Level Info
-Write-Log "Disk Cleanup: $($diskCleanupSuccess ? "Completed Successfully" : "Failed")" -Level $($diskCleanupSuccess ? "Info" : "Error")
-Write-Log "Shadow Copy Cleanup: $($shadowCopySuccess ? "Completed Successfully" : "Failed")" -Level $($shadowCopySuccess ? "Info" : "Error")
+
+# Replace ternary operators with standard if-else for PowerShell 5.1 compatibility
+$diskCleanupMessage = if ($diskCleanupSuccess) { "Completed Successfully" } else { "Failed" }
+$diskCleanupLevel = if ($diskCleanupSuccess) { "Info" } else { "Error" }
+Write-Log "Disk Cleanup: $diskCleanupMessage" -Level $diskCleanupLevel
+
+$shadowCopyMessage = if ($shadowCopySuccess) { "Completed Successfully" } else { "Failed" }
+$shadowCopyLevel = if ($shadowCopySuccess) { "Info" } else { "Error" }
+Write-Log "Shadow Copy Cleanup: $shadowCopyMessage" -Level $shadowCopyLevel
 
 Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
 
