@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-03 17:11:00 UTC
+# Last Updated: 2025-03-03 17:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9
-# Additional Info: Fixed SYSTEM context elevation script generation
+# Version: 2.0
+# Additional Info: Added verbose output capabilities and debug logging
 # =============================================================================
 
 <#
@@ -21,12 +21,24 @@
     - Lists and manages shadow copies
     - Maintains the most recent shadow copy while removing others
     - Displays drive information before and after cleanup for comparison
+    - Logs detailed operations to a file for debugging
     
     Dependencies:
     - Windows Volume Shadow Copy Service
     - Administrative privileges
 .PARAMETER NoElevate
     Prevents the script from attempting to elevate to SYSTEM context when already running as a scheduled task
+.PARAMETER EnableLogging
+    Enables writing detailed logs to a file in the script directory
+.EXAMPLE
+    .\Clear-SystemStorage.ps1
+    Runs the script with default settings
+.EXAMPLE
+    .\Clear-SystemStorage.ps1 -EnableLogging
+    Runs the script with detailed logging enabled
+.EXAMPLE
+    .\Clear-SystemStorage.ps1 -Verbose
+    Runs the script with verbose console output
 .NOTES
     Security Level: High
     Required Permissions: Administrative privileges
@@ -35,12 +47,58 @@
     - Check disk space recovery
 #>
 param(
-    [switch]$NoElevate
+    [switch]$NoElevate,
+    [switch]$EnableLogging
 )
+
+# Initialize global variables
+$script:LogFile = Join-Path (Split-Path -Parent $MyInvocation.PSCommandPath) "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+
+function Write-Log {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        
+        [Parameter()]
+        [ValidateSet('Info', 'Warning', 'Error', 'Debug', 'Verbose')]
+        [string]$Level = 'Info'
+    )
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    
+    # Write to console with appropriate color
+    switch ($Level) {
+        'Info' { 
+            Write-Host $Message
+            if ($VerbosePreference -eq 'Continue') { Write-Host $logEntry }
+        }
+        'Warning' { Write-Host $Message -ForegroundColor Yellow }
+        'Error' { Write-Host $Message -ForegroundColor Red }
+        'Debug' { 
+            if ($DebugPreference -eq 'Continue') { 
+                Write-Host "DEBUG: $Message" -ForegroundColor Magenta 
+            }
+        }
+        'Verbose' { 
+            if ($VerbosePreference -eq 'Continue') { 
+                Write-Host "VERBOSE: $Message" -ForegroundColor Cyan 
+            }
+        }
+    }
+    
+    # Write to log file if logging is enabled
+    if ($EnableLogging) {
+        Add-Content -Path $script:LogFile -Value $logEntry
+    }
+}
 
 function Test-RunningAsSystem {
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-    return $currentUser.User.Value -eq "S-1-5-18"
+    $isSystem = $currentUser.User.Value -eq "S-1-5-18"
+    Write-Log -Message "Checking if running as SYSTEM: $isSystem" -Level Verbose
+    return $isSystem
 }
 
 function Start-SystemContext {
@@ -50,11 +108,11 @@ function Start-SystemContext {
     )
 
     if (Test-RunningAsSystem) {
-        Write-Host "Already running as SYSTEM account." -ForegroundColor Green
+        Write-Log "Already running as SYSTEM account." -Level Info
         return $true
     }
 
-    Write-Host "Elevating to SYSTEM context..." -ForegroundColor Cyan
+    Write-Log "Elevating to SYSTEM context..." -Level Info
     
     try {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
@@ -62,13 +120,21 @@ function Start-SystemContext {
         $logFile = Join-Path $scriptDirectory "$jobName.log"
         $markerFile = Join-Path $scriptDirectory "$jobName.marker"
         
-        # Create a simple wrapper script that calls the original script with NoElevate
+        Write-Log "Creating temporary job files in $scriptDirectory" -Level Verbose
+        
+        # Create parameters string to pass logging preference
+        $paramString = "-NoElevate"
+        if ($EnableLogging) { $paramString += " -EnableLogging" }
+        if ($VerbosePreference -eq 'Continue') { $paramString += " -Verbose" }
+        if ($DebugPreference -eq 'Continue') { $paramString += " -Debug" }
+        
+        # Create a wrapper script that calls the original script with parameters
         $tempScriptPath = Join-Path $scriptDirectory "$jobName.ps1"
         $wrapperContent = @"
 # Temporary wrapper script generated for SYSTEM context execution
 try {
-    # Execute the original script with NoElevate parameter
-    & '$ScriptPath' -NoElevate
+    # Execute the original script with parameters
+    & '$ScriptPath' $paramString
 } 
 catch {
     Write-Error "Error executing script as SYSTEM: `$_"
@@ -76,7 +142,7 @@ catch {
 }
 "@
         
-        # Write wrapper content to temp file
+        Write-Log "Creating wrapper script at $tempScriptPath" -Level Debug
         Set-Content -Path $tempScriptPath -Value $wrapperContent -Force
         
         # Create action with logging to execute the temp script
@@ -86,7 +152,7 @@ catch {
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
         $task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings
         
-        # Register task using the task object
+        Write-Log "Registering scheduled task $jobName" -Level Verbose
         Register-ScheduledTask -TaskName $jobName -InputObject $task | Out-Null
         Start-ScheduledTask -TaskName $jobName
 
@@ -94,12 +160,13 @@ catch {
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
         $seenLogLines = @{}
-        Write-Host "Waiting for system cleanup to complete..." -ForegroundColor Cyan
+        Write-Log "Waiting for system cleanup to complete..." -Level Info
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
             # Check for completion marker file first
             if (Test-Path $markerFile) {
                 $completed = $true
+                Write-Log "Completion marker found" -Level Verbose
                 continue
             }
             
@@ -108,6 +175,7 @@ catch {
                 $status = Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue
                 if ($status -and $status.State -eq "Ready") {
                     $completed = $true
+                    Write-Log "Task completed according to scheduler" -Level Verbose
                     continue
                 }
             } catch {
@@ -137,10 +205,11 @@ catch {
 
         # Check final status
         if (-not $completed) {
-            Write-Error "Task did not complete within timeout period"
+            Write-Log "Task did not complete within timeout period" -Level Error
         }
 
         # Cleanup
+        Write-Log "Cleaning up temporary files and tasks" -Level Verbose
         if (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
             Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
         }
@@ -153,64 +222,135 @@ catch {
         if ($completed) { exit 0 } else { exit 1 }
     }
     catch {
-        Write-Error "Failed to elevate to SYSTEM context: $_"
+        Write-Log "Failed to elevate to SYSTEM context: $_" -Level Error
         return $false
     }
 }
 
 function Start-DiskCleanup {
-    Write-Host "Starting Disk Cleanup process..." -ForegroundColor Cyan
+    Write-Log "Starting Disk Cleanup process..." -Level Info
     
     try {
         # Create the StateFlags registry key
-        New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
-            -Name StateFlags0001 -Value 2 -PropertyType DWord -Force | Out-Null
+        Write-Log "Setting registry keys for automatic cleanup" -Level Verbose
+        try {
+            New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
+                -Name StateFlags0001 -Value 2 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+            Write-Log "Registry keys set successfully" -Level Verbose
+        }
+        catch {
+            Write-Log "Error setting registry keys: $_" -Level Error
+            return $false
+        }
 
         # Run Disk Cleanup silently with LOWDISK parameter to prevent GUI
-        Start-Process -FilePath cleanmgr -ArgumentList '/sagerun:1 /LOWDISK' -WindowStyle Hidden -Wait
+        Write-Log "Executing cleanmgr.exe with /sagerun:1 /LOWDISK parameters" -Level Verbose
+        
+        try {
+            $cleanmgrProcess = Start-Process -FilePath cleanmgr -ArgumentList '/sagerun:1 /LOWDISK' -WindowStyle Hidden -PassThru
+            
+            # Monitor the process with updates
+            Write-Log "Disk cleanup process started with ID: $($cleanmgrProcess.Id)" -Level Debug
+            $startTime = Get-Date
+            
+            while (-not $cleanmgrProcess.HasExited) {
+                $runtime = (Get-Date) - $startTime
+                if ($runtime.TotalSeconds -gt 180) {
+                    Write-Log "Disk cleanup has been running for $([int]$runtime.TotalMinutes) minutes..." -Level Verbose
+                }
+                
+                # Get process memory usage to show it's still working
+                try {
+                    $process = Get-Process -Id $cleanmgrProcess.Id -ErrorAction SilentlyContinue
+                    if ($process) {
+                        $memUsage = [math]::Round($process.WorkingSet64 / 1MB, 2)
+                        Write-Log "Disk cleanup still running. Memory usage: $memUsage MB" -Level Debug
+                    }
+                }
+                catch {
+                    # Process might have exited between checks
+                    Write-Log "Unable to get process info: $_" -Level Debug
+                }
+                
+                Start-Sleep -Seconds 10
+            }
+            
+            $exitCode = $cleanmgrProcess.ExitCode
+            Write-Log "Disk cleanup process completed with exit code: $exitCode" -Level Verbose
+            
+            if ($exitCode -eq 0) {
+                Write-Log "Disk cleanup completed successfully" -Level Info
+            }
+            else {
+                Write-Log "Disk cleanup completed with non-zero exit code: $exitCode" -Level Warning
+            }
+        }
+        catch {
+            Write-Log "Error monitoring disk cleanup process: $_" -Level Error
+            return $false
+        }
 
         # Clean up registry settings
-        Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
-            -Name StateFlags0001 -Force
+        Write-Log "Removing temporary registry settings" -Level Verbose
+        try {
+            Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
+                -Name StateFlags0001 -Force -ErrorAction Stop
+            Write-Log "Registry cleanup completed" -Level Debug
+        }
+        catch {
+            Write-Log "Error during registry cleanup: $_" -Level Warning
+            # Continue execution even if registry cleanup fails
+        }
         
-        Write-Host "Disk Cleanup completed successfully." -ForegroundColor Green
+        Write-Log "Disk Cleanup completed successfully." -Level Info
         return $true
     }
     catch {
-        Write-Error "Error during Disk Cleanup: $_"
+        Write-Log "Error during Disk Cleanup: $_" -Level Error
         return $false
     }
 }
 
 function Start-ShadowCopyCleanup {
-    Write-Host "Starting Shadow Copy cleanup process..." -ForegroundColor Cyan
+    Write-Log "Starting Shadow Copy cleanup process..." -Level Info
     
     try {
         # List all shadow copies
+        Write-Log "Retrieving list of shadow copies" -Level Verbose
         $vssList = vssadmin list shadows
+        Write-Log "Shadow copy details: $vssList" -Level Debug
+        
         $shadowCopies = $vssList | Where-Object {$_ -match "Shadow Copy ID:"}
         $shadowIds = $shadowCopies | ForEach-Object { $_.Split(":")[1].Trim() }
 
+        Write-Log "Found $($shadowIds.Count) shadow copies" -Level Verbose
+        
         if ($shadowIds.Count -eq 0) {
-            Write-Host "No shadow copies found." -ForegroundColor Yellow
+            Write-Log "No shadow copies found." -Level Warning
             return $true
         }
 
         # Keep only the newest restore point
         $keepId = $shadowIds[0]
-        Write-Host "Preserving most recent shadow copy ID: $keepId" -ForegroundColor Cyan
+        Write-Log "Preserving most recent shadow copy ID: $keepId" -Level Info
 
         # Delete older restore points
         foreach ($id in $shadowIds | Where-Object {$_ -ne $keepId}) {
-            Write-Host "Removing shadow copy ID: $id" -ForegroundColor Yellow
-            vssadmin delete shadows /shadow=$id /quiet
+            Write-Log "Removing shadow copy ID: $id" -Level Verbose
+            try {
+                $output = vssadmin delete shadows /shadow=$id /quiet
+                Write-Log "Deletion result: $output" -Level Debug
+            }
+            catch {
+                Write-Log "Error deleting shadow copy $id: $_" -Level Warning
+            }
         }
         
-        Write-Host "Shadow Copy cleanup completed successfully." -ForegroundColor Green
+        Write-Log "Shadow Copy cleanup completed successfully." -Level Info
         return $true
     }
     catch {
-        Write-Error "Error during Shadow Copy cleanup: $_"
+        Write-Log "Error during Shadow Copy cleanup: $_" -Level Error
         return $false
     }
 }
@@ -224,78 +364,119 @@ function Show-DriveInfo {
         [string]$State = "Current"
     )
     
-    Write-Host "`n$State Drive Volume Details:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
+    Write-Log "`n$State Drive Volume Details:" -Level Info
+    Write-Log "------------------------" -Level Info
+    Write-Log "Drive Letter: $($Volume.DriveLetter)" -Level Info
+    Write-Log "Drive Label: $($Volume.FileSystemLabel)" -Level Info
+    Write-Log "File System: $($Volume.FileSystem)" -Level Info
+    Write-Log "Drive Type: $($Volume.DriveType)" -Level Info
+    Write-Log "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -Level Info
+    Write-Log "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -Level Info
+    Write-Log "Health Status: $($Volume.HealthStatus)" -Level Info
+    
+    # Additional debug information
+    Write-Log "Drive details: $($Volume | Out-String)" -Level Debug
 }
 
 # Main execution
+if ($EnableLogging) {
+    Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
+}
+
+Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verbose
+Write-Log "Running on computer: $env:COMPUTERNAME" -Level Verbose
+Write-Log "Operating system: $((Get-CimInstance -ClassName Win32_OperatingSystem).Caption)" -Level Verbose
+
 if (-not (Test-RunningAsSystem) -and -not $NoElevate) {
-    Write-Host "Initial execution - will elevate to SYSTEM" -ForegroundColor Cyan
+    Write-Log "Initial execution - will elevate to SYSTEM" -Level Info
     Start-SystemContext
     exit
 }
 
-Write-Host "Executing as SYSTEM account" -ForegroundColor Cyan
-Write-Host "Starting system storage cleanup..." -ForegroundColor Cyan
+Write-Log "Executing as SYSTEM account" -Level Info
+Write-Log "Starting system storage cleanup..." -Level Info
 
 # Get drive information before cleanup
 try {
+    Write-Log "Collecting drive information before cleanup" -Level Verbose
+    
     # Get all available volumes with drive letters and sort them
     $volumes = Get-Volume | 
         Where-Object { $_.DriveLetter } | 
         Sort-Object DriveLetter
 
     if ($volumes.Count -eq 0) {
-        Write-Error "No drives with letters found on the system."
+        Write-Log "No drives with letters found on the system." -Level Error
         exit
     }
 
+    Write-Log "Found $($volumes.Count) volumes with drive letters" -Level Debug
+    
     # Select the volume with lowest drive letter
     $lowestVolume = $volumes[0]
     
-    Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
+    Write-Log "Found lowest drive letter: $($lowestVolume.DriveLetter)" -Level Info
     Show-DriveInfo -Volume $lowestVolume -State "Before Cleanup"
 }
 catch {
-    Write-Error "Error accessing drive information. Error: $_"
+    Write-Log "Error accessing drive information. Error: $_" -Level Error
 }
 
 # Perform cleanup operations
+Write-Log "Beginning cleanup operations" -Level Verbose
 $diskCleanupSuccess = Start-DiskCleanup
 $shadowCopySuccess = Start-ShadowCopyCleanup
 
 if ($diskCleanupSuccess -and $shadowCopySuccess) {
-    Write-Host "System storage cleanup completed successfully!" -ForegroundColor Green
+    Write-Log "System storage cleanup completed successfully!" -Level Info
 }
 else {
-    Write-Error "System storage cleanup encountered issues. Please check the logs."
+    Write-Log "System storage cleanup encountered issues. Please check the logs." -Level Error
 }
 
 # Get drive information after cleanup
 try {
+    Write-Log "Collecting drive information after cleanup" -Level Verbose
+    
     # Get all available volumes with drive letters and sort them
     $volumes = Get-Volume | 
         Where-Object { $_.DriveLetter } | 
         Sort-Object DriveLetter
 
     if ($volumes.Count -eq 0) {
-        Write-Error "No drives with letters found on the system."
+        Write-Log "No drives with letters found on the system." -Level Error
         exit
     }
 
     # Select the volume with lowest drive letter
     $lowestVolume = $volumes[0]
     
-    Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
+    Write-Log "Found lowest drive letter: $($lowestVolume.DriveLetter)" -Level Info
     Show-DriveInfo -Volume $lowestVolume -State "After Cleanup"
+    
+    # Calculate and display space freed
+    try {
+        $beforeFreeSpace = $volumeBeforeCleanup.SizeRemaining
+        $afterFreeSpace = $lowestVolume.SizeRemaining
+        $spaceSaved = ($afterFreeSpace - $beforeFreeSpace) / 1GB
+        
+        if ($spaceSaved -gt 0) {
+            Write-Log "Space freed by cleanup: $([math]::Round($spaceSaved, 2)) GB" -Level Info
+        }
+        else {
+            Write-Log "No measurable space was freed during cleanup" -Level Warning
+        }
+    }
+    catch {
+        Write-Log "Unable to calculate space saved: $_" -Level Debug
+    }
 }
 catch {
-    Write-Error "Error accessing drive information. Error: $_"
+    Write-Log "Error accessing drive information. Error: $_" -Level Error
+}
+
+Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
+
+if ($EnableLogging) {
+    Write-Log "Log file created at: $script:LogFile" -Level Info
 }
