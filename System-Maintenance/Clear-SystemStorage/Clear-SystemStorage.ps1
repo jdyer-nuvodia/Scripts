@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-28 22:05:00 UTC
+# Last Updated: 2025-03-03 17:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8
-# Additional Info: Fixed parameter handling in system context execution
+# Version: 1.9
+# Additional Info: Fixed SYSTEM context elevation script generation
 # =============================================================================
 
 <#
@@ -62,23 +62,22 @@ function Start-SystemContext {
         $logFile = Join-Path $scriptDirectory "$jobName.log"
         $markerFile = Join-Path $scriptDirectory "$jobName.marker"
         
-        # Create a direct execution script that doesn't invoke the original script but contains the code
+        # Create a simple wrapper script that calls the original script with NoElevate
         $tempScriptPath = Join-Path $scriptDirectory "$jobName.ps1"
+        $wrapperContent = @"
+# Temporary wrapper script generated for SYSTEM context execution
+try {
+    # Execute the original script with NoElevate parameter
+    & '$ScriptPath' -NoElevate
+} 
+catch {
+    Write-Error "Error executing script as SYSTEM: `$_"
+    exit 1
+}
+"@
         
-        # Read the original script and properly handle the param block
-        $scriptContent = Get-Content -Path $ScriptPath -Raw
-        
-        # Extract the param block if it exists and add NoElevate parameter after it
-        if ($scriptContent -match '(?s)^(param\s*\([^)]*\))') {
-            $paramBlock = $Matches[1]
-            $modifiedContent = $scriptContent -replace [regex]::Escape($paramBlock), "$paramBlock`n`n# Added by system context elevation`n`$NoElevate = `$true"
-        } else {
-            # If no param block, add it at the beginning
-            $modifiedContent = "param(`n    [switch]`$NoElevate`n)`n`n`$NoElevate = `$true`n`n$scriptContent"
-        }
-        
-        # Write modified content to temp file
-        Set-Content -Path $tempScriptPath -Value $modifiedContent -Force
+        # Write wrapper content to temp file
+        Set-Content -Path $tempScriptPath -Value $wrapperContent -Force
         
         # Create action with logging to execute the temp script
         $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; & '$tempScriptPath'; Set-Content -Path '$markerFile' -Value 'Complete' -Force; Stop-Transcript}`""
