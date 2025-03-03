@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-03 18:15:00 UTC
+# Last Updated: 2025-03-03 21:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2
-# Additional Info: Added fallback path determination logic for direct console execution
+# Version: 2.3
+# Additional Info: Enhanced shadow copy reporting and fixed space calculation
 # =============================================================================
 
 <#
@@ -333,30 +333,56 @@ function Start-ShadowCopyCleanup {
         $shadowCopies = $vssList | Where-Object {$_ -match "Shadow Copy ID:"}
         $shadowIds = $shadowCopies | ForEach-Object { $_.Split(":")[1].Trim() }
 
-        Write-Log "Found $($shadowIds.Count) shadow copies" -Level Verbose
+        $shadowCount = $shadowIds.Count
+        Write-Log "Found $shadowCount shadow copies" -Level Info
         
-        if ($shadowIds.Count -eq 0) {
+        if ($shadowCount -eq 0) {
             Write-Log "No shadow copies found." -Level Warning
             return $true
         }
 
+        # Parse creation dates to display them to user
+        $dateLines = $vssList | Where-Object {$_ -match "Created:"}
+        $dates = $dateLines | ForEach-Object { $_.Split(":", 2)[1].Trim() }
+        
+        # Show all shadow copies with dates
+        Write-Log "Shadow Copy Details:" -Level Info
+        Write-Log "-------------------" -Level Info
+        for ($i = 0; $i -lt $shadowCount; $i++) {
+            Write-Log "ID: $($shadowIds[$i])" -Level Info
+            Write-Log "Created: $($dates[$i])" -Level Info
+            if ($i -lt $shadowCount - 1) {
+                Write-Log "-------------------" -Level Info
+            }
+        }
+
         # Keep only the newest restore point
         $keepId = $shadowIds[0]
-        Write-Log "Preserving most recent shadow copy ID: $keepId" -Level Info
+        $keepDate = $dates[0]
+        Write-Log "Preserving most recent shadow copy:" -Level Info
+        Write-Log "ID: $keepId" -Level Info
+        Write-Log "Created: $keepDate" -Level Info
+
+        # Count deleted shadows
+        $deletedCount = 0
 
         # Delete older restore points
-        foreach ($id in $shadowIds | Where-Object {$_ -ne $keepId}) {
-            Write-Log "Removing shadow copy ID: $id" -Level Verbose
-            try {
-                $output = vssadmin delete shadows /shadow=$id /quiet
-                Write-Log "Deletion result: $output" -Level Debug
-            }
-            catch {
-                Write-Log "Error deleting shadow copy ${id}: ${_}" -Level Warning
+        foreach ($i in 0..($shadowIds.Count-1)) {
+            $id = $shadowIds[$i]
+            if ($id -ne $keepId) {
+                Write-Log "Removing shadow copy ID: $id (Created: $($dates[$i]))" -Level Verbose
+                try {
+                    $output = vssadmin delete shadows /shadow=$id /quiet
+                    Write-Log "Deleted shadow copy from $($dates[$i])" -Level Info
+                    $deletedCount++
+                }
+                catch {
+                    Write-Log "Error deleting shadow copy ${id}: ${_}" -Level Warning
+                }
             }
         }
         
-        Write-Log "Shadow Copy cleanup completed successfully." -Level Info
+        Write-Log "Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -Level Info
         return $true
     }
     catch {
@@ -423,10 +449,10 @@ try {
     Write-Log "Found $($volumes.Count) volumes with drive letters" -Level Debug
     
     # Select the volume with lowest drive letter
-    $lowestVolume = $volumes[0]
+    $volumeBeforeCleanup = $volumes[0]
     
-    Write-Log "Found lowest drive letter: $($lowestVolume.DriveLetter)" -Level Info
-    Show-DriveInfo -Volume $lowestVolume -State "Before Cleanup"
+    Write-Log "Found lowest drive letter: $($volumeBeforeCleanup.DriveLetter)" -Level Info
+    Show-DriveInfo -Volume $volumeBeforeCleanup -State "Before Cleanup"
 }
 catch {
     Write-Log "Error accessing drive information. Error: $_" -Level Error
@@ -484,6 +510,12 @@ try {
 catch {
     Write-Log "Error accessing drive information. Error: $_" -Level Error
 }
+
+# Display cleanup summary
+Write-Log "`nCleanup Summary:" -Level Info
+Write-Log "---------------" -Level Info
+Write-Log "Disk Cleanup: $($diskCleanupSuccess ? "Completed Successfully" : "Failed")" -Level $($diskCleanupSuccess ? "Info" : "Error")
+Write-Log "Shadow Copy Cleanup: $($shadowCopySuccess ? "Completed Successfully" : "Failed")" -Level $($shadowCopySuccess ? "Info" : "Error")
 
 Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
 
