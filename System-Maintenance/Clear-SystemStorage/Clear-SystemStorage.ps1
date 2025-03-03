@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 15:25:00 UTC
+# Last Updated: 2025-03-06 16:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5
-# Additional Info: Fixed SYSTEM context elevation for OneDrive paths
+# Version: 2.6
+# Additional Info: Enhanced System context elevation with direct script execution
 # =============================================================================
 
 <#
@@ -126,36 +126,24 @@ function Start-SystemContext {
         Write-Log "Copying script to system-accessible location: $systemAccessibleScriptPath" -Level Verbose
         Copy-Item -Path $ScriptPath -Destination $systemAccessibleScriptPath -Force
         
+        # Set proper permissions
+        Write-Log "Setting appropriate permissions on system-accessible script" -Level Verbose
+        $acl = Get-Acl -Path $systemAccessibleScriptPath
+        $systemAccount = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-18")
+        $permission = $systemAccount, "FullControl", "Allow"
+        $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
+        $acl.SetAccessRule($accessRule)
+        Set-Acl -Path $systemAccessibleScriptPath -AclObject $acl
+        
         $scriptDirectory = $systemAccessibleTemp
         $logFile = Join-Path $scriptDirectory "$jobName.log"
         $markerFile = Join-Path $scriptDirectory "$jobName.marker"
         
         Write-Log "Creating temporary job files in $scriptDirectory" -Level Verbose
         
-        # Create parameters string to pass logging preference
-        $paramString = "-NoElevate"
-        if ($VerbosePreference -eq 'Continue') { $paramString += " -Verbose" }
-        if ($DebugPreference -eq 'Continue') { $paramString += " -Debug" }
+        # Skip wrapper script and directly execute the main script with parameters
+        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript -Path '$logFile' -Force; try { & '$systemAccessibleScriptPath' -NoElevate $(if ($VerbosePreference -eq 'Continue') { '-Verbose' }); if (`$?) { Set-Content -Path '$markerFile' -Value 'Complete' -Force } } catch { Write-Error `"Error executing as SYSTEM: `$(`$_.Exception.Message)`"; exit 1 } finally { Stop-Transcript }}`""
         
-        # Create a wrapper script that calls the copied script with parameters
-        $tempScriptPath = Join-Path $scriptDirectory "$jobName.ps1"
-        $wrapperContent = @"
-# Temporary wrapper script generated for SYSTEM context execution
-try {
-    # Execute the copied script with parameters
-    & '$systemAccessibleScriptPath' $paramString
-} 
-catch {
-    Write-Error "Error executing script as SYSTEM: `$_"
-    exit 1
-}
-"@
-        
-        Write-Log "Creating wrapper script at $tempScriptPath" -Level Debug
-        Set-Content -Path $tempScriptPath -Value $wrapperContent -Force
-        
-        # Create action with logging to execute the temp script
-        $argument = "-NoProfile -ExecutionPolicy Bypass -Command `"& {Start-Transcript '$logFile'; & '$tempScriptPath'; Set-Content -Path '$markerFile' -Value 'Complete' -Force; Stop-Transcript}`""
         $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argument
         $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -197,6 +185,17 @@ catch {
             
             # Display log updates without duplication
             if (Test-Path $logFile) {
+                # Add logic to detect errors in the log and report them
+                $errorLines = Select-String -Path $logFile -Pattern "Error|Exception|failed" -Context 0,2 -SimpleMatch
+                foreach ($errorLine in $errorLines) {
+                    $errorContext = $errorLine.Line + "`n" + ($errorLine.Context.PostContext -join "`n")
+                    if (-not $seenLogLines.ContainsKey($errorContext)) {
+                        Write-Host "ERROR detected in script execution:" -ForegroundColor Red
+                        Write-Host $errorContext -ForegroundColor Red
+                        $seenLogLines[$errorContext] = $true
+                    }
+                }
+                
                 $currentLines = Get-Content $logFile -Tail 10
                 foreach ($line in $currentLines) {
                     $trimmedLine = $line.Trim()
@@ -212,9 +211,37 @@ catch {
             Start-Sleep -Seconds 3
         }
 
-        # Check final status
+        # Check final status with more diagnostics
         if (-not $completed) {
             Write-Log "Task did not complete within timeout period" -Level Error
+            
+            # More detailed diagnostics
+            Write-Log "Checking for task status..." -Level Info
+            try {
+                $taskStatus = Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue
+                if ($taskStatus) {
+                    Write-Log "Task state: $($taskStatus.State)" -Level Info
+                    $taskInfo = Get-ScheduledTaskInfo -TaskName $jobName -ErrorAction SilentlyContinue
+                    if ($taskInfo) {
+                        Write-Log "Task info: Last run time: $($taskInfo.LastRunTime), Result: $($taskInfo.LastTaskResult)" -Level Info
+                    }
+                }
+                else {
+                    Write-Log "Task no longer exists - it may have completed but failed to create marker file" -Level Warning
+                }
+            }
+            catch {
+                Write-Log "Error getting task status: $_" -Level Error
+            }
+            
+            # Look for log content for clues
+            if (Test-Path $logFile) {
+                Write-Log "Contents of log file:" -Level Info
+                Get-Content $logFile | ForEach-Object { Write-Log $_ -Level Info }
+            }
+            else {
+                Write-Log "No log file was created" -Level Warning
+            }
         }
 
         # Cleanup
@@ -224,9 +251,13 @@ catch {
         }
         
         # Cleanup files
-        if (Test-Path $logFile) { Remove-Item $logFile -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $logFile) { 
+            # Save the log content for debugging
+            $logContent = Get-Content -Path $logFile -Raw
+            Write-Log "SYSTEM execution log content: $logContent" -Level Debug
+            Remove-Item $logFile -Force -ErrorAction SilentlyContinue 
+        }
         if (Test-Path $markerFile) { Remove-Item $markerFile -Force -ErrorAction SilentlyContinue }
-        if (Test-Path $tempScriptPath) { Remove-Item $tempScriptPath -Force -ErrorAction SilentlyContinue }
         if (Test-Path $systemAccessibleScriptPath) { Remove-Item $systemAccessibleScriptPath -Force -ErrorAction SilentlyContinue }
         
         if ($completed) { exit 0 } else { exit 1 }
