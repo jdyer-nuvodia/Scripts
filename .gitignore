@@ -33,3 +33,6 @@
 
 # Marker files
 *.marker
+
+# .env files
+*.env
