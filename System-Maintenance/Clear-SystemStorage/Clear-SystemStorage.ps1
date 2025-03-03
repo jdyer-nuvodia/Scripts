@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 14:55:00 UTC
+# Last Updated: 2025-03-06 15:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.4
-# Additional Info: Made logging enabled by default, removed EnableLogging parameter
+# Version: 2.5
+# Additional Info: Fixed SYSTEM context elevation for OneDrive paths
 # =============================================================================
 
 <#
@@ -118,7 +118,15 @@ function Start-SystemContext {
     
     try {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
-        $scriptDirectory = Split-Path -Parent $ScriptPath
+        $systemAccessibleTemp = "$env:SystemRoot\Temp"
+        $scriptFileName = Split-Path -Leaf $ScriptPath
+        $systemAccessibleScriptPath = Join-Path -Path $systemAccessibleTemp -ChildPath $scriptFileName
+        
+        # Copy the script to system-accessible location
+        Write-Log "Copying script to system-accessible location: $systemAccessibleScriptPath" -Level Verbose
+        Copy-Item -Path $ScriptPath -Destination $systemAccessibleScriptPath -Force
+        
+        $scriptDirectory = $systemAccessibleTemp
         $logFile = Join-Path $scriptDirectory "$jobName.log"
         $markerFile = Join-Path $scriptDirectory "$jobName.marker"
         
@@ -129,13 +137,13 @@ function Start-SystemContext {
         if ($VerbosePreference -eq 'Continue') { $paramString += " -Verbose" }
         if ($DebugPreference -eq 'Continue') { $paramString += " -Debug" }
         
-        # Create a wrapper script that calls the original script with parameters
+        # Create a wrapper script that calls the copied script with parameters
         $tempScriptPath = Join-Path $scriptDirectory "$jobName.ps1"
         $wrapperContent = @"
 # Temporary wrapper script generated for SYSTEM context execution
 try {
-    # Execute the original script with parameters
-    & '$ScriptPath' $paramString
+    # Execute the copied script with parameters
+    & '$systemAccessibleScriptPath' $paramString
 } 
 catch {
     Write-Error "Error executing script as SYSTEM: `$_"
@@ -219,6 +227,7 @@ catch {
         if (Test-Path $logFile) { Remove-Item $logFile -Force -ErrorAction SilentlyContinue }
         if (Test-Path $markerFile) { Remove-Item $markerFile -Force -ErrorAction SilentlyContinue }
         if (Test-Path $tempScriptPath) { Remove-Item $tempScriptPath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $systemAccessibleScriptPath) { Remove-Item $systemAccessibleScriptPath -Force -ErrorAction SilentlyContinue }
         
         if ($completed) { exit 0 } else { exit 1 }
     }
