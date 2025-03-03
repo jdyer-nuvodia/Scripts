@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-03-03 18:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1
-# Additional Info: Fixed variable reference syntax in string interpolation
+# Version: 2.2
+# Additional Info: Added fallback path determination logic for direct console execution
 # =============================================================================
 
 <#
@@ -52,7 +52,17 @@ param(
 )
 
 # Initialize global variables
-$script:LogFile = Join-Path (Split-Path -Parent $MyInvocation.PSCommandPath) "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$scriptPath = $MyInvocation.PSCommandPath
+if (-not $scriptPath) {
+    # Fallback for direct console execution
+    $scriptPath = $MyInvocation.MyCommand.Definition
+    if (-not $scriptPath) {
+        # Ultimate fallback to current directory
+        $scriptPath = Join-Path -Path (Get-Location) -ChildPath "Clear-SystemStorage.ps1"
+    }
+}
+$scriptDirectory = Split-Path -Path $scriptPath -Parent
+$script:LogFile = Join-Path -Path $scriptDirectory -ChildPath "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
 function Write-Log {
     [CmdletBinding()]
