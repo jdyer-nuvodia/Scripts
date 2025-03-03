@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-03 21:10:00 UTC
+# Last Updated: 2025-03-06 14:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3
-# Additional Info: Enhanced shadow copy reporting and fixed space calculation
+# Version: 2.4
+# Additional Info: Made logging enabled by default, removed EnableLogging parameter
 # =============================================================================
 
 <#
@@ -28,14 +28,9 @@
     - Administrative privileges
 .PARAMETER NoElevate
     Prevents the script from attempting to elevate to SYSTEM context when already running as a scheduled task
-.PARAMETER EnableLogging
-    Enables writing detailed logs to a file in the script directory
 .EXAMPLE
     .\Clear-SystemStorage.ps1
     Runs the script with default settings
-.EXAMPLE
-    .\Clear-SystemStorage.ps1 -EnableLogging
-    Runs the script with detailed logging enabled
 .EXAMPLE
     .\Clear-SystemStorage.ps1 -Verbose
     Runs the script with verbose console output
@@ -47,8 +42,7 @@
     - Check disk space recovery
 #>
 param(
-    [switch]$NoElevate,
-    [switch]$EnableLogging
+    [switch]$NoElevate
 )
 
 # Initialize global variables
@@ -98,10 +92,8 @@ function Write-Log {
         }
     }
     
-    # Write to log file if logging is enabled
-    if ($EnableLogging) {
-        Add-Content -Path $script:LogFile -Value $logEntry
-    }
+    # Always write to log file - logging is enabled by default now
+    Add-Content -Path $script:LogFile -Value $logEntry
 }
 
 function Test-RunningAsSystem {
@@ -134,7 +126,6 @@ function Start-SystemContext {
         
         # Create parameters string to pass logging preference
         $paramString = "-NoElevate"
-        if ($EnableLogging) { $paramString += " -EnableLogging" }
         if ($VerbosePreference -eq 'Continue') { $paramString += " -Verbose" }
         if ($DebugPreference -eq 'Continue') { $paramString += " -Debug" }
         
@@ -415,9 +406,7 @@ function Show-DriveInfo {
 }
 
 # Main execution
-if ($EnableLogging) {
-    Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
-}
+Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
 
 Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verbose
 Write-Log "Running on computer: $env:COMPUTERNAME" -Level Verbose
@@ -519,6 +508,4 @@ Write-Log "Shadow Copy Cleanup: $($shadowCopySuccess ? "Completed Successfully" 
 
 Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
 
-if ($EnableLogging) {
-    Write-Log "Log file created at: $script:LogFile" -Level Info
-}
+Write-Log "Log file created at: $script:LogFile" -Level Info
