@@ -27,3 +27,9 @@
 # Runtime files
 *.tmp
 *.lnk
+
+# Log files
+*.log
+
+# Marker files
+*.marker
