@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 18:00:00 UTC
+# Last Updated: 2025-03-06 19:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.8
-# Additional Info: Fixed compatibility with older PowerShell versions
+# Version: 2.9
+# Additional Info: Enhanced progress feedback during cleanup operations
 # =============================================================================
 
 <#
@@ -178,7 +178,11 @@ finally {
         $completed = $false
         $seenLogLines = @{}
         $dotCount = 0
+        $progressDisplayTime = [DateTime]::MinValue
+        $lastStatusUpdate = [DateTime]::Now
+        
         Write-Log "Waiting for system cleanup to complete..." -Level Info
+        Write-Host "System cleanup progress:" -ForegroundColor Cyan
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
             # Check for completion marker file first
@@ -206,6 +210,14 @@ finally {
             
             # Display log updates without duplication
             if (Test-Path $logFile) {
+                # Show periodic status updates even if no new log lines
+                if (([DateTime]::Now - $lastStatusUpdate).TotalSeconds -gt 15) {
+                    $lastStatusUpdate = [DateTime]::Now
+                    $dotCount = ($dotCount + 1) % 4
+                    Write-Host "► Cleanup in progress$('.' * $dotCount)    " -ForegroundColor Cyan -NoNewline
+                    Write-Host "`r" -NoNewline
+                }
+                
                 # Add logic to detect errors in the log and report them
                 $errorLines = Select-String -Path $logFile -Pattern "Error|Exception|failed" -SimpleMatch
                 foreach ($errorLine in $errorLines) {
@@ -216,26 +228,63 @@ finally {
                     }
                 }
                 
-                $currentLines = Get-Content $logFile -Tail 10
+                # Check for important progress events
+                $progressKeywords = @(
+                    @{ Pattern = "Disk [Cc]leanup.*complete"; Color = "Green" },
+                    @{ Pattern = "Starting [Dd]isk [Cc]leanup"; Color = "Cyan" },
+                    @{ Pattern = "Setting registry keys"; Color = "Cyan" },
+                    @{ Pattern = "Starting Shadow Copy"; Color = "Cyan" },
+                    @{ Pattern = "Shadow Copy.*complete"; Color = "Green" },
+                    @{ Pattern = "[Dd]elete.*shadow copy"; Color = "Yellow" },
+                    @{ Pattern = "Space freed"; Color = "Green" },
+                    @{ Pattern = "Found.*drive"; Color = "Cyan" },
+                    @{ Pattern = "minutes"; Color = "Magenta" }  # For long-running operations
+                )
+                
+                # Get all new log lines with better filtering
+                $currentLines = Get-Content $logFile -Tail 20 -ErrorAction SilentlyContinue
                 foreach ($line in $currentLines) {
                     $trimmedLine = $line.Trim()
-                    if ($trimmedLine -and 
-                        -not $seenLogLines.ContainsKey($trimmedLine) -and 
-                        $trimmedLine -notmatch "^Transcript started|^Transcript ended|^Windows PowerShell transcript") {
+                    # Skip empty lines and already seen lines
+                    if (-not $trimmedLine -or $seenLogLines.ContainsKey($trimmedLine) -or
+                        $trimmedLine -match "^Transcript started|^Transcript ended|^Windows PowerShell transcript") {
+                        continue
+                    }
+                    
+                    # Mark line as seen
+                    $seenLogLines[$trimmedLine] = $true
+                    
+                    # Use colors for important information
+                    $colorMatch = $false
+                    foreach ($keyword in $progressKeywords) {
+                        if ($trimmedLine -match $keyword.Pattern) {
+                            Write-Host $trimmedLine -ForegroundColor $keyword.Color
+                            $colorMatch = $true
+                            $lastStatusUpdate = [DateTime]::Now
+                            break
+                        }
+                    }
+                    
+                    # Default display for other lines
+                    if (-not $colorMatch) {
                         Write-Host $trimmedLine
-                        $seenLogLines[$trimmedLine] = $true
                     }
                 }
             } else {
                 # Show a simple activity indicator if no log file yet
-                $dotCount = ($dotCount + 1) % 4
-                Write-Host "`rWaiting for task to start$('.' * $dotCount)    " -NoNewline
+                $currentTime = [DateTime]::Now
+                if (($currentTime - $progressDisplayTime).TotalMilliseconds -gt 500) {
+                    $progressDisplayTime = $currentTime
+                    $dotCount = ($dotCount + 1) % 4
+                    Write-Host "Waiting for task to start$('.' * $dotCount)    " -ForegroundColor Cyan -NoNewline
+                    Write-Host "`r" -NoNewline
+                }
             }
             
-            Start-Sleep -Seconds 2
+            Start-Sleep -Milliseconds 250
         }
         
-        Write-Host "" # Clear the line after activity indicator
+        Write-Host ""  # Clear the line after activity indicator
 
         # Check final status with more diagnostics
         if (-not $completed) {
@@ -326,27 +375,35 @@ function Start-DiskCleanup {
             # Monitor the process with updates
             Write-Log "Disk cleanup process started with ID: $($cleanmgrProcess.Id)" -Level Debug
             $startTime = Get-Date
+            $lastUpdateTime = $startTime
             
             while (-not $cleanmgrProcess.HasExited) {
                 $runtime = (Get-Date) - $startTime
-                if ($runtime.TotalSeconds -gt 180) {
-                    Write-Log "Disk cleanup has been running for $([int]$runtime.TotalMinutes) minutes..." -Level Verbose
-                }
+                $timeSinceLastUpdate = (Get-Date) - $lastUpdateTime
                 
-                # Get process memory usage to show it's still working
-                try {
-                    $process = Get-Process -Id $cleanmgrProcess.Id -ErrorAction SilentlyContinue
-                    if ($process) {
-                        $memUsage = [math]::Round($process.WorkingSet64 / 1MB, 2)
-                        Write-Log "Disk cleanup still running. Memory usage: $memUsage MB" -Level Debug
+                # More frequent updates on cleanup progress
+                if ($timeSinceLastUpdate.TotalSeconds -gt 30) {
+                    $lastUpdateTime = Get-Date
+                    if ($runtime.TotalSeconds -gt 60) {
+                        Write-Log "Disk cleanup running for $([int]$runtime.TotalMinutes) minutes and $([int]($runtime.TotalSeconds % 60)) seconds..." -Level Info
+                    } else {
+                        Write-Log "Disk cleanup running for $([int]$runtime.TotalSeconds) seconds..." -Level Info
+                    }
+                    
+                    try {
+                        $process = Get-Process -Id $cleanmgrProcess.Id -ErrorAction SilentlyContinue
+                        if ($process) {
+                            $memUsage = [math]::Round($process.WorkingSet64 / 1MB, 2)
+                            Write-Log "Current memory usage: $memUsage MB" -Level Info
+                        }
+                    }
+                    catch {
+                        # Process might have exited between checks
+                        Write-Log "Unable to get process info: $_" -Level Debug
                     }
                 }
-                catch {
-                    # Process might have exited between checks
-                    Write-Log "Unable to get process info: $_" -Level Debug
-                }
                 
-                Start-Sleep -Seconds 10
+                Start-Sleep -Seconds 5
             }
             
             $exitCode = $cleanmgrProcess.ExitCode
