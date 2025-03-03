@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-03 17:26:00 UTC
+# Last Updated: 2025-03-03 18:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0
-# Additional Info: Added verbose output capabilities and debug logging
+# Version: 2.1
+# Additional Info: Fixed variable reference syntax in string interpolation
 # =============================================================================
 
 <#
@@ -342,7 +342,7 @@ function Start-ShadowCopyCleanup {
                 Write-Log "Deletion result: $output" -Level Debug
             }
             catch {
-                Write-Log "Error deleting shadow copy $id: $_" -Level Warning
+                Write-Log "Error deleting shadow copy ${id}: ${_}" -Level Warning
             }
         }
         
