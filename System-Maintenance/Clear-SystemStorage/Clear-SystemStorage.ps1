@@ -201,7 +201,7 @@ finally {
         
         Write-Log "Waiting for system cleanup to complete..." -Level Info
         Write-Host "System cleanup progress:" -ForegroundColor Cyan
-         -and -not $completed) {
+        
         while ((Get-Date) -lt $timeout -and -not $completed) {
             # Check for completion marker file first
             if (Test-Path $markerFile) {
@@ -211,99 +211,99 @@ finally {
             }
             
             # Then check task status
-            try {status = Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue
+            try {
                 $status = Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue
                 if ($status -and $status.State -eq "Ready") {
-                    $completed = $truempleted according to scheduler" -Level Verbose
+                    $completed = $true
                     Write-Log "Task completed according to scheduler" -Level Verbose
                     continue
-                }h {
-            } catch {k might be completed and already removed
+                }
+            } 
+            catch {
                 # Task might be completed and already removed
                 if (Test-Path $markerFile) {
                     $completed = $true
                     continue
                 }
             }
-            duplication
+            
             # Display log updates without duplication
-            if (Test-Path $logFile) {ines
-                # Show periodic status updates even if no new log lines-gt 15) {
+            if (Test-Path $logFile) {
+                # Show periodic status updates even if no new log lines
                 if (([DateTime]::Now - $lastStatusUpdate).TotalSeconds -gt 15) {
                     $lastStatusUpdate = [DateTime]::Now
-                    $dotCount = ($dotCount + 1) % 4" -ForegroundColor Cyan -NoNewline
+                    $dotCount = ($dotCount + 1) % 4
                     Write-Host "► Cleanup in progress$('.' * $dotCount)    " -ForegroundColor Cyan -NoNewline
                     Write-Host "`r" -NoNewline
                 }
-                logic to detect errors in the log and report them
-                # Add logic to detect errors in the log and report themror|Exception|failed" -SimpleMatch
+                
+                # Add logic to detect errors in the log and report them
                 $errorLines = Select-String -Path $logFile -Pattern "Error|Exception|failed" -SimpleMatch
-                foreach ($errorLine in $errorLines) {()
-                    $errorText = $errorLine.Line.Trim()$errorText)) {
+                foreach ($errorLine in $errorLines) {
+                    $errorText = $errorLine.Line.Trim()
                     if (-not $seenLogLines.ContainsKey($errorText)) {
                         Write-Host "ERROR detected: $errorText" -ForegroundColor Red
                         $seenLogLines[$errorText] = $true
                     }
                 }
-                mportant progress events
+                
                 # Check for important progress events
-                $progressKeywords = @( [Cc]leanup.*complete"; Color = "Green" },
+                $progressKeywords = @(
                     @{ Pattern = "Disk [Cc]leanup.*complete"; Color = "Green" },
                     @{ Pattern = "Starting [Dd]isk [Cc]leanup"; Color = "Cyan" },
                     @{ Pattern = "Setting registry keys"; Color = "Cyan" },
-                    @{ Pattern = "Starting Shadow Copy"; Color = "Cyan" },,
-                    @{ Pattern = "Shadow Copy.*complete"; Color = "Green" },-running operations
+                    @{ Pattern = "Starting Shadow Copy"; Color = "Cyan" },
+                    @{ Pattern = "Shadow Copy.*complete"; Color = "Green" },
                     @{ Pattern = "[Dd]elete.*shadow copy"; Color = "Yellow" },
                     @{ Pattern = "Space freed"; Color = "Green" },
-                    @{ Pattern = "Found.*drive"; Color = "Cyan" },}
+                    @{ Pattern = "Found.*drive"; Color = "Cyan" },
                     @{ Pattern = "minutes"; Color = "Magenta" },  # For long-running operations
                     # Enhanced shadow copy visibility
-                    @{ Pattern = "Shadow Copy Details:"; Color = "Cyan" },all new log lines with better filtering
+                    @{ Pattern = "Shadow Copy Details:"; Color = "Cyan" },
                     @{ Pattern = "Found \d+ shadow cop"; Color = "Cyan" },
                     @{ Pattern = "ID: [A-Za-z0-9-]+"; Color = "White" },
                     @{ Pattern = "Created: "; Color = "White" },
-                    @{ Pattern = "Preserving most recent"; Color = "Green" },ady seen lines
-                    @{ Pattern = "Removing shadow copy"; Color = "Yellow" },dLine) -or $trimmedLine -match "^Transcript started|^Transcript ended|^Windows PowerShell transcript") {
+                    @{ Pattern = "Preserving most recent"; Color = "Green" },
+                    @{ Pattern = "Removing shadow copy"; Color = "Yellow" },
                     @{ Pattern = "Deleted shadow copy"; Color = "Yellow" },
                     @{ Pattern = "Shadow Copy cleanup summary"; Color = "Green" }
                 )
-                 Mark line as seen
+                
                 # Get all new log lines with better filtering
                 $currentLines = Get-Content $logFile -Tail 20 -ErrorAction SilentlyContinue
                 foreach ($line in $currentLines) {
-                    $trimmedLine = $line.Trim()$colorMatch = $false
+                    $trimmedLine = $line.Trim()
                     # Skip empty lines and already seen lines
-                    if (-not $trimmedLine -or $seenLogLines.ContainsKey($trimmedLine) -or -match $keyword.Pattern) {
-                        $trimmedLine -match "^Transcript started|^Transcript ended|^Windows PowerShell transcript") {ndColor $keyword.Color
+                    if (-not $trimmedLine -or $seenLogLines.ContainsKey($trimmedLine) -or $trimmedLine -match "^Transcript started|^Transcript ended|^Windows PowerShell transcript") {
                         continue
                     }
                     
                     # Mark line as seen
                     $seenLogLines[$trimmedLine] = $true
                     
-                    # Use colors for important informationf (-not $colorMatch) {
-                    $colorMatch = $falseost $trimmedLine
+                    # Use colors for important information
+                    $colorMatch = $false
                     foreach ($keyword in $progressKeywords) {
                         if ($trimmedLine -match $keyword.Pattern) {
                             Write-Host $trimmedLine -ForegroundColor $keyword.Color
-                            $colorMatch = $trueimple activity indicator if no log file yet
-                            $lastStatusUpdate = [DateTime]::Nowme]::Now
-                            breakime).TotalMilliseconds -gt 500) {
+                            $colorMatch = $true
+                            $lastStatusUpdate = [DateTime]::Now
+                            break
                         }
-                    }) % 4
-                    groundColor Cyan -NoNewline
+                    }
+                    
                     # Default display for other lines
                     if (-not $colorMatch) {
                         Write-Host $trimmedLine
                     }
-                }-Sleep -Milliseconds 250
+                }
             } else {
                 # Show a simple activity indicator if no log file yet
                 $currentTime = [DateTime]::Now
-                if (($currentTime - $progressDisplayTime).TotalMilliseconds -gt 500) {el Error
-                    $progressDisplayTime = $currentTime}
+                if (($currentTime - $progressDisplayTime).TotalMilliseconds -gt 500) {
+                    $progressDisplayTime = $currentTime
                     $dotCount = ($dotCount + 1) % 4
-                    Write-Host "Waiting for task to start$('.' * $dotCount)    " -ForegroundColor Cyan -NoNewlineactivity indicator
+                    Write-Host "Waiting for task to start$('.' * $dotCount)    " -ForegroundColor Cyan -NoNewline
                     Write-Host "`r" -NoNewline
                 }
             }
@@ -311,68 +311,59 @@ finally {
             Start-Sleep -Milliseconds 250
         }
 
-        if (-not $completed) {ue
+        if (-not $completed) {
             Write-Log "Task did not complete within timeout period" -Level Error
-        }sult: $($taskInfo.LastTaskResult)" -Level Info
+        }
 
         Write-Host ""  # Clear the line after activity indicator
 
-        Write-Log "Checking for task status..." -Level Info no longer exists - it may have completed but failed to create marker file" -Level Warning
+        Write-Log "Checking for task status..." -Level Info
+
         # Check final status with more diagnostics
         try {
             $taskStatus = Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue
-            if ($taskStatus) {-Log "Error getting task status: $_" -Level Error
+            if ($taskStatus) {
                 Write-Log "Task state: $($taskStatus.State)" -Level Info
                 $taskInfo = Get-ScheduledTaskInfo -TaskName $jobName -ErrorAction SilentlyContinue
                 if ($taskInfo) {
-                    Write-Log "Task info: Last run time: $($taskInfo.LastRunTime), Result: $($taskInfo.LastTaskResult)" -Level Infoest-Path $logFile) {
-                }Write-Log "Contents of log file:" -Level Info
-            }Info }
+                    Write-Log "Task info: Last run time: $($taskInfo.LastRunTime), Result: $($taskInfo.LastTaskResult)" -Level Info
+                }
+            }
             else {
                 Write-Log "Task no longer exists - it may have completed but failed to create marker file" -Level Warning
             }
         }
         catch {
             Write-Log "Error getting task status: $_" -Level Error
-        }rary files and tasks" -Level Verbose
-f (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
-        # Look for log content for clues            Unregister-ScheduledTask -TaskName $jobName -Confirm:$false -ErrorAction SilentlyContinue
-        if (Test-Path $logFile) {
-            Write-Log "Contents of log file:" -Level Info
-            Get-Content $logFile | ForEach-Object { Write-Log $_ -Level Info }
-        }
-        else {
-            Write-Log "No log file was created" -Level Warningy {
         }
 
-        # CleanupGet-Content -Path $logFile -Raw -ErrorAction SilentlyContinue
-        Write-Log "Cleaning up temporary files and tasks" -Level Verboseebug
+        # Cleanup files with better error handling
+        Write-Log "Cleaning up temporary files and tasks" -Level Verbose
         if (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
             Unregister-ScheduledTask -TaskName $jobName -Confirm:$false -ErrorAction SilentlyContinue
         }
 
-        # Cleanup files with better error handlingrite-Log "Could not remove temporary file $filePath`: $_" -Level Warning
         foreach ($filePath in @($logFile, $markerFile, $systemAccessibleScriptPath, $executorScript)) {
             if (Test-Path $filePath) {
                 try {
                     if ($filePath -eq $logFile) {
-                        # Save the log content for debuggingleted) { exit 0 } else { exit 1 }
+                        # Save the log content for debugging
                         $logContent = Get-Content -Path $logFile -Raw -ErrorAction SilentlyContinue
-                        Write-Log "SYSTEM execution log: $logContent" -Level Debug {
-                    }Write-Log "Failed to elevate to SYSTEM context: $_" -Level Error
+                        Write-Log "SYSTEM execution log: $logContent" -Level Debug
+                    }
                     Remove-Item $filePath -Force -ErrorAction SilentlyContinue
                 }
                 catch {
                     Write-Log "Could not remove temporary file $filePath`: $_" -Level Warning
-                }eanup {
-            }"Starting Disk Cleanup process..." -Level Info
+                }
+            }
         }   
-            try {
-        if ($completed) { exit 0 } else { exit 1 }egistry key
+        
+        if ($completed) { exit 0 } else { exit 1 }
     }
-    catch {    try {
-        Write-Log "Failed to elevate to SYSTEM context: $_" -Level Errorws\CurrentVersion\Explorer\VolumeCaches\*' `
-        return $false2 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+    catch {
+        Write-Log "Failed to elevate to SYSTEM context: $_" -Level Error
+        return $false
     }
 }
 
@@ -380,158 +371,158 @@ function Start-DiskCleanup {
     Write-Log "Starting Disk Cleanup process..." -Level Info
     
     try {
-        # Create the StateFlags registry keyt GUI
-        Write-Log "Setting registry keys for automatic cleanup" -Level Verboseing cleanmgr.exe with /sagerun:1 /LOWDISK parameters" -Level Verbose
+        # Create the StateFlags registry key
+        Write-Log "Setting registry keys for automatic cleanup" -Level Verbose
         try {
-            New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `            $cleanmgrProcess = Start-Process -FilePath cleanmgr -ArgumentList '/sagerun:1 /LOWDISK' -WindowStyle Hidden -PassThru
-                -Name StateFlags0001 -Value 2 -PropertyType DWord -Force -ErrorAction Stop | Out-Nullrocess.Id)" -Level Debug
+            New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
+                -Name StateFlags0001 -Value 2 -PropertyType DWord -Force -ErrorAction Stop | Out-Null
             Write-Log "Registry keys set successfully" -Level Verbose
-        }lastUpdateTime = $startTime
+        }
         catch {
             Write-Log "Error setting registry keys: $_" -Level Error
-            return $falsetTime
+            return $false
         }
 
-        # Run Disk Cleanup silently with LOWDISK parameter to prevent GUIpdates on cleanup progress
-        Write-Log "Executing cleanmgr.exe with /sagerun:1 /LOWDISK parameters" -Level Verbose.TotalSeconds -gt 30) {
-        try {        $lastUpdateTime = Get-Date
+        # Run Disk Cleanup silently with LOWDISK parameter to prevent GUI
+        Write-Log "Executing cleanmgr.exe with /sagerun:1 /LOWDISK parameters" -Level Verbose
+        try {
             $cleanmgrProcess = Start-Process -FilePath cleanmgr -ArgumentList '/sagerun:1 /LOWDISK' -WindowStyle Hidden -PassThru
-            Write-Log "Disk cleanup process started with ID: $($cleanmgrProcess.Id)" -Level Debugutes) minutes and $([int]($runtime.TotalSeconds % 60)) seconds..." -Level Info
+            Write-Log "Disk cleanup process started with ID: $($cleanmgrProcess.Id)" -Level Debug
             $startTime = Get-Date
-            $lastUpdateTime = $startTime        Write-Log "Disk cleanup running for $([int]$runtime.TotalSeconds) seconds..." -Level Info
+            $lastUpdateTime = $startTime
             
             while (-not $cleanmgrProcess.HasExited) {
                 $runtime = (Get-Date) - $startTime
-                $timeSinceLastUpdate = (Get-Date) - $lastUpdateTimeess.Id -ErrorAction SilentlyContinue
+                $timeSinceLastUpdate = (Get-Date) - $lastUpdateTime
                 
-                # More frequent updates on cleanup progress$process.WorkingSet64 / 1MB, 2)
+                # More frequent updates on cleanup progress
                 if ($timeSinceLastUpdate.TotalSeconds -gt 30) {
                     $lastUpdateTime = Get-Date   
-                    if ($runtime.TotalSeconds -gt 60) {}
+                    if ($runtime.TotalSeconds -gt 60) {
                         Write-Log "Disk cleanup running for $([int]$runtime.TotalMinutes) minutes and $([int]($runtime.TotalSeconds % 60)) seconds..." -Level Info
                     } else {
-                        Write-Log "Disk cleanup running for $([int]$runtime.TotalSeconds) seconds..." -Level Infole to get process info: $_" -Level Debug
+                        Write-Log "Disk cleanup running for $([int]$runtime.TotalSeconds) seconds..." -Level Info
                     }
                     
                     try {
-                        $process = Get-Process -Id $cleanmgrProcess.Id -ErrorAction SilentlyContinueeep -Seconds 5
+                        $process = Get-Process -Id $cleanmgrProcess.Id -ErrorAction SilentlyContinue
                         if ($process) {
                             $memUsage = [math]::Round($process.WorkingSet64 / 1MB, 2)
                             Write-Log "Current memory usage: $memUsage MB" -Level Info
-                        }ompleted with exit code: $exitCode" -Level Verbose
+                        }
                     }
-                    catch {q 0) {
-                        # Process might have exited between checksp completed successfully" -Level Info
+                    catch {
+                        # Process might have exited between checks
                         Write-Log "Unable to get process info: $_" -Level Debug
-                    }else {
-                } with non-zero exit code: $exitCode" -Level Warning
+                    }
+                }
                 
                 Start-Sleep -Seconds 5
             }
-            ror
-            $exitCode = $cleanmgrProcess.ExitCode$false
+            
+            $exitCode = $cleanmgrProcess.ExitCode
             Write-Log "Disk cleanup process completed with exit code: $exitCode" -Level Verbose
             
-            if ($exitCode -eq 0) {an up registry settings
-                Write-Log "Disk cleanup completed successfully" -Level Inforite-Log "Removing temporary registry settings" -Level Verbose
+            if ($exitCode -eq 0) {
+                Write-Log "Disk cleanup completed successfully" -Level Info
             }
-            else {\Explorer\VolumeCaches\*' `
+            else {
                 Write-Log "Disk cleanup completed with non-zero exit code: $exitCode" -Level Warning
-            }   Write-Log "Registry cleanup completed" -Level Debug
+            }
         }
         catch {
             Write-Log "Error monitoring disk cleanup process: $_" -Level Error
             return $false
         }
 
-        # Clean up registry settingso
+        # Clean up registry settings
         Write-Log "Removing temporary registry settings" -Level Verbose
         try {
             Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\*' `
                 -Name StateFlags0001 -Force -ErrorAction Stop
-            Write-Log "Registry cleanup completed" -Level Debug    eturn $false
+            Write-Log "Registry cleanup completed" -Level Debug
         }
         catch {
             Write-Log "Error during registry cleanup: $_" -Level Warning
-            # Continue execution even if registry cleanup failsion Start-ShadowCopyCleanup {
-        }og "Starting Shadow Copy cleanup process..." -Level Info
+            # Continue execution even if registry cleanup fails
+        }
         
         Write-Log "Disk Cleanup completed successfully." -Level Info
-        return $true   # List all shadow copies
-    }       Write-Log "Retrieving list of shadow copies" -Level Verbose
+        return $true
+    }
     catch {
         Write-Log "Error during Disk Cleanup: $_" -Level Error
         return $false
-    }    $shadowCopies = $vssList | Where-Object {$_ -match "Shadow Copy ID:"}
-}= $shadowCopies | ForEach-Object { $_.Split(":")[1].Trim() }
+    }
+}
 
 function Start-ShadowCopyCleanup {
-    Write-Log "Starting Shadow Copy cleanup process..." -Level Infos" -Level Info
+    Write-Log "Starting Shadow Copy cleanup process..." -Level Info
     
-    try {($shadowCount -eq 0) {
+    try {
         # List all shadow copies
         Write-Log "Retrieving list of shadow copies" -Level Verbose
-        $vssList = vssadmin list shadows        }
+        $vssList = vssadmin list shadows
         Write-Log "Shadow copy details: $vssList" -Level Debug
         
-        $shadowCopies = $vssList | Where-Object {$_ -match "Shadow Copy ID:"}-match "Created:"}
+        $shadowCopies = $vssList | Where-Object {$_ -match "Shadow Copy ID:"}
         $shadowIds = $shadowCopies | ForEach-Object { $_.Split(":")[1].Trim() }
         $shadowCount = $shadowIds.Count
-        Write-Log "Found $shadowCount shadow copies" -Level Infoility for shadow copy details
-        -------------------------------------------" -ForegroundColor Cyan
-        if ($shadowCount -eq 0) {      SHADOW COPY DETAILS                " -ForegroundColor Cyan
-            Write-Log "No shadow copies found." -Level Warning--------" -ForegroundColor Cyan
+        Write-Log "Found $shadowCount shadow copies" -Level Info
+        
+        if ($shadowCount -eq 0) {
+            Write-Log "No shadow copies found." -Level Warning
             return $true
         }
 
-        # Parse creation dates to display them to useroundColor White
+        # Parse creation dates to display them to user
         $dateLines = $vssList | Where-Object {$_ -match "Created:"}
         $dates = $dateLines | ForEach-Object { $_.Split(":", 2)[1].Trim() }
-        evel Info
+        
         # Show all shadow copies with dates
-        Write-Log "Shadow Copy Details:" -Level Inforay
+        Write-Log "Shadow Copy Details:" -Level Info
         Write-Log "-------------------" -Level Info
         for ($i = 0; $i -lt $shadowCount; $i++) {
             Write-Log "ID: $($shadowIds[$i])" -Level Info
             Write-Log "Created: $($dates[$i])" -Level Info
-            if ($i -lt $shadowCount - 1) {        # Keep only the newest restore point
+            if ($i -lt $shadowCount - 1) {
                 Write-Log "-------------------" -Level Info
             }
         }
 
-        # Keep only the newest restore pointr Green
+        # Keep only the newest restore point
         $keepId = $shadowIds[0]
         $keepDate = $dates[0]
         Write-Log "Preserving most recent shadow copy:" -Level Info
         Write-Log "ID: $keepId" -Level Info
-        Write-Log "Created: $keepDate" -Level Info        # Count deleted shadows
+        Write-Log "Created: $keepDate" -Level Info
 
         # Delete older restore points
-        $deletedCount = 0oints
+        $deletedCount = 0
         foreach ($i in 0..($shadowIds.Count-1)) {
             $id = $shadowIds[$i]
             if ($id -ne $keepId) {
                 Write-Log "Removing shadow copy ID: $id (Created: $($dates[$i]))" -Level Verbose
                 try {
                     $output = vssadmin delete shadows /shadow=$id /quiet
-                    Write-Log "Deleted shadow copy from $($dates[$i])" -Level Info-Host "🗑️ Removing shadow copy ID: $id (Created: $($dates[$i]))" -ForegroundColor Yellow
-                    $deletedCount++vel Info
+                    Write-Log "Deleted shadow copy from $($dates[$i])" -Level Info
+                    $deletedCount++
                 }
-                catch {output = vssadmin delete shadows /shadow=$id /quiet
-                    Write-Log "Error deleting shadow copy ${id}: ${_}" -Level Warning   Write-Host "   Deleted shadow copy from $($dates[$i])" -ForegroundColor Yellow
-                }evel Info
+                catch {
+                    Write-Log "Error deleting shadow copy ${id}: ${_}" -Level Warning
+                }
             }
         }
         
-        Write-Log "Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -Level Info        Write-Host "   Error deleting shadow copy ${id}: ${_}" -ForegroundColor Red
-        return $true     Write-Log "Error deleting shadow copy ${id}: ${_}" -Level Warning
+        Write-Log "Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -Level Info
+        return $true
     }
     catch {
         Write-Log "Error during Shadow Copy cleanup: $_" -Level Error
-        return $false       # Enhanced summary with emoji for visibility
-    }        Write-Host "`n📊 Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -ForegroundColor Green
-}an
-mmary: $deletedCount copies removed, 1 preserved" -Level Info
+        return $false
+    }
+}
+
 function Show-DriveInfo {
     param (
         [Parameter(Mandatory=$true)]
@@ -549,115 +540,113 @@ function Show-DriveInfo {
     Write-Log "Drive Type: $($Volume.DriveType)" -Level Info
     Write-Log "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -Level Info
     Write-Log "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -Level Info
-    Write-Log "Health Status: $($Volume.HealthStatus)" -Level Infome Details:" -Level Info
+    Write-Log "Health Status: $($Volume.HealthStatus)" -Level Info
     
-    # Additional debug information   Write-Log "Drive Letter: $($Volume.DriveLetter)" -Level Info
+    # Additional debug information
     Write-Log "Drive details: $($Volume | Out-String)" -Level Debug
-}ile System: $($Volume.FileSystem)" -Level Info
+}
 
-# Main execution    Write-Log "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -Level Info
+# Main execution
 Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
-Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verboseo
+Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verbose
 Write-Log "Running on computer: $env:COMPUTERNAME" -Level Verbose
-Write-Log "Operating system: $((Get-CimInstance -ClassName Win32_OperatingSystem).Caption)" -Level Verboseion
+Write-Log "Operating system: $((Get-CimInstance -ClassName Win32_OperatingSystem).Caption)" -Level Verbose
 
 if (-not (Test-RunningAsSystem) -and -not $NoElevate) {
     Write-Log "Initial execution - will elevate to SYSTEM" -Level Info
     Start-SystemContext
     exit
-}Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verbose
+}
 
-Write-Log "Executing as SYSTEM account" -Level Info_OperatingSystem).Caption)" -Level Verbose
+Write-Log "Executing as SYSTEM account" -Level Info
 
 # Get drive information before cleanup
-try {rite-Log "Initial execution - will elevate to SYSTEM" -Level Info
+try {
     Write-Log "Collecting drive information before cleanup" -Level Verbose
     # Get all available volumes with drive letters and sort them
     $volumes = Get-Volume | 
         Where-Object { $_.DriveLetter } | 
-        Sort-Object DriveLetterl Info
+        Sort-Object DriveLetter
     
     if ($volumes.Count -eq 0) {
         Write-Log "No drives with letters found on the system." -Level Error
         exit
-    }l available volumes with drive letters and sort them
+    }
     
     Write-Log "Found $($volumes.Count) volumes with drive letters" -Level Debug
     # Select the volume with lowest drive letter
     $volumeBeforeCleanup = $volumes[0]
     
-    Write-Log "Found lowest drive letter: $($volumeBeforeCleanup.DriveLetter)" -Level Infoers found on the system." -Level Error
-    Show-DriveInfo -Volume $volumeBeforeCleanup -State "Before Cleanup"    exit
+    Write-Log "Found lowest drive letter: $($volumeBeforeCleanup.DriveLetter)" -Level Info
+    Show-DriveInfo -Volume $volumeBeforeCleanup -State "Before Cleanup"
 }
 catch {
     Write-Log "Error accessing drive information. Error: $_" -Level Error
 }
 
-# Perform cleanup operations   $volumeBeforeCleanup = $volumes[0]
+# Perform cleanup operations
 Write-Log "Beginning cleanup operations" -Level Verbose
-$diskCleanupSuccess = Start-DiskCleanupmeBeforeCleanup.DriveLetter)" -Level Info
-$shadowCopySuccess = Start-ShadowCopyCleanup"Before Cleanup"
+$diskCleanupSuccess = Start-DiskCleanup
+$shadowCopySuccess = Start-ShadowCopyCleanup
 
 if ($diskCleanupSuccess -and $shadowCopySuccess) {
-    Write-Log "System storage cleanup completed successfully!" -Level Info    Write-Log "Error accessing drive information. Error: $_" -Level Error
+    Write-Log "System storage cleanup completed successfully!" -Level Info
 }
 else {
     Write-Log "System storage cleanup encountered issues. Please check the logs." -Level Error
-}inning cleanup operations" -Level Verbose
+}
 
 # Get drive information after cleanup
 try {
-    Write-Log "Collecting drive information after cleanup" -Level VerboseopySuccess) {
-    # Get all available volumes with drive letters and sort themel Info
+    Write-Log "Collecting drive information after cleanup" -Level Verbose
+    # Get all available volumes with drive letters and sort them
     $volumes = Get-Volume | 
         Where-Object { $_.DriveLetter } | 
-        Sort-Object DriveLetterthe logs." -Level Error
+        Sort-Object DriveLetter
     
     if ($volumes.Count -eq 0) {
         Write-Log "No drives with letters found on the system." -Level Error
         exit
-    } information after cleanup" -Level Verbose
+    }
     
     # Select the volume with lowest drive letter
-    $lowestVolume = $volumes[0]   Where-Object { $_.DriveLetter } | 
-            Sort-Object DriveLetter
+    $lowestVolume = $volumes[0]
     Write-Log "Found lowest drive letter: $($lowestVolume.DriveLetter)" -Level Info
     Show-DriveInfo -Volume $lowestVolume -State "After Cleanup"
-        Write-Log "No drives with letters found on the system." -Level Error
+    
     # Calculate and display space freed
     try {
         $beforeFreeSpace = $volumeBeforeCleanup.SizeRemaining
-        $afterFreeSpace = $lowestVolume.SizeRemainingve letter
+        $afterFreeSpace = $lowestVolume.SizeRemaining
         $spaceSaved = ($afterFreeSpace - $beforeFreeSpace) / 1GB
         
-        if ($spaceSaved -gt 0) {" -Level Info
+        if ($spaceSaved -gt 0) {
             Write-Log "Space freed by cleanup: $([math]::Round($spaceSaved, 2)) GB" -Level Info
         }
         else {
             Write-Log "No measurable space was freed during cleanup" -Level Warning
-        }beforeFreeSpace = $volumeBeforeCleanup.SizeRemaining
-    }FreeSpace = $lowestVolume.SizeRemaining
+        }
+    }
     catch {
         Write-Log "Unable to calculate space saved: $_" -Level Debug
-    }   if ($spaceSaved -gt 0) {
-}e-Log "Space freed by cleanup: $([math]::Round($spaceSaved, 2)) GB" -Level Info
+    }
+}
 catch {
     Write-Log "Error accessing drive information. Error: $_" -Level Error
-}           Write-Log "No measurable space was freed during cleanup" -Level Warning
+}
 
 # Display cleanup summary
-Write-Log "`nCleanup Summary:" -Level Info    catch {
-Write-Log "---------------" -Level Info        Write-Log "Unable to calculate space saved: $_" -Level Debug
-    }
-# Replace ternary operators with standard if-else for PowerShell 5.1 compatibility}
-$diskCleanupMessage = if ($diskCleanupSuccess) { "Completed Successfully" } else { "Failed" }catch {
-$diskCleanupLevel = if ($diskCleanupSuccess) { "Info" } else { "Error" }    Write-Log "Error accessing drive information. Error: $_" -Level Error
-Write-Log "Disk Cleanup: $diskCleanupMessage" -Level $diskCleanupLevel}
+Write-Log "`nCleanup Summary:" -Level Info
+Write-Log "---------------" -Level Info
 
-$shadowCopyMessage = if ($shadowCopySuccess) { "Completed Successfully" } else { "Failed" }# Display cleanup summary
-$shadowCopyLevel = if ($shadowCopySuccess) { "Info" } else { "Error" }Write-Log "`nCleanup Summary:" -Level Info
-Write-Log "Shadow Copy Cleanup: $shadowCopyMessage" -Level $shadowCopyLevelWrite-Log "---------------" -Level Info
-
-Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info# Replace ternary operators with standard if-else for PowerShell 5.1 compatibility
+# Replace ternary operators with standard if-else for PowerShell 5.1 compatibility
 $diskCleanupMessage = if ($diskCleanupSuccess) { "Completed Successfully" } else { "Failed" }
+$diskCleanupLevel = if ($diskCleanupSuccess) { "Info" } else { "Error" }
+Write-Log "Disk Cleanup: $diskCleanupMessage" -Level $diskCleanupLevel
+
+$shadowCopyMessage = if ($shadowCopySuccess) { "Completed Successfully" } else { "Failed" }
+$shadowCopyLevel = if ($shadowCopySuccess) { "Info" } else { "Error" }
+Write-Log "Shadow Copy Cleanup: $shadowCopyMessage" -Level $shadowCopyLevel
+
+Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
 Write-Log "Log file created at: $script:LogFile" -Level Info
