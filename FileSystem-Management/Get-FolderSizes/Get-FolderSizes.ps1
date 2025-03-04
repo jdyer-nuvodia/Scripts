@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 21:33:00 UTC
+# Last Updated: 2025-03-04 21:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.0
-# Additional Info: Added support for hidden and system folders including All Users
+# Version: 1.6.1
+# Additional Info: Suppressed mountpoint and junction output messages
 # =============================================================================
 
 # Requires -Version 5.1
@@ -119,6 +119,7 @@
     1.5.7 - Fixed recursive processing of completion messages with completion state tracking
     1.5.8 - Suppressed return value output in console
     1.6.0 - Added support for hidden and system folders like "All Users"
+    1.6.1 - Suppressed mountpoint and junction output messages
 #>
 
 param (
@@ -784,19 +785,10 @@ function Get-FolderSize {
         # Check if this path is a symbolic link, junction, or mount point
         $pathType = Get-PathType -Path $folderPath
         
-        # Special handling for OneDrive folders
-        if ($pathType.IsOneDrive) {
-            Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Cyan
-            Write-Host "OneDrive folder - continuing with scan (files may be cloud-based)" -ForegroundColor Cyan
-            # No need to follow the link for OneDrive folders - continue with current path
-        }
-        elseif ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
-            Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Yellow
-            
+        # Silently handle special paths - no console output for junction detection
+        if ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
             # If it's a link and we're configured to follow links, try to use the target path instead
             if ($FollowJunctions -and $pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
-                Write-Host "Following link to target: $($pathType.Target)" -ForegroundColor Yellow
-                
                 # Handle relative paths in targets
                 if (-not [System.IO.Path]::IsPathRooted($pathType.Target)) {
                     $targetPath = Join-Path (Split-Path $folderPath -Parent) $pathType.Target
@@ -807,9 +799,6 @@ function Get-FolderSize {
                 # Check if the target exists
                 if (Test-Path -Path $targetPath -PathType Container) {
                     $folderPath = $targetPath
-                } else {
-                    Write-Warning "Target path '$targetPath' does not exist or is not accessible."
-                    # Continue with the original path
                 }
             }
         }
@@ -872,19 +861,10 @@ function Get-FolderSize {
                 # Check if folder is a symbolic link or junction point
                 $subPathType = Get-PathType -Path $subFolderPath
                 
-                # Special handling for special Windows folders like "All Users"
+                # Special handling for special Windows folders like "All Users" - silent processing
                 $isSpecialFolder = $false
                 if ($subFolderPath -match '\\All Users$') {
-                    Write-Host "  - $($subFolderPath): System Junction Point to ProgramData" -ForegroundColor Cyan
                     $isSpecialFolder = $true
-                }
-                
-                # Use a different color for OneDrive folders
-                if ($subPathType.IsOneDrive) {
-                    Write-Host "  - $($subFolderPath): $($subPathType.Type) - OneDrive cloud storage" -ForegroundColor Cyan
-                }
-                elseif ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown" -and -not $isSpecialFolder) {
-                    Write-Host "  - $($subFolderPath): $($subPathType.Type) pointing to $($subPathType.Target)" -ForegroundColor Yellow
                 }
                 
                 $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
@@ -918,18 +898,6 @@ function Get-FolderSize {
             # Display each folder in table format
             foreach ($folder in $topFolders) {
                 Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
-                
-                # If it's a special path type, add an info line
-                if ($folder.IsSpecialFolder) {
-                    Write-Host "  ^ Windows System Junction Point" -ForegroundColor Cyan
-                }
-                elseif ($folder.PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {
-                    if ($folder.PathType -eq "OneDriveFolder") {
-                        Write-Host "  ^ OneDrive cloud-based storage" -ForegroundColor Cyan
-                    } else {
-                        Write-Host "  ^ $($folder.PathType) pointing to: $($folder.Target)" -ForegroundColor Yellow
-                    }
-                }
             }
             
             Write-Host ("-" * 150)
