@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 10:14:00 UTC
+# Last Updated: 2025-03-19 15:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.4
-# Additional Info: Fixed shadow copy cleanup failure and multiple log files issue
+# Version: 3.5
+# Additional Info: Fixed path joining typo and removed unused variable
 # =============================================================================
 
 <#
@@ -614,7 +614,6 @@ function Start-ShadowCopyCleanup {
                     Write-Host "`nRemoving shadow copy ID: $id (Created: $($dates[$i]))" -ForegroundColor Yellow
                     
                     # Execute command with error handling
-                    $errorOutput = $null
                     $deleteOutput = vssadmin delete shadows /shadow=$id /quiet 2>&1
                     
                     # Log the command output for debugging
