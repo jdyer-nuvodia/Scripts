@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 18:42:00 UTC
+# Last Updated: 2025-03-15 09:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.2
-# Additional Info: Fixed script warning; improved shadow copy deletion logging
+# Version: 3.3
+# Additional Info: Fixed log file location to always use script directory
 # =============================================================================
 
 <#
@@ -42,7 +42,8 @@
     - Check disk space recovery
 #>
 param(
-    [switch]$NoElevate
+    [switch]$NoElevate,
+    [string]$OriginalLogDir
 )
 
 # Initialize global variables
@@ -55,8 +56,8 @@ if (-not $scriptPath) {
         $scriptPath = Join-Path -Path (Get-Location) -ChildPath "Clear-SystemStorage.ps1"
     }
 }
-$scriptDirectory = Split-Path -Path $scriptPath -Parent
-$script:LogFile = Join-Path -Path $scriptDirectory -ChildPath "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$script:OriginalScriptDirectory = Split-Path -Path $scriptPath -Parent
+$script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
 function Write-Log {
     [CmdletBinding()]
@@ -127,7 +128,8 @@ function Test-RunningAsSystem {
 function Start-SystemContext {
     param(
         [string]$ScriptPath = $MyInvocation.PSCommandPath,
-        [int]$TimeoutSeconds = 300
+        [int]$TimeoutSeconds = 300,
+        [string]$OriginalLogDir = $script:OriginalScriptDirectory
     )
 
     if (Test-RunningAsSystem) {
@@ -187,7 +189,8 @@ try {
     # Basic syntax checking before execution
     `$syntaxCheck = [ScriptBlock]::Create((Get-Content -Path "$systemAccessibleScriptPath" -Raw))
     Write-Host "Syntax check passed. Starting execution of main script as SYSTEM"
-    & "$systemAccessibleScriptPath" -NoElevate $(if ($VerbosePreference -eq 'Continue') { '-Verbose' })
+    # Pass original script directory to maintain log location
+    & "$systemAccessibleScriptPath" -NoElevate -OriginalLogDir "$OriginalLogDir" $(if ($VerbosePreference -eq 'Continue') { '-Verbose' })
     
     if (`$?) {
         Write-Host "Script executed successfully"
@@ -583,14 +586,26 @@ function Show-DriveInfo {
 }
 
 # Main execution
+# Make the log file location more visible in the console
+$logFilePath = $script:LogFile
+Write-Host "`n===================================================" -ForegroundColor Cyan
+Write-Host "LOG FILE: $logFilePath" -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan
 Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
 Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verbose
 Write-Log "Running on computer: $env:COMPUTERNAME" -Level Verbose
 Write-Log "Operating system: $((Get-CimInstance -ClassName Win32_OperatingSystem).Caption)" -Level Verbose
 
+# Add parameter for original log directory when elevated to SYSTEM
+if ($OriginalLogDir -and (Test-Path $OriginalLogDir)) {
+    $script:OriginalScriptDirectory = $OriginalLogDir
+    $script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    Write-Host "Using original script directory for logs: $script:OriginalScriptDirectory" -ForegroundColor Cyan
+}
+
 if (-not (Test-RunningAsSystem) -and -not $NoElevate) {
     Write-Log "Initial execution - will elevate to SYSTEM" -Level Info
-    Start-SystemContext
+    Start-SystemContext -OriginalLogDir $script:OriginalScriptDirectory
     exit
 }
 
@@ -684,5 +699,9 @@ $shadowCopyMessage = if ($shadowCopySuccess) { "Completed Successfully" } else {
 $shadowCopyLevel = if ($shadowCopySuccess) { "Info" } else { "Error" }
 Write-Log "Shadow Copy Cleanup: $shadowCopyMessage" -Level $shadowCopyLevel
 
+# At the end of the script, remind the user where the log file is
+Write-Host "`n===================================================" -ForegroundColor Cyan
+Write-Host "LOG FILE LOCATION: $script:LogFile" -ForegroundColor Cyan
+Write-Host "===================================================" -ForegroundColor Cyan
 Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
 Write-Log "Log file created at: $script:LogFile" -Level Info
