@@ -637,10 +637,28 @@ function Start-ShadowCopyCleanup {
             }
         }
         
-        # Enhanced summary with text for visibility
-        Write-Host "`nShadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -ForegroundColor Green
-        Write-Log "Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -Level Info
-        Write-Host "====================================" -ForegroundColor Cyan
+        # Verify how many shadow copies remain after cleanup
+        try {
+            $postCleanupVssList = vssadmin list shadows 2>&1
+            $postCleanupShadowCopies = $postCleanupVssList | Where-Object {$_ -match "Shadow Copy ID:"}
+            $shadowCopiesRemaining = if ($postCleanupShadowCopies) { $postCleanupShadowCopies.Count } else { 0 }
+            
+            # Enhanced summary with detailed statistics
+            Write-Host "`nShadow Copy cleanup summary:" -ForegroundColor Green
+            Write-Host "- Initial shadow copies: $shadowCount" -ForegroundColor Cyan
+            Write-Host "- Shadow copies removed: $deletedCount" -ForegroundColor Yellow
+            Write-Host "- Shadow copies remaining: $shadowCopiesRemaining" -ForegroundColor Green
+            Write-Log "Shadow Copy cleanup summary: Initial=$shadowCount, Removed=$deletedCount, Remaining=$shadowCopiesRemaining" -Level Info
+            Write-Host "====================================" -ForegroundColor Cyan
+        }
+        catch {
+            Write-Log "Error checking remaining shadow copies: $_" -Level Error
+            Write-Host "`nShadow Copy cleanup summary:" -ForegroundColor Green
+            Write-Host "- Initial shadow copies: $shadowCount" -ForegroundColor Cyan
+            Write-Host "- Shadow copies removed: $deletedCount" -ForegroundColor Yellow
+            Write-Host "- Shadow copies remaining: Unknown (error checking)" -ForegroundColor Red
+            Write-Host "====================================" -ForegroundColor Cyan
+        }
         
         return $true
     }
