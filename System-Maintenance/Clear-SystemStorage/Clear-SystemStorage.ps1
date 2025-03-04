@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-20 17:30:00 UTC
+# Last Updated: 2025-03-21 15:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.6
-# Additional Info: Fixed missing closing brace causing syntax error
+# Version: 3.7
+# Additional Info: Enhanced shadow copy reporting and fixed log file duplication issues
 # =============================================================================
 
 <#
@@ -146,6 +146,7 @@ function Start-SystemContext {
     }
 
     Write-Log "Elevating to SYSTEM context..." -Level Info
+    Write-Host "`nNOTE: Script will continue execution as SYSTEM. Watch for shadow copy details below." -ForegroundColor Cyan
     
     try {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
@@ -240,7 +241,7 @@ finally {
         $lastStatusUpdate = [DateTime]::Now
         
         Write-Log "Waiting for system cleanup to complete..." -Level Info
-        Write-Host "System cleanup progress:" -ForegroundColor Cyan
+        Write-Host "`n===== System Cleanup Progress =====" -ForegroundColor Cyan
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
             # Check for completion marker file first
@@ -536,7 +537,15 @@ function Start-ShadowCopyCleanup {
         if (-not $shadowCopies -or $shadowCopies.Count -eq 0) {
             Write-Log "No shadow copies found on this system." -Level Warning
             Write-Host "No shadow copies found on this system." -ForegroundColor Yellow
+            
+            # Always provide shadow copy statistics even when none are found
+            Write-Host "`nShadow Copy cleanup summary:" -ForegroundColor Green
+            Write-Host "- Initial shadow copies: 0" -ForegroundColor Cyan
+            Write-Host "- Shadow copies removed: 0" -ForegroundColor Yellow
+            Write-Host "- Shadow copies remaining: 0" -ForegroundColor Green
+            Write-Log "Shadow Copy cleanup summary: Initial=0, Removed=0, Remaining=0" -Level Info
             Write-Host "====================================" -ForegroundColor Cyan
+            
             return $true  # Not finding copies isn't a failure
         }
         
@@ -697,7 +706,12 @@ function Show-DriveInfo {
 # Make the log file location more visible in the console
 $logFilePath = $script:LogFile
 Write-Host "`n===================================================" -ForegroundColor Cyan
-Write-Host "LOG FILE: $logFilePath" -ForegroundColor Cyan
+if (-not (Test-RunningAsSystem)) {
+    Write-Host "INITIAL LOG FILE: $logFilePath" -ForegroundColor Cyan
+    Write-Host "NOTE: A new log file will be created when running as SYSTEM" -ForegroundColor Yellow
+} else {
+    Write-Host "SYSTEM LOG FILE: $logFilePath" -ForegroundColor Cyan
+}
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
 Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verbose
@@ -788,6 +802,7 @@ catch {
 }
 
 # Display cleanup summary
+Write-Host "`n===== Cleanup Summary =====" -ForegroundColor Cyan
 Write-Log "`nCleanup Summary:" -Level Info
 Write-Log "---------------" -Level Info
 
@@ -795,14 +810,16 @@ Write-Log "---------------" -Level Info
 $diskCleanupMessage = if ($diskCleanupSuccess) { "Completed Successfully" } else { "Failed" }
 $diskCleanupLevel = if ($diskCleanupSuccess) { "Info" } else { "Error" }
 Write-Log "Disk Cleanup: $diskCleanupMessage" -Level $diskCleanupLevel
+Write-Host "Disk Cleanup: $diskCleanupMessage" -ForegroundColor $(if ($diskCleanupSuccess) { "Green" } else { "Red" })
 
 $shadowCopyMessage = if ($shadowCopySuccess) { "Completed Successfully" } else { "Failed" }
 $shadowCopyLevel = if ($shadowCopySuccess) { "Info" } else { "Error" }
 Write-Log "Shadow Copy Cleanup: $shadowCopyMessage" -Level $shadowCopyLevel
+Write-Host "Shadow Copy Cleanup: $shadowCopyMessage" -ForegroundColor $(if ($shadowCopySuccess) { "Green" } else { "Red" })
 
 # At the end of the script, remind the user where the log file is
 Write-Host "`n===================================================" -ForegroundColor Cyan
-Write-Host "LOG FILE LOCATION: $script:LogFile" -ForegroundColor Cyan
+Write-Host "FINAL LOG FILE: $script:LogFile" -ForegroundColor Cyan
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
 Write-Log "Log file created at: $script:LogFile" -Level Info
