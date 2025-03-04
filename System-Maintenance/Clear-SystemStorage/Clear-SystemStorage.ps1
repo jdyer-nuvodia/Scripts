@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 19:15:00 UTC
+# Last Updated: 2025-03-11 14:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.9
-# Additional Info: Enhanced progress feedback during cleanup operations
+# Version: 3.0
+# Additional Info: Fixed script execution error when running as SYSTEM context
 # =============================================================================
 
 <#
@@ -140,9 +140,33 @@ function Start-SystemContext {
         $scriptFileName = Split-Path -Leaf $ScriptPath
         $systemAccessibleScriptPath = Join-Path -Path $systemAccessibleTemp -ChildPath $scriptFileName
         
-        # Copy the script to system-accessible location
+        # Copy the script to system-accessible location with proper encoding to prevent corruption
         Write-Log "Copying script to system-accessible location: $systemAccessibleScriptPath" -Level Verbose
-        Copy-Item -Path $ScriptPath -Destination $systemAccessibleScriptPath -Force
+        Get-Content -Path $ScriptPath -Raw | Set-Content -Path $systemAccessibleScriptPath -Encoding UTF8 -Force
+        
+        # Verify script integrity after copying
+        $originalHash = Get-FileHash -Path $ScriptPath -Algorithm SHA256
+        $copiedHash = Get-FileHash -Path $systemAccessibleScriptPath -Algorithm SHA256
+        
+        if ($originalHash.Hash -ne $copiedHash.Hash) {
+            Write-Log "Script copy verification failed! The copied script might be corrupted." -Level Warning
+            Write-Log "Original hash: $($originalHash.Hash)" -Level Verbose
+            Write-Log "Copied hash: $($copiedHash.Hash)" -Level Verbose
+            
+            # Try one more time with different encoding
+            Write-Log "Attempting copy with different encoding..." -Level Verbose
+            Get-Content -Path $ScriptPath -Raw -Encoding Default | 
+                Set-Content -Path $systemAccessibleScriptPath -Encoding ASCII -Force
+                
+            $copiedHash = Get-FileHash -Path $systemAccessibleScriptPath -Algorithm SHA256
+            if ($originalHash.Hash -ne $copiedHash.Hash) {
+                Write-Log "Second copy attempt also failed. Will continue but execution may fail." -Level Warning
+            } else {
+                Write-Log "Second copy attempt successful." -Level Info
+            }
+        } else {
+            Write-Log "Script copied successfully - integrity verified." -Level Verbose
+        }
         
         # Create executor script that will run our main script
         $executorScript = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName-executor.ps1"
@@ -157,7 +181,9 @@ function Start-SystemContext {
 Start-Transcript -Path "$logFile" -Force
 
 try {
-    Write-Host "Starting execution of main script as SYSTEM"
+    # Basic syntax checking before execution
+    `$syntaxCheck = [ScriptBlock]::Create((Get-Content -Path "$systemAccessibleScriptPath" -Raw))
+    Write-Host "Syntax check passed. Starting execution of main script as SYSTEM"
     & "$systemAccessibleScriptPath" -NoElevate $(if ($VerbosePreference -eq 'Continue') { '-Verbose' })
     
     if (`$?) {
@@ -179,7 +205,7 @@ finally {
 "@
         
         Write-Log "Creating executor script at $executorScript" -Level Verbose
-        Set-Content -Path $executorScript -Value $executorContent -Force
+        Set-Content -Path $executorScript -Value $executorContent -Encoding UTF8 -Force
         
         # Create action for scheduled task - use the executor script
         $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$executorScript`""
