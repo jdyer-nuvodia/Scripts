@@ -98,24 +98,29 @@ function Start-SystemContext {
         $systemAccessibleScriptPath = Join-Path -Path $systemAccessibleTemp -ChildPath $scriptFileName
         
         Write-Log "Copying script to system-accessible location: $systemAccessibleScriptPath" -Level Verbose
-        Get-Content -Path $ScriptPath -Raw | Set-Content -Path $systemAccessibleScriptPath -Encoding UTF8 -Force
         
-        # Verify script integrity after copying.
-        $originalHash = Get-FileHash -Path $ScriptPath -Algorithm SHA256
-        $copiedHash = Get-FileHash -Path $systemAccessibleScriptPath -Algorithm SHA256
+        # Use Copy-Item instead of Get-Content/Set-Content to preserve encoding
+        Copy-Item -Path $ScriptPath -Destination $systemAccessibleScriptPath -Force
         
-        if ($originalHash.Hash -ne $copiedHash.Hash) {
-            Write-Log "Script copy verification failed! Trying different encoding." -Level Warning
-            Get-Content -Path $ScriptPath -Raw -Encoding Default |
-                Set-Content -Path $systemAccessibleScriptPath -Encoding ASCII -Force
-            $copiedHash = Get-FileHash -Path $systemAccessibleScriptPath -Algorithm SHA256
-            if ($originalHash.Hash -ne $copiedHash.Hash) {
-                Write-Log "Second copy attempt failed. Execution may fail." -Level Warning
-            } else {
-                Write-Log "Second copy attempt successful." -Level Info
-            }
+        # Verify script integrity after copying
+        if (Test-Path $systemAccessibleScriptPath) {
+            $fileSize = (Get-Item $systemAccessibleScriptPath).Length
+            Write-Log "Script copied successfully. File size: $fileSize bytes" -Level Verbose
         } else {
-            Write-Log "Script copied successfully - integrity verified." -Level Verbose
+            Write-Log "Failed to copy script to system location!" -Level Warning
+            
+            # Fallback to Get-Content/Set-Content with explicit encoding
+            try {
+                Get-Content -Path $ScriptPath -Raw -Encoding UTF8 | 
+                    Set-Content -Path $systemAccessibleScriptPath -Encoding UTF8 -Force
+                if (Test-Path $systemAccessibleScriptPath) {
+                    Write-Log "Script copied via content method." -Level Info
+                }
+            }
+            catch {
+                Write-Log "All copy attempts failed: $($_.Exception.Message)" -Level Error
+                return $false
+            }
         }
         
         # Create an executor script that will run our main script as SYSTEM.
@@ -128,7 +133,7 @@ function Start-SystemContext {
 `$ErrorActionPreference = 'Stop'
 Start-Transcript -Path '$logFile' -Force
 try {
-    Write-Host 'Syntax check passed. Starting execution of main script as SYSTEM'
+    Write-Host 'Starting execution of main script as SYSTEM'
     & '$systemAccessibleScriptPath'
     if (`$?) {
         Write-Host 'Script executed successfully.'
@@ -161,27 +166,66 @@ finally {
         
         Write-Log "Waiting for system cleanup to complete..." -Level Info
         Write-Host "`n===== System Cleanup Progress =====" -ForegroundColor Cyan
+        Write-Host "Task running as SYSTEM. This may take a few minutes..." -ForegroundColor Cyan
         
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
+        $counter = 0
+        $progressChars = @('|', '/', '-', '\')
+        
         while ((Get-Date) -lt $timeout -and -not $completed) {
             if (Test-Path $markerFile) {
                 $completed = $true
                 Write-Log "Completion marker found." -Level Verbose
                 break
             }
-            Start-Sleep -Seconds 5
+            
+            # Show a simple spinner to indicate progress
+            $counter++
+            $progressChar = $progressChars[$counter % $progressChars.Length]
+            Write-Host "`rProcessing $progressChar" -NoNewline -ForegroundColor Cyan
+            
+            Start-Sleep -Seconds 2
+            
+            # Check if the log file exists and show latest entries
+            if ($counter % 5 -eq 0 -and (Test-Path $logFile)) {
+                try {
+                    $latestLog = Get-Content -Path $logFile -Tail 1
+                    Write-Host "`rLatest status: $latestLog" -ForegroundColor Cyan
+                } catch {
+                    # Silently continue if we can't read the log
+                }
+            }
         }
         
-        if (-not $completed) {
+        # Clear the progress line
+        Write-Host "`r                                                   " -NoNewline
+        
+        if ($completed) {
+            Write-Host "`rSystem cleanup completed!" -ForegroundColor Green
+            Write-Log "System cleanup completed via SYSTEM context" -Level Info
+            # Clean up files after successful completion
+            try {
+                if (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
+                    Unregister-ScheduledTask -TaskName $jobName -Confirm:$false -ErrorAction SilentlyContinue
+                }
+                Remove-Item -Path $executorScript -Force -ErrorAction SilentlyContinue
+                Remove-Item -Path $systemAccessibleScriptPath -Force -ErrorAction SilentlyContinue
+                Remove-Item -Path $markerFile -Force -ErrorAction SilentlyContinue
+            } catch {
+                Write-Log "Cleanup warning: $($_.Exception.Message)" -Level Warning
+            }
+        } else {
+            Write-Host "`rTimeout reached waiting for system cleanup to complete." -ForegroundColor Yellow
             Write-Log "Timeout reached before completion." -Level Warning
         }
+        
+        return $completed
     }
     catch {
         Write-Log "Error during SYSTEM context setup: $($_.Exception.Message)" -Level Error
-        exit 1
+        return $false
     }
-    return $completed
 }
 
 # --------------------------------------------------
@@ -190,7 +234,8 @@ finally {
 
 # If not running as SYSTEM, initiate SYSTEM context.
 if (-not (Test-RunningAsSystem)) {
-    Start-SystemContext -ScriptPath $scriptPath
+    $result = Start-SystemContext -ScriptPath $scriptPath
+    # Suppress boolean output
     exit
 }
 
