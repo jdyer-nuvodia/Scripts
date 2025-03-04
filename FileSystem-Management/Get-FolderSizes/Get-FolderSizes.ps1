@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 17:13:00 UTC
+# Last Updated: 2025-03-04 17:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.4
-# Additional Info: Eliminated redundant completion messages in recursive processing
+# Version: 1.5.5
+# Additional Info: Completely redesigned recursive processing to prevent redundant messages
 # =============================================================================
 
 # Requires -Version 5.1
@@ -103,6 +103,7 @@
     1.5.2 - Added special handling for OneDrive reparse points
     1.5.3 - Fixed redundant completion messages in recursive processing
     1.5.4 - Eliminated redundant completion messages in recursive processing
+    1.5.5 - Completely redesigned recursive processing to prevent redundant messages
 #>
 
 param (
@@ -744,13 +745,13 @@ function Get-FolderSize {
 
     try {
         if ($CurrentDepth -gt $MaxDepth) {
-            return $false # Return false to indicate no processing happened
+            return @{ ProcessedFolders = $false; HasSubfolders = $false } # Return structured info instead of simple boolean
         }
 
         $folderPath = Format-Path $FolderPath
         if (-not (Test-Path -Path $folderPath -PathType Container)) {
             Write-Warning "Path '$FolderPath' does not exist or is not a directory."
-            return $false # Return false to indicate no processing happened
+            return @{ ProcessedFolders = $false; HasSubfolders = $false }
         }
 
         # Check if this path is a symbolic link, junction, or mount point
@@ -886,32 +887,50 @@ function Get-FolderSize {
             Write-Host ""
             
             # Process only the largest subfolder if within depth limit
+            $hasProcessedSubFolders = $false
             if ($CurrentDepth + 1 -le $MaxDepth -and $sortedFolders.Count -gt 0) {
                 $largestFolder = $sortedFolders[0] # Get the single largest folder
                 
                 Write-Host "`nDescending into largest subfolder: $($largestFolder.Path)" -ForegroundColor Cyan
-                $processed = Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
                 
-                # Only display completion message if subfolders were actually processed
-                if ($processed -eq $true) {
-                    Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
+                # Call recursively and capture the structured return value
+                $result = Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
+                
+                # Only display completion message if this level actually did something
+                # AND we don't show completion message for terminal nodes (nodes with no subfolders)
+                if ($result.ProcessedFolders -eq $true) {
+                    $hasProcessedSubFolders = $true
+                    
+                    # Only show completion message if the child had subfolders
+                    # This prevents the multiple completion messages from bubbling up
+                    if ($result.HasSubfolders -eq $true) {
+                        Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
+                    }
                 }
             }
             
-            return $true # Return true to indicate processing happened
+            # Return structured information about this level's processing
+            return @{ 
+                ProcessedFolders = $true;  # This level processed folders
+                HasSubfolders = $true      # This level had subfolders
+            }
         } else {
             Write-Host "No subfolders found to process." -ForegroundColor Yellow
-            return $false # Return false to indicate no processing happened
+            # Return structured information - processed but had no subfolders
+            return @{ 
+                ProcessedFolders = $true;  # We did process this folder 
+                HasSubfolders = $false     # But it had no subfolders
+            }
         }
     }
     catch {
         Write-Warning "Error processing folder '$FolderPath': $($_.Exception.Message)"
-        return $false # Return false to indicate no processing happened
+        return @{ ProcessedFolders = $false; HasSubfolders = $false }
     }
 }
 
 # Start the Recursive Scan
-Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top
+$scanResult = Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top
 
 #endregion
 
