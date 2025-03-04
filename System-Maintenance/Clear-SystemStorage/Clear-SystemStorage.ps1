@@ -2,7 +2,7 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 14:15:00 UTC
+# Last Updated: 2025-03-03 00:01:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 3.8
 # Additional Info: Enhanced console output to match log output, improved shadow copy
