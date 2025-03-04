@@ -202,6 +202,12 @@ Get-PSDrive -PSProvider FileSystem | ForEach-Object {
     Write-Host $driveInfo -ForegroundColor Cyan
 }
 
+# ----- Display Shadow Copy Count -----
+$shadowOutputInitial = vssadmin list shadows 2>&1
+$totalShadowCopiesInitial = ($shadowOutputInitial | Select-String "Shadow Copy ID").Count
+Write-Log "Initial Shadow Copy Count: $totalShadowCopiesInitial" -Level Info
+Write-Host "Shadow Copies Found: $totalShadowCopiesInitial" -ForegroundColor Yellow
+
 # ----- Run Disk Cleanup Silently -----
 Write-Log "Starting Disk Cleanup..." -Level Info
 Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait -NoNewWindow
