@@ -240,11 +240,21 @@ if (-not (Test-RunningAsSystem)) {
 }
 
 # ----- Display Starting Drive Information -----
-Write-Log "===== Starting Drive Information =====" -Level Info
-Get-PSDrive -PSProvider FileSystem | ForEach-Object {
-    $driveInfo = "Drive $($_.Name): Used = $($_.Used) Free = $($_.Free)"
-    Write-Log -Message $driveInfo -Level Info
-    Write-Host $driveInfo -ForegroundColor Cyan
+function Show-DriveInfo {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$Volume
+    )
+    
+    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
+    Write-Host "------------------------" -ForegroundColor Green
+    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
+    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
+    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
+    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
+    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
 }
 
 # ----- Display Shadow Copy Count -----
@@ -283,11 +293,21 @@ if ($totalShadowCopies -gt 1) {
 Write-Log ("Shadow Copy cleanup summary: Found=$totalShadowCopies, Removed=$removedCount, Remaining=$remainingCount") -Level Info
 
 # ----- Display Ending Drive Information -----
-Write-Log "===== Ending Drive Information =====" -Level Info
-Get-PSDrive -PSProvider FileSystem | ForEach-Object {
-    $driveInfo = "Drive $($_.Name): Used = $($_.Used) Free = $($_.Free)"
-    Write-Log -Message $driveInfo -Level Info
-    Write-Host $driveInfo -ForegroundColor Green
+function Show-DriveInfo {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$Volume
+    )
+    
+    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
+    Write-Host "------------------------" -ForegroundColor Green
+    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
+    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
+    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
+    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
+    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
 }
 
 Write-Log "System Storage Cleanup Completed." -Level Info
