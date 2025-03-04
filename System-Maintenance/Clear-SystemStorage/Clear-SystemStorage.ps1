@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 15:45:00 UTC
+# Last Updated: 2025-03-20 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.5
-# Additional Info: Fixed path joining typo and removed unused variable
+# Version: 3.6
+# Additional Info: Fixed missing closing brace causing syntax error
 # =============================================================================
 
 <#
