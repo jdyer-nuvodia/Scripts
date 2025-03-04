@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 17:25:00 UTC
+# Last Updated: 2025-03-04 17:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.1
-# Additional Info: Fixed 'findstr' command not found errors by using PowerShell native commands
+# Version: 1.5.2
+# Additional Info: Added special handling for OneDrive reparse points
 # =============================================================================
 
 # Requires -Version 5.1
@@ -100,6 +100,7 @@
     1.4.0 - Modified to only descend into the largest folder at each directory level
     1.5.0 - Added proper support for symbolic links and junction points
     1.5.1 - Fixed 'findstr' command not found errors by using PowerShell native commands
+    1.5.2 - Added special handling for OneDrive reparse points
 #>
 
 param (
@@ -118,6 +119,21 @@ function Get-PathType {
     )
     
     try {
+        # Special handling for OneDrive paths
+        if ($Path -match "OneDrive -") {
+            $dirInfo = New-Object System.IO.DirectoryInfo $Path
+            
+            if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                # This is an OneDrive reparse point - special handling
+                return @{
+                    Type = "OneDriveFolder"
+                    Target = "Cloud Storage"
+                    IsReparsePoint = $true
+                    IsOneDrive = $true
+                }
+            }
+        }
+        
         $dirInfo = New-Object System.IO.DirectoryInfo $Path
         if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
             # This is a reparse point (symbolic link, junction, etc.)
@@ -150,9 +166,19 @@ function Get-PathType {
                         $target = ($printNameLine -replace "^.*?Print Name:\s*", "").Trim()
                     }
                 }
+                # Check for OneDrive specific patterns in fsutil output
+                elseif ($fsutil -match "OneDrive" -or $Path -match "OneDrive -") {
+                    $type = "OneDriveFolder"
+                    $target = "Cloud Storage"
+                }
             }
             catch {
                 Write-Verbose "fsutil method failed: $($_.Exception.Message)"
+                # If path contains OneDrive, treat as OneDrive folder
+                if ($Path -match "OneDrive -") {
+                    $type = "OneDriveFolder"
+                    $target = "Cloud Storage"
+                }
             }
             
             # Method 2: Try .NET method if fsutil didn't work or target is empty
@@ -173,6 +199,11 @@ function Get-PathType {
                 }
                 catch {
                     Write-Verbose ".NET target method failed: $($_.Exception.Message)"
+                    # If path contains OneDrive, treat as OneDrive folder
+                    if ($Path -match "OneDrive -") {
+                        $type = "OneDriveFolder"
+                        $target = "Cloud Storage"
+                    }
                 }
             }
             
@@ -209,11 +240,18 @@ function Get-PathType {
                 }
             }
             
+            # Final check - if we still have an Unknown Target and path has OneDrive, mark as OneDrive
+            if (([string]::IsNullOrEmpty($target) -or $target -eq "Unknown Target") -and $Path -match "OneDrive -") {
+                $type = "OneDriveFolder"
+                $target = "Cloud Storage"
+            }
+            
             # Return results with either found target or "Unknown Target"
             return @{
                 Type = $type
                 Target = if ([string]::IsNullOrEmpty($target)) { "Unknown Target" } else { $target }
                 IsReparsePoint = $true
+                IsOneDrive = ($type -eq "OneDriveFolder")
             }
         }
         else {
@@ -222,15 +260,27 @@ function Get-PathType {
                 Type = "Directory"
                 Target = $null
                 IsReparsePoint = $false
+                IsOneDrive = $false
             }
         }
     }
     catch {
         Write-Warning "Error determining path type for '$Path': $($_.Exception.Message)"
+        # Check if it might be an OneDrive path
+        if ($Path -match "OneDrive -") {
+            return @{
+                Type = "OneDriveFolder"
+                Target = "Cloud Storage"
+                IsReparsePoint = $true
+                IsOneDrive = $true
+            }
+        }
+        
         return @{
             Type = "Unknown"
             Target = $null
             IsReparsePoint = $false
+            IsOneDrive = $false
         }
     }
 }
@@ -703,11 +753,18 @@ function Get-FolderSize {
 
         # Check if this path is a symbolic link, junction, or mount point
         $pathType = Get-PathType -Path $folderPath
-        if ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
+        
+        # Special handling for OneDrive folders
+        if ($pathType.IsOneDrive) {
+            Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Cyan
+            Write-Host "OneDrive folder - continuing with scan (files may be cloud-based)" -ForegroundColor Cyan
+            # No need to follow the link for OneDrive folders - continue with current path
+        }
+        elseif ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
             Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Yellow
             
             # If it's a link, try to use the target path instead
-            if ($pathType.Target -and $pathType.Target -ne "Unknown") {
+            if ($pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
                 Write-Host "Following link to target: $($pathType.Target)" -ForegroundColor Yellow
                 
                 # Handle relative paths in targets
@@ -773,7 +830,12 @@ function Get-FolderSize {
                 
                 # Check if folder is a symbolic link or junction point
                 $subPathType = Get-PathType -Path $subFolderPath
-                if ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown") {
+                
+                # Use a different color for OneDrive folders
+                if ($subPathType.IsOneDrive) {
+                    Write-Host "  - $($subFolderPath): $($subPathType.Type) - OneDrive cloud storage" -ForegroundColor Cyan
+                }
+                elseif ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown") {
                     Write-Host "  - $($subFolderPath): $($subPathType.Type) pointing to $($subPathType.Target)" -ForegroundColor Yellow
                 }
                 
@@ -810,7 +872,11 @@ function Get-FolderSize {
                 
                 # If it's a special path type, add an info line
                 if ($folder.PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {
-                    Write-Host "  ^ $($folder.PathType) pointing to: $($folder.Target)" -ForegroundColor Yellow
+                    if ($folder.PathType -eq "OneDriveFolder") {
+                        Write-Host "  ^ OneDrive cloud-based storage" -ForegroundColor Cyan
+                    } else {
+                        Write-Host "  ^ $($folder.PathType) pointing to: $($folder.Target)" -ForegroundColor Yellow
+                    }
                 }
             }
             
