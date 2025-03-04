@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 21:17:00 UTC
+# Last Updated: 2025-03-04 21:33:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.8
-# Additional Info: Suppressed return value output in console
+# Version: 1.6.0
+# Additional Info: Added support for hidden and system folders including All Users
 # =============================================================================
 
 # Requires -Version 5.1
@@ -31,6 +31,7 @@
     - Continues with limited functionality if admin rights unavailable
     - Supports custom depth limitation
     - Properly handles symbolic links and junction points
+    - Includes hidden and system folders like "All Users"
 
     Dependencies:
     - Windows PowerShell 5.1 or later
@@ -52,6 +53,12 @@
 
 .PARAMETER Top
     Number of largest folders to display at each level. Defaults to 3. Range: 1-50.
+    
+.PARAMETER IncludeHiddenSystem
+    Include hidden and system folders in the scan. Defaults to $true.
+
+.PARAMETER FollowJunctions
+    Follow junction points and symbolic links when calculating sizes. Defaults to $true.
 
 .EXAMPLE
     .\Get-FolderSizes.ps1
@@ -68,6 +75,10 @@
 .EXAMPLE
     .\Get-FolderSizes.ps1 -Top 10
     Scans the C:\ drive and shows the 10 largest folders at each level
+    
+.EXAMPLE
+    .\Get-FolderSizes.ps1 -IncludeHiddenSystem $false
+    Scans the C:\ drive but excludes hidden and system folders
 
 .NOTES
     Security Level: Medium
@@ -107,13 +118,16 @@
     1.5.6 - Fixed Script Analyzer warnings for unused variables
     1.5.7 - Fixed recursive processing of completion messages with completion state tracking
     1.5.8 - Suppressed return value output in console
+    1.6.0 - Added support for hidden and system folders like "All Users"
 #>
 
 param (
     [string]$Path = "C:\",
     [int]$MaxDepth = 10,
     [ValidateRange(1, 50)]
-    [int]$Top = 3
+    [int]$Top = 3,
+    [bool]$IncludeHiddenSystem = $true,
+    [bool]$FollowJunctions = $true
 )
 
 #region Helper Functions
@@ -779,8 +793,8 @@ function Get-FolderSize {
         elseif ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
             Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Yellow
             
-            # If it's a link, try to use the target path instead
-            if ($pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
+            # If it's a link and we're configured to follow links, try to use the target path instead
+            if ($FollowJunctions -and $pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
                 Write-Host "Following link to target: $($pathType.Target)" -ForegroundColor Yellow
                 
                 # Handle relative paths in targets
@@ -824,8 +838,19 @@ function Get-FolderSize {
             Write-Host "Size: $fileSize"
         }
 
-        # Get Subfolders and Process
-        $subFolders = try { Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop } catch { Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"; @() }
+        # Get Subfolders and Process - include hidden and system folders if specified
+        $subFolders = try { 
+            # Include hidden and system folders if specified
+            if ($IncludeHiddenSystem) {
+                Get-ChildItem -Path $folderPath -Directory -Force -ErrorAction Stop
+            }
+            else {
+                Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop
+            }
+        } catch { 
+            Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"
+            @() 
+        }
 
         if ($subFolders -and $subFolders.Count -gt 0) {
             $folderCount = $subFolders.Count
@@ -847,11 +872,18 @@ function Get-FolderSize {
                 # Check if folder is a symbolic link or junction point
                 $subPathType = Get-PathType -Path $subFolderPath
                 
+                # Special handling for special Windows folders like "All Users"
+                $isSpecialFolder = $false
+                if ($subFolderPath -match '\\All Users$') {
+                    Write-Host "  - $($subFolderPath): System Junction Point to ProgramData" -ForegroundColor Cyan
+                    $isSpecialFolder = $true
+                }
+                
                 # Use a different color for OneDrive folders
                 if ($subPathType.IsOneDrive) {
                     Write-Host "  - $($subFolderPath): $($subPathType.Type) - OneDrive cloud storage" -ForegroundColor Cyan
                 }
-                elseif ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown") {
+                elseif ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown" -and -not $isSpecialFolder) {
                     Write-Host "  - $($subFolderPath): $($subPathType.Type) pointing to $($subPathType.Target)" -ForegroundColor Yellow
                 }
                 
@@ -867,6 +899,7 @@ function Get-FolderSize {
                     LargestFile = $subFolderLargestFile
                     PathType = $subPathType.Type
                     Target = $subPathType.Target
+                    IsSpecialFolder = $isSpecialFolder
                 }
             }
             
@@ -887,7 +920,10 @@ function Get-FolderSize {
                 Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
                 
                 # If it's a special path type, add an info line
-                if ($folder.PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {
+                if ($folder.IsSpecialFolder) {
+                    Write-Host "  ^ Windows System Junction Point" -ForegroundColor Cyan
+                }
+                elseif ($folder.PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {
                     if ($folder.PathType -eq "OneDriveFolder") {
                         Write-Host "  ^ OneDrive cloud-based storage" -ForegroundColor Cyan
                     } else {
