@@ -2,11 +2,11 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-03 00:01:00 UTC
+# Last Updated: 2025-03-04 00:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.8
-# Additional Info: Enhanced console output to match log output, improved shadow copy
-#                reporting, and optimized output for human readability.
+# Version: 3.9
+# Additional Info: Simplified elevation logic to always run as SYSTEM and
+#                streamlined log file handling to the script directory.
 # =============================================================================
 
 <#
@@ -17,27 +17,15 @@
      - Running Windows Disk Cleanup utility silently
      - Managing and reducing Volume Shadow Copies
      - Displaying drive space information before and after cleanup
-     - Can run in regular user context or elevate to SYSTEM context for thorough cleanup
-.PARAMETER NoElevate
-    If specified, prevents the script from elevating to SYSTEM context.
-.PARAMETER OriginalLogDir
-    Specifies an alternative directory for log files when running in SYSTEM context.
+     - Always elevates to SYSTEM context for thorough cleanup
 .EXAMPLE
     .\Clear-SystemStorage.ps1
-    Runs the script with default settings, elevating to SYSTEM context if needed.
-.EXAMPLE
-    .\Clear-SystemStorage.ps1 -NoElevate
-    Runs the script without elevating to SYSTEM context.
+    Runs the script with default settings, elevating to SYSTEM context.
 .NOTES
     Security Level: Medium
     Required Permissions: Administrative access for full functionality
     Validation Requirements: Verify disk space is freed after execution
 #>
-
-param(
-    [switch]$NoElevate,
-    [string]$OriginalLogDir
-)
 
 # ----- Global Variable Initialization -----
 $scriptPath = $MyInvocation.PSCommandPath
@@ -51,12 +39,6 @@ if (-not $scriptPath) {
 $script:OriginalScriptDirectory = Split-Path -Path $scriptPath -Parent
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$timestamp.log"
-
-# Use original log directory if provided (for SYSTEM context)
-if ($OriginalLogDir -and (Test-Path $OriginalLogDir)) {
-    $script:OriginalScriptDirectory = $OriginalLogDir
-    $script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$timestamp.log"
-}
 
 # ----- Function: Write-Log -----
 function Write-Log {
@@ -98,8 +80,7 @@ function Test-RunningAsSystem {
 function Start-SystemContext {
     param(
         [string]$ScriptPath = $MyInvocation.PSCommandPath,
-        [int]$TimeoutSeconds = 300,
-        [string]$OriginalLogDir = $script:OriginalScriptDirectory
+        [int]$TimeoutSeconds = 300
     )
     
     if (Test-RunningAsSystem) {
@@ -148,7 +129,7 @@ function Start-SystemContext {
 Start-Transcript -Path '$logFile' -Force
 try {
     Write-Host 'Syntax check passed. Starting execution of main script as SYSTEM'
-    & '$systemAccessibleScriptPath' -NoElevate -OriginalLogDir '$OriginalLogDir'
+    & '$systemAccessibleScriptPath'
     if (`$?) {
         Write-Host 'Script executed successfully.'
         Set-Content -Path '$markerFile' -Value 'Complete' -Force
@@ -207,9 +188,9 @@ finally {
 # Main Script Execution (after elevation if needed)
 # --------------------------------------------------
 
-# If not running as SYSTEM and elevation is allowed, initiate SYSTEM context.
-if (-not $NoElevate -and -not (Test-RunningAsSystem)) {
-    Start-SystemContext -ScriptPath $scriptPath -OriginalLogDir $script:OriginalScriptDirectory
+# If not running as SYSTEM, initiate SYSTEM context.
+if (-not (Test-RunningAsSystem)) {
+    Start-SystemContext -ScriptPath $scriptPath
     exit
 }
 
