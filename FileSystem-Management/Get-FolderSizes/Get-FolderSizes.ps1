@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-20 15:30:00 UTC
+# Last Updated: 2025-06-04 17:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Added support for handling symbolic links and junction points
+# Version: 1.5.1
+# Additional Info: Fixed 'findstr' command not found errors by using PowerShell native commands
 # =============================================================================
 
 # Requires -Version 5.1
@@ -83,7 +83,7 @@
 
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
-    Updated: 2025-05-20 15:30:00 UTC
+    Updated: 2025-06-04 17:25:00 UTC
 
     Requirements:
     - Windows PowerShell 5.1 or later
@@ -99,6 +99,7 @@
     1.2.0 - Updated output formatting to display results in tabular format with progress indicators
     1.4.0 - Modified to only descend into the largest folder at each directory level
     1.5.0 - Added proper support for symbolic links and junction points
+    1.5.1 - Fixed 'findstr' command not found errors by using PowerShell native commands
 #>
 
 param (
@@ -175,21 +176,36 @@ function Get-PathType {
                 }
             }
             
-            # Method 3: Use dir command as last resort
+            # Method 3: Use PowerShell native commands instead of findstr
             if ([string]::IsNullOrEmpty($target)) {
                 try {
-                    $dirCommand = cmd /c "dir `"$Path`" | findstr `"<JUNCTION>`" || dir `"$Path`" | findstr `"<SYMLINK>`""
-                    if ($dirCommand -match "<JUNCTION>\s+(.*?)\s+[\[\]]") {
-                        $target = $matches[1]
-                        $type = "Junction"
-                    }
-                    elseif ($dirCommand -match "<SYMLINK>\s+(.*?)\s+[\[\]]") {
-                        $target = $matches[1]
-                        $type = "SymbolicLink"
+                    # Use Get-Item with -Force parameter to get link information
+                    $item = Get-Item -Path $Path -Force -ErrorAction Stop
+                    
+                    # Check for LinkType property (PowerShell 5.1+)
+                    if ($item.PSObject.Properties.Name -contains "LinkType") {
+                        if ($item.LinkType -eq "Junction") {
+                            $type = "Junction"
+                            if ($item.PSObject.Properties.Name -contains "Target") {
+                                $target = $item.Target
+                                if ($target -is [array] -and $target.Length -gt 0) {
+                                    $target = $target[0]
+                                }
+                            }
+                        }
+                        elseif ($item.LinkType -eq "SymbolicLink") {
+                            $type = "SymbolicLink"
+                            if ($item.PSObject.Properties.Name -contains "Target") {
+                                $target = $item.Target
+                                if ($target -is [array] -and $target.Length -gt 0) {
+                                    $target = $target[0]
+                                }
+                            }
+                        }
                     }
                 }
                 catch {
-                    Write-Verbose "CMD dir method failed: $($_.Exception.Message)"
+                    Write-Verbose "PowerShell Get-Item method failed: $($_.Exception.Message)"
                 }
             }
             
