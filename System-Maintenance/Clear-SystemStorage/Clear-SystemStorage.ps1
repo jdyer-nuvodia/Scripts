@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-15 09:13:00 UTC
+# Last Updated: 2025-03-18 10:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3
-# Additional Info: Fixed log file location to always use script directory
+# Version: 3.4
+# Additional Info: Fixed shadow copy cleanup failure and multiple log files issue
 # =============================================================================
 
 <#
@@ -28,6 +28,8 @@
     - Administrative privileges
 .PARAMETER NoElevate
     Prevents the script from attempting to elevate to SYSTEM context when already running as a scheduled task
+.PARAMETER OriginalLogDir
+    Specifies the original script directory for consistent log file location when elevated to SYSTEM
 .EXAMPLE
     .\Clear-SystemStorage.ps1
     Runs the script with default settings
@@ -58,6 +60,12 @@ if (-not $scriptPath) {
 }
 $script:OriginalScriptDirectory = Split-Path -Path $scriptPath -Parent
 $script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+
+# Use original log directory if provided (when running as SYSTEM)
+if ($OriginalLogDir -and (Test-Path $OriginalLogDir)) {
+    $script:OriginalScriptDirectory = $OriginalLogDir
+    $script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+}
 
 function Write-Log {
     [CmdletBinding()]
@@ -492,33 +500,97 @@ function Start-ShadowCopyCleanup {
     Write-Log "Starting Shadow Copy cleanup process..." -Level Info
     
     try {
-        # List all shadow copies
-        Write-Log "Retrieving list of shadow copies" -Level Verbose
-        $vssList = vssadmin list shadows
-        Write-Log "Shadow copy details: $vssList" -Level Debug
+        # List all shadow copies with more robust error handling
+        Write-Log "Retrieving list of shadow copies..." -Level Info
+        $errorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         
+        try {
+            $vssList = vssadmin list shadows 2>&1
+            # Check if the command returned an error
+            if ($vssList -is [System.Management.Automation.ErrorRecord]) {
+                Write-Log "Error accessing shadow copies: $($vssList.Exception.Message)" -Level Error
+                Write-Log "VSS Service may not be running or accessible" -Level Warning
+                return $false
+            }
+        }
+        catch {
+            Write-Log "Failed to execute vssadmin: $_" -Level Error
+            return $false
+        }
+        finally {
+            $ErrorActionPreference = $errorActionPreference
+        }
+        
+        Write-Log "Shadow copy command executed successfully" -Level Verbose
+        
+        # Always display the raw VSS output for debugging
+        Write-Log "Raw VSS output: $($vssList -join "`n")" -Level Debug
+        
+        # Process the output to extract shadow copy information
         $shadowCopies = $vssList | Where-Object {$_ -match "Shadow Copy ID:"}
-        $shadowIds = $shadowCopies | ForEach-Object { $_.Split(":")[1].Trim() }
+        
+        # Even if no shadow copies, display a clear message
+        Write-Host "`n===== Shadow Copy Information =====" -ForegroundColor Cyan
+        
+        if (-not $shadowCopies -or $shadowCopies.Count -eq 0) {
+            Write-Log "No shadow copies found on this system." -Level Warning
+            Write-Host "No shadow copies found on this system." -ForegroundColor Yellow
+            Write-Host "====================================" -ForegroundColor Cyan
+            return $true  # Not finding copies isn't a failure
+        }
+        
+        $shadowIds = $shadowCopies | ForEach-Object { 
+            if ($_ -match "Shadow Copy ID:\s*(\{[^}]+\})") {
+                $matches[1]
+            }
+            else {
+                $_.Split(":")[1].Trim()
+            }
+        }
+        
         $shadowCount = $shadowIds.Count
         Write-Log "Found $shadowCount shadow copies" -Level Info
-        
-        if ($shadowCount -eq 0) {
-            Write-Log "No shadow copies found." -Level Warning
-            return $true
-        }
+        Write-Host "Found $shadowCount shadow copies" -ForegroundColor Cyan
 
-        # Parse creation dates to display them to user
+        # Parse creation dates with more robust handling
         $dateLines = $vssList | Where-Object {$_ -match "Created:"}
-        $dates = $dateLines | ForEach-Object { $_.Split(":", 2)[1].Trim() }
+        $dates = @()
+        
+        if ($dateLines) {
+            $dates = $dateLines | ForEach-Object { 
+                if ($_ -match "Created:\s*(.+)") {
+                    $matches[1].Trim()
+                }
+                else {
+                    $_.Split(":", 2)[1].Trim()
+                }
+            }
+        }
+        
+        # Ensure we have matching IDs and dates or provide default values
+        if ($dates.Count -lt $shadowIds.Count) {
+            Write-Log "Warning: Mismatched shadow copy IDs and dates." -Level Warning
+            while ($dates.Count -lt $shadowIds.Count) {
+                $dates += "Unknown date"
+            }
+        }
         
         # Show all shadow copies with dates
         Write-Log "Shadow Copy Details:" -Level Info
+        Write-Host "Shadow Copy Details:" -ForegroundColor Cyan
         Write-Log "-------------------" -Level Info
+        Write-Host "-------------------" -ForegroundColor White
+        
         for ($i = 0; $i -lt $shadowCount; $i++) {
             Write-Log "ID: $($shadowIds[$i])" -Level Info
             Write-Log "Created: $($dates[$i])" -Level Info
+            Write-Host "ID: $($shadowIds[$i])" -ForegroundColor White
+            Write-Host "Created: $($dates[$i])" -ForegroundColor White
+            
             if ($i -lt $shadowCount - 1) {
                 Write-Log "-------------------" -Level Info
+                Write-Host "-------------------" -ForegroundColor White
             }
         }
 
@@ -526,8 +598,11 @@ function Start-ShadowCopyCleanup {
         $keepId = $shadowIds[0]
         $keepDate = $dates[0]
         Write-Log "Preserving most recent shadow copy:" -Level Info
+        Write-Host "`nPreserving most recent shadow copy:" -ForegroundColor Green
         Write-Log "ID: $keepId" -Level Info
         Write-Log "Created: $keepDate" -Level Info
+        Write-Host "ID: $keepId" -ForegroundColor Green
+        Write-Host "Created: $keepDate" -ForegroundColor Green
 
         # Delete older restore points
         $deletedCount = 0
@@ -536,28 +611,44 @@ function Start-ShadowCopyCleanup {
             if ($id -ne $keepId) {
                 Write-Log "Removing shadow copy ID: $id (Created: $($dates[$i]))" -Level Verbose
                 try {
-                    Write-Host "🗑️ Removing shadow copy ID: $id (Created: $($dates[$i]))" -ForegroundColor Yellow
-                    $deleteOutput = vssadmin delete shadows /shadow=$id /quiet
-                    # Log the command output for debugging purposes
+                    Write-Host "`nRemoving shadow copy ID: $id (Created: $($dates[$i]))" -ForegroundColor Yellow
+                    
+                    # Execute command with error handling
+                    $errorOutput = $null
+                    $deleteOutput = vssadmin delete shadows /shadow=$id /quiet 2>&1
+                    
+                    # Log the command output for debugging
                     Write-Log "Delete operation output: $($deleteOutput -join "`n")" -Level Debug
-                    Write-Log "Deleted shadow copy from $($dates[$i])" -Level Info
-                    Write-Host "   Deleted shadow copy from $($dates[$i])" -ForegroundColor Yellow
-                    $deletedCount++
+                    
+                    # Check if the command succeeded
+                    if ($deleteOutput -match "Error|failed|denied|cannot") {
+                        Write-Log "Error deleting shadow copy: $($deleteOutput -join "`n")" -Level Warning
+                        Write-Host "  Failed to delete shadow copy: $($deleteOutput -join "`n")" -ForegroundColor Red
+                    } 
+                    else {
+                        Write-Log "Deleted shadow copy from $($dates[$i])" -Level Info
+                        Write-Host "  Deleted shadow copy from $($dates[$i])" -ForegroundColor Yellow
+                        $deletedCount++
+                    }
                 }
                 catch {
-                    Write-Log "Error deleting shadow copy ${id}: ${_}" -Level Warning
+                    Write-Log "Exception while deleting shadow copy ${id}: ${_}" -Level Warning
+                    Write-Host "  Exception while deleting shadow copy: $_" -ForegroundColor Red
                 }
             }
         }
         
-        # Enhanced summary with emoji for visibility
-        Write-Host "`n📊 Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -ForegroundColor Green
+        # Enhanced summary with text for visibility
+        Write-Host "`nShadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -ForegroundColor Green
         Write-Log "Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -Level Info
+        Write-Host "====================================" -ForegroundColor Cyan
         
         return $true
     }
     catch {
         Write-Log "Error during Shadow Copy cleanup: $_" -Level Error
+        Write-Host "Shadow Copy cleanup failed: $_" -ForegroundColor Red
+        Write-Host "====================================" -ForegroundColor Cyan
         return $false
     }
 }
@@ -595,13 +686,6 @@ Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
 Write-Log "Script started with PowerShell version $($PSVersionTable.PSVersion)" -Level Verbose
 Write-Log "Running on computer: $env:COMPUTERNAME" -Level Verbose
 Write-Log "Operating system: $((Get-CimInstance -ClassName Win32_OperatingSystem).Caption)" -Level Verbose
-
-# Add parameter for original log directory when elevated to SYSTEM
-if ($OriginalLogDir -and (Test-Path $OriginalLogDir)) {
-    $script:OriginalScriptDirectory = $OriginalLogDir
-    $script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-    Write-Host "Using original script directory for logs: $script:OriginalScriptDirectory" -ForegroundColor Cyan
-}
 
 if (-not (Test-RunningAsSystem) -and -not $NoElevate) {
     Write-Log "Initial execution - will elevate to SYSTEM" -Level Info
