@@ -2,7 +2,7 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-04 17:25:00 UTC
+# Last Updated: 2025-03-04 17:25:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.5.1
 # Additional Info: Fixed 'findstr' command not found errors by using PowerShell native commands
