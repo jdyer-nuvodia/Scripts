@@ -490,86 +490,7 @@ Write-Host ""
 
 # .NET Type Definition
 Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
-$typeName = "FastFileScanner_" + (Get-Random)
-Add-Type -TypeDefinition @"
-using System;
-using System.IO;
-using System.Linq;
-using System.Security;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-
-public class $typeName {
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    static extern bool GetDiskFreeSpaceEx(string lpDirectoryName,
-        out ulong lpFreeBytesAvailable,
-        out ulong lpTotalNumberOfBytes,
-        out ulong lpTotalNumberOfFreeBytes);
-
-    public static long GetDirectorySize(string path) {
-        long size = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
-
-        while (stack.Count > 0) {
-            string dir = stack.Pop();
-            try {
-                foreach (string file in Directory.GetFiles(dir)) {
-                    try {
-                        size += new FileInfo(file).Length;
-                    }
-                    catch (Exception) { }
-                }
-
-                foreach (string subDir in Directory.GetDirectories(dir)) {
-                    stack.Push(subDir);
-                }
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
-        }
-        return size;
-    }
-
-    public static Tuple<int, int> GetDirectoryCounts(string path) {
-        int files = 0;
-        int folders = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
-
-        while (stack.Count > 0) {
-            string dir = stack.Pop();
-            try {
-                files += Directory.GetFiles(dir).Length;
-                var subDirs = Directory.GetDirectories(dir);
-                folders += subDirs.Length;
-                foreach (var subDir in subDirs) {
-                    stack.Push(subDir);
-                }
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
-        }
-        return new Tuple<int, int>(files, folders);
-    }
-
-    public static FileInfo GetLargestFile(string path) {
-        try {
-            return new DirectoryInfo(path)
-                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(f => f.Length)
-                .FirstOrDefault();
-        }
-        catch {
-            return null;
-        }
-    }
-}
-"@ -ErrorAction SilentlyContinue
+Remove-TypeData -TypeName "FolderSizeHelper" -ErrorAction SilentlyContinue
 
 # Helper Type for Folder Processing
 Add-Type -TypeDefinition @"
@@ -578,9 +499,16 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 public static class FolderSizeHelper
 {
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool GetDiskFreeSpaceEx(string lpDirectoryName,
+        out ulong lpFreeBytesAvailable,
+        out ulong lpTotalNumberOfBytes,
+        out ulong lpTotalNumberOfFreeBytes);
+        
     public static long GetDirectorySize(string path)
     {
         long size = 0;
