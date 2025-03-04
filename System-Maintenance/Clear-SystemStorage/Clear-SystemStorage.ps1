@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-21 15:20:00 UTC
+# Last Updated: 2025-03-22 14:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.7
-# Additional Info: Enhanced shadow copy reporting and fixed log file duplication issues
+# Version: 3.8
+# Additional Info: Enhanced console output to match log output, improved shadow copy reporting
 # =============================================================================
 
 <#
@@ -84,10 +84,10 @@ function Write-Log {
     # Special handling for shadow copy information with enhanced visibility
     $isShadowCopyInfo = $Message -match "Shadow Copy|shadow cop"
     
-    # Write to console with appropriate color
+    # Write to console with appropriate color - ALWAYS output to console
     switch ($Level) {
         'Info' { 
-            # Use string prefix checking instead of regex with emojis
+            # Use string prefix checking for shadow copy info
             if ($isShadowCopyInfo) {
                 if ($Message.StartsWith("📊") -or $Message.StartsWith("✅")) {
                     Write-Host $Message -ForegroundColor Green
@@ -98,15 +98,17 @@ function Write-Log {
                 elseif ($Message.StartsWith("🔍")) {
                     Write-Host $Message -ForegroundColor Cyan 
                 }
+                elseif ($Message -match "cleanup summary|Initial=|Removed=|Remaining=") {
+                    Write-Host $Message -ForegroundColor Green
+                }
                 else {
-                    Write-Host $Message
+                    Write-Host $Message -ForegroundColor Cyan
                 }
             }
             else {
+                # Standard info messages
                 Write-Host $Message
             }
-            
-            if ($VerbosePreference -eq 'Continue') { Write-Host $logEntry }
         }
         'Warning' { Write-Host $Message -ForegroundColor Yellow }
         'Error' { Write-Host $Message -ForegroundColor Red }
@@ -122,7 +124,7 @@ function Write-Log {
         }
     }
     
-    # Always write to log file - logging is enabled by default now
+    # Always write to log file
     Add-Content -Path $script:LogFile -Value $logEntry
 }
 
@@ -499,6 +501,7 @@ function Start-DiskCleanup {
 
 function Start-ShadowCopyCleanup {
     Write-Log "Starting Shadow Copy cleanup process..." -Level Info
+    Write-Host "`n===== Shadow Copy Information =====" -ForegroundColor Cyan
     
     try {
         # List all shadow copies with more robust error handling
@@ -652,20 +655,13 @@ function Start-ShadowCopyCleanup {
             $postCleanupShadowCopies = $postCleanupVssList | Where-Object {$_ -match "Shadow Copy ID:"}
             $shadowCopiesRemaining = if ($postCleanupShadowCopies) { $postCleanupShadowCopies.Count } else { 0 }
             
-            # Enhanced summary with detailed statistics
-            Write-Host "`nShadow Copy cleanup summary:" -ForegroundColor Green
-            Write-Host "- Initial shadow copies: $shadowCount" -ForegroundColor Cyan
-            Write-Host "- Shadow copies removed: $deletedCount" -ForegroundColor Yellow
-            Write-Host "- Shadow copies remaining: $shadowCopiesRemaining" -ForegroundColor Green
+            # Enhanced summary with detailed statistics - use Write-Log to get both console and log output
             Write-Log "Shadow Copy cleanup summary: Initial=$shadowCount, Removed=$deletedCount, Remaining=$shadowCopiesRemaining" -Level Info
             Write-Host "====================================" -ForegroundColor Cyan
         }
         catch {
             Write-Log "Error checking remaining shadow copies: $_" -Level Error
-            Write-Host "`nShadow Copy cleanup summary:" -ForegroundColor Green
-            Write-Host "- Initial shadow copies: $shadowCount" -ForegroundColor Cyan
-            Write-Host "- Shadow copies removed: $deletedCount" -ForegroundColor Yellow
-            Write-Host "- Shadow copies remaining: Unknown (error checking)" -ForegroundColor Red
+            Write-Log "Shadow Copy cleanup summary: Initial=$shadowCount, Removed=$deletedCount, Remaining=Unknown (error checking)" -Level Warning
             Write-Host "====================================" -ForegroundColor Cyan
         }
         
@@ -703,14 +699,12 @@ function Show-DriveInfo {
 }
 
 # Main execution
-# Make the log file location more visible in the console
 $logFilePath = $script:LogFile
 Write-Host "`n===================================================" -ForegroundColor Cyan
 if (-not (Test-RunningAsSystem)) {
-    Write-Host "INITIAL LOG FILE: $logFilePath" -ForegroundColor Cyan
-    Write-Host "NOTE: A new log file will be created when running as SYSTEM" -ForegroundColor Yellow
+    Write-Host "LOG FILE: $logFilePath (Initial run)" -ForegroundColor Cyan 
 } else {
-    Write-Host "SYSTEM LOG FILE: $logFilePath" -ForegroundColor Cyan
+    Write-Host "LOG FILE: $logFilePath (SYSTEM context)" -ForegroundColor Cyan
 }
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Log "Logging enabled. Log file: $script:LogFile" -Level Info
@@ -720,6 +714,8 @@ Write-Log "Operating system: $((Get-CimInstance -ClassName Win32_OperatingSystem
 
 if (-not (Test-RunningAsSystem) -and -not $NoElevate) {
     Write-Log "Initial execution - will elevate to SYSTEM" -Level Info
+    Write-Host "`nNOTE: Script will continue as SYSTEM and create a new log file" -ForegroundColor Yellow
+    Write-Host "      Shadow copy details will appear in the elevated process output" -ForegroundColor Yellow
     Start-SystemContext -OriginalLogDir $script:OriginalScriptDirectory
     exit
 }
@@ -803,23 +799,20 @@ catch {
 
 # Display cleanup summary
 Write-Host "`n===== Cleanup Summary =====" -ForegroundColor Cyan
-Write-Log "`nCleanup Summary:" -Level Info
-Write-Log "---------------" -Level Info
+Write-Log "Cleanup Summary:" -Level Info
 
 # Replace ternary operators with standard if-else for PowerShell 5.1 compatibility
 $diskCleanupMessage = if ($diskCleanupSuccess) { "Completed Successfully" } else { "Failed" }
 $diskCleanupLevel = if ($diskCleanupSuccess) { "Info" } else { "Error" }
 Write-Log "Disk Cleanup: $diskCleanupMessage" -Level $diskCleanupLevel
-Write-Host "Disk Cleanup: $diskCleanupMessage" -ForegroundColor $(if ($diskCleanupSuccess) { "Green" } else { "Red" })
 
 $shadowCopyMessage = if ($shadowCopySuccess) { "Completed Successfully" } else { "Failed" }
 $shadowCopyLevel = if ($shadowCopySuccess) { "Info" } else { "Error" }
 Write-Log "Shadow Copy Cleanup: $shadowCopyMessage" -Level $shadowCopyLevel
-Write-Host "Shadow Copy Cleanup: $shadowCopyMessage" -ForegroundColor $(if ($shadowCopySuccess) { "Green" } else { "Red" })
 
 # At the end of the script, remind the user where the log file is
 Write-Host "`n===================================================" -ForegroundColor Cyan
-Write-Host "FINAL LOG FILE: $script:LogFile" -ForegroundColor Cyan
+Write-Host "LOG FILE: $script:LogFile" -ForegroundColor Cyan
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Log "Script execution completed at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level Info
 Write-Log "Log file created at: $script:LogFile" -Level Info
