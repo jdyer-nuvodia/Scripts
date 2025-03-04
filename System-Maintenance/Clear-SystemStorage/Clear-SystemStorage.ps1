@@ -9,6 +9,31 @@
 #                reporting, and optimized output for human readability.
 # =============================================================================
 
+<#
+.SYNOPSIS
+    Cleans up system storage by removing temporary files and managing shadow copies.
+.DESCRIPTION
+    This script performs system storage cleanup operations to free up disk space by:
+     - Running Windows Disk Cleanup utility silently
+     - Managing and reducing Volume Shadow Copies
+     - Displaying drive space information before and after cleanup
+     - Can run in regular user context or elevate to SYSTEM context for thorough cleanup
+.PARAMETER NoElevate
+    If specified, prevents the script from elevating to SYSTEM context.
+.PARAMETER OriginalLogDir
+    Specifies an alternative directory for log files when running in SYSTEM context.
+.EXAMPLE
+    .\Clear-SystemStorage.ps1
+    Runs the script with default settings, elevating to SYSTEM context if needed.
+.EXAMPLE
+    .\Clear-SystemStorage.ps1 -NoElevate
+    Runs the script without elevating to SYSTEM context.
+.NOTES
+    Security Level: Medium
+    Required Permissions: Administrative access for full functionality
+    Validation Requirements: Verify disk space is freed after execution
+#>
+
 param(
     [switch]$NoElevate,
     [string]$OriginalLogDir
