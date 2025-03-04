@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-13 19:00:00 UTC
+# Last Updated: 2025-03-04 17:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.3
-# Additional Info: Fixed redundant completion messages in recursive processing
+# Version: 1.5.4
+# Additional Info: Eliminated redundant completion messages in recursive processing
 # =============================================================================
 
 # Requires -Version 5.1
@@ -102,6 +102,7 @@
     1.5.1 - Fixed 'findstr' command not found errors by using PowerShell native commands
     1.5.2 - Added special handling for OneDrive reparse points
     1.5.3 - Fixed redundant completion messages in recursive processing
+    1.5.4 - Eliminated redundant completion messages in recursive processing
 #>
 
 param (
@@ -891,8 +892,8 @@ function Get-FolderSize {
                 Write-Host "`nDescending into largest subfolder: $($largestFolder.Path)" -ForegroundColor Cyan
                 $processed = Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
                 
-                # Only display completion message if we actually processed subfolders
-                if ($processed) {
+                # Only display completion message if subfolders were actually processed
+                if ($processed -eq $true) {
                     Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
                 }
             }
