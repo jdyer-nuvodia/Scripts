@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 17:32:00 UTC
+# Last Updated: 2025-03-04 17:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.7
-# Additional Info: Fixed recursive processing of completion messages with completion state tracking
+# Version: 1.5.8
+# Additional Info: Suppressed return value output in console
 # =============================================================================
 
 # Requires -Version 5.1
@@ -106,6 +106,7 @@
     1.5.5 - Completely redesigned recursive processing to prevent redundant messages
     1.5.6 - Fixed Script Analyzer warnings for unused variables
     1.5.7 - Fixed recursive processing of completion messages with completion state tracking
+    1.5.8 - Suppressed return value output in console
 #>
 
 param (
@@ -948,7 +949,7 @@ function Get-FolderSize {
 }
 
 # Start the Recursive Scan
-Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top
+Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-Null
 
 #endregion
 
