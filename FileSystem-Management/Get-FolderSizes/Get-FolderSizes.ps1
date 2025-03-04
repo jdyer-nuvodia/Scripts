@@ -162,7 +162,7 @@ function Get-PathType {
                         # Use reflection to access the Target property if available
                         $targetProperty = [System.IO.DirectoryInfo].GetProperty("Target", [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::Public)
                         
-                        if ($targetProperty -ne $null) {
+                        if ($null -ne $targetProperty) {
                             $target = $targetProperty.GetValue($dirInfo)
                             if ($target -is [array] -and $target.Length -gt 0) {
                                 $target = $target[0]  # Take first element if array
