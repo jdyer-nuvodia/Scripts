@@ -78,16 +78,19 @@ function Write-Log {
     # Write to console with appropriate color
     switch ($Level) {
         'Info' { 
-            # Use cyan for shadow copy information to make it stand out
-            if ($isShadowCopyInfo -and $Message -match "^(🔍|✅|🗑️|📊)") {
-                if ($Message -match "^✅|^📊") {
+            # Use string prefix checking instead of regex with emojis
+            if ($isShadowCopyInfo) {
+                if ($Message.StartsWith("📊") -or $Message.StartsWith("✅")) {
                     Write-Host $Message -ForegroundColor Green
                 } 
-                elseif ($Message -match "^🗑️") {
+                elseif ($Message.StartsWith("🗑️")) {
                     Write-Host $Message -ForegroundColor Yellow
                 }
-                else {
+                elseif ($Message.StartsWith("🔍")) {
                     Write-Host $Message -ForegroundColor Cyan 
+                }
+                else {
+                    Write-Host $Message
                 }
             }
             else {
