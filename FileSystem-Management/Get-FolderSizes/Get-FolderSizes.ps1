@@ -120,32 +120,84 @@ function Get-PathType {
         $dirInfo = New-Object System.IO.DirectoryInfo $Path
         if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
             # This is a reparse point (symbolic link, junction, etc.)
-            # Get the target path using fsutil
-            $fsutil = & fsutil reparsepoint query "$Path" 2>&1
+            $target = $null
+            $type = "ReparsePoint"
             
-            if ($fsutil -match "Symbolic Link") {
-                return @{
-                    Type = "SymbolicLink"
-                    Target = ($fsutil | Where-Object { $_ -match "Print Name:" } | ForEach-Object { $_.Trim() -replace "^.*Print Name:\s+", "" })
+            # Method 1: Try fsutil for most accurate results
+            try {
+                $fsutil = & fsutil reparsepoint query "$Path" 2>&1
+                
+                if ($fsutil -match "Symbolic Link") {
+                    $type = "SymbolicLink"
+                    # Improved parsing logic for symbolic links
+                    $printNameLine = $fsutil | Where-Object { $_ -match "Print Name:" }
+                    if ($printNameLine) {
+                        $target = ($printNameLine -replace "^.*?Print Name:\s*", "").Trim()
+                    }
+                }
+                elseif ($fsutil -match "Mount Point") {
+                    $type = "MountPoint" 
+                    $printNameLine = $fsutil | Where-Object { $_ -match "Print Name:" }
+                    if ($printNameLine) {
+                        $target = ($printNameLine -replace "^.*?Print Name:\s*", "").Trim()
+                    }
+                }
+                elseif ($fsutil -match "Junction") {
+                    $type = "Junction"
+                    $printNameLine = $fsutil | Where-Object { $_ -match "Print Name:" }
+                    if ($printNameLine) {
+                        $target = ($printNameLine -replace "^.*?Print Name:\s*", "").Trim()
+                    }
                 }
             }
-            elseif ($fsutil -match "Mount Point") {
-                return @{
-                    Type = "MountPoint"
-                    Target = ($fsutil | Where-Object { $_ -match "Print Name:" } | ForEach-Object { $_.Trim() -replace "^.*Print Name:\s+", "" })
+            catch {
+                Write-Verbose "fsutil method failed: $($_.Exception.Message)"
+            }
+            
+            # Method 2: Try .NET method if fsutil didn't work or target is empty
+            if ([string]::IsNullOrEmpty($target)) {
+                try {
+                    # For Windows 10/Server 2016+
+                    if ($PSVersionTable.PSVersion.Major -ge 5) {
+                        # Use reflection to access the Target property if available
+                        $targetProperty = [System.IO.DirectoryInfo].GetProperty("Target", [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::Public)
+                        
+                        if ($targetProperty -ne $null) {
+                            $target = $targetProperty.GetValue($dirInfo)
+                            if ($target -is [array] -and $target.Length -gt 0) {
+                                $target = $target[0]  # Take first element if array
+                            }
+                        }
+                    }
+                }
+                catch {
+                    Write-Verbose ".NET target method failed: $($_.Exception.Message)"
                 }
             }
-            elseif ($fsutil -match "Junction") {
-                return @{
-                    Type = "Junction"
-                    Target = ($fsutil | Where-Object { $_ -match "Print Name:" } | ForEach-Object { $_.Trim() -replace "^.*Print Name:\s+", "" })
+            
+            # Method 3: Use dir command as last resort
+            if ([string]::IsNullOrEmpty($target)) {
+                try {
+                    $dirCommand = cmd /c "dir `"$Path`" | findstr `"<JUNCTION>`" || dir `"$Path`" | findstr `"<SYMLINK>`""
+                    if ($dirCommand -match "<JUNCTION>\s+(.*?)\s+[\[\]]") {
+                        $target = $matches[1]
+                        $type = "Junction"
+                    }
+                    elseif ($dirCommand -match "<SYMLINK>\s+(.*?)\s+[\[\]]") {
+                        $target = $matches[1]
+                        $type = "SymbolicLink"
+                    }
+                }
+                catch {
+                    Write-Verbose "CMD dir method failed: $($_.Exception.Message)"
                 }
             }
-            else {
-                return @{
-                    Type = "ReparsePoint"
-                    Target = "Unknown"
-                }
+            
+            # Return results with either found target or "Unknown Target"
+            return @{
+                Type = $type
+                Target = if ([string]::IsNullOrEmpty($target)) { "Unknown Target" } else { $target }
+                IsReparsePoint = $true
             }
         }
         else {
@@ -153,6 +205,7 @@ function Get-PathType {
             return @{
                 Type = "Directory"
                 Target = $null
+                IsReparsePoint = $false
             }
         }
     }
@@ -161,6 +214,7 @@ function Get-PathType {
         return @{
             Type = "Unknown"
             Target = $null
+            IsReparsePoint = $false
         }
     }
 }
