@@ -2,7 +2,7 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 17:37:00 UTC
+# Last Updated: 2025-03-04 21:17:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.5.8
 # Additional Info: Suppressed return value output in console
@@ -293,43 +293,43 @@ function Get-PathType {
 
 function Initialize-NuGetProvider {
     try {
+        # Set confirmation preference to None to suppress prompts
+        $ConfirmPreference = 'None'
+        
         $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         $minimumVersion = [Version]"2.8.5.201"
-        
-        if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {tinue
+
+        if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
             Write-Host "Installing NuGet provider..." -ForegroundColor Cyan
             
-            # Check internet connectivity firstder.Version -lt $minimumVersion) {
-            try {-Host "Installing NuGet provider..." -ForegroundColor Cyan
+            # Check internet connectivity first
+            try {
                 $testConnection = Test-NetConnection -ComputerName "www.powershellgallery.com" -Port 443 -InformationLevel Quiet -ErrorAction Stop
-                if (-not $testConnection) {irst
+                if (-not $testConnection) {
                     Write-Host "ERROR: Cannot connect to PowerShell Gallery. Internet connection appears to be down." -ForegroundColor Red
-                    return $false Test-NetConnection -ComputerName "www.powershellgallery.com" -Port 443 -InformationLevel Quiet -ErrorAction Stop
-                }f (-not $testConnection) {
-            } catch {rite-Host "ERROR: Cannot connect to PowerShell Gallery. Internet connection appears to be down." -ForegroundColor Red
-                Write-Host "ERROR: Failed to check internet connectivity: $($_.Exception.Message)" -ForegroundColor Red
-                Write-Host "This could prevent module installation from external repositories." -ForegroundColor Yellow
+                    return $false
+                }
             } catch {
                 Write-Host "ERROR: Failed to check internet connectivity: $($_.Exception.Message)" -ForegroundColor Red
-            # Check execution policyld prevent module installation from external repositories." -ForegroundColor Yellow
+                Write-Host "This could prevent module installation from external repositories." -ForegroundColor Yellow
+            }
+            
+            # Check execution policy
             $executionPolicy = Get-ExecutionPolicy
             Write-Host "Current PowerShell execution policy: $executionPolicy" -ForegroundColor Cyan
             if ($executionPolicy -in @("Restricted", "AllSigned")) {
                 Write-Host "WARNING: Current execution policy ($executionPolicy) may prevent module installation." -ForegroundColor Yellow
                 Write-Host "Consider changing to RemoteSigned with: Set-ExecutionPolicy RemoteSigned -Scope Process" -ForegroundColor Yellow
-            }f ($executionPolicy -in @("Restricted", "AllSigned")) {
-                Write-Host "WARNING: Current execution policy ($executionPolicy) may prevent module installation." -ForegroundColor Yellow
-            # Attempt to install using Find-PackageProvidered with: Set-ExecutionPolicy RemoteSigned -Scope Process" -ForegroundColor Yellow
+            }
+
+            # Attempt to install using Find-PackageProvider
             try {
                 Write-Host "Attempting installation via Find-PackageProvider method..." -ForegroundColor Cyan
-                Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -ErrorAction Stop | Install-PackageProvider -Force -ErrorAction Stop
+                Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -ErrorAction Stop | Install-PackageProvider -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
                 Write-Host "NuGet provider installed successfully using Find-PackageProvider." -ForegroundColor Green
-                return $trueAttempting installation via Find-PackageProvider method..." -ForegroundColor Cyan
-            }   Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -ErrorAction Stop | Install-PackageProvider -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
-            catch {te-Host "NuGet provider installed successfully using Find-PackageProvider." -ForegroundColor Green
-                Write-Host "Find-PackageProvider method failed with error details:" -ForegroundColor Red
-                Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
-                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+                return $true
+            }
+            catch {
                 Write-Host "Find-PackageProvider method failed with error details:" -ForegroundColor Red
                 Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
                 Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
@@ -377,139 +377,138 @@ function Initialize-NuGetProvider {
     }
 }
 
-
-to suppress prompts
 function Initialize-ThreadJobModule {
     try {
-        if (-not (Initialize-NuGetProvider)) {f (-not (Initialize-NuGetProvider)) {
-            Write-Warning "Could not initialize NuGet provider. ThreadJob installation may fail."            Write-Warning "Could not initialize NuGet provider. ThreadJob installation may fail."
+        # Set confirmation preference to None to suppress prompts
+        $ConfirmPreference = 'None'
+        
+        if (-not (Initialize-NuGetProvider)) {
+            Write-Warning "Could not initialize NuGet provider. ThreadJob installation may fail."
             return $false
         }
 
         # Check if ThreadJob module is already available
-        if (Get-Module -ListAvailable -Name ThreadJob) {ListAvailable -Name ThreadJob) {
-            Import-Module ThreadJob -ErrorAction Stop   Import-Module ThreadJob -ErrorAction Stop
-            Write-Host "ThreadJob module already installed and imported successfully." -ForegroundColor Green            Write-Host "ThreadJob module already installed and imported successfully." -ForegroundColor Green
+        if (Get-Module -ListAvailable -Name ThreadJob) {
+            Import-Module ThreadJob -ErrorAction Stop
+            Write-Host "ThreadJob module already installed and imported successfully." -ForegroundColor Green
             return $true
-        }}
+        }
 
-        Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
+        Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
         
         # Check PSGallery availability
-        try {ry {
-            $psGallery = Get-PSRepository -Name PSGallery -ErrorAction StopGallery = Get-PSRepository -Name PSGallery -ErrorAction Stop
-            Write-Host "PSGallery repository status: $($psGallery.InstallationPolicy)" -ForegroundColor CyanForegroundColor Cyan
+        try {
+            $psGallery = Get-PSRepository -Name PSGallery -ErrorAction Stop
+            Write-Host "PSGallery repository status: $($psGallery.InstallationPolicy)" -ForegroundColor Cyan
         }
         catch {
-            Write-Host "ERROR: Cannot access PSGallery repository." -ForegroundColor Red   Write-Host "ERROR: Cannot access PSGallery repository." -ForegroundColor Red
-            Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red    Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Attempting to register PSGallery..." -ForegroundColor Yellow to register PSGallery..." -ForegroundColor Yellow
+            Write-Host "ERROR: Cannot access PSGallery repository." -ForegroundColor Red
+            Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Attempting to register PSGallery..." -ForegroundColor Yellow
         }
         
         # Set PSGallery as trusted
         if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
-            try {ry {
-                Register-PSRepository -Default -InstallationPolicy Trusted -ErrorAction Stopister-PSRepository -Default -InstallationPolicy Trusted -ErrorAction Stop
+            try {
+                Register-PSRepository -Default -InstallationPolicy Trusted -ErrorAction Stop
                 Write-Host "Successfully registered PSGallery repository." -ForegroundColor Green
             }
             catch {
                 Write-Host "ERROR: Failed to register PSGallery repository:" -ForegroundColor Red
-                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Redrite-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
                 if ($_.Exception.InnerException) {
-                    Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Redt "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
-                }   }
-                Write-Host "Please register PSGallery manually: Register-PSRepository -Default" -ForegroundColor YellowWrite-Host "Please register PSGallery manually: Register-PSRepository -Default" -ForegroundColor Yellow
-                return $falseeturn $false
+                    Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
+                }
+                Write-Host "Please register PSGallery manually: Register-PSRepository -Default" -ForegroundColor Yellow
+                return $false
             }
         } else {
-            try {ry {
-                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
-                Write-Host "Successfully set PSGallery repository as trusted." -ForegroundColor Greenlor Green
+            try {
+                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
+                Write-Host "Successfully set PSGallery repository as trusted." -ForegroundColor Green
             }
             catch {
-                Write-Host "ERROR: Failed to set PSGallery as trusted:" -ForegroundColor Red   Write-Host "ERROR: Failed to set PSGallery as trusted:" -ForegroundColor Red
-                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red       Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-                Write-Host "This may prevent automatic module installation." -ForegroundColor Yellow                Write-Host "This may prevent automatic module installation." -ForegroundColor Yellow
+                Write-Host "ERROR: Failed to set PSGallery as trusted:" -ForegroundColor Red
+                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "This may prevent automatic module installation." -ForegroundColor Yellow
             }
         }
 
         # Install ThreadJob module with diagnostics
         try {
-            Write-Host "Attempting to install ThreadJob module..." -ForegroundColor Cyan   Write-Host "Attempting to install ThreadJob module..." -ForegroundColor Cyan
-            Install-Module -Name ThreadJob -Repository PSGallery -Scope AllUsers -Force -AllowClobber -ErrorAction Stop -Verbosetall-Module -Name ThreadJob -Repository PSGallery -Scope AllUsers -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop -Verbose
+            Write-Host "Attempting to install ThreadJob module..." -ForegroundColor Cyan
+            Install-Module -Name ThreadJob -Repository PSGallery -Scope AllUsers -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop -Verbose
             Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
         }
         catch {
-            Write-Host "ERROR: Failed to install ThreadJob module:" -ForegroundColor RedWrite-Host "ERROR: Failed to install ThreadJob module:" -ForegroundColor Red
-            Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red.GetType().FullName)" -ForegroundColor Red
-            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor RedregroundColor Red
+            Write-Host "ERROR: Failed to install ThreadJob module:" -ForegroundColor Red
+            Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
             
             # Additional diagnostics for common issues
-            if ($_.Exception.Message -match "administrator|elevated") {f ($_.Exception.Message -match "administrator|elevated") {
-                Write-Host "DIAGNOSIS: Installation requires administrator privileges." -ForegroundColor Yellowistrator privileges." -ForegroundColor Yellow
+            if ($_.Exception.Message -match "administrator|elevated") {
+                Write-Host "DIAGNOSIS: Installation requires administrator privileges." -ForegroundColor Yellow
                 Write-Host "Please restart PowerShell as Administrator and try again." -ForegroundColor Yellow
             }
-            elseif ($_.Exception.Message -match "access|denied") {lseif ($_.Exception.Message -match "access|denied") {
-                Write-Host "DIAGNOSIS: Access denied error. Check folder permissions." -ForegroundColor Yellow    Write-Host "DIAGNOSIS: Access denied error. Check folder permissions." -ForegroundColor Yellow
+            elseif ($_.Exception.Message -match "access|denied") {
+                Write-Host "DIAGNOSIS: Access denied error. Check folder permissions." -ForegroundColor Yellow
                 Write-Host "Try using -Scope CurrentUser instead of -Scope AllUsers" -ForegroundColor Yellow
             }
             
-            Write-Host "MANUAL INSTALLATION: Please install ThreadJob module manually with:" -ForegroundColor YellowANUAL INSTALLATION: Please install ThreadJob module manually with:" -ForegroundColor Yellow
-            Write-Host "Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Force" -ForegroundColor Yellow   Write-Host "Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck" -ForegroundColor Yellow
-                        
+            Write-Host "MANUAL INSTALLATION: Please install ThreadJob module manually with:" -ForegroundColor Yellow
+            Write-Host "Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck" -ForegroundColor Yellow
+            
             return $false
         }
 
         # Import the module with diagnostics
         try {
-            Import-Module ThreadJob -ErrorAction Stop   Import-Module ThreadJob -ErrorAction Stop
-            Write-Host "ThreadJob module imported successfully." -ForegroundColor Greente-Host "ThreadJob module imported successfully." -ForegroundColor Green
+            Import-Module ThreadJob -ErrorAction Stop
+            Write-Host "ThreadJob module imported successfully." -ForegroundColor Green
             return $true
         }
         catch {
-            Write-Host "ERROR: Failed to import ThreadJob module:" -ForegroundColor RedRROR: Failed to import ThreadJob module:" -ForegroundColor Red
-            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red   Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Module may have installed but cannot be loaded." -ForegroundColor Yellow       Write-Host "Module may have installed but cannot be loaded." -ForegroundColor Yellow
-            return $false return $false
+            Write-Host "ERROR: Failed to import ThreadJob module:" -ForegroundColor Red
+            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Module may have installed but cannot be loaded." -ForegroundColor Yellow
+            return $false
         }
     }
     catch {
-        Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"   Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
-        Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow       Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow
-        return $false        return $false
-    }    }
-}}
+        Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
+        Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow
+        return $false
+    }
+}
 
-
-
-function Format-SizeWithPadding {{
+function Format-SizeWithPadding {
     param (
-        [double]$Size,   [double]$Size,
-        [int]$DecimalPlaces = 2,    [int]$DecimalPlaces = 2,
-        [string]$Unit = "GB"t = "GB"
+        [double]$Size,
+        [int]$DecimalPlaces = 2,
+        [string]$Unit = "GB"
     )
     
     switch ($Unit) {
         "GB" { $divider = 1GB }
-        "MB" { $divider = 1MB }   "MB" { $divider = 1MB }
-        "KB" { $divider = 1KB }    "KB" { $divider = 1KB }
+        "MB" { $divider = 1MB }
+        "KB" { $divider = 1KB }
         default { $divider = 1GB }
-    }   }
+    }
         
-    return "{0:F$DecimalPlaces}" -f ($Size / $divider)alPlaces}" -f ($Size / $divider)
+    return "{0:F$DecimalPlaces}" -f ($Size / $divider)
 }
 
-function Format-Path {ion Format-Path {
-    param ( (
+function Format-Path {
+    param (
         [string]$Path
     )
-    try {ry {
-        $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())llPath = [System.IO.Path]::GetFullPath($Path.Trim())
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
         return $fullPath
     }
-    catch {atch {
-        Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"       Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
-        return $Path        return $Path
+    catch {
+        Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
+        return $Path
     }
 }
 
@@ -517,383 +516,383 @@ function Write-TableHeader {
     param([int]$Width = 150)
     
     Write-Host ("-" * $Width)
-    Write-Host ("Folder Path".PadRight(50) + " | " +  | " + 
+    Write-Host ("Folder Path".PadRight(50) + " | " + 
                 "Size (GB)".PadLeft(11) + " | " + 
-                "Subfolders".PadLeft(15) + " | " + PadLeft(15) + " | " + 
-                "Files".PadLeft(12) + " | " +                "Files".PadLeft(12) + " | " + 
-                "Largest File (in this directory)")                "Largest File (in this directory)")
-    Write-Host ("-" * $Width)dth)
+                "Subfolders".PadLeft(15) + " | " + 
+                "Files".PadLeft(12) + " | " + 
+                "Largest File (in this directory)")
+    Write-Host ("-" * $Width)
 }
 
-function Write-TableRow {Row {
+function Write-TableRow {
     param(
-        [string]$FolderPath,ath,
+        [string]$FolderPath,
         [long]$Size,
-        [int]$SubfolderCount,   [int]$SubfolderCount,
-        [int]$FileCount,    [int]$FileCount,
+        [int]$SubfolderCount,
+        [int]$FileCount,
         [object]$LargestFile
     )
     
-    $sizeGB = Format-SizeWithPadding -Size $Size -DecimalPlaces 2 -Unit "GB"cimalPlaces 2 -Unit "GB"
-    $largestFileInfo = if ($LargestFile) {FileInfo = if ($LargestFile) {
-        $largestFileSize = Format-SizeWithPadding -Size $LargestFile.Size -DecimalPlaces 2 -Unit "MB" = Format-SizeWithPadding -Size $LargestFile.Size -DecimalPlaces 2 -Unit "MB"
-        "$($LargestFile.Name) ($largestFileSize MB)"   "$($LargestFile.Name) ($largestFileSize MB)"
-    } else {} else {
+    $sizeGB = Format-SizeWithPadding -Size $Size -DecimalPlaces 2 -Unit "GB"
+    $largestFileInfo = if ($LargestFile) {
+        $largestFileSize = Format-SizeWithPadding -Size $LargestFile.Size -DecimalPlaces 2 -Unit "MB"
+        "$($LargestFile.Name) ($largestFileSize MB)"
+    } else {
         "No files found"
     }
     
     Write-Host ($FolderPath.PadRight(50) + " | " + 
-                $sizeGB.PadLeft(11) + " | " + 1) + " | " + 
-                $SubfolderCount.ToString().PadLeft(15) + " | " +                $SubfolderCount.ToString().PadLeft(15) + " | " + 
-                $FileCount.ToString().PadLeft(12) + " | " +                 $FileCount.ToString().PadLeft(12) + " | " + 
-                $largestFileInfo)Info)
+                $sizeGB.PadLeft(11) + " | " + 
+                $SubfolderCount.ToString().PadLeft(15) + " | " + 
+                $FileCount.ToString().PadLeft(12) + " | " + 
+                $largestFileInfo)
 }
 
-function Write-ProgressBar {essBar {
+function Write-ProgressBar {
     param (
-        [int]$Completed,   [int]$Completed,
-        [int]$Total,    [int]$Total,
+        [int]$Completed,
+        [int]$Total,
         [int]$Width = 50
     )
     
-    $percentComplete = [math]::Min(100, [math]::Floor(($Completed / $Total) * 100))$percentComplete = [math]::Min(100, [math]::Floor(($Completed / $Total) * 100))
-    $filledWidth = [math]::Floor($Width * ($percentComplete / 100))Width * ($percentComplete / 100))
-    $bar = "[" + ("=" * $filledWidth).PadRight($Width) + "] $percentComplete% | Completed processing $Completed of $Total folders"idth).PadRight($Width) + "] $percentComplete% | Completed processing $Completed of $Total folders"
+    $percentComplete = [math]::Min(100, [math]::Floor(($Completed / $Total) * 100))
+    $filledWidth = [math]::Floor($Width * ($percentComplete / 100))
+    $bar = "[" + ("=" * $filledWidth).PadRight($Width) + "] $percentComplete% | Completed processing $Completed of $Total folders"
     
-    Write-Host "`r$bar" -NoNewlinerite-Host "`r$bar" -NoNewline
-    if ($Completed -eq $Total) {   if ($Completed -eq $Total) {
-        Write-Host ""  # Add a newline when complete        Write-Host ""  # Add a newline when complete
+    Write-Host "`r$bar" -NoNewline
+    if ($Completed -eq $Total) {
+        Write-Host ""  # Add a newline when complete
     }
-}}
+}
 
-#endregion#endregion
+#endregion
 
 #region Setup
 
 # Check for elevated privileges but don't prompt user - continue with limited functionality
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-if (-not $isAdmin) {if (-not $isAdmin) {
-    Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellowirectories may be inaccessible." -ForegroundColor Yellow
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+if (-not $isAdmin) {
+    Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
 }
 
 # PowerShell Version Check and ThreadJob Initialization
-$script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5rsionTable.PSVersion.Major -lt 5
-if ($script:isLegacyPowerShell) {ipt:isLegacyPowerShell) {
-    Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."lity mode. Some features may be limited."
-    $global:useThreadJobs = $false   $global:useThreadJobs = $false
-} else {} else {
-    $global:useThreadJobs = Initialize-ThreadJobModule= Initialize-ThreadJobModule
+$script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
+if ($script:isLegacyPowerShell) {
+    Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
+    $global:useThreadJobs = $false
+} else {
+    $global:useThreadJobs = Initialize-ThreadJobModule
 }
 
 # Transcript Logging Setup
 $transcriptPath = "C:\temp"
 try {
-    if (-not (Test-Path $transcriptPath)) {if (-not (Test-Path $transcriptPath)) {
-        New-Item -ItemType Directory -Path $transcriptPath -Force -ErrorAction SilentlyContinue | Out-Null -Path $transcriptPath -Force -ErrorAction SilentlyContinue | Out-Null
+    if (-not (Test-Path $transcriptPath)) {
+        New-Item -ItemType Directory -Path $transcriptPath -Force -ErrorAction SilentlyContinue | Out-Null
     }
     
-    if (Test-Path $transcriptPath) {-Path $transcriptPath) {
-        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt").txt"
+    if (Test-Path $transcriptPath) {
+        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
     } else {
-        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"   $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
-        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinuetart-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
-        Write-Warning "Could not create transcript in C:\temp, using $transcriptFile instead" in C:\temp, using $transcriptFile instead"
-    }   }
-} catch {} catch {
-    Write-Warning "Failed to start transcript: $_"start transcript: $_"
+        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
+        Write-Warning "Could not create transcript in C:\temp, using $transcriptFile instead"
+    }
+} catch {
+    Write-Warning "Failed to start transcript: $_"
 }
 
 # Script Header in Transcript
 Write-Host "======================================================"
-Write-Host "Folder Size Scanner - Execution Log"- Execution Log"
-Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"'yyyy-MM-dd HH:mm:ss')"
-Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"et-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
+Write-Host "Folder Size Scanner - Execution Log"
+Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
 Write-Host "User: $env:USERNAME"
 Write-Host "Computer: $env:COMPUTERNAME"
 Write-Host "Target Path: $Path"
-Write-Host "Admin Privileges: $isAdmin"dmin Privileges: $isAdmin"
-Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
-Write-Host "======================================================"============================================"
+Write-Host "Admin Privileges: $isAdmin"
+Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
+Write-Host "======================================================"
 Write-Host ""
 
-# .NET Type Definition# .NET Type Definition
-Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinueScanner" -ErrorAction SilentlyContinue
-Remove-TypeData -TypeName "FolderSizeHelper" -ErrorAction SilentlyContinueFolderSizeHelper" -ErrorAction SilentlyContinue
+# .NET Type Definition
+Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
+Remove-TypeData -TypeName "FolderSizeHelper" -ErrorAction SilentlyContinue
 
-# Helper Type for Folder Processingr Folder Processing
-Add-Type -TypeDefinition @"nition @"
+# Helper Type for Folder Processing
+Add-Type -TypeDefinition @"
 using System;
 using System.IO;
 using System.Linq;
-using System.Security;using System.Security;
+using System.Security;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;sing System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 public static class FolderSizeHelper
 {
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]rror = true, CharSet = CharSet.Unicode)]
-    static extern bool GetDiskFreeSpaceEx(string lpDirectoryName,ring lpDirectoryName,
-        out ulong lpFreeBytesAvailable,out ulong lpFreeBytesAvailable,
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool GetDiskFreeSpaceEx(string lpDirectoryName,
+        out ulong lpFreeBytesAvailable,
         out ulong lpTotalNumberOfBytes,
-        out ulong lpTotalNumberOfFreeBytes);   out ulong lpTotalNumberOfFreeBytes);
+        out ulong lpTotalNumberOfFreeBytes);
         
-    public static long GetDirectorySize(string path)string path)
+    public static long GetDirectorySize(string path)
     {
-        long size = 0;        long size = 0;
-        var stack = new Stack<string>();tring>();
-        stack.Push(path);tack.Push(path);
+        long size = 0;
+        var stack = new Stack<string>();
+        stack.Push(path);
 
-        while (stack.Count > 0)stack.Count > 0)
+        while (stack.Count > 0)
         {
             string dir = stack.Pop();
             try
             {
-                foreach (string file in Directory.GetFiles(dir))ch (string file in Directory.GetFiles(dir))
+                foreach (string file in Directory.GetFiles(dir))
                 {
-                    tryry
+                    try
                     {
-                        size += new FileInfo(file).Length;       size += new FileInfo(file).Length;
-                    }                    }
+                        size += new FileInfo(file).Length;
+                    }
                     catch (Exception) { }
                 }
 
-                foreach (string subDir in Directory.GetDirectories(dir))oreach (string subDir in Directory.GetDirectories(dir))
-                {   {
+                foreach (string subDir in Directory.GetDirectories(dir))
+                {
                     stack.Push(subDir);
                 }
             }
-            catch (UnauthorizedAccessException) { }cessException) { }
-            catch (SecurityException) { }   catch (SecurityException) { }
-            catch (IOException) { }OException) { }
-            catch (Exception) { }       catch (Exception) { }
-        }        }
+            catch (UnauthorizedAccessException) { }
+            catch (SecurityException) { }
+            catch (IOException) { }
+            catch (Exception) { }
+        }
         return size;
     }
 
-    public static Tuple<int, int> GetDirectoryCounts(string path)int, int> GetDirectoryCounts(string path)
+    public static Tuple<int, int> GetDirectoryCounts(string path)
     {
         int files = 0;
-        int folders = 0;        int folders = 0;
-        var stack = new Stack<string>();tring>();
-        stack.Push(path);tack.Push(path);
+        int folders = 0;
+        var stack = new Stack<string>();
+        stack.Push(path);
 
-        while (stack.Count > 0)stack.Count > 0)
+        while (stack.Count > 0)
         {
             string dir = stack.Pop();
             try
             {
-                files += Directory.GetFiles(dir).Length;Length;
-                var subDirs = Directory.GetDirectories(dir);.GetDirectories(dir);
-                folders += subDirs.Length;olders += subDirs.Length;
-                foreach (var subDir in subDirs) {   foreach (var subDir in subDirs) {
+                files += Directory.GetFiles(dir).Length;
+                var subDirs = Directory.GetDirectories(dir);
+                folders += subDirs.Length;
+                foreach (var subDir in subDirs) {
                     stack.Push(subDir);
                 }
             }
-            catch (UnauthorizedAccessException) { }cessException) { }
-            catch (SecurityException) { }   catch (SecurityException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (SecurityException) { }
             catch (IOException) { }
-            catch (Exception) { }       catch (Exception) { }
-        }        }
+            catch (Exception) { }
+        }
         return new Tuple<int, int>(files, folders);
     }
 
-    public static FileDetails GetLargestFile(string path)c static FileDetails GetLargestFile(string path)
+    public static FileDetails GetLargestFile(string path)
     {
         try
         {
-            var fileInfo = new DirectoryInfo(path)ectoryInfo(path)
-                .GetFiles("*.*", SearchOption.TopDirectoryOnly).GetFiles("*.*", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(f => f.Length)g(f => f.Length)
-                .FirstOrDefault();ult();
+            var fileInfo = new DirectoryInfo(path)
+                .GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(f => f.Length)
+                .FirstOrDefault();
                 
             if (fileInfo == null)
-                return null;   return null;
+                return null;
                 
             return new FileDetails
             {
-                Name = fileInfo.Name,  Name = fileInfo.Name,
-                Path = fileInfo.FullName,       Path = fileInfo.FullName,
-                Size = fileInfo.Length   Size = fileInfo.Length
-            };   };
+                Name = fileInfo.Name,
+                Path = fileInfo.FullName,
+                Size = fileInfo.Length
+            };
         }
-        catchatch
-        {   {
-            return null;        return null;
+        catch
+        {
+            return null;
         }
     }
     
     public class FileDetails
     {
-        public string Name { get; set; }   public string Name { get; set; }
-        public string Path { get; set; }       public string Path { get; set; }
-        public long Size { get; set; }set; }
-    }    }
+        public string Name { get; set; }
+        public string Path { get; set; }
+        public long Size { get; set; }
+    }
 }
-"@ -ErrorAction SilentlyContinue"@ -ErrorAction SilentlyContinue
+"@ -ErrorAction SilentlyContinue
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-Write-Host "Ultra-fast folder analysis starting at: $Path" "Ultra-fast folder analysis starting at: $Path"
-Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Ultra-fast folder analysis starting at: $Path"
+Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
-#endregion#endregion
+#endregion
 
-#region Folder Scanning Logicder Scanning Logic
+#region Folder Scanning Logic
 
 function Get-FolderSize {
     param (
-        [string]$FolderPath,FolderPath,
-        [int]$CurrentDepth,   [int]$CurrentDepth,
-        [int]$MaxDepth,        [int]$MaxDepth,
-        [int]$Topint]$Top
+        [string]$FolderPath,
+        [int]$CurrentDepth,
+        [int]$MaxDepth,
+        [int]$Top
     )
 
     try {
-        if ($CurrentDepth -gt $MaxDepth) {) {
+        if ($CurrentDepth -gt $MaxDepth) {
             return @{ 
-                ProcessedFolders = $false;    ProcessedFolders = $false; 
-                HasSubfolders = $false;       HasSubfolders = $false;
-                CompletionMessageShown = $false                CompletionMessageShown = $false
+                ProcessedFolders = $false; 
+                HasSubfolders = $false; 
+                CompletionMessageShown = $false
             }
         }
 
-        $folderPath = Format-Path $FolderPathFormat-Path $FolderPath
-        if (-not (Test-Path -Path $folderPath -PathType Container)) {th -PathType Container)) {
-            Write-Warning "Path '$FolderPath' does not exist or is not a directory."rPath' does not exist or is not a directory."
+        $folderPath = Format-Path $FolderPath
+        if (-not (Test-Path -Path $folderPath -PathType Container)) {
+            Write-Warning "Path '$FolderPath' does not exist or is not a directory."
             return @{ 
-                ProcessedFolders = $false;    ProcessedFolders = $false; 
-                HasSubfolders = $false;       HasSubfolders = $false;
-                CompletionMessageShown = $false                CompletionMessageShown = $false
+                ProcessedFolders = $false; 
+                HasSubfolders = $false; 
+                CompletionMessageShown = $false
             }
         }
 
-        # Check if this path is a symbolic link, junction, or mount point, junction, or mount point
-        $pathType = Get-PathType -Path $folderPathath $folderPath
+        # Check if this path is a symbolic link, junction, or mount point
+        $pathType = Get-PathType -Path $folderPath
         
         # Special handling for OneDrive folders
         if ($pathType.IsOneDrive) {
-            Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Cyan   Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Cyan
-            Write-Host "OneDrive folder - continuing with scan (files may be cloud-based)" -ForegroundColor Cyanbased)" -ForegroundColor Cyan
+            Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Cyan
+            Write-Host "OneDrive folder - continuing with scan (files may be cloud-based)" -ForegroundColor Cyan
             # No need to follow the link for OneDrive folders - continue with current path
         }
-        elseif ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {pe -ne "Unknown") {
+        elseif ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
             Write-Host "`nDetected $($pathType.Type) at '$folderPath'" -ForegroundColor Yellow
             
-            # If it's a link, try to use the target path instead it's a link, try to use the target path instead
-            if ($pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {rget -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
-                Write-Host "Following link to target: $($pathType.Target)" -ForegroundColor YellowForegroundColor Yellow
+            # If it's a link, try to use the target path instead
+            if ($pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
+                Write-Host "Following link to target: $($pathType.Target)" -ForegroundColor Yellow
                 
-                # Handle relative paths in targets relative paths in targets
-                if (-not [System.IO.Path]::IsPathRooted($pathType.Target)) {ooted($pathType.Target)) {
-                    $targetPath = Join-Path (Split-Path $folderPath -Parent) $pathType.Target   $targetPath = Join-Path (Split-Path $folderPath -Parent) $pathType.Target
-                } else {} else {
-                    $targetPath = $pathType.TargetTarget
+                # Handle relative paths in targets
+                if (-not [System.IO.Path]::IsPathRooted($pathType.Target)) {
+                    $targetPath = Join-Path (Split-Path $folderPath -Parent) $pathType.Target
+                } else {
+                    $targetPath = $pathType.Target
                 }
                 
-                # Check if the target existsif the target exists
+                # Check if the target exists
                 if (Test-Path -Path $targetPath -PathType Container) {
                     $folderPath = $targetPath
-                } else { else {
-                    Write-Warning "Target path '$targetPath' does not exist or is not accessible."       Write-Warning "Target path '$targetPath' does not exist or is not accessible."
-                    # Continue with the original path           # Continue with the original path
-                }                }
+                } else {
+                    Write-Warning "Target path '$targetPath' does not exist or is not accessible."
+                    # Continue with the original path
+                }
             }
         }
 
-        Write-Host "`nTop $Top Largest Folders in: $folderPath" -ForegroundColor CyanderPath" -ForegroundColor Cyan
+        Write-Host "`nTop $Top Largest Folders in: $folderPath" -ForegroundColor Cyan
         Write-Host ""
 
-        # Get Folder Size and Counts using .NET methods        # Get Folder Size and Counts using .NET methods
-        $counts = [FolderSizeHelper]::GetDirectoryCounts($folderPath)izeHelper]::GetDirectoryCounts($folderPath)
+        # Get Folder Size and Counts using .NET methods
+        $counts = [FolderSizeHelper]::GetDirectoryCounts($folderPath)
         $folderCount = $counts.Item2
 
         # Get Largest File
-        $largestFile = [FolderSizeHelper]::GetLargestFile($folderPath)derSizeHelper]::GetLargestFile($folderPath)
+        $largestFile = [FolderSizeHelper]::GetLargestFile($folderPath)
 
         # Display largest file information
         if ($largestFile) {
-            Write-Host "`nLargest file in $folderPath :" -ForegroundColor GreenundColor Green
-            Write-Host "Name: $($largestFile.Name)""
+            Write-Host "`nLargest file in $folderPath :" -ForegroundColor Green
+            Write-Host "Name: $($largestFile.Name)"
             $fileSize = if ($largestFile.Size -gt 1MB) {
-                "$([Math]::Round($largestFile.Size / 1MB, 2)) MB"Math]::Round($largestFile.Size / 1MB, 2)) MB"
-            } elseif ($largestFile.Size -gt 1KB) {1KB) {
-                "$([Math]::Round($largestFile.Size / 1KB, 2)) KB"   "$([Math]::Round($largestFile.Size / 1KB, 2)) KB"
+                "$([Math]::Round($largestFile.Size / 1MB, 2)) MB"
+            } elseif ($largestFile.Size -gt 1KB) {
+                "$([Math]::Round($largestFile.Size / 1KB, 2)) KB"
             } else {
-                "$($largestFile.Size) bytes"       "$($largestFile.Size) bytes"
-            }            }
-            Write-Host "Size: $fileSize"ize"
+                "$($largestFile.Size) bytes"
+            }
+            Write-Host "Size: $fileSize"
         }
 
         # Get Subfolders and Process
-        $subFolders = try { Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop } catch { Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"; @() }ath $folderPath -Directory -ErrorAction Stop } catch { Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"; @() }
+        $subFolders = try { Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop } catch { Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"; @() }
 
-        if ($subFolders -and $subFolders.Count -gt 0) {$subFolders -and $subFolders.Count -gt 0) {
+        if ($subFolders -and $subFolders.Count -gt 0) {
             $folderCount = $subFolders.Count
-            Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan$folderCount subfolders to process..." -ForegroundColor Cyan
+            Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan
             
-            # Calculate folder sizes for sortinging
-            $sortedFolders = @()$sortedFolders = @()
+            # Calculate folder sizes for sorting
+            $sortedFolders = @()
             $currentIndex = 0
-            $totalFolders = $subFolders.CountbFolders.Count
+            $totalFolders = $subFolders.Count
             
             foreach ($folder in $subFolders) {
-                $currentIndex++currentIndex++
-                if ($currentIndex % 10 -eq 0 -and $totalFolders -gt 50) {if ($currentIndex % 10 -eq 0 -and $totalFolders -gt 50) {
-                    Write-Progress -Activity "Calculating folder sizes" -Status "$currentIndex of $totalFolders" -PercentComplete (($currentIndex / $totalFolders) * 100)culating folder sizes" -Status "$currentIndex of $totalFolders" -PercentComplete (($currentIndex / $totalFolders) * 100)
-                }}
+                $currentIndex++
+                if ($currentIndex % 10 -eq 0 -and $totalFolders -gt 50) {
+                    Write-Progress -Activity "Calculating folder sizes" -Status "$currentIndex of $totalFolders" -PercentComplete (($currentIndex / $totalFolders) * 100)
+                }
                 
                 $subFolderPath = $folder.FullName
                 
-                # Check if folder is a symbolic link or junction pointtion point
-                $subPathType = Get-PathType -Path $subFolderPathath $subFolderPath
+                # Check if folder is a symbolic link or junction point
+                $subPathType = Get-PathType -Path $subFolderPath
                 
-                # Use a different color for OneDrive folders Use a different color for OneDrive folders
+                # Use a different color for OneDrive folders
                 if ($subPathType.IsOneDrive) {
                     Write-Host "  - $($subFolderPath): $($subPathType.Type) - OneDrive cloud storage" -ForegroundColor Cyan
                 }
-                elseif ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown") {elseif ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown") {
-                    Write-Host "  - $($subFolderPath): $($subPathType.Type) pointing to $($subPathType.Target)" -ForegroundColor Yellowrget)" -ForegroundColor Yellow
+                elseif ($subPathType.Type -ne "Directory" -and $subPathType.Type -ne "Unknown") {
+                    Write-Host "  - $($subFolderPath): $($subPathType.Type) pointing to $($subPathType.Target)" -ForegroundColor Yellow
                 }
                 
-                $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }$subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
-                $subFolderCounts = try { [FolderSizeHelper]::GetDirectoryCounts($subFolderPath) } catch { New-Object -TypeName 'System.Tuple[int,int]'(0, 0) }Helper]::GetDirectoryCounts($subFolderPath) } catch { New-Object -TypeName 'System.Tuple[int,int]'(0, 0) }
-                $subFolderLargestFile = try { [FolderSizeHelper]::GetLargestFile($subFolderPath) } catch { $null }ry { [FolderSizeHelper]::GetLargestFile($subFolderPath) } catch { $null }
+                $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
+                $subFolderCounts = try { [FolderSizeHelper]::GetDirectoryCounts($subFolderPath) } catch { New-Object -TypeName 'System.Tuple[int,int]'(0, 0) }
+                $subFolderLargestFile = try { [FolderSizeHelper]::GetLargestFile($subFolderPath) } catch { $null }
                 
                 $sortedFolders += [PSCustomObject]@{
                     Path = $subFolderPath
                     Size = $subFolderSize
-                    FileCount = $subFolderCounts.Item1.Item1
-                    FolderCount = $subFolderCounts.Item2ts.Item2
-                    LargestFile = $subFolderLargestFile   LargestFile = $subFolderLargestFile
-                    PathType = $subPathType.Type       PathType = $subPathType.Type
-                    Target = $subPathType.Target        Target = $subPathType.Target
+                    FileCount = $subFolderCounts.Item1
+                    FolderCount = $subFolderCounts.Item2
+                    LargestFile = $subFolderLargestFile
+                    PathType = $subPathType.Type
+                    Target = $subPathType.Target
                 }
-            }}
+            }
             
             Write-Progress -Activity "Calculating folder sizes" -Completed
             
-            # Sort folders by size in descending ordering order
-            $sortedFolders = $sortedFolders | Sort-Object -Property Size -Descending$sortedFolders | Sort-Object -Property Size -Descending
+            # Sort folders by size in descending order
+            $sortedFolders = $sortedFolders | Sort-Object -Property Size -Descending
             
             # Always display the table header
             Write-TableHeader
             
-            # Get top folders but ensure we don't exceed available folders# Get top folders but ensure we don't exceed available folders
-            $topFoldersCount = [Math]::Min($Top, $sortedFolders.Count)$sortedFolders.Count)
-            $topFolders = $sortedFolders | Select-Object -First $topFoldersCountect-Object -First $topFoldersCount
+            # Get top folders but ensure we don't exceed available folders
+            $topFoldersCount = [Math]::Min($Top, $sortedFolders.Count)
+            $topFolders = $sortedFolders | Select-Object -First $topFoldersCount
             
-            # Display each folder in table formatsplay each folder in table format
+            # Display each folder in table format
             foreach ($folder in $topFolders) {
-                Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile$folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
+                Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
                 
                 # If it's a special path type, add an info line
-                if ($folder.PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {
+                if ($folder.PathType -ne "Directory" -and $folder.PathType -ne "Unknown") {
                     if ($folder.PathType -eq "OneDriveFolder") {
-                        Write-Host "  ^ OneDrive cloud-based storage" -ForegroundColor Cyan   Write-Host "  ^ OneDrive cloud-based storage" -ForegroundColor Cyan
-                    } else {   } else {
-                        Write-Host "  ^ $($folder.PathType) pointing to: $($folder.Target)" -ForegroundColor Yellow           Write-Host "  ^ $($folder.PathType) pointing to: $($folder.Target)" -ForegroundColor Yellow
-                    }        }
+                        Write-Host "  ^ OneDrive cloud-based storage" -ForegroundColor Cyan
+                    } else {
+                        Write-Host "  ^ $($folder.PathType) pointing to: $($folder.Target)" -ForegroundColor Yellow
+                    }
                 }
             }
             
@@ -901,110 +900,108 @@ function Get-FolderSize {
             Write-Host ""
             
             # Process only the largest subfolder if within depth limit
-            $completionMessageShown = $falsepletionMessageShown = $false
+            $completionMessageShown = $false
             if ($CurrentDepth + 1 -le $MaxDepth -and $sortedFolders.Count -gt 0) {
-                $largestFolder = $sortedFolders[0] # Get the single largest folder$largestFolder = $sortedFolders[0] # Get the single largest folder
+                $largestFolder = $sortedFolders[0] # Get the single largest folder
                 
                 Write-Host "`nDescending into largest subfolder: $($largestFolder.Path)" -ForegroundColor Cyan
                 
-                # Call recursively and capture the structured return valuetructured return value
-                $result = Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
+                # Call recursively and capture the structured return value
+                $result = Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
                 
                 # Only show a completion message if:
                 # 1. Processing happened
                 # 2. The child had subfolders
-                # 3. No completion message has been shown in this branch yets branch yet
+                # 3. No completion message has been shown in this branch yet
                 if ($result.ProcessedFolders -eq $true -and 
-                    $result.HasSubfolders -eq $true -and  -and 
-                    $result.CompletionMessageShown -eq $false) {ult.CompletionMessageShown -eq $false) {
-                    Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor GreenoregroundColor Green
+                    $result.HasSubfolders -eq $true -and 
+                    $result.CompletionMessageShown -eq $false) {
+                    Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
                     $completionMessageShown = $true
-                } else { else {
-                    # Propagate the completion message state from child to parent       # Propagate the completion message state from child to parent
-                    $completionMessageShown = $result.CompletionMessageShown        $completionMessageShown = $result.CompletionMessageShown
+                } else {
+                    # Propagate the completion message state from child to parent
+                    $completionMessageShown = $result.CompletionMessageShown
                 }
             }
             
             # Return structured information about this level's processing
             return @{ 
-                ProcessedFolders = $true;           # This level processed folders   ProcessedFolders = $true;           # This level processed folders
-                HasSubfolders = $true;              # This level had subfoldersHasSubfolders = $true;              # This level had subfolders
-                CompletionMessageShown = $completionMessageShown  # Track if any completion message was shown completion message was shown
+                ProcessedFolders = $true;           # This level processed folders
+                HasSubfolders = $true;              # This level had subfolders
+                CompletionMessageShown = $completionMessageShown  # Track if any completion message was shown
             }
         } else {
-            Write-Host "No subfolders found to process." -ForegroundColor YellowYellow
-            # Return structured information - processed but had no subfoldersolders
+            Write-Host "No subfolders found to process." -ForegroundColor Yellow
+            # Return structured information - processed but had no subfolders
             return @{ 
-                ProcessedFolders = $true;    # We did process this folder    ProcessedFolders = $true;    # We did process this folder 
-                HasSubfolders = $false;      # But it had no subfolders       HasSubfolders = $false;      # But it had no subfolders
-                CompletionMessageShown = $false  # No completion message needed for leaf nodes           CompletionMessageShown = $false  # No completion message needed for leaf nodes
-            } }
+                ProcessedFolders = $true;    # We did process this folder 
+                HasSubfolders = $false;      # But it had no subfolders
+                CompletionMessageShown = $false  # No completion message needed for leaf nodes
+            }
         }
     }
     catch {
-        Write-Warning "Error processing folder '$FolderPath': $($_.Exception.Message)"sing folder '$FolderPath': $($_.Exception.Message)"
+        Write-Warning "Error processing folder '$FolderPath': $($_.Exception.Message)"
         return @{ 
-            ProcessedFolders = $false;    ProcessedFolders = $false; 
-            HasSubfolders = $false;       HasSubfolders = $false;
-            CompletionMessageShown = $false           CompletionMessageShown = $false
-        }        }
+            ProcessedFolders = $false; 
+            HasSubfolders = $false; 
+            CompletionMessageShown = $false
+        }
     }
 }
 
-# Start the Recursive Scane Recursive Scan
-Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-NullGet-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-Null
+# Start the Recursive Scan
+Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-Null
 
 #endregion
 
 #region Drive Information Display
-function Show-DriveInfo { {
-    param (aram (
-        [Parameter(Mandatory=$true)]    [Parameter(Mandatory=$true)]
+function Show-DriveInfo {
+    param (
+        [Parameter(Mandatory=$true)]
         [object]$Volume
     )
     
     Write-Host "`nDrive Volume Details:" -ForegroundColor Green
     Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor CyanCyan
+    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
     Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
     Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
     Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan   Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyanrite-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
+    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
 }
 
 try {
-    # Get all available volumes with drive letters and sort them with drive letters and sort them
-    $volumes = Get-Volume |     $volumes = Get-Volume | 
-        Where-Object { $_.DriveLetter } | Letter } | 
+    # Get all available volumes with drive letters and sort them
+    $volumes = Get-Volume | 
+        Where-Object { $_.DriveLetter } | 
         Sort-Object DriveLetter
 
-    if ($volumes.Count -eq 0) {f ($volumes.Count -eq 0) {
-        Write-Error "No drives with letters found on the system."        Write-Error "No drives with letters found on the system."
+    if ($volumes.Count -eq 0) {
+        Write-Error "No drives with letters found on the system."
         exit
     }
 
     # Select the volume with lowest drive letter
     $lowestVolume = $volumes[0]
        
-    Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellowte-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
+    Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
     Show-DriveInfo -Volume $lowestVolume
 }
 catch {
-    Write-Error "Error accessing drive information. Error: $_"    Write-Error "Error accessing drive information. Error: $_"
+    Write-Error "Error accessing drive information. Error: $_"
 }
-#endregionegion
+#endregion
 
 # Stop Transcript
 try {
     Stop-Transcript
-    Write-Host "Transcript stopped. Log file: $transcriptFile"   Write-Host "Transcript stopped. Log file: $transcriptFile"
-} catch {} catch {
+    Write-Host "Transcript stopped. Log file: $transcriptFile"
+} catch {
     Write-Warning "Failed to stop transcript: $_"
-}}
-
-
+}
 
 Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
 Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
