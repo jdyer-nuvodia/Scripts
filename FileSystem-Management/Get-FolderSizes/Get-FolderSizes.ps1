@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 17:25:00 UTC
+# Last Updated: 2025-03-04 17:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.5
-# Additional Info: Completely redesigned recursive processing to prevent redundant messages
+# Version: 1.5.6
+# Additional Info: Fixed Script Analyzer warnings for unused variables
 # =============================================================================
 
 # Requires -Version 5.1
@@ -104,6 +104,7 @@
     1.5.3 - Fixed redundant completion messages in recursive processing
     1.5.4 - Eliminated redundant completion messages in recursive processing
     1.5.5 - Completely redesigned recursive processing to prevent redundant messages
+    1.5.6 - Fixed Script Analyzer warnings for unused variables
 #>
 
 param (
@@ -887,7 +888,6 @@ function Get-FolderSize {
             Write-Host ""
             
             # Process only the largest subfolder if within depth limit
-            $hasProcessedSubFolders = $false
             if ($CurrentDepth + 1 -le $MaxDepth -and $sortedFolders.Count -gt 0) {
                 $largestFolder = $sortedFolders[0] # Get the single largest folder
                 
@@ -898,14 +898,8 @@ function Get-FolderSize {
                 
                 # Only display completion message if this level actually did something
                 # AND we don't show completion message for terminal nodes (nodes with no subfolders)
-                if ($result.ProcessedFolders -eq $true) {
-                    $hasProcessedSubFolders = $true
-                    
-                    # Only show completion message if the child had subfolders
-                    # This prevents the multiple completion messages from bubbling up
-                    if ($result.HasSubfolders -eq $true) {
-                        Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
-                    }
+                if ($result.ProcessedFolders -eq $true -and $result.HasSubfolders -eq $true) {
+                    Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
                 }
             }
             
@@ -930,7 +924,7 @@ function Get-FolderSize {
 }
 
 # Start the Recursive Scan
-$scanResult = Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top
+Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top
 
 #endregion
 
