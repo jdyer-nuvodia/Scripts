@@ -234,7 +234,7 @@ finally {
 
 # If not running as SYSTEM, initiate SYSTEM context.
 if (-not (Test-RunningAsSystem)) {
-    $result = Start-SystemContext -ScriptPath $scriptPath
+    Start-SystemContext -ScriptPath $scriptPath
     # Suppress boolean output
     exit
 }
