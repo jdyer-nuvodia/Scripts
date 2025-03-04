@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 14:32:00 UTC
+# Last Updated: 2025-03-12 18:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.0
-# Additional Info: Fixed script execution error when running as SYSTEM context
+# Version: 3.2
+# Additional Info: Fixed script warning; improved shadow copy deletion logging
 # =============================================================================
 
 <#
@@ -530,8 +530,12 @@ function Start-ShadowCopyCleanup {
             if ($id -ne $keepId) {
                 Write-Log "Removing shadow copy ID: $id (Created: $($dates[$i]))" -Level Verbose
                 try {
-                    $output = vssadmin delete shadows /shadow=$id /quiet
+                    Write-Host "🗑️ Removing shadow copy ID: $id (Created: $($dates[$i]))" -ForegroundColor Yellow
+                    $deleteOutput = vssadmin delete shadows /shadow=$id /quiet
+                    # Log the command output for debugging purposes
+                    Write-Log "Delete operation output: $($deleteOutput -join "`n")" -Level Debug
                     Write-Log "Deleted shadow copy from $($dates[$i])" -Level Info
+                    Write-Host "   Deleted shadow copy from $($dates[$i])" -ForegroundColor Yellow
                     $deletedCount++
                 }
                 catch {
@@ -540,7 +544,10 @@ function Start-ShadowCopyCleanup {
             }
         }
         
+        # Enhanced summary with emoji for visibility
+        Write-Host "`n📊 Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -ForegroundColor Green
         Write-Log "Shadow Copy cleanup summary: $deletedCount copies removed, 1 preserved" -Level Info
+        
         return $true
     }
     catch {
