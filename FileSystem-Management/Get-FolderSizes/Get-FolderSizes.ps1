@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 19:46:00 UTC
+# Last Updated: 2025-03-05 21:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.0
-# Additional Info: Standardized console output colors to match organizational standards
+# Version: 1.7.1
+# Additional Info: Enhanced silent NuGet provider installation to prevent prompts
 # =============================================================================
 
 # Requires -Version 5.1
@@ -129,6 +129,7 @@
     1.6.8 - Fixed variable name conflicts causing incorrect path targeting
     1.6.9 - Eliminated PowerShell window by using background jobs instead of Process
     1.7.0 - Standardized console output colors to match organizational standards
+    1.7.1 - Enhanced silent NuGet provider installation to prevent prompts
 #>
 
 param (
@@ -146,13 +147,13 @@ try {
     # Store original Path parameter value to prevent overwrites
     $originalPath = $Path
 
-    # Force automatic "yes" to all prompts and silence progress
-    $ProgressPreference = 'SilentlyContinue'
-    $ConfirmPreference = 'None'
-    $ErrorActionPreference = 'SilentlyContinue'
+    # Set strict silent mode from the very start
+    $global:ConfirmPreference = 'None'
+    $global:ProgressPreference = 'SilentlyContinue'
+    $global:ErrorActionPreference = 'SilentlyContinue'
     
     # Set up global parameter defaults to prevent prompts
-    $PSDefaultParameterValues = @{
+    $global:PSDefaultParameterValues = @{
         'Install-Module:Force' = $true
         'Install-Module:SkipPublisherCheck' = $true
         'Install-Module:Confirm' = $false
@@ -160,6 +161,7 @@ try {
         'Install-PackageProvider:Force' = $true
         'Install-PackageProvider:Confirm' = $false
         'Install-PackageProvider:Scope' = 'CurrentUser'
+        'Install-PackageProvider:SkipPublisherCheck' = $true
         'Register-PSRepository:InstallationPolicy' = 'Trusted'
         'Import-Module:ErrorAction' = 'SilentlyContinue'
         '*:Confirm' = $false
@@ -168,21 +170,49 @@ try {
     # Add required environment variables
     $env:POWERSHELL_UPDATECHECK = 'Off'
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
+    $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 'true'
+    $env:NUGET_XMLDOC_MODE = 'skip'
     
-    # Direct registry modifications for all possible PowerShell provider settings
-    # Create all required registry keys to pre-approve NuGet
-    $regKeys = @(
+    # Force PackageManagement to use CurrentUser scope
+    [System.Environment]::SetEnvironmentVariable('POWERSHELL_UPDATECHECK', 'Off', [System.EnvironmentVariableTarget]::Process)
+    
+    # Create registry structure to bypass all NuGet prompts
+    $regPaths = @(
         'HKLM:\SOFTWARE\Microsoft\PowerShellGet\',
         'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
         'HKLM:\SOFTWARE\Microsoft\PackageManagement\',
         'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
     )
     
-    foreach ($key in $regKeys) {
-        if (-not (Test-Path $key)) { 
-            $null = New-Item -Path $key -Force -ErrorAction SilentlyContinue
+    foreach ($regPath in $regPaths) {
+        # Create PowerShellGet key if it doesn't exist
+        if (-not (Test-Path $regPath)) {
+            try { New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
         }
-        $null = New-ItemProperty -Path $key -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force -ErrorAction SilentlyContinue
+        
+        # Set provider trust settings (NuGetProviderApproved = 1)
+        try { 
+            New-ItemProperty -Path $regPath -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force | Out-Null
+        } catch {}
+    }
+    
+    # Additional registry key for PackageManagement provider bootstrap
+    try {
+        if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\')) {
+            New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\' -Force | Out-Null
+        }
+        if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget')) {
+            New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Force | Out-Null
+        }
+        
+        # Set the provider to bootstrapped state
+        New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Name 'ProviderBootstrapped' -Value 1 -PropertyType DWORD -Force | Out-Null
+    } catch {}
+    
+    # Create NuGet configuration directory if it doesn't exist
+    $nugetConfigPath = Join-Path $env:APPDATA 'NuGet'
+    if (-not (Test-Path $nugetConfigPath)) {
+        try { New-Item -Path $nugetConfigPath -ItemType Directory -Force | Out-Null } catch {}
     }
     
     # Direct download and install of NuGet provider DLL to all possible locations
@@ -196,38 +226,74 @@ try {
     
     foreach ($nugetProviderPath in $nugetProviderPaths) {
         if (-not (Test-Path $nugetProviderPath)) {
-            $null = New-Item -Path $nugetProviderPath -ItemType Directory -Force -ErrorAction SilentlyContinue
+            try { New-Item -Path $nugetProviderPath -ItemType Directory -Force | Out-Null } catch {}
         }
         
         try {
             $webClient = New-Object System.Net.WebClient
             $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
             $webClient.DownloadFile($nugetUrl, "$nugetProviderPath\Microsoft.PackageManagement.NuGetProvider.dll")
-        }
-        catch {
-            # Continue silently
-        }
+        } catch {}
     }
     
-    # Instead of creating a temp script and launching a separate process,
-    # execute the provider installation in a silent background job
-    $installJob = Start-Job -ScriptBlock {
+    # Silent NuGet provider installation through background jobs
+    # This ensures no UI prompts can escape
+    $job = Start-Job -ScriptBlock {
+        # Disable progress bars and confirmations inside job
         $ProgressPreference = 'SilentlyContinue'
         $ConfirmPreference = 'None'
         $ErrorActionPreference = 'SilentlyContinue'
-        $PSDefaultParameterValues = @{'*:Confirm' = $false}
-        Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -SkipPublisherCheck -ErrorAction SilentlyContinue | Out-Null
+        
+        # Force set package provider options for current process
+        # Install with force and skip publisher check
+        $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck
+        
+        # Verify it's installed
+        Get-PackageProvider -Name NuGet | Out-Null
+        
+        # Additional workaround - import provider directly
+        $providerPaths = @(
+            "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
+            "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll"
+        )
+        
+        foreach ($providerPath in $providerPaths) {
+            if (Test-Path $providerPath) {
+                try { Import-Module $providerPath -Force } catch {}
+            }
+        }
     }
     
-    # Wait for the job to complete and clean up
-    Wait-Job $installJob -Timeout 30 | Out-Null
-    Remove-Job $installJob -Force -ErrorAction SilentlyContinue
-}
-catch {
-    # Silently continue if pre-emptive installation fails
-}
+    # Wait for the job with a reasonable timeout and clean up
+    Wait-Job -Job $job -Timeout 20 | Out-Null
+    Remove-Job -Job $job -Force
+    
+    # Double-check provider is available
+    $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+    
+    # If provider not registered yet, set pre-approval flag system-wide
+    if (-not $nugetProvider) {
+        # Create a one-time execution script that accepts prompt responses
+        $tempScript = Join-Path $env:TEMP "InstallNuGetProvider_$(Get-Random).ps1"
+        @"
+# Self-cleanup temporary script
+Remove-Item -Path '$tempScript' -Force -ErrorAction SilentlyContinue
+# Silent provider installation
+`$ProgressPreference = 'SilentlyContinue'
+`$ConfirmPreference = 'None'
+`$ErrorActionPreference = 'SilentlyContinue'
+# Force PackageManagement module reload
+Import-Module PackageManagement -Force
+# Install NuGet provider and accept any prompts
+`$null = Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
+"@ | Out-File -FilePath $tempScript -Encoding utf8
+        
+        # Execute the temporary script in a new PowerShell process with appropriate flag to auto-accept prompts
+        Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -NonInteractive -File `"$tempScript`"" -WindowStyle Hidden -Wait
+    }
+} catch {}
 
-# Restore original Path parameter if it was changed
+# Restore original Path parameter
 $Path = $originalPath
 
 #region Helper Functions
