@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:10:30 UTC
+# Last Updated: 2025-03-05 23:12:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0
-# Additional Info: Simplified to remove all group memberships from disabled users
+# Version: 2.1
+# Additional Info: Added automatic log file opening and standardized color scheme
 # =============================================================================
 
 <#
@@ -17,6 +17,7 @@
      - Moves the user to a designated Disabled Users OU
      - Updates the user description with disabled date
      - Key actions are logged to a transcript file
+     - Automatically opens the log file upon completion
      
     Dependencies:
      - Active Directory PowerShell module
@@ -52,11 +53,19 @@ $ReportOnly = $true  # Change this to $false to actively make changes to AD
 # Begin Logging
 Start-Transcript -Path $logfilename
 
+# Display script header
+Write-Host "=======================================================" -ForegroundColor White
+Write-Host "Remove-GroupsFromDisabledUsers.ps1" -ForegroundColor White
+Write-Host "=======================================================" -ForegroundColor White
+
 # Display environment information
+Write-Host "CONFIGURATION:" -ForegroundColor White
 Write-Host "Current domain: $($CurrentDomain.DNSRoot)" -ForegroundColor Cyan
 Write-Host "Target OU: $TargetOU" -ForegroundColor Cyan
-Write-Host "Report only mode: $ReportOnly" -ForegroundColor Cyan
+Write-Host "Report only mode: $ReportOnly" -ForegroundColor Yellow
 Write-Host "Start time: $(Get-Date)" -ForegroundColor White
+Write-Host "Log file: $logfilename" -ForegroundColor DarkGray
+Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
 
 # Check if target OU exists, create if needed
 if (-not $ReportOnly) {
@@ -91,8 +100,9 @@ $DisabledUsers = Search-ADAccount -AccountDisabled -UsersOnly -ResultPageSize 20
 $DisabledUsersCount = $DisabledUsers.Count
 
 # Output the total number of users identified
+Write-Host "PROCESSING:" -ForegroundColor White
 Write-Host "Identified $DisabledUsersCount disabled user accounts" -ForegroundColor Cyan
-Write-Host ("-" * 100) -ForegroundColor DarkGray
+Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
 
 # Counter for tracking progress
 $UserCounter = 0
@@ -192,16 +202,29 @@ Try {
             Write-Host "Error processing user $User: $($_.Exception.Message)" -ForegroundColor Red
         }
         
-        Write-Host ("-" * 100) -ForegroundColor DarkGray
+        Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
     }
 } catch {
     Write-Host "Critical error in main processing loop: $($_.Exception.Message)" -ForegroundColor Red
 }
 
 # End logging transcript
+Write-Host "SUMMARY:" -ForegroundColor White
 Write-Host "End time: $(Get-Date)" -ForegroundColor White
 Write-Host "Total users processed: $UserCounter of $DisabledUsersCount" -ForegroundColor Cyan
+if ($ReportOnly) {
+    Write-Host "NOTE: Script ran in REPORT ONLY mode. No changes were made." -ForegroundColor Magenta
+}
+Write-Host "Log file saved to: $logfilename" -ForegroundColor DarkGray
+Write-Host "=======================================================" -ForegroundColor White
 Stop-Transcript
 
 # Prompt end of script with log location
-[System.Windows.Forms.MessageBox]::Show("Operation complete! Processed $UserCounter disabled users. View logs at:`n$logfilename", "Script Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+[System.Windows.Forms.MessageBox]::Show("Operation complete! Processed $UserCounter disabled users.`n`nA log file has been saved to:`n$logfilename`n`nThe log file will open automatically when you click OK.", "Script Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+
+# Automatically open the log file
+try {
+    Invoke-Item -Path $logfilename
+} catch {
+    [System.Windows.Forms.MessageBox]::Show("Could not open log file: $($_.Exception.Message)", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+}
