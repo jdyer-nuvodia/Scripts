@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:24:00 UTC
+# Last Updated: 2025-03-05 23:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.2
-# Additional Info: Fixed issue with window closing when run via right-click "Run with PowerShell"
+# Version: 3.3
+# Additional Info: Fixed parsing error with variable references in error messages
 # =============================================================================
 
 <#
@@ -97,7 +97,7 @@ Try {
         $UserCounter++
         # Calculate and display progress percentage
         $PercentComplete = [math]::Round(($UserCounter / $DisabledUsersCount) * 100, 1)
-        Write-Host "Processing user $UserCounter of $DisabledUsersCount ($PercentComplete%): $User" -ForegroundColor Cyan
+        Write-Host "Processing user $UserCounter of $DisabledUsersCount ($PercentComplete%): ${User}" -ForegroundColor Cyan
         
         try {
             # Get user details
@@ -134,7 +134,8 @@ Try {
                             Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
                             $GroupsRemovedCounter++
                         } catch {
-                            Write-Host "Error removing from group $($Group.Name): $($_.Exception.Message)" -ForegroundColor Red
+                            # Fixed: Properly format variable reference
+                            Write-Host "Error removing from group $($Group.Name) - $($_.Exception.Message)" -ForegroundColor Red
                         }
                     }
                 }
@@ -155,7 +156,8 @@ Try {
                 Write-Host "User description already indicates disabled status" -ForegroundColor Green
             }
         } catch {
-            Write-Host "Error processing user $User: $($_.Exception.Message)" -ForegroundColor Red
+            # Fixed: Properly format variable reference to avoid the colon issue
+            Write-Host "Error processing user ${User} - $($_.Exception.Message)" -ForegroundColor Red
         }
         
         Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
