@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:02:15 UTC
+# Last Updated: 2025-03-05 23:05:25 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Fixed group creation and domain path issues
+# Version: 1.2
+# Additional Info: Modified to dynamically find any group with 'disabled' in the name
 # =============================================================================
 
 <#
@@ -13,7 +13,7 @@
     Manages disabled AD user accounts by removing group memberships and moving them to a designated OU.
 .DESCRIPTION
     This script performs the following actions on disabled AD user accounts:
-     - Sets DisabledPrimary as the primary group
+     - Sets a "disabled" group as the primary group (dynamically finds groups containing "disabled")
      - Removes all other group memberships
      - Moves the user to a designated Disabled Users OU
      - Updates the user description with disabled date
@@ -40,8 +40,8 @@
 # Import required assembly for MessageBox
 Add-Type -AssemblyName System.Windows.Forms
 
-# Set static variables
-$PrimaryGroupName = "DisabledPrimary"
+# Default group name if none found
+$DefaultDisabledGroupName = "DisabledUsers"
 # Get the current domain
 $CurrentDomain = Get-ADDomain
 $DomainDN = $CurrentDomain.DistinguishedName
@@ -73,34 +73,48 @@ if (-not $ReportOnly) {
     }
 }
 
-# Check if Primary Group exists, create if needed and not in Report Only mode
+# Find any group with 'disabled' in the name (case-insensitive)
 try {
-    $PrimaryGroup = Get-ADGroup -Identity $PrimaryGroupName -Properties primarygrouptoken -ErrorAction SilentlyContinue
+    Write-Host "Searching for groups containing 'disabled' in the name..." -ForegroundColor Cyan
+    $DisabledGroups = Get-ADGroup -Filter "Name -like '*disabled*'" -Properties primarygrouptoken -ErrorAction SilentlyContinue
     
-    if ($null -eq $PrimaryGroup) {
-        Write-Host "Primary group '$PrimaryGroupName' not found." -ForegroundColor Yellow
+    # Check if any groups were found
+    if ($DisabledGroups -and $DisabledGroups.Count -gt 0) {
+        # If multiple groups found, use the first one
+        if ($DisabledGroups -is [array]) {
+            $PrimaryGroup = $DisabledGroups[0]
+            Write-Host "Found multiple groups with 'disabled' in the name. Using: $($PrimaryGroup.Name)" -ForegroundColor Yellow
+        } else {
+            # Just one group found
+            $PrimaryGroup = $DisabledGroups
+            Write-Host "Found group with 'disabled' in the name: $($PrimaryGroup.Name)" -ForegroundColor Green
+        }
+        
+        $PrimaryGroupName = $PrimaryGroup.Name
+        $PrimaryGroupToken = $PrimaryGroup | Select-Object primarygrouptoken
+    } else {
+        Write-Host "No groups with 'disabled' in the name found." -ForegroundColor Yellow
         
         if (-not $ReportOnly) {
-            Write-Host "Creating primary group '$PrimaryGroupName'..." -ForegroundColor Cyan
-            $PrimaryGroup = New-ADGroup -Name $PrimaryGroupName -SamAccountName $PrimaryGroupName -GroupCategory Security -GroupScope Global -DisplayName $PrimaryGroupName -PassThru
+            Write-Host "Creating group '$DefaultDisabledGroupName'..." -ForegroundColor Cyan
+            $PrimaryGroup = New-ADGroup -Name $DefaultDisabledGroupName -SamAccountName $DefaultDisabledGroupName `
+                           -GroupCategory Security -GroupScope Global -DisplayName $DefaultDisabledGroupName -PassThru
             
             # Get the primarygrouptoken after creation
-            $PrimaryGroupToken = Get-ADGroup -Identity $PrimaryGroupName -Properties primarygrouptoken | Select-Object primarygrouptoken
+            $PrimaryGroupToken = Get-ADGroup -Identity $DefaultDisabledGroupName -Properties primarygrouptoken | Select-Object primarygrouptoken
+            $PrimaryGroupName = $DefaultDisabledGroupName
+            Write-Host "Created new disabled users group: $DefaultDisabledGroupName" -ForegroundColor Green
         }
         else {
             Write-Host "Running in report-only mode. Group would be created in actual run." -ForegroundColor Yellow
-            Write-Host "Exiting script as primary group is required." -ForegroundColor Red
+            Write-Host "Exiting script as a disabled group is required." -ForegroundColor Red
             Stop-Transcript
             exit
         }
     }
-    else {
-        $PrimaryGroupToken = $PrimaryGroup | Select-Object primarygrouptoken
-        Write-Host "Found primary group '$PrimaryGroupName'" -ForegroundColor Green
-    }
 }
 catch {
-    Write-Host "Error processing primary group: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Error searching for disabled groups: $($_.Exception.Message)" -ForegroundColor Red
     Stop-Transcript
     exit
 }
@@ -124,10 +138,10 @@ Try {
         # Logging
         Write-Host "$(Get-Date): Updating user $User" -ForegroundColor Cyan
 
-        # Add user as member of Primary Group to DisabledPrimary
+        # Add user as member of Primary Group
         $UserGroups = Get-ADPrincipalGroupMembership $User | Select-Object name, groupscope
 
-        # Set Primary Group to DisabledPrimary
+        # Set Primary Group to the disabled group
         If ($UserPGID.PrimaryGroupID -ne $PrimaryGroupToken.primarygrouptoken) {
             Write-Host "$(Get-Date): Updating Primary Group to $PrimaryGroupName | $($PrimaryGroupToken.primarygrouptoken)" -ForegroundColor Yellow
             If (-not $ReportOnly) {
@@ -143,7 +157,7 @@ Try {
             Write-Host "$(Get-Date): $User Already in $PrimaryGroupName" -ForegroundColor Green
         }
 
-        # Remove all groups but DisabledPrimary
+        # Remove all groups but the disabled group
         Foreach ($UserGroup in $UserGroups) {
             If ($UserGroup.Name -ne $PrimaryGroupName) {
                 If (-not $ReportOnly) {
