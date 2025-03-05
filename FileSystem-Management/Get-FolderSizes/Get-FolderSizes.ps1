@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 18:36:00 UTC
+# Last Updated: 2025-03-06 18:41:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.6
-# Additional Info: Fixed parameter syntax by removing trailing comma in path value
+# Version: 1.6.7
+# Additional Info: Eliminated GUI window flash during NuGet provider installation
 # =============================================================================
 
 # Requires -Version 5.1
@@ -125,6 +125,7 @@
     1.6.4 - Fixed invalid assignment expressions for preference variables
     1.6.5 - Fixed parameter syntax error with path value
     1.6.6 - Fixed parameter syntax by removing trailing comma in path value
+    1.6.7 - Eliminated GUI window flash during NuGet provider installation
 #>
 
 param (
@@ -212,8 +213,8 @@ try {
 Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -SkipPublisherCheck
 "@ | Out-File -FilePath $tempScript -Encoding utf8
     
-    # Execute in separate process
-    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$tempScript`"" -Wait
+    # Execute in separate process with completely hidden window
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NonInteractive -NoLogo -File `"$tempScript`"" -Wait
     Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
 }
 catch {
