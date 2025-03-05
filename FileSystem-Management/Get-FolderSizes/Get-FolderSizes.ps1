@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 03:05:10 UTC
+# Last Updated: 2025-03-10 12:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.2
-# Additional Info: Attempted fix for remaining NuGet silent install prompts
+# Version: 1.7.3
+# Additional Info: Moved transcript logging prior to NuGet provider installation
 # =============================================================================
 
 # Requires -Version 5.1
@@ -131,6 +131,7 @@
     1.7.0 - Standardized console output colors to match organizational standards
     1.7.1 - Enhanced silent NuGet provider installation to prevent prompts
     1.7.2 - Attempted fix for remaining NuGet silent install prompts
+    1.7.3 - Moved transcript logging prior to NuGet provider installation
 #>
 
 param (
@@ -142,8 +143,41 @@ param (
     [bool]$FollowJunctions = $true
 )
 
+# Transcript Logging Setup
+try {
+    # Check for elevated privileges but don't prompt user - continue with limited functionality
+    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+    if (-not $isAdmin) {
+        Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
+    }
+
+    # PowerShell Version Check and ThreadJob Initialization
+    $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
+    if ($script:isLegacyPowerShell) {
+        Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
+        $global:useThreadJobs = $false
+    } else {
+        $global:useThreadJobs = Initialize-ThreadJobModule
+    }
+
+    $transcriptPath = "C:\temp"
+    if (-not (Test-Path $transcriptPath)) {
+        New-Item -ItemType Directory -Path $transcriptPath -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+    
+    if (Test-Path $transcriptPath) {
+        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
+    } else {
+        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
+        Write-Warning "Could not create transcript in C:\temp, using $transcriptFile instead"
+    }
+} catch {
+    Write-Warning "Failed to start transcript: $_"
+}
+
 # Pre-emptively install NuGet provider - must be at very top of script
-# This must execute before any other operations that might trigger PackageManagement
 try {
     # Store original Path parameter value to prevent overwrites
     $originalPath = $Path
