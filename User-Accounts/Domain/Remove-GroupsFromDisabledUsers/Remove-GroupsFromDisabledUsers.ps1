@@ -2,19 +2,18 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:12:15 UTC
+# Last Updated: 2025-03-05 23:15:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1
-# Additional Info: Added automatic log file opening and standardized color scheme
+# Version: 2.2
+# Additional Info: Removed user movement functionality, simplified to focus on group removal
 # =============================================================================
 
 <#
 .SYNOPSIS
-    Removes all group memberships from disabled AD users and moves them to a designated OU.
+    Removes all group memberships from disabled AD users and updates their description.
 .DESCRIPTION
     This script performs the following actions on disabled AD user accounts:
      - Removes all group memberships (except default primary group)
-     - Moves the user to a designated Disabled Users OU
      - Updates the user description with disabled date
      - Key actions are logged to a transcript file
      - Automatically opens the log file upon completion
@@ -34,7 +33,7 @@
     Validation Requirements: 
     - Verify $ReportOnly is set correctly before execution
     - Review log file after completion
-    - Verify users are in correct OU with appropriate group membership
+    - Verify users have appropriate group membership
 #>
 
 # Import required assembly for MessageBox
@@ -45,8 +44,7 @@ $CurrentDomain = Get-ADDomain
 $DomainDN = $CurrentDomain.DistinguishedName
 $DomainUsersGroup = "Domain Users" # Default primary group
 
-# Set target OU based on detected domain
-$TargetOU = "OU=Disabled Users,$DomainDN"
+# Set log file location
 $logfilename = "C:\Temp\DisabledUsers_" + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".log"
 $ReportOnly = $true  # Change this to $false to actively make changes to AD
 
@@ -61,28 +59,10 @@ Write-Host "=======================================================" -Foreground
 # Display environment information
 Write-Host "CONFIGURATION:" -ForegroundColor White
 Write-Host "Current domain: $($CurrentDomain.DNSRoot)" -ForegroundColor Cyan
-Write-Host "Target OU: $TargetOU" -ForegroundColor Cyan
 Write-Host "Report only mode: $ReportOnly" -ForegroundColor Yellow
 Write-Host "Start time: $(Get-Date)" -ForegroundColor White
 Write-Host "Log file: $logfilename" -ForegroundColor DarkGray
 Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
-
-# Check if target OU exists, create if needed
-if (-not $ReportOnly) {
-    try {
-        $OUExists = Get-ADOrganizationalUnit -Identity $TargetOU -ErrorAction SilentlyContinue
-        if (-not $OUExists) {
-            Write-Host "Creating target OU: $TargetOU" -ForegroundColor Yellow
-            New-ADOrganizationalUnit -Name "Disabled Users" -Path $DomainDN
-            Write-Host "Successfully created Disabled Users OU" -ForegroundColor Green
-        } else {
-            Write-Host "Target OU already exists" -ForegroundColor Green
-        }
-    }
-    catch {
-        Write-Host "Error checking/creating target OU: $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
 
 # Get Domain Users group information
 try {
@@ -106,6 +86,7 @@ Write-Host "-------------------------------------------------------" -Foreground
 
 # Counter for tracking progress
 $UserCounter = 0
+$GroupsRemovedCounter = 0
 
 Try {
     # Loop through all users from Disabled Users search
@@ -117,8 +98,7 @@ Try {
         
         try {
             # Get user details
-            $UserInfo = Get-ADUser -Identity $User -Properties DistinguishedName, PrimaryGroupID, Description
-            $UserOU = $UserInfo.DistinguishedName.Substring($UserInfo.DistinguishedName.IndexOf('OU=', [System.StringComparison]::CurrentCultureIgnoreCase))
+            $UserInfo = Get-ADUser -Identity $User -Properties Description, PrimaryGroupID
             
             # Get all group memberships
             $UserGroups = Get-ADPrincipalGroupMembership $User
@@ -150,6 +130,7 @@ Try {
                             try {
                                 Remove-ADGroupMember -Identity $Group.Name -Members $User -Confirm:$false
                                 Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
+                                $GroupsRemovedCounter++
                             } catch {
                                 Write-Host "Error removing from group $($Group.Name): $($_.Exception.Message)" -ForegroundColor Red
                             }
@@ -159,27 +140,13 @@ Try {
                     # Report mode - just list the groups
                     Write-Host "Would remove user from the following groups:" -ForegroundColor Yellow
                     foreach ($Group in $UserGroups) {
-                        Write-Host " - $($Group.Name)" -ForegroundColor DarkGray
+                        if ($Group.Name -ne $DomainUsersGroup -or $UserInfo.PrimaryGroupID -ne $DomainUsersPGID) {
+                            Write-Host " - $($Group.Name)" -ForegroundColor DarkGray
+                        }
                     }
                 }
             } else {
                 Write-Host "User is not a member of any groups" -ForegroundColor Yellow
-            }
-            
-            # Move user object to Target OU for disabled users
-            if ($UserOU -ne $TargetOU) {
-                if (-not $ReportOnly) {
-                    try {
-                        Move-ADObject -Identity $UserInfo.DistinguishedName -TargetPath $TargetOU 
-                        Write-Host "Successfully moved user to Disabled Users OU" -ForegroundColor Green
-                    } catch {
-                        Write-Host "Error moving user: $($_.Exception.Message)" -ForegroundColor Red
-                    }
-                } else {
-                    Write-Host "Would move user to: $TargetOU" -ForegroundColor Yellow
-                }
-            } else {
-                Write-Host "User already in Disabled Users OU" -ForegroundColor Green
             }
             
             # Update User Description
@@ -212,6 +179,7 @@ Try {
 Write-Host "SUMMARY:" -ForegroundColor White
 Write-Host "End time: $(Get-Date)" -ForegroundColor White
 Write-Host "Total users processed: $UserCounter of $DisabledUsersCount" -ForegroundColor Cyan
+Write-Host "Total group memberships removed: $GroupsRemovedCounter" -ForegroundColor Green
 if ($ReportOnly) {
     Write-Host "NOTE: Script ran in REPORT ONLY mode. No changes were made." -ForegroundColor Magenta
 }
@@ -220,7 +188,7 @@ Write-Host "=======================================================" -Foreground
 Stop-Transcript
 
 # Prompt end of script with log location
-[System.Windows.Forms.MessageBox]::Show("Operation complete! Processed $UserCounter disabled users.`n`nA log file has been saved to:`n$logfilename`n`nThe log file will open automatically when you click OK.", "Script Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+[System.Windows.Forms.MessageBox]::Show("Operation complete! Processed $UserCounter disabled users.`nRemoved $GroupsRemovedCounter group memberships.`n`nA log file has been saved to:`n$logfilename`n`nThe log file will open automatically when you click OK.", "Script Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
 
 # Automatically open the log file
 try {
