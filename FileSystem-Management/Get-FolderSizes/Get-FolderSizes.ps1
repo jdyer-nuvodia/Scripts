@@ -8,90 +8,6 @@
 # Additional Info: Fixed parameter syntax by removing trailing comma in path value
 # =============================================================================
 
-# Pre-emptively install NuGet provider - must be at very top of script
-# This must execute before any other operations that might trigger PackageManagement
-try {
-    # Force automatic "yes" to all prompts and silence progress
-    $ProgressPreference = 'SilentlyContinue'
-    $ConfirmPreference = 'None'
-    $ErrorActionPreference = 'SilentlyContinue'
-    
-    # Set up global parameter defaults to prevent prompts
-    $PSDefaultParameterValues = @{
-        'Install-Module:Force' = $true
-        'Install-Module:SkipPublisherCheck' = $true
-        'Install-Module:Confirm' = $false
-        'Install-Module:Scope' = 'CurrentUser'
-        'Install-PackageProvider:Force' = $true
-        'Install-PackageProvider:Confirm' = $false
-        'Install-PackageProvider:Scope' = 'CurrentUser'
-        'Register-PSRepository:InstallationPolicy' = 'Trusted'
-        'Import-Module:ErrorAction' = 'SilentlyContinue'
-        '*:Confirm' = $false
-    }
-    
-    # Add required environment variables
-    $env:POWERSHELL_UPDATECHECK = 'Off'
-    $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
-    
-    # Direct registry modifications for all possible PowerShell provider settings
-    # Create all required registry keys to pre-approve NuGet
-    $regKeys = @(
-        'HKLM:\SOFTWARE\Microsoft\PowerShellGet\',
-        'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
-        'HKLM:\SOFTWARE\Microsoft\PackageManagement\',
-        'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
-    )
-    
-    foreach ($key in $regKeys) {
-        if (-not (Test-Path $key)) { 
-            $null = New-Item -Path $key -Force -ErrorAction SilentlyContinue
-        }
-        $null = New-ItemProperty -Path $key -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force -ErrorAction SilentlyContinue
-    }
-    
-    # Direct download and install of NuGet provider DLL to all possible locations
-    $nugetProviderPaths = @(
-        "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget",
-        "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget",
-        "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget"
-    )
-    
-    $nugetUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
-    
-    foreach ($path in $nugetProviderPaths) {
-        if (-not (Test-Path $path)) {
-            $null = New-Item -Path $path -ItemType Directory -Force -ErrorAction SilentlyContinue
-        }
-        
-        try {
-            $webClient = New-Object System.Net.WebClient
-            $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
-            $webClient.DownloadFile($nugetUrl, "$path\Microsoft.PackageManagement.NuGetProvider.dll")
-        }
-        catch {
-            # Continue silently
-        }
-    }
-    
-    # Create script to auto-respond to prompts and install NuGet
-    $tempScript = [System.IO.Path]::GetTempFileName() + ".ps1"
-    @"
-`$ProgressPreference = 'SilentlyContinue'
-`$ConfirmPreference = 'None'
-`$ErrorActionPreference = 'SilentlyContinue'
-`$PSDefaultParameterValues = @{'*:Confirm' = `$false}
-Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -SkipPublisherCheck
-"@ | Out-File -FilePath $tempScript -Encoding utf8
-    
-    # Execute in separate process
-    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$tempScript`"" -Wait
-    Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
-}
-catch {
-    # Silently continue if pre-emptive installation fails
-}
-
 # Requires -Version 5.1
 
 <#
@@ -219,6 +135,90 @@ param (
     [bool]$IncludeHiddenSystem = $true,
     [bool]$FollowJunctions = $true
 )
+
+# Pre-emptively install NuGet provider - must be at very top of script
+# This must execute before any other operations that might trigger PackageManagement
+try {
+    # Force automatic "yes" to all prompts and silence progress
+    $ProgressPreference = 'SilentlyContinue'
+    $ConfirmPreference = 'None'
+    $ErrorActionPreference = 'SilentlyContinue'
+    
+    # Set up global parameter defaults to prevent prompts
+    $PSDefaultParameterValues = @{
+        'Install-Module:Force' = $true
+        'Install-Module:SkipPublisherCheck' = $true
+        'Install-Module:Confirm' = $false
+        'Install-Module:Scope' = 'CurrentUser'
+        'Install-PackageProvider:Force' = $true
+        'Install-PackageProvider:Confirm' = $false
+        'Install-PackageProvider:Scope' = 'CurrentUser'
+        'Register-PSRepository:InstallationPolicy' = 'Trusted'
+        'Import-Module:ErrorAction' = 'SilentlyContinue'
+        '*:Confirm' = $false
+    }
+    
+    # Add required environment variables
+    $env:POWERSHELL_UPDATECHECK = 'Off'
+    $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
+    
+    # Direct registry modifications for all possible PowerShell provider settings
+    # Create all required registry keys to pre-approve NuGet
+    $regKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\PowerShellGet\',
+        'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
+        'HKLM:\SOFTWARE\Microsoft\PackageManagement\',
+        'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
+    )
+    
+    foreach ($key in $regKeys) {
+        if (-not (Test-Path $key)) { 
+            $null = New-Item -Path $key -Force -ErrorAction SilentlyContinue
+        }
+        $null = New-ItemProperty -Path $key -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force -ErrorAction SilentlyContinue
+    }
+    
+    # Direct download and install of NuGet provider DLL to all possible locations
+    $nugetProviderPaths = @(
+        "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget",
+        "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget",
+        "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget"
+    )
+    
+    $nugetUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
+    
+    foreach ($path in $nugetProviderPaths) {
+        if (-not (Test-Path $path)) {
+            $null = New-Item -Path $path -ItemType Directory -Force -ErrorAction SilentlyContinue
+        }
+        
+        try {
+            $webClient = New-Object System.Net.WebClient
+            $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
+            $webClient.DownloadFile($nugetUrl, "$path\Microsoft.PackageManagement.NuGetProvider.dll")
+        }
+        catch {
+            # Continue silently
+        }
+    }
+    
+    # Create script to auto-respond to prompts and install NuGet
+    $tempScript = [System.IO.Path]::GetTempFileName() + ".ps1"
+    @"
+`$ProgressPreference = 'SilentlyContinue'
+`$ConfirmPreference = 'None'
+`$ErrorActionPreference = 'SilentlyContinue'
+`$PSDefaultParameterValues = @{'*:Confirm' = `$false}
+Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -SkipPublisherCheck
+"@ | Out-File -FilePath $tempScript -Encoding utf8
+    
+    # Execute in separate process
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$tempScript`"" -Wait
+    Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
+}
+catch {
+    # Silently continue if pre-emptive installation fails
+}
 
 #region Helper Functions
 
