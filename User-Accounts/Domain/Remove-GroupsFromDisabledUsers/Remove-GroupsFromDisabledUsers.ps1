@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:17:15 UTC
+# Last Updated: 2025-03-05 23:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.0
-# Additional Info: Removed report-only mode, script now always runs in live mode
+# Version: 3.1
+# Additional Info: Added functionality to keep PowerShell window open at end of script
 # =============================================================================
 
 <#
@@ -17,6 +17,7 @@
      - Updates the user description with disabled date
      - Key actions are logged to a transcript file
      - Automatically opens the log file upon completion
+     - Keeps the PowerShell window open until user interaction
      
     Dependencies:
      - Active Directory PowerShell module
@@ -178,3 +179,10 @@ try {
 } catch {
     [System.Windows.Forms.MessageBox]::Show("Could not open log file: $($_.Exception.Message)", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
 }
+
+# Keep console window open until user presses Enter
+Write-Host "`n`n" -NoNewline
+Write-Host "Script execution complete." -ForegroundColor Green
+Write-Host "Window will remain open for your review." -ForegroundColor Cyan
+Write-Host "Press Enter key to close this window..." -ForegroundColor Yellow
+Read-Host | Out-Null
