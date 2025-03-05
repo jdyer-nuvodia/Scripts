@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 11:20:00 UTC
+# Last Updated: 2025-03-05 17:07:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.1
-# Additional Info: Fixed variable reference syntax error in Show-DriveInfo function.
+# Version: 4.0.2
+# Additional Info: Added computer name to log file name for better identification.
 # =============================================================================
 
 <#
@@ -41,7 +41,8 @@ if (-not $scriptPath) {
 }
 $script:OriginalScriptDirectory = Split-Path -Path $scriptPath -Parent
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_$timestamp.log"
+$computerName = $env:COMPUTERNAME
+$script:LogFile = Join-Path -Path $script:OriginalScriptDirectory -ChildPath "ClearSystemStorage_${computerName}_$timestamp.log"
 
 # ----- Function: Write-Log -----
 function Write-Log {
@@ -73,7 +74,8 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.0" -Level Info
+Write-Log "Script version: 4.0.2" -Level Info
+Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
 
