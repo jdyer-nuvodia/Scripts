@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 21:40:00 UTC
+# Last Updated: 2025-03-09 03:05:10 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.1
-# Additional Info: Enhanced silent NuGet provider installation to prevent prompts
+# Version: 1.7.2
+# Additional Info: Attempted fix for remaining NuGet silent install prompts
 # =============================================================================
 
 # Requires -Version 5.1
@@ -130,6 +130,7 @@
     1.6.9 - Eliminated PowerShell window by using background jobs instead of Process
     1.7.0 - Standardized console output colors to match organizational standards
     1.7.1 - Enhanced silent NuGet provider installation to prevent prompts
+    1.7.2 - Attempted fix for remaining NuGet silent install prompts
 #>
 
 param (
