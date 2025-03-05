@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 18:30:00 UTC
+# Last Updated: 2025-03-05 18:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.4
-# Additional Info: Fixed invalid assignment expressions for preference variables
+# Version: 1.6.5
+# Additional Info: Fixed parameter syntax error with path value
 # =============================================================================
 
 # Pre-emptively install NuGet provider - must be at very top of script
@@ -207,10 +207,11 @@ catch {
     1.6.2 - Fixed catch block structure for proper exception handling
     1.6.3 - Added pre-emptive NuGet provider installation to prevent prompts
     1.6.4 - Fixed invalid assignment expressions for preference variables
+    1.6.5 - Fixed parameter syntax error with path value
 #>
 
 param (
-    [string]$Path = "C:\",
+    [string]$Path = 'C:\',
     [int]$MaxDepth = 10,
     [ValidateRange(1, 50)]
     [int]$Top = 3,
