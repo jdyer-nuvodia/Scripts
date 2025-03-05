@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 18:34:00 UTC
+# Last Updated: 2025-03-05 18:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.5
-# Additional Info: Fixed parameter syntax error with path value
+# Version: 1.6.6
+# Additional Info: Fixed parameter syntax by removing trailing comma in path value
 # =============================================================================
 
 # Pre-emptively install NuGet provider - must be at very top of script
@@ -208,10 +208,11 @@ catch {
     1.6.3 - Added pre-emptive NuGet provider installation to prevent prompts
     1.6.4 - Fixed invalid assignment expressions for preference variables
     1.6.5 - Fixed parameter syntax error with path value
+    1.6.6 - Fixed parameter syntax by removing trailing comma in path value
 #>
 
 param (
-    [string]$Path = 'C:\',
+    [string]$Path = 'C:',
     [int]$MaxDepth = 10,
     [ValidateRange(1, 50)]
     [int]$Top = 3,
