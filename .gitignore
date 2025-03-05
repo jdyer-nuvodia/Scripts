@@ -36,3 +36,6 @@
 
 # .env files
 *.env
+
+# Ignore everything in CommitHistory directory
+CommitHistory/
