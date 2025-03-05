@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 17:07:00 UTC
+# Last Updated: 2025-03-05 17:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.2
-# Additional Info: Added computer name to log file name for better identification.
+# Version: 4.0.3
+# Additional Info: Removed unused variable to improve code quality.
 # =============================================================================
 
 <#
@@ -355,8 +355,7 @@ if ($totalShadowCopiesInitial -gt 0) {
 Write-Log "Starting Disk Cleanup..." -Level Info
 Write-Host "`nExecuting Windows Disk Cleanup utility..." -ForegroundColor Cyan
 
-# Create a temporary file to monitor disk cleanup progress
-$cleanmgrLogPath = "$env:TEMP\cleanmgr_progress.txt"
+# Start the cleanup process
 $cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
 $processId = $cleanmgrProcess.Id
 Write-Log "Disk Cleanup process started with PID: $processId" -Level Debug
