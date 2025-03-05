@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 10:15:00 UTC
+# Last Updated: 2025-03-05 11:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0
-# Additional Info: Enhanced logging and detailed progress output during script execution.
+# Version: 4.0.1
+# Additional Info: Fixed variable reference syntax error in Show-DriveInfo function.
 # =============================================================================
 
 <#
@@ -295,7 +295,7 @@ function Show-DriveInfo {
     $usedPercentage = [math]::Round(($usedSpace / $Volume.Size) * 100, 1)
     $freePercentage = [math]::Round(($Volume.SizeRemaining / $Volume.Size) * 100, 1)
     
-    Write-Host "`n$Label:" -ForegroundColor Green
+    Write-Host "`n${Label}:" -ForegroundColor Green
     Write-Host "------------------------" -ForegroundColor Green
     Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
     Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
