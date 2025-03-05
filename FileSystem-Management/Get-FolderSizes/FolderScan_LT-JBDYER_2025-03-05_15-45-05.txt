@@ -1,0 +1,55 @@
+**********************
+PowerShell transcript start
+Start time: 20250305154505
+Username: NUVODIA\jdyer
+RunAs User: NUVODIA\jdyer
+Configuration Name: 
+Machine: LT-JBDYER (Microsoft Windows NT 10.0.22631.0)
+Host Application: C:\Program Files\PowerShell\7\pwsh.dll
+Process ID: 24780
+PSVersion: 7.5.0
+PSEdition: Core
+GitCommitId: 7.5.0
+OS: Microsoft Windows 10.0.22631
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+Transcript started, output file is C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\FileSystem-Management\Get-FolderSizes\FolderScan_LT-JBDYER_2025-03-05_15-45-05.txt
+======================================================
+Folder Size Scanner - Execution Log
+Started: 2025-03-05 15:45:08
+Started (UTC): 2025-03-05 22:45:08
+User: jdyer
+Computer: LT-JBDYER
+Target Path: C:
+Admin Privileges: True
+Threading Mode: Single-threaded
+======================================================
+
+
+===== Console Output Color Legend =====
+White     - Standard information
+Cyan      - Process updates and status
+Green     - Successful operations and results
+Yellow    - Warnings and attention needed
+Red       - Errors and critical issues
+Magenta   - Debug information
+DarkGray  - Technical details
+======================================
+Ultra-fast folder analysis starting at: C:
+Script started by: jdyer at 2025-03-05 15:45:08
+
+Top 3 Largest Folders in: C:\Users\jdyer
+
+
+Largest file in C:\Users\jdyer :
+Name: NTUSER.DAT
+Size: 17.5 MB
+
+Found 28 subfolders to process...
+PS C:\Users\jdyer> TerminatingError(): "The pipeline has been stopped."
+>> TerminatingError(): "The pipeline has been stopped."
+>> TerminatingError(): "The pipeline has been stopped."

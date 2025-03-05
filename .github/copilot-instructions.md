@@ -13,6 +13,7 @@ The month is 03.
 When creating a script or file, make sure the header format below is used and the created date is set to the real life, current timestamp in UTC.
 Always give me a commit message when writing, editing, or providing a script. Read this webpage for instructions on how to give me the best commit message you can: https://www.gitkraken.com/learn/git/best-practices/git-commit-message
 Make sure all additional functionlity and examples, parameters, etc. are included in the header of any script when updating and the versioning is increased accordingly each time it is updated. Also update the last updated field in the header each time.
+All log files should be .log and not .txt files.
 
 ## Mandatory File & Script Header Format
 

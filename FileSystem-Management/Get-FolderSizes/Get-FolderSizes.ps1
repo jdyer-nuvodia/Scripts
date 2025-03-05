@@ -182,11 +182,11 @@ try {
     
     # Ensure we have a valid path - script directory should always exist when running from a script
     if (Test-Path $transcriptPath) {
-        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
     } else {
         # Fallback to user's temp directory if script path is not accessible for some reason
-        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
+        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
         Write-Warning "Could not access script directory, using $transcriptFile instead"
     }
