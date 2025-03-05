@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2025-03-05 23:02:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script documentation
+# Version: 1.1
+# Additional Info: Fixed group creation and domain path issues
 # =============================================================================
 
 <#
@@ -37,23 +37,81 @@
     - Verify users are in correct OU with appropriate group membership
 #>
 
+# Import required assembly for MessageBox
+Add-Type -AssemblyName System.Windows.Forms
+
 # Set static variables
 $PrimaryGroupName = "DisabledPrimary"
-$TargetOU = "OU=Disabled Users,DC=YourDomain,DC=com"
+# Get the current domain
+$CurrentDomain = Get-ADDomain
+$DomainDN = $CurrentDomain.DistinguishedName
+
+# Set target OU based on detected domain
+$TargetOU = "OU=Disabled Users,$DomainDN"
 $logfilename = "C:\Temp\DisabledUsers_" + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".log"
 $ReportOnly = $true  # Change this to $false to actively make changes to AD
 
 # Begin Logging
 Start-Transcript -Path $logfilename
 
-# Get Primary Group token and all disabled users
-$PrimaryGroupToken = Get-ADGroup -Identity $PrimaryGroupName -Properties primarygrouptoken | Select-Object primarygrouptoken
+# Display environment information
+Write-Host "Current domain: $($CurrentDomain.DNSRoot)" -ForegroundColor Cyan
+Write-Host "Target OU: $TargetOU" -ForegroundColor Cyan
+Write-Host "Report only mode: $ReportOnly" -ForegroundColor Cyan
+
+# Check if target OU exists, create if needed
+if (-not $ReportOnly) {
+    try {
+        $OUExists = Get-ADOrganizationalUnit -Identity $TargetOU -ErrorAction SilentlyContinue
+        if (-not $OUExists) {
+            Write-Host "Creating target OU: $TargetOU" -ForegroundColor Yellow
+            New-ADOrganizationalUnit -Name "Disabled Users" -Path $DomainDN
+        }
+    }
+    catch {
+        Write-Host "Error checking/creating target OU: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+# Check if Primary Group exists, create if needed and not in Report Only mode
+try {
+    $PrimaryGroup = Get-ADGroup -Identity $PrimaryGroupName -Properties primarygrouptoken -ErrorAction SilentlyContinue
+    
+    if ($null -eq $PrimaryGroup) {
+        Write-Host "Primary group '$PrimaryGroupName' not found." -ForegroundColor Yellow
+        
+        if (-not $ReportOnly) {
+            Write-Host "Creating primary group '$PrimaryGroupName'..." -ForegroundColor Cyan
+            $PrimaryGroup = New-ADGroup -Name $PrimaryGroupName -SamAccountName $PrimaryGroupName -GroupCategory Security -GroupScope Global -DisplayName $PrimaryGroupName -PassThru
+            
+            # Get the primarygrouptoken after creation
+            $PrimaryGroupToken = Get-ADGroup -Identity $PrimaryGroupName -Properties primarygrouptoken | Select-Object primarygrouptoken
+        }
+        else {
+            Write-Host "Running in report-only mode. Group would be created in actual run." -ForegroundColor Yellow
+            Write-Host "Exiting script as primary group is required." -ForegroundColor Red
+            Stop-Transcript
+            exit
+        }
+    }
+    else {
+        $PrimaryGroupToken = $PrimaryGroup | Select-Object primarygrouptoken
+        Write-Host "Found primary group '$PrimaryGroupName'" -ForegroundColor Green
+    }
+}
+catch {
+    Write-Host "Error processing primary group: $($_.Exception.Message)" -ForegroundColor Red
+    Stop-Transcript
+    exit
+}
+
+# Get all disabled users
 $DisabledUsers = Search-ADAccount -AccountDisabled -UsersOnly -ResultPageSize 2000 -ResultSetSize $null
 $DisabledUsersCount = $DisabledUsers.Count
 
 # Output the total number of users identified
-Write-Output "$(Get-Date): Identified $DisabledUsersCount disabled user accounts"
-Write-Output "-" * 100
+Write-Host "$(Get-Date): Identified $DisabledUsersCount disabled user accounts" -ForegroundColor Cyan
+Write-Host ("-" * 100) -ForegroundColor DarkGray
 
 Try {
     # Loop through all users from Disabled Users search
@@ -64,24 +122,25 @@ Try {
         $UserPGID = Get-ADUser -Identity $User -Properties PrimaryGroupID
 
         # Logging
-        Write-Output "$(Get-Date): Updating user $User"
+        Write-Host "$(Get-Date): Updating user $User" -ForegroundColor Cyan
 
         # Add user as member of Primary Group to DisabledPrimary
         $UserGroups = Get-ADPrincipalGroupMembership $User | Select-Object name, groupscope
 
         # Set Primary Group to DisabledPrimary
         If ($UserPGID.PrimaryGroupID -ne $PrimaryGroupToken.primarygrouptoken) {
-            Write-Output "$(Get-Date): Updating Primary Group to $PrimaryGroupName | $($PrimaryGroupToken.primarygrouptoken)"
+            Write-Host "$(Get-Date): Updating Primary Group to $PrimaryGroupName | $($PrimaryGroupToken.primarygrouptoken)" -ForegroundColor Yellow
             If (-not $ReportOnly) {
                 Try {
                     Add-ADGroupMember -Identity $PrimaryGroupName -Members $User
                     Get-ADUser $User | Set-ADUser -Replace @{primaryGroupID = $PrimaryGroupToken.primarygrouptoken}
+                    Write-Host "$(Get-Date): Successfully set primary group" -ForegroundColor Green
                 } Catch {
-                    Write-Output "$(Get-Date): $($_.Exception.GetType().FullName)"
+                    Write-Host "$(Get-Date): $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
         } Else {
-            Write-Output "$(Get-Date): $User Already in $PrimaryGroupName"
+            Write-Host "$(Get-Date): $User Already in $PrimaryGroupName" -ForegroundColor Green
         }
 
         # Remove all groups but DisabledPrimary
@@ -90,11 +149,12 @@ Try {
                 If (-not $ReportOnly) {
                     Try {
                         Remove-ADGroupMember -Identity $UserGroup.Name -Members $User -Confirm:$false
+                        Write-Host "$(Get-Date): Successfully removed from group: $($UserGroup.Name)" -ForegroundColor Green
                     } Catch {
-                        Write-Output "$(Get-Date): $($_.Exception.GetType().FullName)"
+                        Write-Host "$(Get-Date): Error removing from group $($UserGroup.Name): $($_.Exception.Message)" -ForegroundColor Red
                     }
                 }
-                Write-Output "$(Get-Date): -Removing Group: $($UserGroup.Name)"
+                Write-Host "$(Get-Date): -Removing Group: $($UserGroup.Name)" -ForegroundColor Yellow
             }
         }
 
@@ -102,14 +162,15 @@ Try {
         If ($UserOU -ne $TargetOU) {
             If (-not $ReportOnly) {
                 Try {
-                    Move-ADObject -Identity (Get-ADUser -Identity $User) -TargetPath $TargetOU -Verbose
+                    Move-ADObject -Identity (Get-ADUser -Identity $User) -TargetPath $TargetOU 
+                    Write-Host "$(Get-Date): Successfully moved user to target OU" -ForegroundColor Green
                 } Catch {
-                    Write-Output "$(Get-Date): $($_.Exception.GetType().FullName)"
+                    Write-Host "$(Get-Date): Error moving user: $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
-            Write-Output "$(Get-Date): Moving $User To $TargetOU"
+            Write-Host "$(Get-Date): Moving $User To $TargetOU" -ForegroundColor Yellow
         } Else {
-            Write-Output "$(Get-Date): User already in $TargetOU"
+            Write-Host "$(Get-Date): User already in $TargetOU" -ForegroundColor Green
         }
 
         # Update User Description
@@ -119,17 +180,18 @@ Try {
             If (-not $ReportOnly) {
                 Try {
                     Set-ADUser -Identity $User -Description "User disabled $DisabledDate"
+                    Write-Host "$(Get-Date): Description updated successfully" -ForegroundColor Green
                 } Catch {
-                    Write-Output "$(Get-Date): $($_.Exception.GetType().FullName)"
+                    Write-Host "$(Get-Date): Error updating description: $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
-            Write-Output "$(Get-Date): User description updated to read 'User disabled $DisabledDate'"
+            Write-Host "$(Get-Date): User description updated to read 'User disabled $DisabledDate'" -ForegroundColor Yellow
         }
 
-        Write-Output "-" * 100
+        Write-Host ("-" * 100) -ForegroundColor DarkGray
     }
 } Catch {
-    Write-Output "$(Get-Date): $($_.Exception.GetType().FullName)"
+    Write-Host "$(Get-Date): $($_.Exception.Message)" -ForegroundColor Red
 }
 
 # End logging transcript
