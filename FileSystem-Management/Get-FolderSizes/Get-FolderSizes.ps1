@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 22:36:00 UTC
+# Last Updated: 2025-03-05 22:44:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.6
-# Additional Info: Moved Initialize-ThreadJobModule function to top of script
+# Version: 1.7.7
+# Additional Info: Changed log file location to use script directory instead of C:\temp
 # =============================================================================
 
 # Requires -Version 5.1
@@ -135,6 +135,7 @@
     1.7.4 - Added Initialize-ThreadJobModule function to avoid reference errors
     1.7.5 - Moved Initialize-ThreadJobModule function above usage
     1.7.6 - Moved Initialize-ThreadJobModule function to top of script
+    1.7.7 - Changed log file location to use script directory instead of C:\temp
 #>
 
 param (
@@ -176,18 +177,18 @@ try {
         $global:useThreadJobs = Initialize-ThreadJobModule
     }
 
-    $transcriptPath = "C:\temp"
-    if (-not (Test-Path $transcriptPath)) {
-        New-Item -ItemType Directory -Path $transcriptPath -Force -ErrorAction SilentlyContinue | Out-Null
-    }
+    # Use script's own directory for logs instead of C:\temp
+    $transcriptPath = $PSScriptRoot
     
+    # Ensure we have a valid path - script directory should always exist when running from a script
     if (Test-Path $transcriptPath) {
         $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
     } else {
+        # Fallback to user's temp directory if script path is not accessible for some reason
         $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
-        Write-Warning "Could not create transcript in C:\temp, using $transcriptFile instead"
+        Write-Warning "Could not access script directory, using $transcriptFile instead"
     }
 } catch {
     Write-Warning "Failed to start transcript: $_"
@@ -732,24 +733,9 @@ if ($script:isLegacyPowerShell) {
     $global:useThreadJobs = Initialize-ThreadJobModule
 }
 
-# Transcript Logging Setup
-$transcriptPath = "C:\temp"
-try {
-    if (-not (Test-Path $transcriptPath)) {
-        New-Item -ItemType Directory -Path $transcriptPath -Force -ErrorAction SilentlyContinue | Out-Null
-    }
-    
-    if (Test-Path $transcriptPath) {
-        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
-        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
-    } else {
-        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').txt"
-        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
-        Write-Warning "Could not create transcript in C:\temp, using $transcriptFile instead"
-    }
-} catch {
-    Write-Warning "Failed to start transcript: $_"
-}
+# Transcript Logging Setup - Remove redundant setup since we already have it above
+$transcriptPath = $PSScriptRoot # Use script directory instead of C:\temp
+# Don't need to recreate transcript or start a new one - we're already logging
 
 # Script Header in Transcript
 Write-Host "======================================================" -ForegroundColor White
@@ -1150,3 +1136,4 @@ try {
 }
 
 Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
+Write-Host "`nScript finished at $(Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') (UTC)" -ForegroundColor Green
