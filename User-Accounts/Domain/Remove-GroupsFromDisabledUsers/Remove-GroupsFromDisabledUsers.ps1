@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:22:00 UTC
+# Last Updated: 2025-03-05 23:24:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.1
-# Additional Info: Added functionality to keep PowerShell window open at end of script
+# Version: 3.2
+# Additional Info: Fixed issue with window closing when run via right-click "Run with PowerShell"
 # =============================================================================
 
 <#
@@ -37,6 +37,9 @@
     - Review log file after completion
     - Verify users have appropriate group membership
 #>
+
+# This line prevents the window from closing when run via right-click "Run with PowerShell"
+$KeepWindowOpen = $true
 
 # Import required assembly for MessageBox
 Add-Type -AssemblyName System.Windows.Forms
@@ -180,9 +183,24 @@ try {
     [System.Windows.Forms.MessageBox]::Show("Could not open log file: $($_.Exception.Message)", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
 }
 
-# Keep console window open until user presses Enter
+# Keep console window open regardless of how script was launched
 Write-Host "`n`n" -NoNewline
-Write-Host "Script execution complete." -ForegroundColor Green
+Write-Host "Script execution complete." -ForegroundColor Green  
 Write-Host "Window will remain open for your review." -ForegroundColor Cyan
-Write-Host "Press Enter key to close this window..." -ForegroundColor Yellow
-Read-Host | Out-Null
+Write-Host "Press any key to close this window..." -ForegroundColor Yellow
+
+# This technique works better with "Run with PowerShell" than Read-Host
+function Pause-Script {
+    if ($psISE) {
+        # Running in PowerShell ISE
+        $null = Read-Host "Press Enter to continue..."
+    }
+    else {
+        # Running in console or "Run with PowerShell"
+        Write-Host "Press any key to continue..."
+        $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
+    }
+}
+
+# Execute the pause function to keep window open
+Pause-Script
