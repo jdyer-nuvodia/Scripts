@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-04 21:40:00 UTC
+# Last Updated: 2025-03-05 18:21:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.1
-# Additional Info: Suppressed mountpoint and junction output messages
+# Version: 1.6.2
+# Additional Info: Fixed catch block structure for proper exception handling
 # =============================================================================
 
 # Requires -Version 5.1
@@ -120,6 +120,7 @@
     1.5.8 - Suppressed return value output in console
     1.6.0 - Added support for hidden and system folders like "All Users"
     1.6.1 - Suppressed mountpoint and junction output messages
+    1.6.2 - Fixed catch block structure for proper exception handling
 #>
 
 param (
@@ -338,7 +339,8 @@ function Initialize-NuGetProvider {
             $null = New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\PowerShellGet\" -Name "NuGetProviderApproved" -Value 1 -PropertyType DWORD -Force -ErrorAction SilentlyContinue
             $null = New-Item -Path "HKCU:\SOFTWARE\Microsoft\PowerShellGet\" -Force -ErrorAction SilentlyContinue
             $null = New-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\PowerShellGet\" -Name "NuGetProviderApproved" -Value 1 -PropertyType DWORD -Force -ErrorAction SilentlyContinue
-        } catch {
+        } 
+        catch {
             Write-Verbose "Unable to set registry keys: $($_.Exception.Message)"
         }
         
@@ -381,7 +383,8 @@ Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope Curr
                     Write-Host "NuGet provider installed successfully." -ForegroundColor Green
                     return $true
                 }
-            } catch {
+            } 
+            catch {
                 Write-Host "Bootstrap method failed, trying alternative approaches..." -ForegroundColor Yellow
             }
             
@@ -392,7 +395,8 @@ Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope Curr
                     Write-Host "ERROR: Cannot connect to PowerShell Gallery. Internet connection appears to be down." -ForegroundColor Red
                     return $false
                 }
-            } catch {
+            } 
+            catch {
                 Write-Host "ERROR: Failed to check internet connectivity: $($_.Exception.Message)" -ForegroundColor Red
                 Write-Host "This could prevent module installation from external repositories." -ForegroundColor Yellow
             }
@@ -408,12 +412,10 @@ Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope Curr
                     Write-Host "NuGet provider installed via CommandLine successfully." -ForegroundColor Green
                     return $true
                 }
-            } catch {
+            } 
+            catch {
                 Write-Host "CommandLine installation attempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
             }
-            
-            # Fallback attempts - keep the existing methods
-            # ...existing code...
             
             # Final brute force attempt if all else fails - direct DLL download and import
             try {
@@ -427,7 +429,7 @@ Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope Curr
                 $webClient = New-Object System.Net.WebClient
                 $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
                 $webClient.DownloadFile("https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider.2.8.5.208.dll", 
-                                      "$nugetPath\Microsoft.PackageManagement.NuGetProvider.dll")
+                                       "$nugetPath\Microsoft.PackageManagement.NuGetProvider.dll")
                 
                 # Force import
                 Import-Module "$nugetPath\Microsoft.PackageManagement.NuGetProvider.dll" -Force
@@ -438,14 +440,21 @@ Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope Curr
                     Write-Host "NuGet provider installed via direct DLL import." -ForegroundColor Green
                     return $true
                 }
-            } catch {
+            } 
+            catch {
+                # This is now properly the last catch block for this try statement
                 Write-Host "ERROR: All installation methods failed for NuGet provider." -ForegroundColor Red
                 return $false
             }
+            
+            # If execution reaches here, we've tried all methods but failed
+            Write-Host "ERROR: All methods to install NuGet provider failed." -ForegroundColor Red
+            return $false
         }
         return $true
     }
     catch {
+        # Outermost catch for the entire function
         Write-Host "Failed to initialize NuGet provider: $($_.Exception.Message)" -ForegroundColor Yellow
         return $false
     }
