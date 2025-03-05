@@ -568,6 +568,8 @@ function Initialize-NuGetProvider {
                 }
             }
         }
+        # Force the PSGallery repository to be trusted for current user
+        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -Scope CurrentUser -ErrorAction SilentlyContinue
         return $true
     }
     catch {
