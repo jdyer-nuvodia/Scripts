@@ -1150,4 +1150,3 @@ try {
 }
 
 Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
-Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
