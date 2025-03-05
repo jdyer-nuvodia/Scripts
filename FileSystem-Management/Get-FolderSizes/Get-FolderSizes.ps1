@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 19:36:00 UTC
+# Last Updated: 2025-03-06 19:39:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.8
-# Additional Info: Fixed variable name conflicts causing incorrect path targeting
+# Version: 1.6.9
+# Additional Info: Eliminated PowerShell window by using background jobs instead of Process
 # =============================================================================
 
 # Requires -Version 5.1
@@ -127,6 +127,7 @@
     1.6.6 - Fixed parameter syntax by removing trailing comma in path value
     1.6.7 - Eliminated GUI window flash during NuGet provider installation
     1.6.8 - Fixed variable name conflicts causing incorrect path targeting
+    1.6.9 - Eliminated PowerShell window by using background jobs instead of Process
 #>
 
 param (
@@ -207,19 +208,19 @@ try {
         }
     }
     
-    # Create script to auto-respond to prompts and install NuGet
-    $tempScript = [System.IO.Path]::GetTempFileName() + ".ps1"
-    @"
-`$ProgressPreference = 'SilentlyContinue'
-`$ConfirmPreference = 'None'
-`$ErrorActionPreference = 'SilentlyContinue'
-`$PSDefaultParameterValues = @{'*:Confirm' = `$false}
-Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -SkipPublisherCheck
-"@ | Out-File -FilePath $tempScript -Encoding utf8
+    # Instead of creating a temp script and launching a separate process,
+    # execute the provider installation in a silent background job
+    $installJob = Start-Job -ScriptBlock {
+        $ProgressPreference = 'SilentlyContinue'
+        $ConfirmPreference = 'None'
+        $ErrorActionPreference = 'SilentlyContinue'
+        $PSDefaultParameterValues = @{'*:Confirm' = $false}
+        Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -SkipPublisherCheck -ErrorAction SilentlyContinue | Out-Null
+    }
     
-    # Execute in separate process with completely hidden window
-    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -NonInteractive -NoLogo -File `"$tempScript`"" -Wait
-    Remove-Item $tempScript -Force -ErrorAction SilentlyContinue
+    # Wait for the job to complete and clean up
+    Wait-Job $installJob -Timeout 30 | Out-Null
+    Remove-Job $installJob -Force -ErrorAction SilentlyContinue
 }
 catch {
     # Silently continue if pre-emptive installation fails
