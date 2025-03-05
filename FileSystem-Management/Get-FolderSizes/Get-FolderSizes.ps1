@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 19:39:00 UTC
+# Last Updated: 2025-03-06 19:46:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.9
-# Additional Info: Eliminated PowerShell window by using background jobs instead of Process
+# Version: 1.7.0
+# Additional Info: Standardized console output colors to match organizational standards
 # =============================================================================
 
 # Requires -Version 5.1
@@ -128,6 +128,7 @@
     1.6.7 - Eliminated GUI window flash during NuGet provider installation
     1.6.8 - Fixed variable name conflicts causing incorrect path targeting
     1.6.9 - Eliminated PowerShell window by using background jobs instead of Process
+    1.7.0 - Standardized console output colors to match organizational standards
 #>
 
 param (
@@ -230,6 +231,19 @@ catch {
 $Path = $originalPath
 
 #region Helper Functions
+
+# Function to initialize color scheme for console output
+function Show-ColorLegend {
+    Write-Host "`n===== Console Output Color Legend =====" -ForegroundColor White
+    Write-Host "White     - Standard information" -ForegroundColor White
+    Write-Host "Cyan      - Process updates and status" -ForegroundColor Cyan
+    Write-Host "Green     - Successful operations and results" -ForegroundColor Green
+    Write-Host "Yellow    - Warnings and attention needed" -ForegroundColor Yellow
+    Write-Host "Red       - Errors and critical issues" -ForegroundColor Red
+    Write-Host "Magenta   - Debug information" -ForegroundColor Magenta
+    Write-Host "DarkGray  - Technical details" -ForegroundColor DarkGray
+    Write-Host "======================================`n" -ForegroundColor White
+}
 
 # New function to detect symbolic links and junction points
 function Get-PathType {
@@ -518,7 +532,7 @@ function Initialize-ThreadJobModule {
         # Check PSGallery availability
         try {
             $psGallery = Get-PSRepository -Name PSGallery -ErrorAction Stop
-            Write-Host "PSGallery repository status: $($psGallery.InstallationPolicy)" -ForegroundColor Cyan
+            Write-Host "PSGallery repository status: $($psGallery.InstallationPolicy)" -ForegroundColor DarkGray
         }
         catch {
             Write-Host "ERROR: Cannot access PSGallery repository." -ForegroundColor Red
@@ -723,17 +737,20 @@ try {
 }
 
 # Script Header in Transcript
-Write-Host "======================================================"
-Write-Host "Folder Size Scanner - Execution Log"
-Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))"
-Write-Host "User: $env:USERNAME"
-Write-Host "Computer: $env:COMPUTERNAME"
-Write-Host "Target Path: $Path"
-Write-Host "Admin Privileges: $isAdmin"
-Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })"
-Write-Host "======================================================"
+Write-Host "======================================================" -ForegroundColor White
+Write-Host "Folder Size Scanner - Execution Log" -ForegroundColor White
+Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
+Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor White
+Write-Host "User: $env:USERNAME" -ForegroundColor White
+Write-Host "Computer: $env:COMPUTERNAME" -ForegroundColor White
+Write-Host "Target Path: $Path" -ForegroundColor White
+Write-Host "Admin Privileges: $isAdmin" -ForegroundColor White
+Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })" -ForegroundColor White
+Write-Host "======================================================" -ForegroundColor White
 Write-Host ""
+
+# Show color legend for user reference
+Show-ColorLegend
 
 # .NET Type Definition
 Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
@@ -852,8 +869,8 @@ public static class FolderSizeHelper
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-Write-Host "Ultra-fast folder analysis starting at: $Path"
-Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Write-Host "Ultra-fast folder analysis starting at: $Path" -ForegroundColor Cyan
+Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
 
 #endregion
 
@@ -919,8 +936,8 @@ function Get-FolderSize {
 
         # Display largest file information
         if ($largestFile) {
-            Write-Host "`nLargest file in $folderPath :" -ForegroundColor Green
-            Write-Host "Name: $($largestFile.Name)"
+            Write-Host "`nLargest file in $folderPath :" -ForegroundColor White
+            Write-Host "Name: $($largestFile.Name)" -ForegroundColor DarkGray
             $fileSize = if ($largestFile.Size -gt 1MB) {
                 "$([Math]::Round($largestFile.Size / 1MB, 2)) MB"
             } elseif ($largestFile.Size -gt 1KB) {
@@ -928,7 +945,7 @@ function Get-FolderSize {
             } else {
                 "$($largestFile.Size) bytes"
             }
-            Write-Host "Size: $fileSize"
+            Write-Host "Size: $fileSize" -ForegroundColor DarkGray
         }
 
         # Get Subfolders and Process - include hidden and system folders if specified
@@ -1004,7 +1021,7 @@ function Get-FolderSize {
                 Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
             }
             
-            Write-Host ("-" * 150)
+            Write-Host ("-" * 150) -ForegroundColor DarkGray
             Write-Host ""
             
             # Process only the largest subfolder if within depth limit
@@ -1072,13 +1089,19 @@ function Show-DriveInfo {
     
     Write-Host "`nDrive Volume Details:" -ForegroundColor Green
     Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
+    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor White
+    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor White
+    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor White
+    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor White
+    
+    # Format size with appropriate colors based on values
+    $totalSize = [math]::Round($Volume.Size/1GB, 2)
+    $freeSpace = [math]::Round($Volume.SizeRemaining/1GB, 2)
+    $freePercent = [math]::Round(($Volume.SizeRemaining / $Volume.Size) * 100, 1)
+    
+    Write-Host "Size: $totalSize GB" -ForegroundColor White
+    Write-Host "Free Space: $freeSpace GB ($freePercent%)" -ForegroundColor $(if ($freePercent -lt 10) { "Red" } elseif ($freePercent -lt 20) { "Yellow" } else { "Green" })
+    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor White
 }
 
 try {
@@ -1106,7 +1129,7 @@ catch {
 # Stop Transcript
 try {
     Stop-Transcript
-    Write-Host "Transcript stopped. Log file: $transcriptFile"
+    Write-Host "Transcript stopped. Log file: $transcriptFile" -ForegroundColor White
 } catch {
     Write-Warning "Failed to stop transcript: $_"
 }
