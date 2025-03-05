@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 12:30:00 UTC
+# Last Updated: 2025-03-07 22:24:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.3
-# Additional Info: Moved transcript logging prior to NuGet provider installation
+# Version: 1.7.4
+# Additional Info: Added Initialize-ThreadJobModule function to avoid reference errors
 # =============================================================================
 
 # Requires -Version 5.1
@@ -132,6 +132,7 @@
     1.7.1 - Enhanced silent NuGet provider installation to prevent prompts
     1.7.2 - Attempted fix for remaining NuGet silent install prompts
     1.7.3 - Moved transcript logging prior to NuGet provider installation
+    1.7.4 - Added Initialize-ThreadJobModule function to avoid reference errors
 #>
 
 param (
@@ -614,107 +615,15 @@ function Initialize-NuGetProvider {
 }
 
 function Initialize-ThreadJobModule {
-    try {
-        # Set confirmation preference to None to suppress prompts
-        $ConfirmPreference = 'None'
-        
-        if (-not (Initialize-NuGetProvider)) {
-            Write-Warning "Could not initialize NuGet provider. ThreadJob installation may fail."
-            return $false
-        }
-
-        # Check if ThreadJob module is already available
-        if (Get-Module -ListAvailable -Name ThreadJob) {
-            Import-Module ThreadJob -ErrorAction Stop
-            Write-Host "ThreadJob module already installed and imported successfully." -ForegroundColor Green
-            return $true
-        }
-
-        Write-Host "ThreadJob module not found. Attempting to install..." -ForegroundColor Cyan
-        
-        # Check PSGallery availability
+    if (!(Get-Module -Name ThreadJob -ListAvailable)) {
         try {
-            $psGallery = Get-PSRepository -Name PSGallery -ErrorAction Stop
-            Write-Host "PSGallery repository status: $($psGallery.InstallationPolicy)" -ForegroundColor DarkGray
+            Install-Module ThreadJob -Force -Scope CurrentUser -ErrorAction SilentlyContinue
         }
         catch {
-            Write-Host "ERROR: Cannot access PSGallery repository." -ForegroundColor Red
-            Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Attempting to register PSGallery..." -ForegroundColor Yellow
-        }
-        
-        # Set PSGallery as trusted
-        if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
-            try {
-                Register-PSRepository -Default -InstallationPolicy Trusted -ErrorAction Stop
-                Write-Host "Successfully registered PSGallery repository." -ForegroundColor Green
-            }
-            catch {
-                Write-Host "ERROR: Failed to register PSGallery repository:" -ForegroundColor Red
-                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-                if ($_.Exception.InnerException) {
-                    Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
-                }
-                Write-Host "Please register PSGallery manually: Register-PSRepository -Default" -ForegroundColor Yellow
-                return $false
-            }
-        } else {
-            try {
-                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop
-                Write-Host "Successfully set PSGallery repository as trusted." -ForegroundColor Green
-            }
-            catch {
-                Write-Host "ERROR: Failed to set PSGallery as trusted:" -ForegroundColor Red
-                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-                Write-Host "This may prevent automatic module installation." -ForegroundColor Yellow
-            }
-        }
-
-        # Install ThreadJob module with diagnostics
-        try {
-            Write-Host "Attempting to install ThreadJob module..." -ForegroundColor Cyan
-            Install-Module -Name ThreadJob -Repository PSGallery -Scope AllUsers -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop -Verbose
-            Write-Host "ThreadJob module installed successfully." -ForegroundColor Green
-        }
-        catch {
-            Write-Host "ERROR: Failed to install ThreadJob module:" -ForegroundColor Red
-            Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
-            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-            
-            # Additional diagnostics for common issues
-            if ($_.Exception.Message -match "administrator|elevated") {
-                Write-Host "DIAGNOSIS: Installation requires administrator privileges." -ForegroundColor Yellow
-                Write-Host "Please restart PowerShell as Administrator and try again." -ForegroundColor Yellow
-            }
-            elseif ($_.Exception.Message -match "access|denied") {
-                Write-Host "DIAGNOSIS: Access denied error. Check folder permissions." -ForegroundColor Yellow
-                Write-Host "Try using -Scope CurrentUser instead of -Scope AllUsers" -ForegroundColor Yellow
-            }
-            
-            Write-Host "MANUAL INSTALLATION: Please install ThreadJob module manually with:" -ForegroundColor Yellow
-            Write-Host "Install-Module -Name ThreadJob -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -SkipPublisherCheck" -ForegroundColor Yellow
-            
-            return $false
-        }
-
-        # Import the module with diagnostics
-        try {
-            Import-Module ThreadJob -ErrorAction Stop
-            Write-Host "ThreadJob module imported successfully." -ForegroundColor Green
-            return $true
-        }
-        catch {
-            Write-Host "ERROR: Failed to import ThreadJob module:" -ForegroundColor Red
-            Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Module may have installed but cannot be loaded." -ForegroundColor Yellow
-            return $false
+            Write-Warning "Could not install ThreadJob module: $($_.Exception.Message)"
         }
     }
-    catch {
-        Write-Warning "Could not install/import ThreadJob module: $($_.Exception.Message)"
-        Write-Host "Falling back to single-threaded operation mode." -ForegroundColor Yellow
-        return $false
-    }
+    Import-Module ThreadJob -ErrorAction SilentlyContinue
 }
 
 function Format-SizeWithPadding {
