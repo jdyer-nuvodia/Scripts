@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-03-05 23:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3
-# Additional Info: Fixed parsing error with variable references in error messages
+# Version: 3.4
+# Additional Info: Fixed script analyzer warnings about unused variables
 # =============================================================================
 
 <#
@@ -38,15 +38,11 @@
     - Verify users have appropriate group membership
 #>
 
-# This line prevents the window from closing when run via right-click "Run with PowerShell"
-$KeepWindowOpen = $true
-
 # Import required assembly for MessageBox
 Add-Type -AssemblyName System.Windows.Forms
 
 # Get the current domain
 $CurrentDomain = Get-ADDomain
-$DomainDN = $CurrentDomain.DistinguishedName
 $DomainUsersGroup = "Domain Users" # Default primary group
 
 # Set log file location
@@ -134,7 +130,6 @@ Try {
                             Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
                             $GroupsRemovedCounter++
                         } catch {
-                            # Fixed: Properly format variable reference
                             Write-Host "Error removing from group $($Group.Name) - $($_.Exception.Message)" -ForegroundColor Red
                         }
                     }
@@ -156,7 +151,6 @@ Try {
                 Write-Host "User description already indicates disabled status" -ForegroundColor Green
             }
         } catch {
-            # Fixed: Properly format variable reference to avoid the colon issue
             Write-Host "Error processing user ${User} - $($_.Exception.Message)" -ForegroundColor Red
         }
         
