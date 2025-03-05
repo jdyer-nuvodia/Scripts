@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 22:24:00 UTC
+# Last Updated: 2025-03-05 23:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.4
-# Additional Info: Added Initialize-ThreadJobModule function to avoid reference errors
+# Version: 1.7.5
+# Additional Info: Moved Initialize-ThreadJobModule function above usage
 # =============================================================================
 
 # Requires -Version 5.1
@@ -133,6 +133,7 @@
     1.7.2 - Attempted fix for remaining NuGet silent install prompts
     1.7.3 - Moved transcript logging prior to NuGet provider installation
     1.7.4 - Added Initialize-ThreadJobModule function to avoid reference errors
+    1.7.5 - Moved Initialize-ThreadJobModule function above usage
 #>
 
 param (
