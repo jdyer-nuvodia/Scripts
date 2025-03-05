@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:15:15 UTC
+# Last Updated: 2025-03-05 23:17:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2
-# Additional Info: Removed user movement functionality, simplified to focus on group removal
+# Version: 3.0
+# Additional Info: Removed report-only mode, script now always runs in live mode
 # =============================================================================
 
 <#
@@ -22,6 +22,8 @@
      - Active Directory PowerShell module
      - Appropriate AD permissions to modify users and groups
      - Windows Forms assembly for completion notification
+
+    IMPORTANT: This script always runs in live mode and will make immediate changes to Active Directory.
 .PARAMETER None
     This script does not accept parameters. Configuration is done via variables.
 .EXAMPLE
@@ -31,7 +33,6 @@
     Security Level: High
     Required Permissions: Domain Admin or delegated AD permissions
     Validation Requirements: 
-    - Verify $ReportOnly is set correctly before execution
     - Review log file after completion
     - Verify users have appropriate group membership
 #>
@@ -46,7 +47,6 @@ $DomainUsersGroup = "Domain Users" # Default primary group
 
 # Set log file location
 $logfilename = "C:\Temp\DisabledUsers_" + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".log"
-$ReportOnly = $true  # Change this to $false to actively make changes to AD
 
 # Begin Logging
 Start-Transcript -Path $logfilename
@@ -59,7 +59,6 @@ Write-Host "=======================================================" -Foreground
 # Display environment information
 Write-Host "CONFIGURATION:" -ForegroundColor White
 Write-Host "Current domain: $($CurrentDomain.DNSRoot)" -ForegroundColor Cyan
-Write-Host "Report only mode: $ReportOnly" -ForegroundColor Yellow
 Write-Host "Start time: $(Get-Date)" -ForegroundColor White
 Write-Host "Log file: $logfilename" -ForegroundColor DarkGray
 Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
@@ -107,41 +106,31 @@ Try {
             
             # Process group removals
             if ($GroupCount -gt 0) {
-                if (-not $ReportOnly) {
-                    # Ensure Domain Users is the primary group before removing other groups
-                    if ($UserInfo.PrimaryGroupID -ne $DomainUsersPGID) {
+                # Ensure Domain Users is the primary group before removing other groups
+                if ($UserInfo.PrimaryGroupID -ne $DomainUsersPGID) {
+                    try {
+                        # Add to Domain Users if not already a member
+                        if (-not ($UserGroups | Where-Object { $_.Name -eq $DomainUsersGroup })) {
+                            Add-ADGroupMember -Identity $DomainUsersGroup -Members $User
+                        }
+                        # Set Domain Users as primary group
+                        Set-ADUser -Identity $User -Replace @{primaryGroupID = $DomainUsersPGID}
+                        Write-Host "Reset primary group to Domain Users" -ForegroundColor Green
+                    } catch {
+                        Write-Host "Error setting Domain Users as primary group: $($_.Exception.Message)" -ForegroundColor Red
+                    }
+                }
+                
+                # Now remove all group memberships
+                foreach ($Group in $UserGroups) {
+                    # Skip if it's Domain Users and it's now the primary group
+                    if ($Group.Name -ne $DomainUsersGroup -or $UserInfo.PrimaryGroupID -ne $DomainUsersPGID) {
                         try {
-                            # Add to Domain Users if not already a member
-                            if (-not ($UserGroups | Where-Object { $_.Name -eq $DomainUsersGroup })) {
-                                Add-ADGroupMember -Identity $DomainUsersGroup -Members $User
-                            }
-                            # Set Domain Users as primary group
-                            Set-ADUser -Identity $User -Replace @{primaryGroupID = $DomainUsersPGID}
-                            Write-Host "Reset primary group to Domain Users" -ForegroundColor Green
+                            Remove-ADGroupMember -Identity $Group.Name -Members $User -Confirm:$false
+                            Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
+                            $GroupsRemovedCounter++
                         } catch {
-                            Write-Host "Error setting Domain Users as primary group: $($_.Exception.Message)" -ForegroundColor Red
-                        }
-                    }
-                    
-                    # Now remove all group memberships
-                    foreach ($Group in $UserGroups) {
-                        # Skip if it's Domain Users and it's now the primary group
-                        if ($Group.Name -ne $DomainUsersGroup -or $UserInfo.PrimaryGroupID -ne $DomainUsersPGID) {
-                            try {
-                                Remove-ADGroupMember -Identity $Group.Name -Members $User -Confirm:$false
-                                Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
-                                $GroupsRemovedCounter++
-                            } catch {
-                                Write-Host "Error removing from group $($Group.Name): $($_.Exception.Message)" -ForegroundColor Red
-                            }
-                        }
-                    }
-                } else {
-                    # Report mode - just list the groups
-                    Write-Host "Would remove user from the following groups:" -ForegroundColor Yellow
-                    foreach ($Group in $UserGroups) {
-                        if ($Group.Name -ne $DomainUsersGroup -or $UserInfo.PrimaryGroupID -ne $DomainUsersPGID) {
-                            Write-Host " - $($Group.Name)" -ForegroundColor DarkGray
+                            Write-Host "Error removing from group $($Group.Name): $($_.Exception.Message)" -ForegroundColor Red
                         }
                     }
                 }
@@ -152,15 +141,11 @@ Try {
             # Update User Description
             $DisabledDate = Get-Date
             if ($null -eq $UserInfo.Description -or -not $UserInfo.Description.StartsWith("User disabled")) {
-                if (-not $ReportOnly) {
-                    try {
-                        Set-ADUser -Identity $User -Description "User disabled $DisabledDate"
-                        Write-Host "Updated user description" -ForegroundColor Green
-                    } catch {
-                        Write-Host "Error updating description: $($_.Exception.Message)" -ForegroundColor Red
-                    }
-                } else {
-                    Write-Host "Would update description to: User disabled $DisabledDate" -ForegroundColor Yellow
+                try {
+                    Set-ADUser -Identity $User -Description "User disabled $DisabledDate"
+                    Write-Host "Updated user description" -ForegroundColor Green
+                } catch {
+                    Write-Host "Error updating description: $($_.Exception.Message)" -ForegroundColor Red
                 }
             } else {
                 Write-Host "User description already indicates disabled status" -ForegroundColor Green
@@ -180,9 +165,6 @@ Write-Host "SUMMARY:" -ForegroundColor White
 Write-Host "End time: $(Get-Date)" -ForegroundColor White
 Write-Host "Total users processed: $UserCounter of $DisabledUsersCount" -ForegroundColor Cyan
 Write-Host "Total group memberships removed: $GroupsRemovedCounter" -ForegroundColor Green
-if ($ReportOnly) {
-    Write-Host "NOTE: Script ran in REPORT ONLY mode. No changes were made." -ForegroundColor Magenta
-}
 Write-Host "Log file saved to: $logfilename" -ForegroundColor DarkGray
 Write-Host "=======================================================" -ForegroundColor White
 Stop-Transcript
