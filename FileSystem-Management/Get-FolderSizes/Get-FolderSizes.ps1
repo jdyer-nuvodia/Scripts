@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 18:41:00 UTC
+# Last Updated: 2025-03-06 19:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.7
-# Additional Info: Eliminated GUI window flash during NuGet provider installation
+# Version: 1.6.8
+# Additional Info: Fixed variable name conflicts causing incorrect path targeting
 # =============================================================================
 
 # Requires -Version 5.1
@@ -126,6 +126,7 @@
     1.6.5 - Fixed parameter syntax error with path value
     1.6.6 - Fixed parameter syntax by removing trailing comma in path value
     1.6.7 - Eliminated GUI window flash during NuGet provider installation
+    1.6.8 - Fixed variable name conflicts causing incorrect path targeting
 #>
 
 param (
@@ -140,6 +141,9 @@ param (
 # Pre-emptively install NuGet provider - must be at very top of script
 # This must execute before any other operations that might trigger PackageManagement
 try {
+    # Store original Path parameter value to prevent overwrites
+    $originalPath = $Path
+
     # Force automatic "yes" to all prompts and silence progress
     $ProgressPreference = 'SilentlyContinue'
     $ConfirmPreference = 'None'
@@ -188,15 +192,15 @@ try {
     
     $nugetUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
     
-    foreach ($path in $nugetProviderPaths) {
-        if (-not (Test-Path $path)) {
-            $null = New-Item -Path $path -ItemType Directory -Force -ErrorAction SilentlyContinue
+    foreach ($nugetProviderPath in $nugetProviderPaths) {
+        if (-not (Test-Path $nugetProviderPath)) {
+            $null = New-Item -Path $nugetProviderPath -ItemType Directory -Force -ErrorAction SilentlyContinue
         }
         
         try {
             $webClient = New-Object System.Net.WebClient
             $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
-            $webClient.DownloadFile($nugetUrl, "$path\Microsoft.PackageManagement.NuGetProvider.dll")
+            $webClient.DownloadFile($nugetUrl, "$nugetProviderPath\Microsoft.PackageManagement.NuGetProvider.dll")
         }
         catch {
             # Continue silently
@@ -221,18 +225,21 @@ catch {
     # Silently continue if pre-emptive installation fails
 }
 
+# Restore original Path parameter if it was changed
+$Path = $originalPath
+
 #region Helper Functions
 
 # New function to detect symbolic links and junction points
 function Get-PathType {
     param (
-        [string]$Path
+        [string]$InputPath
     )
     
     try {
         # Special handling for OneDrive paths
-        if ($Path -match "OneDrive -") {
-            $dirInfo = New-Object System.IO.DirectoryInfo $Path
+        if ($InputPath -match "OneDrive -") {
+            $dirInfo = New-Object System.IO.DirectoryInfo $InputPath
             
             if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                 # This is an OneDrive reparse point - special handling
@@ -245,7 +252,7 @@ function Get-PathType {
             }
         }
         
-        $dirInfo = New-Object System.IO.DirectoryInfo $Path
+        $dirInfo = New-Object System.IO.DirectoryInfo $InputPath
         if ($dirInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
             # This is a reparse point (symbolic link, junction, etc.)
             $target = $null
@@ -253,7 +260,7 @@ function Get-PathType {
             
             # Method 1: Try fsutil for most accurate results
             try {
-                $fsutil = & fsutil reparsepoint query "$Path" 2>&1
+                $fsutil = & fsutil reparsepoint query "$InputPath" 2>&1
                 
                 if ($fsutil -match "Symbolic Link") {
                     $type = "SymbolicLink"
@@ -278,7 +285,7 @@ function Get-PathType {
                     }
                 }
                 # Check for OneDrive specific patterns in fsutil output
-                elseif ($fsutil -match "OneDrive" -or $Path -match "OneDrive -") {
+                elseif ($fsutil -match "OneDrive" -or $InputPath -match "OneDrive -") {
                     $type = "OneDriveFolder"
                     $target = "Cloud Storage"
                 }
@@ -286,7 +293,7 @@ function Get-PathType {
             catch {
                 Write-Verbose "fsutil method failed: $($_.Exception.Message)"
                 # If path contains OneDrive, treat as OneDrive folder
-                if ($Path -match "OneDrive -") {
+                if ($InputPath -match "OneDrive -") {
                     $type = "OneDriveFolder"
                     $target = "Cloud Storage"
                 }
@@ -311,7 +318,7 @@ function Get-PathType {
                 catch {
                     Write-Verbose ".NET target method failed: $($_.Exception.Message)"
                     # If path contains OneDrive, treat as OneDrive folder
-                    if ($Path -match "OneDrive -") {
+                    if ($InputPath -match "OneDrive -") {
                         $type = "OneDriveFolder"
                         $target = "Cloud Storage"
                     }
@@ -322,7 +329,7 @@ function Get-PathType {
             if ([string]::IsNullOrEmpty($target)) {
                 try {
                     # Use Get-Item with -Force parameter to get link information
-                    $item = Get-Item -Path $Path -Force -ErrorAction Stop
+                    $item = Get-Item -Path $InputPath -Force -ErrorAction Stop
                     
                     # Check for LinkType property (PowerShell 5.1+)
                     if ($item.PSObject.Properties.Name -contains "LinkType") {
@@ -352,7 +359,7 @@ function Get-PathType {
             }
             
             # Final check - if we still have an Unknown Target and path has OneDrive, mark as OneDrive
-            if (([string]::IsNullOrEmpty($target) -or $target -eq "Unknown Target") -and $Path -match "OneDrive -") {
+            if (([string]::IsNullOrEmpty($target) -or $target -eq "Unknown Target") -and $InputPath -match "OneDrive -") {
                 $type = "OneDriveFolder"
                 $target = "Cloud Storage"
             }
@@ -376,9 +383,9 @@ function Get-PathType {
         }
     }
     catch {
-        Write-Warning "Error determining path type for '$Path': $($_.Exception.Message)"
+        Write-Warning "Error determining path type for '$InputPath': $($_.Exception.Message)"
         # Check if it might be an OneDrive path
-        if ($Path -match "OneDrive -") {
+        if ($InputPath -match "OneDrive -") {
             return @{
                 Type = "OneDriveFolder"
                 Target = "Cloud Storage"
@@ -430,10 +437,10 @@ function Initialize-NuGetProvider {
             "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll"
         )
         
-        foreach ($path in $nugetProviderPaths) {
-            if (Test-Path $path) {
+        foreach ($nugetProviderDll in $nugetProviderPaths) {
+            if (Test-Path $nugetProviderDll) {
                 try {
-                    Import-Module $path -Force -ErrorAction SilentlyContinue
+                    Import-Module $nugetProviderDll -Force -ErrorAction SilentlyContinue
                 }
                 catch {
                     # Continue silently
@@ -611,15 +618,15 @@ function Format-SizeWithPadding {
 
 function Format-Path {
     param (
-        [string]$Path
+        [string]$InputPath
     )
     try {
-        $fullPath = [System.IO.Path]::GetFullPath($Path.Trim())
+        $fullPath = [System.IO.Path]::GetFullPath($InputPath.Trim())
         return $fullPath
     }
     catch {
-        Write-Warning "Error formatting path '$Path': $($_.Exception.Message)"
-        return $Path
+        Write-Warning "Error formatting path '$InputPath': $($_.Exception.Message)"
+        return $InputPath
     }
 }
 
@@ -879,7 +886,7 @@ function Get-FolderSize {
         }
 
         # Check if this path is a symbolic link, junction, or mount point
-        $pathType = Get-PathType -Path $folderPath
+        $pathType = Get-PathType -InputPath $folderPath
         
         # Silently handle special paths - no console output for junction detection
         if ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
@@ -955,7 +962,7 @@ function Get-FolderSize {
                 $subFolderPath = $folder.FullName
                 
                 # Check if folder is a symbolic link or junction point
-                $subPathType = Get-PathType -Path $subFolderPath
+                $subPathType = Get-PathType -InputPath $subFolderPath
                 
                 # Special handling for special Windows folders like "All Users" - silent processing
                 $isSpecialFolder = $false
