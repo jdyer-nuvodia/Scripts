@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 18:26:00 UTC
+# Last Updated: 2025-03-05 18:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.3
-# Additional Info: Added pre-emptive NuGet provider installation to prevent prompts
+# Version: 1.6.4
+# Additional Info: Fixed invalid assignment expressions for preference variables
 # =============================================================================
 
 # Pre-emptively install NuGet provider - must be at very top of script
@@ -17,7 +17,7 @@ try {
     $ErrorActionPreference = 'SilentlyContinue'
     
     # Set up global parameter defaults to prevent prompts
-    $global:PSDefaultParameterValues = @{
+    $PSDefaultParameterValues = @{
         'Install-Module:Force' = $true
         'Install-Module:SkipPublisherCheck' = $true
         'Install-Module:Confirm' = $false
@@ -206,6 +206,7 @@ catch {
     1.6.1 - Suppressed mountpoint and junction output messages
     1.6.2 - Fixed catch block structure for proper exception handling
     1.6.3 - Added pre-emptive NuGet provider installation to prevent prompts
+    1.6.4 - Fixed invalid assignment expressions for preference variables
 #>
 
 param (
@@ -405,11 +406,11 @@ function Initialize-NuGetProvider {
         }
         
         # Set confirmation preference to None to suppress prompts
-        $global:ConfirmPreference = 'None'
-        $global:ProgressPreference = 'SilentlyContinue'  # Hide progress bars
+        $ConfirmPreference = 'None'
+        $ProgressPreference = 'SilentlyContinue'  # Hide progress bars
         
-        # Disable all possible prompt mechanisms - use global scope
-        $global:PSDefaultParameterValues = @{
+        # Disable all possible prompt mechanisms - use script scope instead of global
+        $script:PSDefaultParameterValues = @{
             'Install-Module:Confirm' = $false
             'Install-Module:Force' = $true
             'Install-PackageProvider:Confirm' = $false
@@ -448,7 +449,7 @@ function Initialize-NuGetProvider {
                 $ProgressPreference = 'SilentlyContinue'
                 $ConfirmPreference = 'None'
                 Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck
-            } -ArgumentList $global:PSDefaultParameterValues | Wait-Job | Remove-Job
+            } -ArgumentList $script:PSDefaultParameterValues | Wait-Job | Remove-Job
             
             # Re-check if provider is available
             $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
