@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:26:00 UTC
+# Last Updated: 2025-03-05 22:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.5
-# Additional Info: Moved Initialize-ThreadJobModule function above usage
+# Version: 1.7.6
+# Additional Info: Moved Initialize-ThreadJobModule function to top of script
 # =============================================================================
 
 # Requires -Version 5.1
@@ -134,6 +134,7 @@
     1.7.3 - Moved transcript logging prior to NuGet provider installation
     1.7.4 - Added Initialize-ThreadJobModule function to avoid reference errors
     1.7.5 - Moved Initialize-ThreadJobModule function above usage
+    1.7.6 - Moved Initialize-ThreadJobModule function to top of script
 #>
 
 param (
@@ -144,6 +145,19 @@ param (
     [bool]$IncludeHiddenSystem = $true,
     [bool]$FollowJunctions = $true
 )
+
+# Define Initialize-ThreadJobModule at the top before it's called
+function Initialize-ThreadJobModule {
+    if (!(Get-Module -Name ThreadJob -ListAvailable)) {
+        try {
+            Install-Module ThreadJob -Force -Scope CurrentUser -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-Warning "Could not install ThreadJob module: $($_.Exception.Message)"
+        }
+    }
+    Import-Module ThreadJob -ErrorAction SilentlyContinue
+}
 
 # Transcript Logging Setup
 try {
@@ -613,18 +627,6 @@ function Initialize-NuGetProvider {
         # Silently continue
         return $false
     }
-}
-
-function Initialize-ThreadJobModule {
-    if (!(Get-Module -Name ThreadJob -ListAvailable)) {
-        try {
-            Install-Module ThreadJob -Force -Scope CurrentUser -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Warning "Could not install ThreadJob module: $($_.Exception.Message)"
-        }
-    }
-    Import-Module ThreadJob -ErrorAction SilentlyContinue
 }
 
 function Format-SizeWithPadding {
