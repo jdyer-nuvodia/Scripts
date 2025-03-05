@@ -308,8 +308,19 @@ function Get-PathType {
 
 function Initialize-NuGetProvider {
     try {
+        # Force disable all prompts through environment variables
+        $env:DOTNET_NOLOGO = 'true'
+        $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
+        $env:POWERSHELL_TELEMETRY_OPTOUT = 'true'
+        
+        # Completely bypass PackageManagement prompts
+        if (-not $env:POWERSHELL_UPDATECHECK) {
+            $env:POWERSHELL_UPDATECHECK = 'Off'
+        }
+        
         # Set confirmation preference to None to suppress prompts
         $ConfirmPreference = 'None'
+        $ProgressPreference = 'SilentlyContinue'  # Hide progress bars
         
         $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
         $minimumVersion = [Version]"2.8.5.201"
@@ -329,59 +340,86 @@ function Initialize-NuGetProvider {
                 Write-Host "This could prevent module installation from external repositories." -ForegroundColor Yellow
             }
             
-            # Check execution policy
-            $executionPolicy = Get-ExecutionPolicy
-            Write-Host "Current PowerShell execution policy: $executionPolicy" -ForegroundColor Cyan
-            if ($executionPolicy -in @("Restricted", "AllSigned")) {
-                Write-Host "WARNING: Current execution policy ($executionPolicy) may prevent module installation." -ForegroundColor Yellow
-                Write-Host "Consider changing to RemoteSigned with: Set-ExecutionPolicy RemoteSigned -Scope Process" -ForegroundColor Yellow
-            }
-
-            # Attempt to install using Find-PackageProvider
+            # First try: Use Install-PackageProvider with all prompt-blocking parameters
             try {
-                Write-Host "Attempting installation via Find-PackageProvider method..." -ForegroundColor Cyan
-                Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201 -ErrorAction Stop | Install-PackageProvider -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
-                Write-Host "NuGet provider installed successfully using Find-PackageProvider." -ForegroundColor Green
+                Write-Host "Attempting to install NuGet provider directly..." -ForegroundColor Cyan
+                
+                # Register null event handler for events that could prompt
+                Register-ObjectEvent -InputObject ([System.Management.Automation.PowerShellStreams]::Warning) -EventName DataAdded -Action {} -ErrorAction SilentlyContinue | Out-Null
+                
+                # Direct install attempt with all possible prompt suppression
+                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck -Confirm:$false -ErrorAction Stop | Out-Null
+                Write-Host "NuGet provider installed successfully." -ForegroundColor Green
                 return $true
             }
             catch {
-                Write-Host "Find-PackageProvider method failed with error details:" -ForegroundColor Red
-                Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
-                Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-                if ($_.Exception.InnerException) {
-                    Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
-                }
-                Write-Host "  - Command attempted: Find-PackageProvider -Name NuGet -RequiredVersion 2.8.5.201" -ForegroundColor Yellow
+                Write-Host "Standard installation method failed, trying alternative methods..." -ForegroundColor Yellow
+            }
+            
+            # Second try: Manual download and install of the NuGet provider DLL
+            try {
+                Write-Host "Attempting to manually download and install NuGet provider..." -ForegroundColor Cyan
                 
-                Write-Host "Attempting direct Install-PackageProvider method..." -ForegroundColor Yellow
-                # Attempt direct install with Install-PackageProvider
-                try {
-                    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -AllowClobber -SkipPublisherCheck -ErrorAction Stop
-                    Write-Host "NuGet provider installed successfully using Install-PackageProvider." -ForegroundColor Green
+                # Create the destination directory if it doesn't exist
+                $nugetDestination = "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies"
+                if (-not (Test-Path $nugetDestination)) {
+                    New-Item -Path $nugetDestination -ItemType Directory -Force | Out-Null
+                }
+                
+                # Define the NuGet provider URL and destination file
+                $nugetUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
+                $nugetFile = Join-Path $nugetDestination "Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
+                
+                # Download the provider
+                Write-Host "Downloading NuGet provider from $nugetUrl..." -ForegroundColor Cyan
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                Invoke-WebRequest -Uri $nugetUrl -OutFile $nugetFile -UseBasicParsing -ErrorAction Stop
+                
+                # Import the provider
+                Write-Host "Loading NuGet provider..." -ForegroundColor Cyan
+                Import-PackageProvider -Name NuGet -Force | Out-Null
+                Write-Host "NuGet provider successfully imported." -ForegroundColor Green
+                
+                # Verify the provider is available
+                $verifyProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+                if ($verifyProvider) {
+                    Write-Host "NuGet provider validated successfully!" -ForegroundColor Green
                     return $true
                 }
-                catch {
-                    Write-Host "Install-PackageProvider method failed with error details:" -ForegroundColor Red
-                    Write-Host "  - Error type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
-                    Write-Host "  - Error message: $($_.Exception.Message)" -ForegroundColor Red
-                    if ($_.Exception.InnerException) {
-                        Write-Host "  - Inner error: $($_.Exception.InnerException.Message)" -ForegroundColor Red
-                    }
-                    
-                    # Check for common issues
-                    if ($_.Exception.Message -match "proxy") {
-                        Write-Host "DIAGNOSIS: Error may be related to proxy configuration." -ForegroundColor Yellow
-                        Write-Host "Try setting proxy with: [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy('http://proxyserver:port')" -ForegroundColor Yellow
-                    }
-                    elseif ($_.Exception.Message -match "trust|certificate") {
-                        Write-Host "DIAGNOSIS: Error may be related to certificate/trust issues." -ForegroundColor Yellow
-                        Write-Host "Try: [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12" -ForegroundColor Yellow
-                    }
-                    
-                    Write-Host "MANUAL INSTALLATION: Please install NuGet provider manually with:" -ForegroundColor Yellow
-                    Write-Host "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -AllowClobber -SkipPublisherCheck" -ForegroundColor Yellow
-                    return $false
+                else {
+                    throw "Provider import succeeded but verification failed"
                 }
+            }
+            catch {
+                Write-Host "Manual download attempt failed: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+            
+            # Third try: Register PS Repository without prompt and retry provider installation
+            try {
+                Write-Host "Attempting to register PSRepository and retry..." -ForegroundColor Cyan
+                Register-PSRepository -Default -InstallationPolicy Trusted -ErrorAction Stop | Out-Null
+                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction Stop | Out-Null
+                
+                # Last chance direct install
+                Write-Host "Final attempt to install NuGet provider..." -ForegroundColor Yellow
+                $null = PowerShell -NoProfile -ExecutionPolicy Bypass -Command {
+                    Install-PackageProvider -Name NuGet -Force -Scope CurrentUser -SkipPublisherCheck -Confirm:$false
+                }
+                
+                # Check if provider is now available
+                $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+                if ($nugetProvider) {
+                    Write-Host "NuGet provider installed through PowerShell bypass." -ForegroundColor Green
+                    return $true
+                }
+                else {
+                    throw "All installation methods failed"
+                }
+            }
+            catch {
+                Write-Host "ERROR: All methods to install NuGet provider failed." -ForegroundColor Red
+                Write-Host "Script will continue with limited functionality." -ForegroundColor Yellow
+                return $false
             }
         }
         return $true
