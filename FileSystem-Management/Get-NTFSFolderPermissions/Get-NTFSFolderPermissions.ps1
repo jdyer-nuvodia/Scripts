@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:01:15 UTC
+# Last Updated: 2025-03-06 22:08:18 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3
-# Additional Info: Optimized for performance with large directory structures
+# Version: 1.3.1
+# Additional Info: Fixed runspace function parameter issue
 # =============================================================================
 
 <#
@@ -272,7 +272,60 @@ try {
             $Counter++
             
             # Create PowerShell instance and add script
-            $PowerShell = [powershell]::Create().AddScript($function:Get-FolderPermissionsWorker).AddArgument($Folder.FullName)
+            $PowerShell = [powershell]::Create().AddScript({
+                param($FolderPath, $GetPermissionsHash)
+                
+                # Define the worker function inline in each runspace
+                function Get-FolderPermissionsWorker {
+                    param (
+                        [string]$Path
+                    )
+                    
+                    try {
+                        $Acl = [System.Security.AccessControl.DirectorySecurity]::new()
+                        $Acl.SetAccessRuleProtection($false, $false)
+                        
+                        $Acl = [System.IO.Directory]::GetAccessControl($Path)
+                        $Permissions = @()
+                        
+                        foreach ($Access in $Acl.Access) {
+                            # Create a custom object for each permission entry
+                            $Permission = [PSCustomObject]@{
+                                FolderPath       = $Path
+                                IdentityReference = $Access.IdentityReference
+                                FileSystemRights  = $Access.FileSystemRights
+                                AccessControlType = $Access.AccessControlType
+                                IsInherited       = $Access.IsInherited
+                                InheritanceFlags  = $Access.InheritanceFlags
+                                PropagationFlags  = $Access.PropagationFlags
+                            }
+                            
+                            $Permissions += $Permission
+                        }
+                        
+                        return @{
+                            Success = $true
+                            FolderPath = $Path
+                            Permissions = $Permissions
+                            PermissionsHash = (& $GetPermissionsHash -Permissions $Permissions)
+                            Error = $null
+                        }
+                    }
+                    catch {
+                        return @{
+                            Success = $false
+                            FolderPath = $Path
+                            Permissions = @()
+                            PermissionsHash = 0
+                            Error = $_.Exception.Message
+                        }
+                    }
+                }
+                
+                # Call the worker function with the provided parameters
+                return Get-FolderPermissionsWorker -Path $FolderPath
+            }).AddArgument($Folder.FullName).AddArgument(${function:Get-PermissionsHash})
+            
             $PowerShell.RunspacePool = $RunspacePool
             
             # Save runspace info
