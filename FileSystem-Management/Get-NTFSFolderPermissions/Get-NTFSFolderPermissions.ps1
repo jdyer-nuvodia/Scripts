@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:37:45 UTC
+# Last Updated: 2025-03-06 22:38:32 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.7
-# Additional Info: Fixed function scoping issues with direct output handling
+# Version: 1.3.8
+# Additional Info: Enhanced compatibility for restricted environments with no PowerShell cmdlets
 # =============================================================================
 
 <#
@@ -259,6 +259,58 @@ function Get-FolderPermissionsWorker {
             Permissions = @()
             PermissionsHash = 0
             Error = $_.Exception.Message
+        }
+    }
+}
+
+# Safe direct output function that works with no PowerShell cmdlets
+function Write-Output-Safe {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$NoNewline
+    )
+    
+    try {
+        # Try direct .NET console output (works everywhere)
+        if ($NoNewline) {
+            [Console]::Write($Message)
+        } else {
+            [Console]::WriteLine($Message)
+        }
+    }
+    catch {
+        # If even Console fails, we can't output anything
+    }
+}
+
+# Direct file writing function that doesn't rely on Out-File
+function Write-File-Safe {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Content,
+        [Parameter(Mandatory=$true)]
+        [string]$FilePath,
+        [string]$Encoding = "UTF8"
+    )
+    
+    try {
+        # Use System.IO.File directly
+        [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.Encoding]::UTF8)
+        return $true
+    }
+    catch {
+        try {
+            # Try alternate method
+            $stream = New-Object System.IO.StreamWriter($FilePath, $false, [System.Text.Encoding]::UTF8)
+            $stream.Write($Content)
+            $stream.Close()
+            return $true
+        }
+        catch {
+            # If even direct .NET methods fail, we can't write to file
+            return $false
         }
     }
 }
@@ -589,22 +641,20 @@ try {
     Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -ForegroundColor Green
 }
 catch {
-    # Use direct error handling without function call that might have scope issues
+    # Super failsafe error handling with no dependencies on PowerShell cmdlets
     try {
-        Write-Host "An error occurred during the NTFS permissions analysis:" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
-    }
-    catch {
-        # Ultimate fallback if even direct Write-Host fails
         [Console]::Error.WriteLine("An error occurred during the NTFS permissions analysis:")
         [Console]::Error.WriteLine($_.Exception.Message)
+    }
+    catch {
+        # We tried our best, but even Console output failed
     }
     
     [void]$OutputText.AppendLine("An error occurred during the NTFS permissions analysis:")
     [void]$OutputText.AppendLine($_.Exception.Message)
     
-    # Try to save what we have so far
+    # Try to save what we have so far using our safe file writing function
     if ($OutputText.Length -gt 0) {
-        $OutputText.ToString() | Out-File -FilePath $OutputLog -Encoding UTF8
+        Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog
     }
 }
