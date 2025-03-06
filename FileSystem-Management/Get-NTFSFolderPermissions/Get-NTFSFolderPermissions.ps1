@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:52:15 UTC
+# Last Updated: 2025-03-06 22:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Fixed try-catch syntax error in console output functions
+# Version: 1.4.2
+# Additional Info: Fixed StringBuilder initialization and error handling
 # =============================================================================
 
 <#
@@ -71,6 +71,9 @@ param (
 # EXTREME RESTRICTED MODE COMPATIBILITY
 # Use only .NET core classes that are available in any PowerShell environment
 # This mode uses only basic .NET operations and avoids PowerShell-specific features
+
+# Initialize StringBuilder for collecting output text
+$OutputText = [System.Text.StringBuilder]::new()
 
 # Create constants using only .NET methods (avoid Get-Date cmdlet)
 $dateTimeNow = [DateTime]::Now
@@ -323,6 +326,47 @@ function Write-File-Safe {
         catch {
             # If even direct .NET methods fail, we can't write to file
             return $false
+        }
+    }
+}
+
+# Safe direct output function that works with no PowerShell cmdlets
+function Write-SafeOutput {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$NoNewline
+    )
+    
+    try {
+        # First try Write-Host for normal PowerShell environments
+        if ($NoNewline) {
+            Write-Host $Message -ForegroundColor $Color -NoNewline
+        } else {
+            Write-Host $Message -ForegroundColor $Color
+        }
+        
+        # Also capture to our OutputText for logging
+        if ($OutputText -ne $null) {
+            if (!$NoNewline) {
+                [void]$OutputText.AppendLine($Message)
+            } else {
+                [void]$OutputText.Append($Message)
+            }
+        }
+    }
+    catch {
+        # Try direct .NET console output (works everywhere)
+        try {
+            if ($NoNewline) {
+                [Console]::Write($Message)
+            } else {
+                [Console]::WriteLine($Message)
+            }
+        }
+        catch {
+            # If even Console fails, we can't output anything
         }
     }
 }
