@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:15:12 UTC
+# Last Updated: 2025-03-06 22:18:45 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.3
-# Additional Info: Fixed GetAccessControl method call syntax
+# Version: 1.3.4
+# Additional Info: Fixed DirectoryInfo GetAccessControl method error with more reliable approach
 # =============================================================================
 
 <#
@@ -282,10 +282,9 @@ try {
                     )
                     
                     try {
-                        # Fix: Use the correct method to get access control
-                        # Create a DirectoryInfo object first instead of calling static method
-                        $dirInfo = New-Object System.IO.DirectoryInfo($Path)
-                        $Acl = $dirInfo.GetAccessControl()
+                        # More robust method to get ACL - using Get-Acl instead of DirectoryInfo.GetAccessControl
+                        # This is more reliable across different environments and directory types
+                        $Acl = Get-Acl -Path $Path -ErrorAction Stop
                         
                         $Permissions = @()
                         
