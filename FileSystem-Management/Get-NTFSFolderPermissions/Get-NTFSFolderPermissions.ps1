@@ -81,6 +81,8 @@ $formattedDateTime = $dateTimeNow.ToString("yyyy-MM-dd_HHmmss")
 $consoleErrorColor = [ConsoleColor]::Red
 # Remove unused color variables and simplify
 $consoleTechColor = [ConsoleColor]::DarkGray
+# Added missing definition for console info color
+$consoleInfoColor = [ConsoleColor]::Cyan
 
 # Get script directory using .NET methods rather than PowerShell cmdlets
 $scriptDirectory = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
