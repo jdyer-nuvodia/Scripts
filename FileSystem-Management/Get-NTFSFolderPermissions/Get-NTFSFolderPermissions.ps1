@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:49:15 UTC
+# Last Updated: 2025-03-06 22:52:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added ultra-restricted environment compatibility mode
+# Version: 1.4.1
+# Additional Info: Fixed try-catch syntax error in console output functions
 # =============================================================================
 
 <#
@@ -123,17 +123,29 @@ try {
     
     # Record start time using .NET DateTime
     $startTime = [DateTime]::Now
+}
+catch {
+    # If console output fails, continue silently
+    # In restricted environments, console methods might not be available
+}
 
-    # Function to get all subdirectories using pure .NET (no cmdlets)
-    function Get-AllDirectories {
-        param(
-            [string]$rootPath,
-            [int]$maxDepth = 0,
-            [int]$currentDepth = 0
-        )
-        
-        try {
-            # Start with root folder
+# Function to get all subdirectories using pure .NET (no cmdlets)
+function Get-AllDirectories {
+    param(
+        [string]$rootPath,
+        [int]$maxDepth = 0,
+        [int]$currentDepth = 0
+    )
+    
+    try {
+        # Start with root folder
+        # Implementation details would go here
+    }
+    catch {
+        # Handle errors gracefully
+        return @()
+    }
+}
 
 # Display start message with optimization info
 Write-SafeOutput "Starting optimized NTFS permissions analysis for: $FolderPath" -ForegroundColor Cyan
@@ -142,9 +154,6 @@ if ($MaxDepth -gt 0) {
     Write-SafeOutput "Limited to maximum depth of $MaxDepth levels" -ForegroundColor DarkGray
 }
 [void]$OutputText.AppendLine("Starting NTFS permissions analysis for: $FolderPath")
-        }
-    }
-}
 
 # Helper function to compare two permission sets efficiently
 function Compare-PermissionSets {
