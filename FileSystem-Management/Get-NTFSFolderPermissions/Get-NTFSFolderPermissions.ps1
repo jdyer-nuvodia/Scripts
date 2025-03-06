@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 21:06:43 UTC
+# Last Updated: 2025-03-06 21:15:21 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Script to extract and report NTFS permissions for folders
+# Version: 1.1
+# Additional Info: Script to extract and report NTFS permissions for folders with improved output formatting
 # =============================================================================
 
 <#
@@ -14,11 +14,12 @@
 .DESCRIPTION
     This script retrieves NTFS permissions for a specified folder path and all its subfolders.
     It provides a detailed report including identity references, file system rights, access control types,
-    and inheritance settings. The results are displayed in the console and exported to a CSV file
-    in the same directory as the script.
+    and inheritance settings. The results are displayed in the console as separate tables for each folder
+    and exported to a CSV file in the same directory as the script.
     
     - Traverses the specified folder structure recursively
     - Captures all NTFS permission entries for each folder
+    - Displays permissions grouped by folder for improved readability
     - Exports results to a CSV file in the script's directory
 .PARAMETER FolderPath
     The path to the folder for which permissions will be extracted. This parameter is mandatory.
@@ -94,14 +95,35 @@ try {
     }
     
     # Display completion message
-    Write-Host "Analysis completed. Found $($Results.Count) permission entries." -ForegroundColor Green
+    Write-Host "Analysis completed. Found $($Results.Count) permission entries across $TotalFolders folders." -ForegroundColor Green
     
-    # Display results in a human-readable table format
-    $Results | Format-Table -AutoSize
+    # Display results grouped by folder with separate tables
+    Write-Host "`nDisplaying permissions by folder:" -ForegroundColor Cyan
     
-    # Export results to CSV
+    $UniquefolderPaths = $Results | Select-Object -Property FolderPath -Unique
+    
+    foreach ($FolderEntry in $UniquefolderPaths) {
+        $CurrentFolderPath = $FolderEntry.FolderPath
+        
+        # Create a visual separator
+        $SeparatorLength = [Math]::Min(100, $CurrentFolderPath.Length + 10)
+        $Separator = "-" * $SeparatorLength
+        
+        Write-Host "`n$Separator" -ForegroundColor White
+        Write-Host "Folder: $CurrentFolderPath" -ForegroundColor White
+        Write-Host "$Separator" -ForegroundColor White
+        
+        # Get and display permissions for this folder only
+        $FolderPermissions = $Results | Where-Object { $_.FolderPath -eq $CurrentFolderPath }
+        
+        # Create a simplified view for better readability
+        $FolderPermissions | Select-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
+            Format-Table -AutoSize
+    }
+    
+    # Export all results to CSV
     $Results | Export-Csv -Path $OutputCsv -NoTypeInformation -Encoding UTF8
-    Write-Host "NTFS permissions exported to: $OutputCsv" -ForegroundColor Green
+    Write-Host "`nComplete NTFS permissions data exported to: $OutputCsv" -ForegroundColor Green
 }
 catch {
     Write-Host "An error occurred during the NTFS permissions analysis:" -ForegroundColor Red
