@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:13:45 UTC
+# Last Updated: 2025-03-06 22:15:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.2
-# Additional Info: Fixed parenthesis syntax error in progress update condition
+# Version: 1.3.3
+# Additional Info: Fixed GetAccessControl method call syntax
 # =============================================================================
 
 <#
@@ -70,7 +70,7 @@ param (
 
 # Get the script's directory to use for output files
 $ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-$OutputTxt = Join-Path -Path $ScriptDirectory -ChildPath "NTFSPermissions_$(Get-Date -Format 'yyyy-MM-dd_HHmmss').txt"
+$OutputLog = Join-Path -Path $ScriptDirectory -ChildPath "NTFSPermissions_$(Get-Date -Format 'yyyy-MM-dd_HHmmss').log"
 
 # Start a string builder for text file output
 $OutputText = [System.Text.StringBuilder]::new()
@@ -282,10 +282,11 @@ try {
                     )
                     
                     try {
-                        $Acl = [System.Security.AccessControl.DirectorySecurity]::new()
-                        $Acl.SetAccessRuleProtection($false, $false)
+                        # Fix: Use the correct method to get access control
+                        # Create a DirectoryInfo object first instead of calling static method
+                        $dirInfo = New-Object System.IO.DirectoryInfo($Path)
+                        $Acl = $dirInfo.GetAccessControl()
                         
-                        $Acl = [System.IO.Directory]::GetAccessControl($Path)
                         $Permissions = @()
                         
                         foreach ($Access in $Acl.Access) {
@@ -517,8 +518,8 @@ try {
     
     # Save the output to text file
     Write-Host "Writing report to file..." -ForegroundColor DarkGray
-    $OutputText.ToString() | Out-File -FilePath $OutputTxt -Encoding UTF8
-    Write-Host "`nPermissions report exported to: $OutputTxt" -ForegroundColor Green
+    $OutputText.ToString() | Out-File -FilePath $OutputLog -Encoding UTF8
+    Write-Host "`nPermissions report exported to: $OutputLog" -ForegroundColor Green
     
     # Final performance summary
     $TotalTime = (Get-Date) - $StartTime
@@ -533,6 +534,6 @@ catch {
     
     # Try to save what we have so far
     if ($OutputText.Length -gt 0) {
-        $OutputText.ToString() | Out-File -FilePath $OutputTxt -Encoding UTF8
+        $OutputText.ToString() | Out-File -FilePath $OutputLog -Encoding UTF8
     }
 }
