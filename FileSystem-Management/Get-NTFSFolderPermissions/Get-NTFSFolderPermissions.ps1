@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:24:32 UTC
+# Last Updated: 2025-03-06 22:37:45 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.6
-# Additional Info: Fixed function scope issue for Write-SafeOutput
+# Version: 1.3.7
+# Additional Info: Fixed function scoping issues with direct output handling
 # =============================================================================
 
 <#
@@ -69,17 +69,22 @@ param (
 )
 
 # Safe output function that works even if Write-Host is not available
-# Define this at the script scope so it's available throughout the script
-function global:Write-SafeOutput {
+# Note - this is defined as a simple dot-sourced function, not global
+function Write-SafeOutput {
     param (
         [Parameter(Mandatory=$true)]
         [string]$Message,
-        [string]$ForegroundColor = "White"
+        [string]$ForegroundColor = "White",
+        [switch]$NoNewline
     )
     
     try {
         # First try Write-Host (preferred for color output)
-        Write-Host $Message -ForegroundColor $ForegroundColor
+        if ($NoNewline) {
+            Write-Host $Message -ForegroundColor $ForegroundColor -NoNewline
+        } else {
+            Write-Host $Message -ForegroundColor $ForegroundColor
+        }
     }
     catch {
         # Fallback to plain output if Write-Host is not available
@@ -89,7 +94,32 @@ function global:Write-SafeOutput {
         }
         else {
             # Write to output stream
-            [Console]::WriteLine($Message)
+            if ($NoNewline) {
+                [Console]::Write($Message)
+            } else {
+                [Console]::WriteLine($Message)
+            }
+        }
+    }
+}
+
+# Create a direct output function for error handling 
+function ShowError {
+    param(
+        [string]$Message,
+        [string]$ErrorDetail
+    )
+    
+    try {
+        Write-Host $Message -ForegroundColor Red
+        if ($ErrorDetail) {
+            Write-Host $ErrorDetail -ForegroundColor Red
+        }
+    }
+    catch {
+        [Console]::Error.WriteLine("ERROR: $Message")
+        if ($ErrorDetail) {
+            [Console]::Error.WriteLine("ERROR DETAIL: $ErrorDetail")
         }
     }
 }
@@ -559,8 +589,17 @@ try {
     Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -ForegroundColor Green
 }
 catch {
-    Write-SafeOutput "An error occurred during the NTFS permissions analysis:" -ForegroundColor Red
-    Write-SafeOutput $_.Exception.Message -ForegroundColor Red
+    # Use direct error handling without function call that might have scope issues
+    try {
+        Write-Host "An error occurred during the NTFS permissions analysis:" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+    }
+    catch {
+        # Ultimate fallback if even direct Write-Host fails
+        [Console]::Error.WriteLine("An error occurred during the NTFS permissions analysis:")
+        [Console]::Error.WriteLine($_.Exception.Message)
+    }
+    
     [void]$OutputText.AppendLine("An error occurred during the NTFS permissions analysis:")
     [void]$OutputText.AppendLine($_.Exception.Message)
     
