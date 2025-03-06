@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:08:18 UTC
+# Last Updated: 2025-03-06 22:13:45 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Fixed runspace function parameter issue
+# Version: 1.3.2
+# Additional Info: Fixed parenthesis syntax error in progress update condition
 # =============================================================================
 
 <#
@@ -371,8 +371,8 @@ try {
                 }
             }
             
-            # Update progress less frequently to reduce overhead
-            if ((Get-Date) - $LastProgressUpdate).TotalMilliseconds -gt 500) {
+            # Update progress less frequently to reduce overhead - Fixed parenthesis issue
+            if (((Get-Date) - $LastProgressUpdate).TotalMilliseconds -gt 500) {
                 $CurrentProgress = "$CompletedCount of $BatchFolderCount folders in current batch"
                 $OverallProgress = "Overall: $Counter of $TotalFolders folders ($([Math]::Round($Counter / $TotalFolders * 100))%)"
                 Write-Host "`rProcessing: $CurrentProgress | $OverallProgress" -ForegroundColor DarkGray -NoNewline
