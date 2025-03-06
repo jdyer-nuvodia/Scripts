@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:11:00 UTC
+# Last Updated: 2025-03-06 20:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.0
-# Additional Info: Fixed duplicate transcript initialization causing file access errors
+# Version: 1.8.1
+# Additional Info: Fixed UTC timestamp formatting in completion message
 # =============================================================================
 
 # Requires -Version 5.1
@@ -139,6 +139,7 @@
     1.7.8 - Added verbose diagnostic logging for NuGet provider installation
     1.7.9 - Fixed unsupported -Scope parameter in Set-PSRepository command
     1.8.0 - Fixed duplicate transcript initialization causing file access errors
+    1.8.1 - Fixed UTC timestamp formatting in completion message
 #>
 
 param (
@@ -1278,5 +1279,5 @@ try {
     Write-Warning "Failed to stop transcript: $_"
 }
 
-Write-Host "`nScript finished at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Green
-Write-Host "`nScript finished at $(Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') (UTC)" -ForegroundColor Green
+# Display single completion message with properly formatted UTC timestamp
+Write-Host "`nScript finished at $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) (UTC)" -ForegroundColor Green
