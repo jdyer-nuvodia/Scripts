@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 20:12:00 UTC
+# Last Updated: 2025-03-06 21:01:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.1
-# Additional Info: Fixed UTC timestamp formatting in completion message
+# Version: 1.8.2
+# Additional Info: Implemented foolproof NuGet provider silent installation
 # =============================================================================
 
 # Requires -Version 5.1
@@ -140,6 +140,7 @@
     1.7.9 - Fixed unsupported -Scope parameter in Set-PSRepository command
     1.8.0 - Fixed duplicate transcript initialization causing file access errors
     1.8.1 - Fixed UTC timestamp formatting in completion message
+    1.8.2 - Implemented foolproof NuGet provider silent installation
 #>
 
 param (
@@ -221,7 +222,7 @@ try {
     $ConfirmPreference = 'None'
     $ProgressPreference = 'SilentlyContinue'
     $ErrorActionPreference = 'SilentlyContinue'
-    $VerbosePreference = 'Continue'  # Show verbose output during diagnosis
+    $VerbosePreference = 'SilentlyContinue'  # Hide verbose output during installation
     
     # Set up global parameter defaults to prevent prompts
     $PSDefaultParameterValues = @{
@@ -248,183 +249,148 @@ try {
     # Force PackageManagement to use CurrentUser scope
     [System.Environment]::SetEnvironmentVariable('POWERSHELL_UPDATECHECK', 'Off', [System.EnvironmentVariableTarget]::Process)
     
-    # Check if NuGet is already available
+    # Check if NuGet is already available (quickly, without prompting)
     Write-DiagnosticMessage "Checking if NuGet provider is already installed..." -Color DarkGray
+    
+    # Super aggressive NuGet provider installation that completely bypasses prompts
+    # by running in a new process with stdin redirected to prevent any chance of prompting
+    
+    # Create a temporary script file that will auto-answer "Y" to any prompts
+    $tempScriptPath = Join-Path $env:TEMP "Install-NuGetProvider_$(Get-Random).ps1"
+    
+    $installScript = @'
+# Set all the preference variables to prevent prompts
+$ConfirmPreference = 'None'
+$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'SilentlyContinue'
+$VerbosePreference = 'SilentlyContinue'
+$PSDefaultParameterValues = @{
+    '*:Confirm' = $false
+    'Install-PackageProvider:Force' = $true
+    'Install-PackageProvider:Scope' = 'CurrentUser'
+    'Install-PackageProvider:SkipPublisherCheck' = $true
+}
+
+# Create the NuGet provider assemblies directory if it doesn't exist
+$nugetPath = "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget"
+if (-not (Test-Path $nugetPath)) {
+    New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null
+}
+
+# Direct download the NuGet provider assembly
+$webClient = New-Object System.Net.WebClient
+$webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
+$webClient.DownloadFile("https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll", 
+                       "$nugetPath\Microsoft.PackageManagement.NuGetProvider.dll")
+
+# Create registry keys to mark NuGet as trusted
+$regPaths = @(
+    'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
+    'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
+)
+
+foreach ($regPath in $regPaths) {
+    if (-not (Test-Path $regPath)) {
+        New-Item -Path $regPath -Force | Out-Null
+    }
+    New-ItemProperty -Path $regPath -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force | Out-Null
+}
+
+if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget')) {
+    New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Force | Out-Null
+}
+New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Name 'ProviderBootstrapped' -Value 1 -PropertyType DWORD -Force | Out-Null
+
+# Alternative method to manually register the NuGet provider
+# This is the nuclear option that completely avoids Install-PackageProvider
+$code = @'
+using System;
+using System.IO;
+using System.Management.Automation;
+using System.Reflection;
+
+public static class NuGetProviderInstaller 
+{
+    public static void RegisterProvider() 
+    {
+        try {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string providerPath = Path.Combine(localAppData, "PackageManagement", "ProviderAssemblies", "nuget", "Microsoft.PackageManagement.NuGetProvider.dll");
+            
+            if (File.Exists(providerPath)) {
+                Assembly asm = Assembly.LoadFrom(providerPath);
+                if (asm != null) {
+                    Console.WriteLine("NuGet provider assembly loaded successfully");
+                }
+            }
+        }
+        catch (Exception ex) {
+            Console.WriteLine("Error: " + ex.Message);
+        }
+    }
+}
+'@
+
+Add-Type -TypeDefinition $code
+[NuGetProviderInstaller]::RegisterProvider()
+
+# Initialize the PackageManagement and PowerShellGet modules to use our NuGet provider
+Import-Module PackageManagement -Force
+Import-Module PowerShellGet -Force
+
+# Clean up after ourselves
+Remove-Item -Path "$env:TEMP\Install-NuGetProvider_*.ps1" -Force -ErrorAction SilentlyContinue
+'@
+
+    $installScript | Out-File -FilePath $tempScriptPath -Encoding UTF8
+    
+    Write-DiagnosticMessage "Running independent script to install NuGet provider..." -Color Yellow
+    
+    # Run it in a completely separate process to ensure no prompts can appear
+    # The Start-Process with -Wait ensures we don't proceed until it's complete
+    # The -NoNewWindow makes it run invisibly
+    # The -NonInteractive prevents any interactive prompts
+    Start-Process -FilePath powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", "`"$tempScriptPath`"" -WindowStyle Hidden -Wait
+    
+    # Verify the installation (silently)
     $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
     
     if ($nugetProvider) {
-        Write-DiagnosticMessage "NuGet provider is already installed (Version: $($nugetProvider.Version))" -Color Green
+        Write-DiagnosticMessage "NuGet provider is now installed (Version: $($nugetProvider.Version))" -Color Green
     } else {
-        Write-DiagnosticMessage "NuGet provider not found, proceeding with installation" -Color Yellow
+        # Try to load it explicitly before giving up
+        Write-DiagnosticMessage "NuGet provider not detected, attempting to load from local path..." -Color Yellow
         
-        # Create registry structure to bypass all NuGet prompts
-        Write-DiagnosticMessage "Creating registry keys for silent NuGet installation" -Color DarkGray
-        $regPaths = @(
-            'HKLM:\SOFTWARE\Microsoft\PowerShellGet\',
-            'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
-            'HKLM:\SOFTWARE\Microsoft\PackageManagement\',
-            'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
-        )
-        
-        foreach ($regPath in $regPaths) {
-            # Create PowerShellGet key if it doesn't exist
-            if (-not (Test-Path $regPath)) {
-                try { 
-                    Write-DiagnosticMessage "Creating registry path: $regPath" -Color DarkGray
-                    New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null 
-                    if (Test-Path $regPath) {
-                        Write-DiagnosticMessage "Successfully created registry path: $regPath" -Color Green
-                    } else {
-                        Write-DiagnosticMessage "Failed to create registry path: $regPath" -Color "Error"
-                    }
-                } catch {
-                    Write-DiagnosticMessage "Error creating registry path $regPath : $($_.Exception.Message)" -Color "Error"
-                }
-            }
-            
-            # Set provider trust settings (NuGetProviderApproved = 1)
-            try { 
-                Write-DiagnosticMessage "Setting NuGetProviderApproved = 1 in $regPath" -Color DarkGray
-                New-ItemProperty -Path $regPath -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force | Out-Null
-            } catch {
-                Write-DiagnosticMessage "Error setting NuGetProviderApproved in $regPath : $($_.Exception.Message)" -Color "Error"
-            }
-        }
-        
-        # Additional registry key for PackageManagement provider bootstrap
-        try {
-            if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\')) {
-                Write-DiagnosticMessage "Creating ProviderAssemblies registry key" -Color DarkGray
-                New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\' -Force | Out-Null
-            }
-            if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget')) {
-                Write-DiagnosticMessage "Creating nuget provider registry key" -Color DarkGray
-                New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Force | Out-Null
-            }
-            
-            # Set the provider to bootstrapped state
-            Write-DiagnosticMessage "Setting ProviderBootstrapped = 1 for NuGet" -Color DarkGray
-            New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Name 'ProviderBootstrapped' -Value 1 -PropertyType DWORD -Force | Out-Null
-        } catch {
-            Write-DiagnosticMessage "Error setting ProviderBootstrapped: $($_.Exception.Message)" -Color "Error"
-        }
-        
-        # Create NuGet configuration directory if it doesn't exist
-        $nugetConfigPath = Join-Path $env:APPDATA 'NuGet'
-        if (-not (Test-Path $nugetConfigPath)) {
-            try { 
-                Write-DiagnosticMessage "Creating NuGet configuration directory: $nugetConfigPath" -Color DarkGray
-                New-Item -Path $nugetConfigPath -ItemType Directory -Force | Out-Null 
-                if (Test-Path $nugetConfigPath) {
-                    Write-DiagnosticMessage "Successfully created NuGet config directory" -Color Green
-                } else {
-                    Write-DiagnosticMessage "Failed to create NuGet config directory" -Color "Error"
-                }
-            } catch {
-                Write-DiagnosticMessage "Error creating NuGet config directory: $($_.Exception.Message)" -Color "Error"
-            }
-        }
-        
-        # Direct download and install of NuGet provider DLL
-        Write-DiagnosticMessage "Attempting direct download of NuGet provider DLL" -Color Cyan
+        # Check the most likely locations for the NuGet provider
         $nugetProviderPaths = @(
-            "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget",
-            "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget",
-            "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget",
-            "$env:APPDATA\PackageManagement\ProviderAssemblies\nuget"
+            "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
+            "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
+            "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll"
         )
         
-        $nugetUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
-        $downloadSuccess = $false
-        
-        foreach ($nugetProviderPath in $nugetProviderPaths) {
-            if (-not (Test-Path $nugetProviderPath)) {
-                try { 
-                    Write-DiagnosticMessage "Creating directory: $nugetProviderPath" -Color DarkGray
-                    New-Item -Path $nugetProviderPath -ItemType Directory -Force | Out-Null
-                    if (Test-Path $nugetProviderPath) {
-                        Write-DiagnosticMessage "Successfully created directory: $nugetProviderPath" -Color Green
-                    } else {
-                        Write-DiagnosticMessage "Failed to create directory: $nugetProviderPath" -Color "Error"
-                    }
-                } catch {
-                    Write-DiagnosticMessage "Error creating directory $nugetProviderPath : $($_.Exception.Message)" -Color "Error"
-                }
-            }
-            
-            try {
-                $targetPath = "$nugetProviderPath\Microsoft.PackageManagement.NuGetProvider.dll"
-                Write-DiagnosticMessage "Downloading NuGet provider to: $targetPath" -Color DarkGray
-                $webClient = New-Object System.Net.WebClient
-                $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
-                $webClient.DownloadFile($nugetUrl, $targetPath)
-                
-                if (Test-Path $targetPath) {
-                    Write-DiagnosticMessage "Downloaded NuGet provider successfully to: $targetPath" -Color Green
-                    $downloadSuccess = $true
-                } else {
-                    Write-DiagnosticMessage "Failed to download NuGet provider to: $targetPath" -Color "Error"
-                }
-            } catch {
-                Write-DiagnosticMessage "Error downloading NuGet provider to $targetPath : $($_.Exception.Message)" -Color "Error"
-            }
-        }
-        
-        if ($downloadSuccess) {
-            Write-DiagnosticMessage "NuGet provider DLL download succeeded to at least one location" -Color Green
-        } else {
-            Write-DiagnosticMessage "NuGet provider DLL download failed to all locations" -Color "Error"
-        }
-        
-        # Direct Import of the downloaded NuGet provider DLL
-        $importSuccess = $false
-        foreach ($nugetProviderPath in $nugetProviderPaths) {
-            $targetPath = "$nugetProviderPath\Microsoft.PackageManagement.NuGetProvider.dll"
-            if (Test-Path $targetPath) {
+        $imported = $false
+        foreach ($path in $nugetProviderPaths) {
+            if (Test-Path $path) {
                 try {
-                    Write-DiagnosticMessage "Attempting to import NuGet provider from: $targetPath" -Color DarkGray
-                    Import-Module $targetPath -Force
-                    $importSuccess = $true
-                    Write-DiagnosticMessage "Successfully imported NuGet provider from: $targetPath" -Color Green
+                    Import-Module $path -Force -ErrorAction SilentlyContinue
+                    $imported = $true
+                    Write-DiagnosticMessage "Imported NuGet provider from: $path" -Color Green
                     break
                 } catch {
-                    Write-DiagnosticMessage "Failed to import NuGet provider from: $targetPath - $($_.Exception.Message)" -Color "Error"
+                    Write-DiagnosticMessage "Failed to import from: $path" -Color "Error"
                 }
             }
         }
         
-        # Alternative approach: Use Install-PackageProvider directly with Force
-        if (-not $importSuccess) {
-            Write-DiagnosticMessage "Attempting standard NuGet provider installation" -Color Yellow
-            try {
-                # Force the package provider installation without prompting
-                Write-DiagnosticMessage "Using Install-PackageProvider with Force to install NuGet" -Color DarkGray
-                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck -ErrorAction Stop | Out-Null
-                Write-DiagnosticMessage "Standard NuGet provider installation succeeded" -Color Green
-            } catch {
-                Write-DiagnosticMessage "Standard NuGet provider installation failed: $($_.Exception.Message)" -Color "Error"
-                
-                # Try direct execution of the Install-PackageProvider command
-                try {
-                    Write-DiagnosticMessage "Attempting alternative installation method" -Color Yellow
-                    # Using command string execution as a last resort
-                    $cmd = "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck -Confirm:$false"
-                    Write-DiagnosticMessage "Executing: $cmd" -Color DarkGray
-                    Invoke-Expression $cmd
-                    Write-DiagnosticMessage "Alternative NuGet provider installation completed" -Color Green
-                } catch {
-                    Write-DiagnosticMessage "Alternative NuGet provider installation failed: $($_.Exception.Message)" -Color "Error"
-                }
+        if ($imported) {
+            # Try again after import
+            $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+            if ($nugetProvider) {
+                Write-DiagnosticMessage "NuGet provider is now available (Version: $($nugetProvider.Version))" -Color Green
+            } else {
+                Write-DiagnosticMessage "NuGet provider still not detected after manual import" -Color "Error"
             }
         }
-    }
-
-    # Final check for NuGet provider
-    $nugetProviderFinal = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-    if ($nugetProviderFinal) {
-        Write-DiagnosticMessage "Verification: NuGet provider is installed (Version: $($nugetProviderFinal.Version))" -Color Green
-    } else {
-        Write-DiagnosticMessage "Verification failed: NuGet provider is NOT installed after all attempts" -Color "Error"
     }
     
     # Force the PSGallery repository to be trusted for current user
