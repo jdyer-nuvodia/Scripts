@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:45:00 UTC
+# Last Updated: 2025-03-06 23:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.6
-# Additional Info: Fixed function parameter calls, removed unused variables, and wrapped main processing block in try/catch.
+# Version: 1.4.7
+# Additional Info: Enhanced folder permission retrieval with improved access methods and robust error handling
 # =============================================================================
 
 <#
@@ -268,22 +268,101 @@ function Get-FolderPermissionsModule {
         [string]$FolderPath
     )
     try {
-        $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::All)
-        $permissions = foreach ($access in $acl.Access) {
-            [PSCustomObject]@{
+        # First attempt with AccessControlSections.All
+        try {
+            $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::All)
+        }
+        catch {
+            # Second attempt with lower privileges if first fails
+            try {
+                $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::Access)
+            }
+            catch {
+                # Third attempt using System.IO.DirectorySecurity
+                try {
+                    $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
+                    $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+                }
+                catch {
+                    # Fourth attempt using FileSystemSecurity as a fallback
+                    try {
+                        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+                        $owner = [System.IO.DirectoryInfo]::new($FolderPath).GetAccessControl([System.Security.AccessControl.AccessControlSections]::Owner).GetOwner([System.Security.Principal.NTAccount])
+                        $acl.SetOwner($owner)
+                    }
+                    catch {
+                        # If all methods fail, create a placeholder ACL with error info
+                        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+                        $permissions = @([PSCustomObject]@{
+                            FolderPath = $FolderPath
+                            IdentityReference = "ACCESS DENIED"
+                            FileSystemRights = "Unknown"
+                            AccessControlType = "Unknown"
+                            IsInherited = $true
+                            InheritanceFlags = "None"
+                            PropagationFlags = "None"
+                        })
+                        
+                        return @{ 
+                            Success = $true; 
+                            FolderPath = $FolderPath; 
+                            Permissions = $permissions; 
+                            Hash = -1;  # Special hash for denied access
+                            Limited = $true 
+                        }
+                    }
+                }
+            }
+        }
+        
+        # Process the ACL if we got it successfully
+        $permissions = @()
+        foreach ($access in $acl.Access) {
+            $permissions += [PSCustomObject]@{
                 FolderPath       = $FolderPath
                 IdentityReference = $access.IdentityReference
                 FileSystemRights  = $access.FileSystemRights
                 AccessControlType = $access.AccessControlType
                 IsInherited       = $access.IsInherited
+                InheritanceFlags  = $access.InheritanceFlags
+                PropagationFlags  = $access.PropagationFlags
             }
         }
+        
+        # If we have no permissions but didn't fail completely, create a restricted access entry
+        if ($permissions.Count -eq 0) {
+            $permissions = @([PSCustomObject]@{
+                FolderPath = $FolderPath
+                IdentityReference = "LIMITED ACCESS"
+                FileSystemRights = "Unknown"
+                AccessControlType = "Unknown"
+                IsInherited = $true
+                InheritanceFlags = "None"
+                PropagationFlags = "None"
+            })
+        }
+        
         $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
-                     ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+                 ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+        
         return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
     }
     catch {
-        return @{ Success = $false; FolderPath = $FolderPath; Permissions = @(); Hash = 0; Error = $_.Exception.Message }
+        # Last resort error handling
+        Write-Log "Critical error processing folder $FolderPath : $($_.Exception.Message)" "Red"
+        return @{ 
+            Success = $false; 
+            FolderPath = $FolderPath; 
+            Permissions = @([PSCustomObject]@{
+                FolderPath = $FolderPath
+                IdentityReference = "ERROR"
+                FileSystemRights = "Error: $($_.Exception.Message)"
+                AccessControlType = "Unknown"
+                IsInherited = $true
+            }); 
+            Hash = -2;  # Special hash for errors
+            Error = $_.Exception.Message 
+        }
     }
 }
 
