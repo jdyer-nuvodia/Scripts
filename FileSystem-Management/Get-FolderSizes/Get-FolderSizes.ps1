@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 22:44:00 UTC
+# Last Updated: 2025-03-06 16:54:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.7
-# Additional Info: Changed log file location to use script directory instead of C:\temp
+# Version: 1.7.8
+# Additional Info: Added verbose diagnostic logging for NuGet provider installation
 # =============================================================================
 
 # Requires -Version 5.1
@@ -136,6 +136,7 @@
     1.7.5 - Moved Initialize-ThreadJobModule function above usage
     1.7.6 - Moved Initialize-ThreadJobModule function to top of script
     1.7.7 - Changed log file location to use script directory instead of C:\temp
+    1.7.8 - Added verbose diagnostic logging for NuGet provider installation
 #>
 
 param (
@@ -146,6 +147,357 @@ param (
     [bool]$IncludeHiddenSystem = $true,
     [bool]$FollowJunctions = $true
 )
+
+# Console colors for diagnostic output
+function Write-DiagnosticMessage {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [string]$Color = "White"
+    )
+    
+    # Always display diagnostic messages regardless of preference variables
+    $timeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    if ($Color -eq "Error") {
+        # Using Write-Error would respect $ErrorActionPreference, so we'll use Write-Host with Red color
+        Write-Host "[$timeStamp] ERROR: $Message" -ForegroundColor Red
+    } else {
+        Write-Host "[$timeStamp] $Message" -ForegroundColor $Color
+    }
+}
+
+# Initial diagnostic message to show script is starting
+Write-DiagnosticMessage "Script starting - Get-FolderSizes.ps1" -Color Cyan
+Write-DiagnosticMessage "PowerShell Version: $($PSVersionTable.PSVersion)" -Color Cyan
+Write-DiagnosticMessage "Script executed by: $env:USERNAME on $env:COMPUTERNAME" -Color Cyan
+
+# Store original Path parameter value to prevent overwrites
+$originalPath = $Path
+
+# Define Initialize-ThreadJobModule at the top before it's called
+function Initialize-ThreadJobModule {
+    Write-DiagnosticMessage "Checking for ThreadJob module..." -Color DarkGray
+    
+    if (!(Get-Module -Name ThreadJob -ListAvailable)) {
+        Write-DiagnosticMessage "ThreadJob module not found, attempting to install..." -Color Yellow
+        try {
+            Install-Module ThreadJob -Force -Scope CurrentUser -ErrorAction Stop
+            Write-DiagnosticMessage "ThreadJob module installed successfully" -Color Green
+        }
+        catch {
+            Write-DiagnosticMessage "Could not install ThreadJob module: $($_.Exception.Message)" -Color "Error"
+            return $false
+        }
+    } else {
+        Write-DiagnosticMessage "ThreadJob module is already installed" -Color Green
+    }
+    
+    try {
+        Import-Module ThreadJob -ErrorAction Stop
+        Write-DiagnosticMessage "ThreadJob module imported successfully" -Color Green
+        return $true
+    }
+    catch {
+        Write-DiagnosticMessage "Failed to import ThreadJob module: $($_.Exception.Message)" -Color "Error"
+        return $false
+    }
+}
+
+# NuGet Provider Installation - Start this BEFORE transcript logging
+Write-DiagnosticMessage "Starting NuGet provider pre-installation phase..." -Color Cyan
+
+try {
+    # Save original preference variables to restore later
+    $originalConfirmPreference = $ConfirmPreference
+    $originalProgressPreference = $ProgressPreference
+    $originalErrorActionPreference = $ErrorActionPreference
+    $originalVerbosePreference = $VerbosePreference
+    
+    Write-DiagnosticMessage "Setting strict silent mode for package installation" -Color DarkGray
+    # Set strict silent mode from the very start
+    $ConfirmPreference = 'None'
+    $ProgressPreference = 'SilentlyContinue'
+    $ErrorActionPreference = 'SilentlyContinue'
+    $VerbosePreference = 'Continue'  # Show verbose output during diagnosis
+    
+    # Set up global parameter defaults to prevent prompts
+    $PSDefaultParameterValues = @{
+        'Install-Module:Force' = $true
+        'Install-Module:SkipPublisherCheck' = $true
+        'Install-Module:Confirm' = $false
+        'Install-Module:Scope' = 'CurrentUser'
+        'Install-PackageProvider:Force' = $true
+        'Install-PackageProvider:Confirm' = $false
+        'Install-PackageProvider:Scope' = 'CurrentUser'
+        'Install-PackageProvider:SkipPublisherCheck' = $true
+        'Register-PSRepository:InstallationPolicy' = 'Trusted'
+        'Import-Module:ErrorAction' = 'SilentlyContinue'
+        '*:Confirm' = $false
+    }
+    
+    Write-DiagnosticMessage "Setting required environment variables" -Color DarkGray
+    # Add required environment variables
+    $env:POWERSHELL_UPDATECHECK = 'Off'
+    $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
+    $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 'true'
+    $env:NUGET_XMLDOC_MODE = 'skip'
+    
+    # Force PackageManagement to use CurrentUser scope
+    [System.Environment]::SetEnvironmentVariable('POWERSHELL_UPDATECHECK', 'Off', [System.EnvironmentVariableTarget]::Process)
+    
+    # Check if NuGet is already available
+    Write-DiagnosticMessage "Checking if NuGet provider is already installed..." -Color DarkGray
+    $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+    
+    if ($nugetProvider) {
+        Write-DiagnosticMessage "NuGet provider is already installed (Version: $($nugetProvider.Version))" -Color Green
+    } else {
+        Write-DiagnosticMessage "NuGet provider not found, proceeding with installation" -Color Yellow
+        
+        # Create registry structure to bypass all NuGet prompts
+        Write-DiagnosticMessage "Creating registry keys for silent NuGet installation" -Color DarkGray
+        $regPaths = @(
+            'HKLM:\SOFTWARE\Microsoft\PowerShellGet\',
+            'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
+            'HKLM:\SOFTWARE\Microsoft\PackageManagement\',
+            'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
+        )
+        
+        foreach ($regPath in $regPaths) {
+            # Create PowerShellGet key if it doesn't exist
+            if (-not (Test-Path $regPath)) {
+                try { 
+                    Write-DiagnosticMessage "Creating registry path: $regPath" -Color DarkGray
+                    New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null 
+                    if (Test-Path $regPath) {
+                        Write-DiagnosticMessage "Successfully created registry path: $regPath" -Color Green
+                    } else {
+                        Write-DiagnosticMessage "Failed to create registry path: $regPath" -Color "Error"
+                    }
+                } catch {
+                    Write-DiagnosticMessage "Error creating registry path $regPath : $($_.Exception.Message)" -Color "Error"
+                }
+            }
+            
+            # Set provider trust settings (NuGetProviderApproved = 1)
+            try { 
+                Write-DiagnosticMessage "Setting NuGetProviderApproved = 1 in $regPath" -Color DarkGray
+                New-ItemProperty -Path $regPath -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force | Out-Null
+            } catch {
+                Write-DiagnosticMessage "Error setting NuGetProviderApproved in $regPath : $($_.Exception.Message)" -Color "Error"
+            }
+        }
+        
+        # Additional registry key for PackageManagement provider bootstrap
+        try {
+            if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\')) {
+                Write-DiagnosticMessage "Creating ProviderAssemblies registry key" -Color DarkGray
+                New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\' -Force | Out-Null
+            }
+            if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget')) {
+                Write-DiagnosticMessage "Creating nuget provider registry key" -Color DarkGray
+                New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Force | Out-Null
+            }
+            
+            # Set the provider to bootstrapped state
+            Write-DiagnosticMessage "Setting ProviderBootstrapped = 1 for NuGet" -Color DarkGray
+            New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Name 'ProviderBootstrapped' -Value 1 -PropertyType DWORD -Force | Out-Null
+        } catch {
+            Write-DiagnosticMessage "Error setting ProviderBootstrapped: $($_.Exception.Message)" -Color "Error"
+        }
+        
+        # Create NuGet configuration directory if it doesn't exist
+        $nugetConfigPath = Join-Path $env:APPDATA 'NuGet'
+        if (-not (Test-Path $nugetConfigPath)) {
+            try { 
+                Write-DiagnosticMessage "Creating NuGet configuration directory: $nugetConfigPath" -Color DarkGray
+                New-Item -Path $nugetConfigPath -ItemType Directory -Force | Out-Null 
+                if (Test-Path $nugetConfigPath) {
+                    Write-DiagnosticMessage "Successfully created NuGet config directory" -Color Green
+                } else {
+                    Write-DiagnosticMessage "Failed to create NuGet config directory" -Color "Error"
+                }
+            } catch {
+                Write-DiagnosticMessage "Error creating NuGet config directory: $($_.Exception.Message)" -Color "Error"
+            }
+        }
+        
+        # Direct download and install of NuGet provider DLL
+        Write-DiagnosticMessage "Attempting direct download of NuGet provider DLL" -Color Cyan
+        $nugetProviderPaths = @(
+            "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget",
+            "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget",
+            "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget",
+            "$env:APPDATA\PackageManagement\ProviderAssemblies\nuget"
+        )
+        
+        $nugetUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
+        $downloadSuccess = $false
+        
+        foreach ($nugetProviderPath in $nugetProviderPaths) {
+            if (-not (Test-Path $nugetProviderPath)) {
+                try { 
+                    Write-DiagnosticMessage "Creating directory: $nugetProviderPath" -Color DarkGray
+                    New-Item -Path $nugetProviderPath -ItemType Directory -Force | Out-Null
+                    if (Test-Path $nugetProviderPath) {
+                        Write-DiagnosticMessage "Successfully created directory: $nugetProviderPath" -Color Green
+                    } else {
+                        Write-DiagnosticMessage "Failed to create directory: $nugetProviderPath" -Color "Error"
+                    }
+                } catch {
+                    Write-DiagnosticMessage "Error creating directory $nugetProviderPath : $($_.Exception.Message)" -Color "Error"
+                }
+            }
+            
+            try {
+                $targetPath = "$nugetProviderPath\Microsoft.PackageManagement.NuGetProvider.dll"
+                Write-DiagnosticMessage "Downloading NuGet provider to: $targetPath" -Color DarkGray
+                $webClient = New-Object System.Net.WebClient
+                $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
+                $webClient.DownloadFile($nugetUrl, $targetPath)
+                
+                if (Test-Path $targetPath) {
+                    Write-DiagnosticMessage "Downloaded NuGet provider successfully to: $targetPath" -Color Green
+                    $downloadSuccess = $true
+                } else {
+                    Write-DiagnosticMessage "Failed to download NuGet provider to: $targetPath" -Color "Error"
+                }
+            } catch {
+                Write-DiagnosticMessage "Error downloading NuGet provider to $targetPath : $($_.Exception.Message)" -Color "Error"
+            }
+        }
+        
+        if ($downloadSuccess) {
+            Write-DiagnosticMessage "NuGet provider DLL download succeeded to at least one location" -Color Green
+        } else {
+            Write-DiagnosticMessage "NuGet provider DLL download failed to all locations" -Color "Error"
+        }
+        
+        # Direct Import of the downloaded NuGet provider DLL
+        $importSuccess = $false
+        foreach ($nugetProviderPath in $nugetProviderPaths) {
+            $targetPath = "$nugetProviderPath\Microsoft.PackageManagement.NuGetProvider.dll"
+            if (Test-Path $targetPath) {
+                try {
+                    Write-DiagnosticMessage "Attempting to import NuGet provider from: $targetPath" -Color DarkGray
+                    Import-Module $targetPath -Force
+                    $importSuccess = $true
+                    Write-DiagnosticMessage "Successfully imported NuGet provider from: $targetPath" -Color Green
+                    break
+                } catch {
+                    Write-DiagnosticMessage "Failed to import NuGet provider from: $targetPath - $($_.Exception.Message)" -Color "Error"
+                }
+            }
+        }
+        
+        # Alternative approach: Use Install-PackageProvider directly with Force
+        if (-not $importSuccess) {
+            Write-DiagnosticMessage "Attempting standard NuGet provider installation" -Color Yellow
+            try {
+                # Force the package provider installation without prompting
+                Write-DiagnosticMessage "Using Install-PackageProvider with Force to install NuGet" -Color DarkGray
+                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck -ErrorAction Stop | Out-Null
+                Write-DiagnosticMessage "Standard NuGet provider installation succeeded" -Color Green
+            } catch {
+                Write-DiagnosticMessage "Standard NuGet provider installation failed: $($_.Exception.Message)" -Color "Error"
+                
+                # Try direct execution of the Install-PackageProvider command
+                try {
+                    Write-DiagnosticMessage "Attempting alternative installation method" -Color Yellow
+                    # Using command string execution as a last resort
+                    $cmd = "Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck -Confirm:$false"
+                    Write-DiagnosticMessage "Executing: $cmd" -Color DarkGray
+                    Invoke-Expression $cmd
+                    Write-DiagnosticMessage "Alternative NuGet provider installation completed" -Color Green
+                } catch {
+                    Write-DiagnosticMessage "Alternative NuGet provider installation failed: $($_.Exception.Message)" -Color "Error"
+                }
+            }
+        }
+    }
+
+    # Final check for NuGet provider
+    $nugetProviderFinal = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
+    if ($nugetProviderFinal) {
+        Write-DiagnosticMessage "Verification: NuGet provider is installed (Version: $($nugetProviderFinal.Version))" -Color Green
+    } else {
+        Write-DiagnosticMessage "Verification failed: NuGet provider is NOT installed after all attempts" -Color "Error"
+    }
+    
+    # Force the PSGallery repository to be trusted for current user
+    try {
+        Write-DiagnosticMessage "Setting PSGallery as trusted repository" -Color DarkGray
+        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -Scope CurrentUser -ErrorAction SilentlyContinue
+        Write-DiagnosticMessage "PSGallery set as trusted successfully" -Color Green
+    } catch {
+        Write-DiagnosticMessage "Error setting PSGallery as trusted: $($_.Exception.Message)" -Color "Error"
+    }
+    
+    # Restore original preference variables
+    $ConfirmPreference = $originalConfirmPreference
+    $ProgressPreference = $originalProgressPreference
+    $ErrorActionPreference = $originalErrorActionPreference
+    $VerbosePreference = $originalVerbosePreference
+} 
+catch {
+    Write-DiagnosticMessage "Unexpected error in NuGet provider installation: $($_.Exception.Message)" -Color "Error"
+    
+    # Restore original preference variables
+    $ConfirmPreference = $originalConfirmPreference
+    $ProgressPreference = $originalProgressPreference
+    $ErrorActionPreference = $originalErrorActionPreference
+    $VerbosePreference = $originalVerbosePreference
+}
+
+# Restore original Path parameter
+$Path = $originalPath
+
+# Now start transcript logging
+try {
+    Write-DiagnosticMessage "Starting transcript logging..." -Color Cyan
+
+    # Check for elevated privileges but don't prompt user - continue with limited functionality
+    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+    if (-not $isAdmin) {
+        Write-DiagnosticMessage "Running with limited privileges. Some directories may be inaccessible." -Color Yellow
+    }
+
+    # PowerShell Version Check and ThreadJob Initialization
+    $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
+    if ($script:isLegacyPowerShell) {
+        Write-DiagnosticMessage "Running in PowerShell 4.0 compatibility mode. Some features may be limited." -Color Yellow
+        $global:useThreadJobs = $false
+    } else {
+        $global:useThreadJobs = Initialize-ThreadJobModule
+    }
+
+    # Use script's own directory for logs instead of C:\temp
+    $transcriptPath = $PSScriptRoot
+    
+    # Ensure we have a valid path - script directory should always exist when running from a script
+    if (Test-Path $transcriptPath) {
+        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
+        Write-DiagnosticMessage "Starting transcript at: $transcriptFile" -Color DarkGray
+        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
+        
+        if (Test-Path $transcriptFile) {
+            Write-DiagnosticMessage "Transcript file created successfully" -Color Green
+        } else {
+            Write-DiagnosticMessage "Failed to create transcript file" -Color "Error"
+        }
+    } else {
+        # Fallback to user's temp directory if script path is not accessible for some reason
+        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
+        Write-DiagnosticMessage "Could not access script directory, using $transcriptFile instead" -Color Yellow
+        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
+    }
+    
+    Write-DiagnosticMessage "Transcript logging started successfully" -Color Green
+} catch {
+    Write-DiagnosticMessage "Failed to start transcript: $($_.Exception.Message)" -Color "Error"
+}
+
+# Continue with the rest of the script...
 
 # Define Initialize-ThreadJobModule at the top before it's called
 function Initialize-ThreadJobModule {
