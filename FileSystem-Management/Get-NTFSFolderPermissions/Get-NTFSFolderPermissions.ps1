@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:15:00 UTC
+# Last Updated: 2025-03-06 23:17:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.4
 # Additional Info: Fixed function parameter calls and removed unused variables
@@ -142,7 +142,7 @@ function Write-File-Safe {
 }
 
 # Safe output function with PowerShell Write-Host fallback (MUST BE DEFINED BEFORE FIRST USE)
-function Write-SafeOutput {
+function global:Write-SafeOutput {
     param (
         [Parameter(Mandatory=$true)]
         [string]$Message,
