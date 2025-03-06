@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:22:08 UTC
+# Last Updated: 2025-03-06 22:24:32 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.5
-# Additional Info: Added fallback for environments without Write-Host cmdlet
+# Version: 1.3.6
+# Additional Info: Fixed function scope issue for Write-SafeOutput
 # =============================================================================
 
 <#
@@ -68,19 +68,9 @@ param (
     [switch]$SkipUniquenessCounting
 )
 
-# Get the script's directory to use for output files
-$ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-$OutputLog = Join-Path -Path $ScriptDirectory -ChildPath "NTFSPermissions_$(Get-Date -Format 'yyyy-MM-dd_HHmmss').log"
-
-# Start a string builder for text file output
-$OutputText = [System.Text.StringBuilder]::new()
-[void]$OutputText.AppendLine("NTFS Permissions Report - Generated $(Get-Date)")
-[void]$OutputText.AppendLine("Folder Path: $FolderPath")
-[void]$OutputText.AppendLine("=" * 80)
-[void]$OutputText.AppendLine("")
-
 # Safe output function that works even if Write-Host is not available
-function Write-SafeOutput {
+# Define this at the script scope so it's available throughout the script
+function global:Write-SafeOutput {
     param (
         [Parameter(Mandatory=$true)]
         [string]$Message,
@@ -103,6 +93,17 @@ function Write-SafeOutput {
         }
     }
 }
+
+# Get the script's directory to use for output files
+$ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+$OutputLog = Join-Path -Path $ScriptDirectory -ChildPath "NTFSPermissions_$(Get-Date -Format 'yyyy-MM-dd_HHmmss').log"
+
+# Start a string builder for text file output
+$OutputText = [System.Text.StringBuilder]::new()
+[void]$OutputText.AppendLine("NTFS Permissions Report - Generated $(Get-Date)")
+[void]$OutputText.AppendLine("Folder Path: $FolderPath")
+[void]$OutputText.AppendLine("=" * 80)
+[void]$OutputText.AppendLine("")
 
 # Display start message with optimization info
 Write-SafeOutput "Starting optimized NTFS permissions analysis for: $FolderPath" -ForegroundColor Cyan
