@@ -39,3 +39,6 @@
 
 # Ignore everything in CommitHistory directory
 CommitHistory/
+
+# CSV files
+*.csv
