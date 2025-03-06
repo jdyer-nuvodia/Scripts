@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:21:00 UTC
+# Last Updated: 2025-03-06 23:23:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.4
 # Additional Info: Fixed function parameter calls and removed unused variables
@@ -298,7 +298,7 @@ function Write-Log {
     }
 }
 
-function Process-FoldersAsync {
+function Start-FolderProcessing {
     param(
         [array]$Folders,
         [int]$MaxThreads,
@@ -340,7 +340,7 @@ $Folders = $Folders | Sort-Object FullName -Unique
 Write-Log "Found $($Folders.Count) folders to process" "Cyan"
 
 # Process folders asynchronously and collect permissions
-$FolderPermissionsMap = Process-FoldersAsync -Folders $Folders -MaxThreads $MaxThreads -SkipUniquenessCounting:$SkipUniquenessCounting
+$FolderPermissionsMap = Start-FolderProcessing -Folders $Folders -MaxThreads $MaxThreads -SkipUniquenessCounting:$SkipUniquenessCounting
 
 # Helper function to compare two permission sets efficiently
 function Compare-PermissionSets {
