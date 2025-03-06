@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:12:00 UTC
+# Last Updated: 2025-03-06 23:15:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.4
 # Additional Info: Fixed function parameter calls and removed unused variables
@@ -370,7 +370,7 @@ try {
     Write-SafeOutput "Retrieving folder structure (optimized method)..." -Color Cyan
     [void]$OutputText.AppendLine("Retrieving folder structure...")
     
-    $StartTime = Get-Date
+    $StartTime = [DateTime]::Now
     $Folders = @()
     
     # Process root folder first
@@ -388,7 +388,7 @@ try {
     }
     
     $TotalFolders = $Folders.Count
-    $TimeElapsed = (Get-Date) - $StartTime
+    $TimeElapsed = ([DateTime]::Now) - $StartTime
     
     Write-SafeOutput "Found $TotalFolders folders to process in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds" -Color Cyan
     [void]$OutputText.AppendLine("Found $TotalFolders folders to process")
@@ -498,7 +498,7 @@ try {
         
         # Wait for all runspaces in this batch to complete
         $CompletedCount = 0
-        $LastProgressUpdate = Get-Date
+        $LastProgressUpdate = [DateTime]::Now
         
         while ($BatchRunspaces.Where({-not $_.Completed}, 'First').Count -gt 0) {
             foreach ($Runspace in $BatchRunspaces.Where({-not $_.Completed})) {
@@ -529,7 +529,7 @@ try {
             }
             
             # Update progress less frequently to reduce overhead - Fixed parenthesis issue
-            if (((Get-Date) - $LastProgressUpdate).TotalMilliseconds -gt 500) {
+            if (([DateTime]::Now - $LastProgressUpdate).TotalMilliseconds -gt 500) {
                 $CurrentProgress = "$CompletedCount of $BatchFolderCount folders in current batch"
                 $OverallProgress = "Overall: $Counter of $TotalFolders folders ($([Math]::Round($Counter / $TotalFolders * 100))%)"
                 try {
@@ -540,7 +540,7 @@ try {
                         [Console]::WriteLine("Processing: $CurrentProgress | $OverallProgress")
                     }
                 }
-                $LastProgressUpdate = Get-Date
+                $LastProgressUpdate = [DateTime]::Now
             }
             
             # Small sleep to prevent CPU hogging
@@ -558,7 +558,7 @@ try {
     $TotalPermissions = ($FolderPermissionsMap.Values | ForEach-Object { $_.Permissions.Count } | Measure-Object -Sum).Sum
     
     # Display completion message
-    $TimeElapsed = (Get-Date) - $StartTime
+    $TimeElapsed = ([DateTime]::Now) - $StartTime
     Write-SafeOutput "Analysis completed in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds." -Color Green
     Write-SafeOutput "Found $TotalPermissions permission entries across $TotalFolders folders." -Color Green
     [void]$OutputText.AppendLine("Analysis completed. Found $TotalPermissions permission entries across $TotalFolders folders.")
@@ -685,7 +685,7 @@ try {
     Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
     
     # Final performance summary
-    $TotalTime = (Get-Date) - $StartTime
+    $TotalTime = ([DateTime]::Now) - $StartTime
     Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString("0.00")) seconds" -Color Green
     Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -Color Green
 }
@@ -704,7 +704,19 @@ catch {
     
     # Try to save what we have so far using our safe file writing function
     if ($null -ne $OutputText -and $OutputText.Length -gt 0 -and $null -ne $OutputLog -and $OutputLog -ne "") {
-        Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog
+        try {
+            [System.IO.File]::WriteAllText($OutputLog, $OutputText.ToString(), [System.Text.Encoding]::UTF8)
+        }
+        catch {
+            try {
+                # Last-ditch effort to write error to desktop
+                $desktopPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+                $fallbackLog = [System.IO.Path]::Combine($desktopPath, "NTFSPermissions_ERROR_$formattedDateTime.log")
+                [System.IO.File]::WriteAllText($fallbackLog, "Critical error in NTFS permissions script: $($_.Exception.Message)")
+            } catch {
+                # We've tried everything possible
+            }
+        }
     } else {
         try {
             # Last-ditch effort to write error to desktop
