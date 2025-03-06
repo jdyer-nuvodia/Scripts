@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:23:00 UTC
+# Last Updated: 2025-03-06 23:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.4
-# Additional Info: Fixed function parameter calls and removed unused variables
+# Version: 1.4.5
+# Additional Info: Fixed function parameter calls, removed unused variables, and wrapped main processing block in try/catch.
 # =============================================================================
 
 <#
@@ -67,6 +67,8 @@ param (
     [Parameter(Mandatory = $false)]
     [switch]$SkipUniquenessCounting
 )
+
+$StartTime = [DateTime]::Now
 
 # EXTREME RESTRICTED MODE COMPATIBILITY
 # Use only .NET core classes that are available in any PowerShell environment
@@ -194,7 +196,10 @@ try {
     $streamWriter.WriteLine("")
     $streamWriter.WriteLine("Starting NTFS permissions analysis for: $FolderPath")
     
-    # Keep the stream writer open for the rest of the script
+    # Close the stream so the file is not locked later
+    $streamWriter.Flush()
+    $streamWriter.Close()
+    $fileStream.Close()
 } 
 catch {
     [Console]::ForegroundColor = $consoleErrorColor
@@ -332,175 +337,177 @@ function Start-FolderProcessing {
 }
 
 # --- Main processing block rewritten using new modular functions ---
-# ...existing initialization and log file creation code...
+try {
+    # Enumerate folders using the new module function
+    $Folders = Get-AllDirectoriesModule -Path $FolderPath -MaxDepth $MaxDepth
+    $Folders = $Folders | Sort-Object FullName -Unique
+    Write-Log "Found $($Folders.Count) folders to process" "Cyan"
+    $TotalFolders = $Folders.Count
 
-# Enumerate folders using the new module function
-$Folders = Get-AllDirectoriesModule -Path $FolderPath -MaxDepth $MaxDepth
-$Folders = $Folders | Sort-Object FullName -Unique
-Write-Log "Found $($Folders.Count) folders to process" "Cyan"
+    # Process folders asynchronously and collect permissions
+    $FolderPermissionsMap = Start-FolderProcessing -Folders $Folders -MaxThreads $MaxThreads -SkipUniquenessCounting:$SkipUniquenessCounting
 
-# Process folders asynchronously and collect permissions
-$FolderPermissionsMap = Start-FolderProcessing -Folders $Folders -MaxThreads $MaxThreads -SkipUniquenessCounting:$SkipUniquenessCounting
-
-# Helper function to compare two permission sets efficiently
-function Compare-PermissionSets {
-    param (
-        [Array]$Set1,
-        [Array]$Set2
-    )
-    
-    if ($Set1.Count -ne $Set2.Count) { return $false }
-    
-    # Get sorted string representations of both sets for comparison
-    $SortedSet1 = ($Set1 | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited | 
-                 ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
-    
-    $SortedSet2 = ($Set2 | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited | 
-                 ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
-    
-    return $SortedSet1 -eq $SortedSet2
-}
-
-# Helper function to generate a permissions hash for faster comparison
-function Get-PermissionsHash {
-    param (
-        [Array]$Permissions
-    )
-    
-    $SortedPermissions = ($Permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited | 
-                        ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
-    
-    return $SortedPermissions.GetHashCode()
-}
-
-# Display results grouped by folder with separate tables
-Write-SafeOutput "`nDisplaying permissions by folder:" -Color Cyan
-[void]$OutputText.AppendLine("")
-[void]$OutputText.AppendLine("Displaying permissions by folder:")
-
-# Get all folder paths and sort them by depth (for parent-child relationship checking)
-$SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object { ($_ -split '\\').Count }
-
-# Keep track of folders already displayed and build hash table for faster lookups
-$DisplayedFolders = @{}
-$SkippedFolders = @()
-
-# Build hash to permission map for faster comparison
-$HashToFoldersMap = @{}
-foreach ($FolderPath in $SortedFolderPaths) {
-    $Hash = $FolderPermissionsMap[$FolderPath].Hash
-    if (-not $HashToFoldersMap.ContainsKey($Hash)) {
-        $HashToFoldersMap[$Hash] = @()
+    # Helper function to compare two permission sets efficiently
+    function Compare-PermissionSets {
+        param (
+            [Array]$Set1,
+            [Array]$Set2
+        )
+        
+        if ($Set1.Count -ne $Set2.Count) { return $false }
+        
+        # Get sorted string representations of both sets for comparison
+        $SortedSet1 = ($Set1 | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited | 
+                     ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+        
+        $SortedSet2 = ($Set2 | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited | 
+                     ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+        
+        return $SortedSet1 -eq $SortedSet2
     }
-    $HashToFoldersMap[$Hash] += $FolderPath
-}
 
-Write-SafeOutput "Processing folder groups for display..." -Color DarkGray
-
-foreach ($FolderPath in $SortedFolderPaths) {
-    # Skip if already processed as part of a group
-    if ($DisplayedFolders.ContainsKey($FolderPath)) {
-        continue
+    # Helper function to generate a permissions hash for faster comparison
+    function Get-PermissionsHash {
+        param (
+            [Array]$Permissions
+        )
+        
+        $SortedPermissions = ($Permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited | 
+                            ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+        
+        return $SortedPermissions.GetHashCode()
     }
-    
-    $CurrentHash = $FolderPermissionsMap[$FolderPath].Hash
-    $CurrentFolderPermissions = $FolderPermissionsMap[$FolderPath].Permissions
-    
-    # Create a visual separator
-    $SeparatorLength = [Math]::Min(100, $FolderPath.Length + 10)
-    $Separator = "-" * $SeparatorLength
-    
-    Write-SafeOutput "`n$Separator" -Color White
-    Write-SafeOutput "Folder: $FolderPath" -Color White
-    Write-SafeOutput "$Separator" -Color White
-    
+
+    # Display results grouped by folder with separate tables
+    Write-SafeOutput "`nDisplaying permissions by folder:" -Color Cyan
     [void]$OutputText.AppendLine("")
-    [void]$OutputText.AppendLine($Separator)
-    [void]$OutputText.AppendLine("Folder: $FolderPath")
-    [void]$OutputText.AppendLine($Separator)
-    
-    # Find all child folders with identical permissions - optimized using hash lookup
-    $IdenticalSubfolders = @()
-    
-    # Use hash-based matching first (faster)
-    foreach ($OtherPath in $HashToFoldersMap[$CurrentHash]) {
-        # Skip self or already displayed
-        if (($OtherPath -eq $FolderPath) -or ($DisplayedFolders.ContainsKey($OtherPath))) {
+    [void]$OutputText.AppendLine("Displaying permissions by folder:")
+
+    # Get all folder paths and sort them by depth (for parent-child relationship checking)
+    $SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object { ($_ -split '\\').Count }
+
+    # Keep track of folders already displayed and build hash table for faster lookups
+    $DisplayedFolders = @{}
+    $SkippedFolders = @()
+
+    # Build hash to permission map for faster comparison
+    $HashToFoldersMap = @{}
+    foreach ($FolderPath in $SortedFolderPaths) {
+        $Hash = $FolderPermissionsMap[$FolderPath].Hash
+        if (-not $HashToFoldersMap.ContainsKey($Hash)) {
+            $HashToFoldersMap[$Hash] = @()
+        }
+        $HashToFoldersMap[$Hash] += $FolderPath
+    }
+
+    Write-SafeOutput "Processing folder groups for display..." -Color DarkGray
+
+    foreach ($FolderPath in $SortedFolderPaths) {
+        # Skip if already processed as part of a group
+        if ($DisplayedFolders.ContainsKey($FolderPath)) {
             continue
         }
         
-        # Check if it's a subfolder
-        if ($OtherPath.StartsWith($FolderPath + "\")) {
-            # Verify with full comparison if needed for absolute certainty
-            if ($SkipUniquenessCounting -or 
-                (Compare-PermissionSets -Set1 $CurrentFolderPermissions -Set2 $FolderPermissionsMap[$OtherPath].Permissions)) {
-                $IdenticalSubfolders += $OtherPath
-                $DisplayedFolders[$OtherPath] = $true
-                $SkippedFolders += $OtherPath
-            }
-        }
-    }
-    
-    # Display the permissions
-    $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited
-    $PermissionsTable = $SimplifiedPermissions | Format-Table -AutoSize | Out-String
-    
-    Write-SafeOutput $PermissionsTable
-    [void]$OutputText.Append($PermissionsTable)
-    
-    # Mark this folder as displayed
-    $DisplayedFolders[$FolderPath] = $true
-    
-    # If there are subfolders with identical permissions, list them
-    if ($IdenticalSubfolders.Count -gt 0) {
-        Write-SafeOutput "The following subfolders have identical permissions:" -Color Cyan
-        [void]$OutputText.AppendLine("The following subfolders have identical permissions:")
+        $CurrentHash = $FolderPermissionsMap[$FolderPath].Hash
+        $CurrentFolderPermissions = $FolderPermissionsMap[$FolderPath].Permissions
         
-        # For very large lists, summarize instead of showing all
-        if ($IdenticalSubfolders.Count -gt 20) {
-            Write-SafeOutput "  - $($IdenticalSubfolders.Count) identical subfolders" -Color DarkGray
-            [void]$OutputText.AppendLine("  - $($IdenticalSubfolders.Count) identical subfolders")
+        # Create a visual separator
+        $SeparatorLength = [Math]::Min(100, $FolderPath.Length + 10)
+        $Separator = "-" * $SeparatorLength
+        
+        Write-SafeOutput "`n$Separator" -Color White
+        Write-SafeOutput "Folder: $FolderPath" -Color White
+        Write-SafeOutput "$Separator" -Color White
+        
+        [void]$OutputText.AppendLine("")
+        [void]$OutputText.AppendLine($Separator)
+        [void]$OutputText.AppendLine("Folder: $FolderPath")
+        [void]$OutputText.AppendLine($Separator)
+        
+        # Find all child folders with identical permissions - optimized using hash lookup
+        $IdenticalSubfolders = @()
+        
+        # Use hash-based matching first (faster)
+        foreach ($OtherPath in $HashToFoldersMap[$CurrentHash]) {
+            # Skip self or already displayed
+            if (($OtherPath -eq $FolderPath) -or ($DisplayedFolders.ContainsKey($OtherPath))) {
+                continue
+            }
             
-            # Show first 10 as examples
-            foreach ($Subfolder in $IdenticalSubfolders[0..9]) {
-                Write-SafeOutput "  - $Subfolder" -Color DarkGray
-                [void]$OutputText.AppendLine("  - $Subfolder")
-            }
-            Write-SafeOutput "  - ... (and $($IdenticalSubfolders.Count - 10) more)" -Color DarkGray
-            [void]$OutputText.AppendLine("  - ... (and $($IdenticalSubfolders.Count - 10) more)")
-        }
-        else {
-            foreach ($Subfolder in $IdenticalSubfolders) {
-                Write-SafeOutput "  - $Subfolder" -Color DarkGray
-                [void]$OutputText.AppendLine("  - $Subfolder")
+            # Check if it's a subfolder
+            if ($OtherPath.StartsWith($FolderPath + "\")) {
+                # Verify with full comparison if needed for absolute certainty
+                if ($SkipUniquenessCounting -or 
+                    (Compare-PermissionSets -Set1 $CurrentFolderPermissions -Set2 $FolderPermissionsMap[$OtherPath].Permissions)) {
+                    $IdenticalSubfolders += $OtherPath
+                    $DisplayedFolders[$OtherPath] = $true
+                    $SkippedFolders += $OtherPath
+                }
             }
         }
+        
+        # Display the permissions
+        $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited
+        $PermissionsTable = $SimplifiedPermissions | Format-Table -AutoSize | Out-String
+        
+        Write-SafeOutput $PermissionsTable
+        [void]$OutputText.Append($PermissionsTable)
+        
+        # Mark this folder as displayed
+        $DisplayedFolders[$FolderPath] = $true
+        
+        # If there are subfolders with identical permissions, list them
+        if ($IdenticalSubfolders.Count -gt 0) {
+            Write-SafeOutput "The following subfolders have identical permissions:" -Color Cyan
+            [void]$OutputText.AppendLine("The following subfolders have identical permissions:")
+            
+            # For very large lists, summarize instead of showing all
+            if ($IdenticalSubfolders.Count -gt 20) {
+                Write-SafeOutput "  - $($IdenticalSubfolders.Count) identical subfolders" -Color DarkGray
+                [void]$OutputText.AppendLine("  - $($IdenticalSubfolders.Count) identical subfolders")
+                
+                # Show first 10 as examples
+                foreach ($Subfolder in $IdenticalSubfolders[0..9]) {
+                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                    [void]$OutputText.AppendLine("  - $Subfolder")
+                }
+                Write-SafeOutput "  - ... (and $($IdenticalSubfolders.Count - 10) more)" -Color DarkGray
+                [void]$OutputText.AppendLine("  - ... (and $($IdenticalSubfolders.Count - 10) more)")
+            }
+            else {
+                foreach ($Subfolder in $IdenticalSubfolders) {
+                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                    [void]$OutputText.AppendLine("  - $Subfolder")
+                }
+            }
+        }
+        
+        # Force garbage collection periodically to reduce memory pressure
+        if ($DisplayedFolders.Count % 100 -eq 0) {
+            [System.GC]::Collect()
+        }
     }
-    
-    # Force garbage collection periodically to reduce memory pressure
-    if ($DisplayedFolders.Count % 100 -eq 0) {
-        [System.GC]::Collect()
+
+    # Report skipped folders
+    $SkippedCount = $SkippedFolders.Count
+    Write-SafeOutput "`nSkipped displaying $SkippedCount folders with permissions identical to their parent folders." -Color Cyan
+    [void]$OutputText.AppendLine("")
+    [void]$OutputText.AppendLine("Skipped displaying $SkippedCount folders with permissions identical to their parent folders.")
+
+    # Save the output to text file
+    try {
+        Write-SafeOutput "Writing report to file..." -Color DarkGray
+        Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8"
+        Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
+
+        $TotalTime = ([DateTime]::Now) - $StartTime
+        Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString('0.00')) seconds" -Color Green
+        Write-SafeOutput "Processed $TotalFolders folders ($([int]($TotalTime.TotalSeconds / $TotalFolders * 1000)) ms per folder)" -Color Green
     }
-}
-
-# Report skipped folders
-$SkippedCount = $SkippedFolders.Count
-Write-SafeOutput "`nSkipped displaying $SkippedCount folders with permissions identical to their parent folders." -Color Cyan
-[void]$OutputText.AppendLine("")
-[void]$OutputText.AppendLine("Skipped displaying $SkippedCount folders with permissions identical to their parent folders.")
-
-# Save the output to text file
-Write-SafeOutput "Writing report to file..." -Color DarkGray
-$OutputText.ToString() | Out-File -FilePath $OutputLog -Encoding UTF8
-Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
-
-# Final performance summary
-$TotalTime = ([DateTime]::Now) - $StartTime
-Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString("0.00")) seconds" -Color Green
-Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -Color Green
-
-# ...existing error handling and cleanup code...
-
+    catch {
+        Write-SafeOutput "An error occurred during log writing or performance summary: $($_.Exception.Message)" -Color Red
+    }
+} 
 catch {
     # Super failsafe error handling with no dependencies on PowerShell cmdlets
     try {
