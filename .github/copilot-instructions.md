@@ -6,6 +6,9 @@
 # Updated By: jdyer-nuvodia
 # Version: 3.2
 # Additional Info: Expanded color schema to match organizational standards.
+#
+# IMPORTANT: When editing any script, update the header information including 
+# Last Updated, Updated By, and Version fields. Use a current, reliable UTC timestamp.
 # =============================================================================
 
 The current year is 2025.
