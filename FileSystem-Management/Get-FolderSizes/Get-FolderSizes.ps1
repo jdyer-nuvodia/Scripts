@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:04:00 UTC
+# Last Updated: 2025-03-06 17:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.9
-# Additional Info: Fixed unsupported -Scope parameter in Set-PSRepository command
+# Version: 1.8.0
+# Additional Info: Fixed duplicate transcript initialization causing file access errors
 # =============================================================================
 
 # Requires -Version 5.1
@@ -138,6 +138,7 @@
     1.7.7 - Changed log file location to use script directory instead of C:\temp
     1.7.8 - Added verbose diagnostic logging for NuGet provider installation
     1.7.9 - Fixed unsupported -Scope parameter in Set-PSRepository command
+    1.8.0 - Fixed duplicate transcript initialization causing file access errors
 #>
 
 param (
@@ -453,7 +454,7 @@ catch {
 # Restore original Path parameter
 $Path = $originalPath
 
-# Now start transcript logging
+# Start transcript logging
 try {
     Write-DiagnosticMessage "Starting transcript logging..." -Color Cyan
 
@@ -499,207 +500,6 @@ try {
 }
 
 # Continue with the rest of the script...
-
-# Define Initialize-ThreadJobModule at the top before it's called
-function Initialize-ThreadJobModule {
-    if (!(Get-Module -Name ThreadJob -ListAvailable)) {
-        try {
-            Install-Module ThreadJob -Force -Scope CurrentUser -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Warning "Could not install ThreadJob module: $($_.Exception.Message)"
-        }
-    }
-    Import-Module ThreadJob -ErrorAction SilentlyContinue
-}
-
-# Transcript Logging Setup
-try {
-    # Check for elevated privileges but don't prompt user - continue with limited functionality
-    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-    if (-not $isAdmin) {
-        Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
-    }
-
-    # PowerShell Version Check and ThreadJob Initialization
-    $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
-    if ($script:isLegacyPowerShell) {
-        Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
-        $global:useThreadJobs = $false
-    } else {
-        $global:useThreadJobs = Initialize-ThreadJobModule
-    }
-
-    # Use script's own directory for logs instead of C:\temp
-    $transcriptPath = $PSScriptRoot
-    
-    # Ensure we have a valid path - script directory should always exist when running from a script
-    if (Test-Path $transcriptPath) {
-        $transcriptFile = Join-Path $transcriptPath "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
-        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
-    } else {
-        # Fallback to user's temp directory if script path is not accessible for some reason
-        $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
-        Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
-        Write-Warning "Could not access script directory, using $transcriptFile instead"
-    }
-} catch {
-    Write-Warning "Failed to start transcript: $_"
-}
-
-# Pre-emptively install NuGet provider - must be at very top of script
-try {
-    # Store original Path parameter value to prevent overwrites
-    $originalPath = $Path
-
-    # Set strict silent mode from the very start
-    $global:ConfirmPreference = 'None'
-    $global:ProgressPreference = 'SilentlyContinue'
-    $global:ErrorActionPreference = 'SilentlyContinue'
-    
-    # Set up global parameter defaults to prevent prompts
-    $global:PSDefaultParameterValues = @{
-        'Install-Module:Force' = $true
-        'Install-Module:SkipPublisherCheck' = $true
-        'Install-Module:Confirm' = $false
-        'Install-Module:Scope' = 'CurrentUser'
-        'Install-PackageProvider:Force' = $true
-        'Install-PackageProvider:Confirm' = $false
-        'Install-PackageProvider:Scope' = 'CurrentUser'
-        'Install-PackageProvider:SkipPublisherCheck' = $true
-        'Register-PSRepository:InstallationPolicy' = 'Trusted'
-        'Import-Module:ErrorAction' = 'SilentlyContinue'
-        '*:Confirm' = $false
-    }
-    
-    # Add required environment variables
-    $env:POWERSHELL_UPDATECHECK = 'Off'
-    $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
-    $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 'true'
-    $env:NUGET_XMLDOC_MODE = 'skip'
-    
-    # Force PackageManagement to use CurrentUser scope
-    [System.Environment]::SetEnvironmentVariable('POWERSHELL_UPDATECHECK', 'Off', [System.EnvironmentVariableTarget]::Process)
-    
-    # Create registry structure to bypass all NuGet prompts
-    $regPaths = @(
-        'HKLM:\SOFTWARE\Microsoft\PowerShellGet\',
-        'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
-        'HKLM:\SOFTWARE\Microsoft\PackageManagement\',
-        'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
-    )
-    
-    foreach ($regPath in $regPaths) {
-        # Create PowerShellGet key if it doesn't exist
-        if (-not (Test-Path $regPath)) {
-            try { New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
-        }
-        
-        # Set provider trust settings (NuGetProviderApproved = 1)
-        try { 
-            New-ItemProperty -Path $regPath -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force | Out-Null
-        } catch {}
-    }
-    
-    # Additional registry key for PackageManagement provider bootstrap
-    try {
-        if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\')) {
-            New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\' -Force | Out-Null
-        }
-        if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget')) {
-            New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Force | Out-Null
-        }
-        
-        # Set the provider to bootstrapped state
-        New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Name 'ProviderBootstrapped' -Value 1 -PropertyType DWORD -Force | Out-Null
-    } catch {}
-    
-    # Create NuGet configuration directory if it doesn't exist
-    $nugetConfigPath = Join-Path $env:APPDATA 'NuGet'
-    if (-not (Test-Path $nugetConfigPath)) {
-        try { New-Item -Path $nugetConfigPath -ItemType Directory -Force | Out-Null } catch {}
-    }
-    
-    # Direct download and install of NuGet provider DLL to all possible locations
-    $nugetProviderPaths = @(
-        "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget",
-        "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget",
-        "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget"
-    )
-    
-    $nugetUrl = "https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll"
-    
-    foreach ($nugetProviderPath in $nugetProviderPaths) {
-        if (-not (Test-Path $nugetProviderPath)) {
-            try { New-Item -Path $nugetProviderPath -ItemType Directory -Force | Out-Null } catch {}
-        }
-        
-        try {
-            $webClient = New-Object System.Net.WebClient
-            $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
-            $webClient.DownloadFile($nugetUrl, "$nugetProviderPath\Microsoft.PackageManagement.NuGetProvider.dll")
-        } catch {}
-    }
-    
-    # Silent NuGet provider installation through background jobs
-    # This ensures no UI prompts can escape
-    $job = Start-Job -ScriptBlock {
-        # Disable progress bars and confirmations inside job
-        $ProgressPreference = 'SilentlyContinue'
-        $ConfirmPreference = 'None'
-        $ErrorActionPreference = 'SilentlyContinue'
-        
-        # Force set package provider options for current process
-        # Install with force and skip publisher check
-        $null = Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck
-        
-        # Verify it's installed
-        Get-PackageProvider -Name NuGet | Out-Null
-        
-        # Additional workaround - import provider directly
-        $providerPaths = @(
-            "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
-            "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll"
-        )
-        
-        foreach ($providerPath in $providerPaths) {
-            if (Test-Path $providerPath) {
-                try { Import-Module $providerPath -Force } catch {}
-            }
-        }
-    }
-    
-    # Wait for the job with a reasonable timeout and clean up
-    Wait-Job -Job $job -Timeout 20 | Out-Null
-    Remove-Job -Job $job -Force
-    
-    # Double-check provider is available
-    $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-    
-    # If provider not registered yet, set pre-approval flag system-wide
-    if (-not $nugetProvider) {
-        # Create a one-time execution script that accepts prompt responses
-        $tempScript = Join-Path $env:TEMP "InstallNuGetProvider_$(Get-Random).ps1"
-        @"
-# Self-cleanup temporary script
-Remove-Item -Path '$tempScript' -Force -ErrorAction SilentlyContinue
-# Silent provider installation
-`$ProgressPreference = 'SilentlyContinue'
-`$ConfirmPreference = 'None'
-`$ErrorActionPreference = 'SilentlyContinue'
-# Force PackageManagement module reload
-Import-Module PackageManagement -Force
-# Install NuGet provider and accept any prompts
-`$null = Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
-"@ | Out-File -FilePath $tempScript -Encoding utf8
-        
-        # Execute the temporary script in a new PowerShell process with appropriate flag to auto-accept prompts
-        Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -NonInteractive -File `"$tempScript`"" -WindowStyle Hidden -Wait
-    }
-} catch {}
-
-# Restore original Path parameter
-$Path = $originalPath
 
 #region Helper Functions
 
@@ -1077,18 +877,8 @@ if (-not $isAdmin) {
     Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
 }
 
-# PowerShell Version Check and ThreadJob Initialization
-$script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
-if ($script:isLegacyPowerShell) {
-    Write-Warning "Running in PowerShell 4.0 compatibility mode. Some features may be limited."
-    $global:useThreadJobs = $false
-} else {
-    $global:useThreadJobs = Initialize-ThreadJobModule
-}
-
-# Transcript Logging Setup - Remove redundant setup since we already have it above
-$transcriptPath = $PSScriptRoot # Use script directory instead of C:\temp
-# Don't need to recreate transcript or start a new one - we're already logging
+# PowerShell Version Check and ThreadJob Initialization was already done above
+# We already have the transcript initialized above, no need to do it again
 
 # Script Header in Transcript
 Write-Host "======================================================" -ForegroundColor White
