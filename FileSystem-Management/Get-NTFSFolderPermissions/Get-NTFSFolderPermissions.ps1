@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:43:15 UTC
+# Last Updated: 2025-03-06 22:49:15 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.0
 # Additional Info: Added ultra-restricted environment compatibility mode
@@ -142,6 +142,9 @@ if ($MaxDepth -gt 0) {
     Write-SafeOutput "Limited to maximum depth of $MaxDepth levels" -ForegroundColor DarkGray
 }
 [void]$OutputText.AppendLine("Starting NTFS permissions analysis for: $FolderPath")
+        }
+    }
+}
 
 # Helper function to compare two permission sets efficiently
 function Compare-PermissionSets {
