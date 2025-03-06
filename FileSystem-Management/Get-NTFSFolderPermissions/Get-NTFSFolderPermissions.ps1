@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:17:00 UTC
+# Last Updated: 2025-03-06 23:21:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.4
 # Additional Info: Fixed function parameter calls and removed unused variables
@@ -219,31 +219,128 @@ catch {
     # In restricted environments, console methods might not be available
 }
 
-# Function to get all subdirectories using pure .NET (no cmdlets)
-function Get-AllDirectories {
+# New helper functions for modularization
+
+function Get-AllDirectoriesModule {
     param(
-        [string]$rootPath,
-        [int]$maxDepth = 0,
-        [int]$currentDepth = 0
+        [string]$Path,
+        [int]$MaxDepth = 0
     )
-    
     try {
-        # Start with root folder
-        # Implementation details would go here
+        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
+        if ($MaxDepth -gt 0) {
+            return Get-AllDirectoriesModuleRecursive -dir $dirInfo -maxDepth $MaxDepth -current 0
+        }
+        else {
+            return $dirInfo.GetDirectories("*", 'AllDirectories')
+        }
     }
     catch {
-        # Handle errors gracefully
         return @()
     }
 }
 
-# Display start message with optimization info
-Write-SafeOutput "Starting optimized NTFS permissions analysis for: $FolderPath" -Color Cyan
-Write-SafeOutput "Using up to $MaxThreads parallel threads" -Color DarkGray
-if ($MaxDepth -gt 0) {
-    Write-SafeOutput "Limited to maximum depth of $MaxDepth levels" -Color DarkGray
+function Get-AllDirectoriesModuleRecursive {
+    param(
+        [System.IO.DirectoryInfo]$dir,
+        [int]$maxDepth,
+        [int]$current
+    )
+    $results = @($dir)
+    if ($current -lt $maxDepth) {
+        try {
+            foreach ($sub in $dir.GetDirectories()) {
+                $results += Get-AllDirectoriesModuleRecursive -dir $sub -maxDepth $maxDepth -current ($current+1)
+            }
+        }
+        catch { }
+    }
+    return $results
 }
-[void]$OutputText.AppendLine("Starting NTFS permissions analysis for: $FolderPath")
+
+function Get-FolderPermissionsModule {
+    param(
+        [string]$FolderPath
+    )
+    try {
+        $acl = [System.IO.Directory]::GetAccessControl($FolderPath)
+        $permissions = foreach ($access in $acl.Access) {
+            [PSCustomObject]@{
+                FolderPath       = $FolderPath
+                IdentityReference = $access.IdentityReference
+                FileSystemRights  = $access.FileSystemRights
+                AccessControlType = $access.AccessControlType
+                IsInherited       = $access.IsInherited
+            }
+        }
+        $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
+                     ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+        return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
+    }
+    catch {
+        return @{ Success = $false; FolderPath = $FolderPath; Permissions = @(); Hash = 0; Error = $_.Exception.Message }
+    }
+}
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Color = "White"
+    )
+    try {
+        Write-Host $Message -ForegroundColor $Color
+    }
+    catch {
+        [Console]::WriteLine($Message)
+    }
+    if ($null -ne $OutputText) {
+        [void]$OutputText.AppendLine($Message)
+    }
+}
+
+function Process-FoldersAsync {
+    param(
+        [array]$Folders,
+        [int]$MaxThreads,
+        [switch]$SkipUniquenessCounting
+    )
+    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
+    $RunspacePool.Open()
+    $FolderPermissionsMap = @{}
+    $Runspaces = @()
+    foreach ($folder in $Folders) {
+        $ps = [powershell]::Create().AddScript({
+            param($FolderPath)
+            return Get-FolderPermissionsModule -FolderPath $FolderPath
+        }).AddArgument($folder.FullName)
+        $ps.RunspacePool = $RunspacePool
+        $Runspaces += [PSCustomObject]@{ Instance = $ps; Handle = $ps.BeginInvoke(); Folder = $folder.FullName }
+    }
+    foreach ($r in $Runspaces) {
+        $result = $r.Instance.EndInvoke($r.Handle)
+        if ($result.Success) {
+            $FolderPermissionsMap[$result.FolderPath] = @{ Permissions = $result.Permissions; Hash = $result.Hash }
+        }
+        else {
+            Write-Log "Error processing folder: $($r.Folder)" "Yellow"
+        }
+        $r.Instance.Dispose()
+    }
+    $RunspacePool.Close()
+    $RunspacePool.Dispose()
+    return $FolderPermissionsMap
+}
+
+# --- Main processing block rewritten using new modular functions ---
+# ...existing initialization and log file creation code...
+
+# Enumerate folders using the new module function
+$Folders = Get-AllDirectoriesModule -Path $FolderPath -MaxDepth $MaxDepth
+$Folders = $Folders | Sort-Object FullName -Unique
+Write-Log "Found $($Folders.Count) folders to process" "Cyan"
+
+# Process folders asynchronously and collect permissions
+$FolderPermissionsMap = Process-FoldersAsync -Folders $Folders -MaxThreads $MaxThreads -SkipUniquenessCounting:$SkipUniquenessCounting
 
 # Helper function to compare two permission sets efficiently
 function Compare-PermissionSets {
@@ -276,419 +373,134 @@ function Get-PermissionsHash {
     return $SortedPermissions.GetHashCode()
 }
 
-# Function to get all subdirectories with fast .NET methods
-function Get-SubdirectoriesFast {
-    param (
-        [string]$Path,
-        [int]$CurrentDepth = 0,
-        [int]$MaxDepth = 0
-    )
+# Display results grouped by folder with separate tables
+Write-SafeOutput "`nDisplaying permissions by folder:" -Color Cyan
+[void]$OutputText.AppendLine("")
+[void]$OutputText.AppendLine("Displaying permissions by folder:")
 
-    try {
-        # Add the current directory
-        $CurrentDir = [System.IO.DirectoryInfo]::new($Path)
-        
-        # Return if we've reached max depth
-        if ($MaxDepth -gt 0 -and $CurrentDepth -ge $MaxDepth) {
-            return @($CurrentDir)
-        }
-        
-        # Get immediate subdirectories
-        $SubDirs = [System.IO.Directory]::GetDirectories($Path)
-        
-        # Process each subdirectory recursively
-        $AllDirs = @($CurrentDir)
-        foreach ($Dir in $SubDirs) {
-            try {
-                $AllDirs += Get-SubdirectoriesFast -Path $Dir -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
-            }
-            catch {
-                # Silently continue if we can't access a directory
-            }
-        }
-        
-        return $AllDirs
+# Get all folder paths and sort them by depth (for parent-child relationship checking)
+$SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object { ($_ -split '\\').Count }
+
+# Keep track of folders already displayed and build hash table for faster lookups
+$DisplayedFolders = @{}
+$SkippedFolders = @()
+
+# Build hash to permission map for faster comparison
+$HashToFoldersMap = @{}
+foreach ($FolderPath in $SortedFolderPaths) {
+    $Hash = $FolderPermissionsMap[$FolderPath].Hash
+    if (-not $HashToFoldersMap.ContainsKey($Hash)) {
+        $HashToFoldersMap[$Hash] = @()
     }
-    catch {
-        # Return just the current directory if we can't process subdirectories
-        if (Test-Path $Path -PathType Container) {
-            return @([System.IO.DirectoryInfo]::new($Path))
-        }
-        return @()
-    }
+    $HashToFoldersMap[$Hash] += $FolderPath
 }
 
-# Helper function to get permissions for a folder (used in runspaces)
-function Get-FolderPermissionsWorker {
-    param (
-        [string]$FolderPath
-    )
-    
-    try {
-        $Acl = [System.Security.AccessControl.DirectorySecurity]::new()
-        $Acl.SetAccessRuleProtection($false, $false)
-        
-        $Acl = [System.IO.Directory]::GetAccessControl($FolderPath)
-        $Permissions = @()
-        
-        foreach ($Access in $Acl.Access) {
-            # Create a custom object for each permission entry
-            $Permission = [PSCustomObject]@{
-                FolderPath       = $FolderPath
-                IdentityReference = $Access.IdentityReference
-                FileSystemRights  = $Access.FileSystemRights
-                AccessControlType = $Access.AccessControlType
-                IsInherited       = $Access.IsInherited
-                InheritanceFlags  = $Access.InheritanceFlags
-                PropagationFlags  = $Access.PropagationFlags
-            }
-            
-            $Permissions += $Permission
-        }
-        
-        return @{
-            Success = $true
-            FolderPath = $FolderPath
-            Permissions = $Permissions
-            PermissionsHash = (Get-PermissionsHash -Permissions $Permissions)
-            Error = $null
-        }
-    }
-    catch {
-        return @{
-            Success = $false
-            FolderPath = $FolderPath
-            Permissions = @()
-            PermissionsHash = 0
-            Error = $_.Exception.Message
-        }
-    }
-}
+Write-SafeOutput "Processing folder groups for display..." -Color DarkGray
 
-try {
-    # Get all folders and subfolders recursively using optimized method
-    Write-SafeOutput "Retrieving folder structure (optimized method)..." -Color Cyan
-    [void]$OutputText.AppendLine("Retrieving folder structure...")
-    
-    $StartTime = [DateTime]::Now
-    $Folders = @()
-    
-    # Process root folder first
-    $RootFolder = Get-Item -Path $FolderPath -ErrorAction Stop
-    $Folders += $RootFolder
-    
-    # Add subfolders with optimized method
-    Write-SafeOutput "Finding subfolders..." -Color DarkGray
-    $SubFolders = Get-SubdirectoriesFast -Path $FolderPath -MaxDepth $MaxDepth
-    
-    # Remove the first item as it's the root folder we already added
-    if ($SubFolders.Count -gt 1) {
-        $SubFolders = $SubFolders[1..($SubFolders.Count - 1)]
-        $Folders += $SubFolders
+foreach ($FolderPath in $SortedFolderPaths) {
+    # Skip if already processed as part of a group
+    if ($DisplayedFolders.ContainsKey($FolderPath)) {
+        continue
     }
     
-    $TotalFolders = $Folders.Count
-    $TimeElapsed = ([DateTime]::Now) - $StartTime
+    $CurrentHash = $FolderPermissionsMap[$FolderPath].Hash
+    $CurrentFolderPermissions = $FolderPermissionsMap[$FolderPath].Permissions
     
-    Write-SafeOutput "Found $TotalFolders folders to process in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds" -Color Cyan
-    [void]$OutputText.AppendLine("Found $TotalFolders folders to process")
+    # Create a visual separator
+    $SeparatorLength = [Math]::Min(100, $FolderPath.Length + 10)
+    $Separator = "-" * $SeparatorLength
     
-    # Set up runspace pool for parallel processing
-    Write-SafeOutput "Initializing parallel processing engine..." -Color Cyan
-    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
-    $RunspacePool.Open()
+    Write-SafeOutput "`n$Separator" -Color White
+    Write-SafeOutput "Folder: $FolderPath" -Color White
+    Write-SafeOutput "$Separator" -Color White
     
-    # Create runspaces for each folder
-    $Counter = 0
-    
-    # Dictionary to store permissions by folder path
-    $FolderPermissionsMap = @{}
-    
-    # Process folders in batches to prevent memory issues with very large directories
-    $BatchSize = [Math]::Min(500, [Math]::Max(50, $TotalFolders / 10))
-    $FolderBatches = [System.Collections.Generic.List[Object]]::new()
-    
-    for ($i = 0; $i -lt $TotalFolders; $i += $BatchSize) {
-        $End = [Math]::Min($i + $BatchSize - 1, $TotalFolders - 1)
-        $FolderBatches.Add($Folders[$i..$End])
-    }
-    
-    $BatchCounter = 0
-    $TotalBatches = $FolderBatches.Count
-    
-    foreach ($Batch in $FolderBatches) {
-        $BatchCounter++
-        $BatchFolderCount = $Batch.Count
-        
-        Write-SafeOutput "Processing batch $BatchCounter of $TotalBatches ($BatchFolderCount folders)..." -Color Cyan
-        
-        # Create and invoke runspaces for this batch
-        $BatchRunspaces = @()
-        
-        foreach ($Folder in $Batch) {
-            $Counter++
-            
-            # Create PowerShell instance and add script
-            $PowerShell = [powershell]::Create().AddScript({
-                param($FolderPath, $GetPermissionsHash)
-                
-                # Define the worker function inline in each runspace
-                function Get-FolderPermissionsWorker {
-                    param (
-                        [string]$Path
-                    )
-                    
-                    try {
-                        # More robust method to get ACL - using Get-Acl instead of DirectoryInfo.GetAccessControl
-                        # This is more reliable across different environments and directory types
-                        $Acl = Get-Acl -Path $Path -ErrorAction Stop
-                        
-                        $Permissions = @()
-                        
-                        foreach ($Access in $Acl.Access) {
-                            # Create a custom object for each permission entry
-                            $Permission = [PSCustomObject]@{
-                                FolderPath       = $Path
-                                IdentityReference = $Access.IdentityReference
-                                FileSystemRights  = $Access.FileSystemRights
-                                AccessControlType = $Access.AccessControlType
-                                IsInherited       = $Access.IsInherited
-                                InheritanceFlags  = $Access.InheritanceFlags
-                                PropagationFlags  = $Access.PropagationFlags
-                            }
-                            
-                            $Permissions += $Permission
-                        }
-                        
-                        return @{
-                            Success = $true
-                            FolderPath = $Path
-                            Permissions = $Permissions
-                            PermissionsHash = (& $GetPermissionsHash -Permissions $Permissions)
-                            Error = $null
-                        }
-                    }
-                    catch {
-                        return @{
-                            Success = $false
-                            FolderPath = $Path
-                            Permissions = @()
-                            PermissionsHash = 0
-                            Error = $_.Exception.Message
-                        }
-                    }
-                }
-                
-                # Call the worker function with the provided parameters
-                return Get-FolderPermissionsWorker -Path $FolderPath
-            }).AddArgument($Folder.FullName).AddArgument(${function:Get-PermissionsHash})
-            
-            $PowerShell.RunspacePool = $RunspacePool
-            
-            # Save runspace info
-            $BatchRunspaces += [PSCustomObject]@{
-                Instance = $PowerShell
-                Handle = $PowerShell.BeginInvoke()
-                FolderPath = $Folder.FullName
-                Counter = $Counter
-                Total = $TotalFolders
-                Completed = $false
-            }
-        }
-        
-        # Wait for all runspaces in this batch to complete
-        $CompletedCount = 0
-        $LastProgressUpdate = [DateTime]::Now
-        
-        while ($BatchRunspaces.Where({-not $_.Completed}, 'First').Count -gt 0) {
-            foreach ($Runspace in $BatchRunspaces.Where({-not $_.Completed})) {
-                if ($Runspace.Handle.IsCompleted) {
-                    $CompletedCount++
-                    $Runspace.Completed = $true
-                    
-                    # Get results from this runspace
-                    $Result = $Runspace.Instance.EndInvoke($Runspace.Handle)
-                    
-                    if ($Result.Success) {
-                        # Store the permissions for this folder path
-                        $FolderPermissionsMap[$Result.FolderPath] = @{
-                            Permissions = $Result.Permissions
-                            Hash = $Result.PermissionsHash
-                        }
-                    }
-                    else {
-                        Write-SafeOutput "Error processing folder: $($Result.FolderPath)" -Color Yellow
-                        Write-SafeOutput "Error details: $($Result.Error)" -Color Yellow
-                        [void]$OutputText.AppendLine("Error processing folder: $($Result.FolderPath)")
-                        [void]$OutputText.AppendLine("Error details: $($Result.Error)")
-                    }
-                    
-                    # Cleanup
-                    $Runspace.Instance.Dispose()
-                }
-            }
-            
-            # Update progress less frequently to reduce overhead - Fixed parenthesis issue
-            if (([DateTime]::Now - $LastProgressUpdate).TotalMilliseconds -gt 500) {
-                $CurrentProgress = "$CompletedCount of $BatchFolderCount folders in current batch"
-                $OverallProgress = "Overall: $Counter of $TotalFolders folders ($([Math]::Round($Counter / $TotalFolders * 100))%)"
-                try {
-                    Write-Host "`rProcessing: $CurrentProgress | $OverallProgress" -ForegroundColor DarkGray -NoNewline
-                } catch {
-                    # Fallback for progress updates if Write-Host fails
-                    if ($CompletedCount % 10 -eq 0) {  # Only show periodically to avoid console spam
-                        [Console]::WriteLine("Processing: $CurrentProgress | $OverallProgress")
-                    }
-                }
-                $LastProgressUpdate = [DateTime]::Now
-            }
-            
-            # Small sleep to prevent CPU hogging
-            Start-Sleep -Milliseconds 50
-        }
-        
-        Write-SafeOutput "`nBatch $BatchCounter completed." -Color Green
-    }
-    
-    # Clean up the runspace pool
-    $RunspacePool.Close()
-    $RunspacePool.Dispose()
-    
-    # Compute total results count
-    $TotalPermissions = ($FolderPermissionsMap.Values | ForEach-Object { $_.Permissions.Count } | Measure-Object -Sum).Sum
-    
-    # Display completion message
-    $TimeElapsed = ([DateTime]::Now) - $StartTime
-    Write-SafeOutput "Analysis completed in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds." -Color Green
-    Write-SafeOutput "Found $TotalPermissions permission entries across $TotalFolders folders." -Color Green
-    [void]$OutputText.AppendLine("Analysis completed. Found $TotalPermissions permission entries across $TotalFolders folders.")
-    
-    # Display results grouped by folder with separate tables
-    Write-SafeOutput "`nDisplaying permissions by folder:" -Color Cyan
     [void]$OutputText.AppendLine("")
-    [void]$OutputText.AppendLine("Displaying permissions by folder:")
+    [void]$OutputText.AppendLine($Separator)
+    [void]$OutputText.AppendLine("Folder: $FolderPath")
+    [void]$OutputText.AppendLine($Separator)
     
-    # Get all folder paths and sort them by depth (for parent-child relationship checking)
-    $SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object { ($_ -split '\\').Count }
+    # Find all child folders with identical permissions - optimized using hash lookup
+    $IdenticalSubfolders = @()
     
-    # Keep track of folders already displayed and build hash table for faster lookups
-    $DisplayedFolders = @{}
-    $SkippedFolders = @()
-    
-    # Build hash to permission map for faster comparison
-    $HashToFoldersMap = @{}
-    foreach ($FolderPath in $SortedFolderPaths) {
-        $Hash = $FolderPermissionsMap[$FolderPath].Hash
-        if (-not $HashToFoldersMap.ContainsKey($Hash)) {
-            $HashToFoldersMap[$Hash] = @()
-        }
-        $HashToFoldersMap[$Hash] += $FolderPath
-    }
-    
-    Write-SafeOutput "Processing folder groups for display..." -Color DarkGray
-    
-    foreach ($FolderPath in $SortedFolderPaths) {
-        # Skip if already processed as part of a group
-        if ($DisplayedFolders.ContainsKey($FolderPath)) {
+    # Use hash-based matching first (faster)
+    foreach ($OtherPath in $HashToFoldersMap[$CurrentHash]) {
+        # Skip self or already displayed
+        if (($OtherPath -eq $FolderPath) -or ($DisplayedFolders.ContainsKey($OtherPath))) {
             continue
         }
         
-        $CurrentHash = $FolderPermissionsMap[$FolderPath].Hash
-        $CurrentFolderPermissions = $FolderPermissionsMap[$FolderPath].Permissions
-        
-        # Create a visual separator
-        $SeparatorLength = [Math]::Min(100, $FolderPath.Length + 10)
-        $Separator = "-" * $SeparatorLength
-        
-        Write-SafeOutput "`n$Separator" -Color White
-        Write-SafeOutput "Folder: $FolderPath" -Color White
-        Write-SafeOutput "$Separator" -Color White
-        
-        [void]$OutputText.AppendLine("")
-        [void]$OutputText.AppendLine($Separator)
-        [void]$OutputText.AppendLine("Folder: $FolderPath")
-        [void]$OutputText.AppendLine($Separator)
-        
-        # Find all child folders with identical permissions - optimized using hash lookup
-        $IdenticalSubfolders = @()
-        
-        # Use hash-based matching first (faster)
-        foreach ($OtherPath in $HashToFoldersMap[$CurrentHash]) {
-            # Skip self or already displayed
-            if (($OtherPath -eq $FolderPath) -or ($DisplayedFolders.ContainsKey($OtherPath))) {
-                continue
+        # Check if it's a subfolder
+        if ($OtherPath.StartsWith($FolderPath + "\")) {
+            # Verify with full comparison if needed for absolute certainty
+            if ($SkipUniquenessCounting -or 
+                (Compare-PermissionSets -Set1 $CurrentFolderPermissions -Set2 $FolderPermissionsMap[$OtherPath].Permissions)) {
+                $IdenticalSubfolders += $OtherPath
+                $DisplayedFolders[$OtherPath] = $true
+                $SkippedFolders += $OtherPath
             }
-            
-            # Check if it's a subfolder
-            if ($OtherPath.StartsWith($FolderPath + "\")) {
-                # Verify with full comparison if needed for absolute certainty
-                if ($SkipUniquenessCounting -or 
-                    (Compare-PermissionSets -Set1 $CurrentFolderPermissions -Set2 $FolderPermissionsMap[$OtherPath].Permissions)) {
-                    $IdenticalSubfolders += $OtherPath
-                    $DisplayedFolders[$OtherPath] = $true
-                    $SkippedFolders += $OtherPath
-                }
-            }
-        }
-        
-        # Display the permissions
-        $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited
-        $PermissionsTable = $SimplifiedPermissions | Format-Table -AutoSize | Out-String
-        
-        Write-SafeOutput $PermissionsTable
-        [void]$OutputText.Append($PermissionsTable)
-        
-        # Mark this folder as displayed
-        $DisplayedFolders[$FolderPath] = $true
-        
-        # If there are subfolders with identical permissions, list them
-        if ($IdenticalSubfolders.Count -gt 0) {
-            Write-SafeOutput "The following subfolders have identical permissions:" -Color Cyan
-            [void]$OutputText.AppendLine("The following subfolders have identical permissions:")
-            
-            # For very large lists, summarize instead of showing all
-            if ($IdenticalSubfolders.Count -gt 20) {
-                Write-SafeOutput "  - $($IdenticalSubfolders.Count) identical subfolders" -Color DarkGray
-                [void]$OutputText.AppendLine("  - $($IdenticalSubfolders.Count) identical subfolders")
-                
-                # Show first 10 as examples
-                foreach ($Subfolder in $IdenticalSubfolders[0..9]) {
-                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
-                    [void]$OutputText.AppendLine("  - $Subfolder")
-                }
-                Write-SafeOutput "  - ... (and $($IdenticalSubfolders.Count - 10) more)" -Color DarkGray
-                [void]$OutputText.AppendLine("  - ... (and $($IdenticalSubfolders.Count - 10) more)")
-            }
-            else {
-                foreach ($Subfolder in $IdenticalSubfolders) {
-                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
-                    [void]$OutputText.AppendLine("  - $Subfolder")
-                }
-            }
-        }
-        
-        # Force garbage collection periodically to reduce memory pressure
-        if ($DisplayedFolders.Count % 100 -eq 0) {
-            [System.GC]::Collect()
         }
     }
     
-    # Report skipped folders
-    $SkippedCount = $SkippedFolders.Count
-    Write-SafeOutput "`nSkipped displaying $SkippedCount folders with permissions identical to their parent folders." -Color Cyan
-    [void]$OutputText.AppendLine("")
-    [void]$OutputText.AppendLine("Skipped displaying $SkippedCount folders with permissions identical to their parent folders.")
+    # Display the permissions
+    $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited
+    $PermissionsTable = $SimplifiedPermissions | Format-Table -AutoSize | Out-String
     
-    # Save the output to text file
-    Write-SafeOutput "Writing report to file..." -Color DarkGray
-    $OutputText.ToString() | Out-File -FilePath $OutputLog -Encoding UTF8
-    Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
+    Write-SafeOutput $PermissionsTable
+    [void]$OutputText.Append($PermissionsTable)
     
-    # Final performance summary
-    $TotalTime = ([DateTime]::Now) - $StartTime
-    Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString("0.00")) seconds" -Color Green
-    Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -Color Green
+    # Mark this folder as displayed
+    $DisplayedFolders[$FolderPath] = $true
+    
+    # If there are subfolders with identical permissions, list them
+    if ($IdenticalSubfolders.Count -gt 0) {
+        Write-SafeOutput "The following subfolders have identical permissions:" -Color Cyan
+        [void]$OutputText.AppendLine("The following subfolders have identical permissions:")
+        
+        # For very large lists, summarize instead of showing all
+        if ($IdenticalSubfolders.Count -gt 20) {
+            Write-SafeOutput "  - $($IdenticalSubfolders.Count) identical subfolders" -Color DarkGray
+            [void]$OutputText.AppendLine("  - $($IdenticalSubfolders.Count) identical subfolders")
+            
+            # Show first 10 as examples
+            foreach ($Subfolder in $IdenticalSubfolders[0..9]) {
+                Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                [void]$OutputText.AppendLine("  - $Subfolder")
+            }
+            Write-SafeOutput "  - ... (and $($IdenticalSubfolders.Count - 10) more)" -Color DarkGray
+            [void]$OutputText.AppendLine("  - ... (and $($IdenticalSubfolders.Count - 10) more)")
+        }
+        else {
+            foreach ($Subfolder in $IdenticalSubfolders) {
+                Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                [void]$OutputText.AppendLine("  - $Subfolder")
+            }
+        }
+    }
+    
+    # Force garbage collection periodically to reduce memory pressure
+    if ($DisplayedFolders.Count % 100 -eq 0) {
+        [System.GC]::Collect()
+    }
 }
+
+# Report skipped folders
+$SkippedCount = $SkippedFolders.Count
+Write-SafeOutput "`nSkipped displaying $SkippedCount folders with permissions identical to their parent folders." -Color Cyan
+[void]$OutputText.AppendLine("")
+[void]$OutputText.AppendLine("Skipped displaying $SkippedCount folders with permissions identical to their parent folders.")
+
+# Save the output to text file
+Write-SafeOutput "Writing report to file..." -Color DarkGray
+$OutputText.ToString() | Out-File -FilePath $OutputLog -Encoding UTF8
+Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
+
+# Final performance summary
+$TotalTime = ([DateTime]::Now) - $StartTime
+Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString("0.00")) seconds" -Color Green
+Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -Color Green
+
+# ...existing error handling and cleanup code...
+
 catch {
     # Super failsafe error handling with no dependencies on PowerShell cmdlets
     try {
