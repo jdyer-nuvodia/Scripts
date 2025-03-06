@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 2025-03-06 21:06:43 UTC
+# Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:38:32 UTC
+# Last Updated: 2025-03-06 22:43:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.8
-# Additional Info: Enhanced compatibility for restricted environments with no PowerShell cmdlets
+# Version: 1.4.0
+# Additional Info: Added ultra-restricted environment compatibility mode
 # =============================================================================
 
 <#
@@ -68,72 +68,72 @@ param (
     [switch]$SkipUniquenessCounting
 )
 
-# Safe output function that works even if Write-Host is not available
-# Note - this is defined as a simple dot-sourced function, not global
-function Write-SafeOutput {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        [string]$ForegroundColor = "White",
-        [switch]$NoNewline
-    )
+# EXTREME RESTRICTED MODE COMPATIBILITY
+# Use only .NET core classes that are available in any PowerShell environment
+# This mode uses only basic .NET operations and avoids PowerShell-specific features
+
+# Create constants using only .NET methods (avoid Get-Date cmdlet)
+$dateTimeNow = [DateTime]::Now
+$formattedDateTime = $dateTimeNow.ToString("yyyy-MM-dd_HHmmss")
+$consoleErrorColor = [ConsoleColor]::Red
+$consoleNormalColor = [ConsoleColor]::White
+$consoleSuccessColor = [ConsoleColor]::Green
+$consoleWarnColor = [ConsoleColor]::Yellow
+$consoleInfoColor = [ConsoleColor]::Cyan
+$consoleTechColor = [ConsoleColor]::DarkGray
+
+# Get script directory using .NET methods rather than PowerShell cmdlets
+$scriptDirectory = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
+$outputLogPath = [System.IO.Path]::Combine($scriptDirectory, "NTFSPermissions_$formattedDateTime.log")
+
+# Create an output log file using pure .NET methods
+try {
+    $fileStream = [System.IO.FileStream]::new($outputLogPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+    $streamWriter = [System.IO.StreamWriter]::new($fileStream, [System.Text.Encoding]::UTF8)
     
-    try {
-        # First try Write-Host (preferred for color output)
-        if ($NoNewline) {
-            Write-Host $Message -ForegroundColor $ForegroundColor -NoNewline
-        } else {
-            Write-Host $Message -ForegroundColor $ForegroundColor
-        }
-    }
-    catch {
-        # Fallback to plain output if Write-Host is not available
-        if ($ForegroundColor -eq "Red") {
-            # For errors, write to error stream
-            [Console]::Error.WriteLine("ERROR: $Message")
-        }
-        else {
-            # Write to output stream
-            if ($NoNewline) {
-                [Console]::Write($Message)
-            } else {
-                [Console]::WriteLine($Message)
-            }
-        }
-    }
+    # Write basic header info 
+    $streamWriter.WriteLine("NTFS Permissions Report - Generated $dateTimeNow")
+    $streamWriter.WriteLine("Folder Path: $FolderPath")
+    $streamWriter.WriteLine([string]::new("=", 80))
+    $streamWriter.WriteLine("")
+    $streamWriter.WriteLine("Starting NTFS permissions analysis for: $FolderPath")
+    
+    # Keep the stream writer open for the rest of the script
+} 
+catch {
+    [Console]::ForegroundColor = $consoleErrorColor
+    [Console]::WriteLine("ERROR: Failed to create log file: $_")
+    [Console]::ResetColor()
 }
 
-# Create a direct output function for error handling 
-function ShowError {
-    param(
-        [string]$Message,
-        [string]$ErrorDetail
-    )
+# Direct console output functions - inline to avoid scope issues
+try {
+    # Hello message
+    [Console]::ForegroundColor = $consoleInfoColor
+    [Console]::WriteLine("Starting optimized NTFS permissions analysis for: $FolderPath")
+    [Console]::ForegroundColor = $consoleTechColor
+    [Console]::WriteLine("Using up to $MaxThreads parallel threads")
+    if ($MaxDepth -gt 0) {
+        [Console]::WriteLine("Limited to maximum depth of $MaxDepth levels")
+    }
+    [Console]::ResetColor()
+
+    # Use System.IO methods to get directory info
+    $rootDir = [System.IO.DirectoryInfo]::new($FolderPath)
     
-    try {
-        Write-Host $Message -ForegroundColor Red
-        if ($ErrorDetail) {
-            Write-Host $ErrorDetail -ForegroundColor Red
-        }
-    }
-    catch {
-        [Console]::Error.WriteLine("ERROR: $Message")
-        if ($ErrorDetail) {
-            [Console]::Error.WriteLine("ERROR DETAIL: $ErrorDetail")
-        }
-    }
-}
+    # Record start time using .NET DateTime
+    $startTime = [DateTime]::Now
 
-# Get the script's directory to use for output files
-$ScriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
-$OutputLog = Join-Path -Path $ScriptDirectory -ChildPath "NTFSPermissions_$(Get-Date -Format 'yyyy-MM-dd_HHmmss').log"
-
-# Start a string builder for text file output
-$OutputText = [System.Text.StringBuilder]::new()
-[void]$OutputText.AppendLine("NTFS Permissions Report - Generated $(Get-Date)")
-[void]$OutputText.AppendLine("Folder Path: $FolderPath")
-[void]$OutputText.AppendLine("=" * 80)
-[void]$OutputText.AppendLine("")
+    # Function to get all subdirectories using pure .NET (no cmdlets)
+    function Get-AllDirectories {
+        param(
+            [string]$rootPath,
+            [int]$maxDepth = 0,
+            [int]$currentDepth = 0
+        )
+        
+        try {
+            # Start with root folder
 
 # Display start message with optimization info
 Write-SafeOutput "Starting optimized NTFS permissions analysis for: $FolderPath" -ForegroundColor Cyan
