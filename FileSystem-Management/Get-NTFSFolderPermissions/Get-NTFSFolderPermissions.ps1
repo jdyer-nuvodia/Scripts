@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 5-03-06 21:06:43 UTC
+# Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:03:00 UTC
+# Last Updated: 2025-03-06 23:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.3
-# Additional Info: Fixed function declaration order and output log path variable
+# Version: 1.4.4
+# Additional Info: Fixed function parameter calls and removed unused variables
 # =============================================================================
 
 <#
@@ -79,10 +79,7 @@ $OutputText = [System.Text.StringBuilder]::new()
 $dateTimeNow = [DateTime]::Now
 $formattedDateTime = $dateTimeNow.ToString("yyyy-MM-dd_HHmmss")
 $consoleErrorColor = [ConsoleColor]::Red
-$consoleNormalColor = [ConsoleColor]::White
-$consoleSuccessColor = [ConsoleColor]::Green
-$consoleWarnColor = [ConsoleColor]::Yellow
-$consoleInfoColor = [ConsoleColor]::Cyan
+# Remove unused color variables and simplify
 $consoleTechColor = [ConsoleColor]::DarkGray
 
 # Get script directory using .NET methods rather than PowerShell cmdlets
@@ -214,12 +211,6 @@ try {
         [Console]::WriteLine("Limited to maximum depth of $MaxDepth levels")
     }
     [Console]::ResetColor()
-
-    # Use System.IO methods to get directory info
-    $rootDir = [System.IO.DirectoryInfo]::new($FolderPath)
-    
-    # Record start time using .NET DateTime
-    $startTime = [DateTime]::Now
 }
 catch {
     # If console output fails, continue silently
@@ -245,10 +236,10 @@ function Get-AllDirectories {
 }
 
 # Display start message with optimization info
-Write-SafeOutput "Starting optimized NTFS permissions analysis for: $FolderPath" -ForegroundColor Cyan
-Write-SafeOutput "Using up to $MaxThreads parallel threads" -ForegroundColor DarkGray
+Write-SafeOutput "Starting optimized NTFS permissions analysis for: $FolderPath" -Color Cyan
+Write-SafeOutput "Using up to $MaxThreads parallel threads" -Color DarkGray
 if ($MaxDepth -gt 0) {
-    Write-SafeOutput "Limited to maximum depth of $MaxDepth levels" -ForegroundColor DarkGray
+    Write-SafeOutput "Limited to maximum depth of $MaxDepth levels" -Color DarkGray
 }
 [void]$OutputText.AppendLine("Starting NTFS permissions analysis for: $FolderPath")
 
@@ -374,7 +365,7 @@ function Get-FolderPermissionsWorker {
 
 try {
     # Get all folders and subfolders recursively using optimized method
-    Write-SafeOutput "Retrieving folder structure (optimized method)..." -ForegroundColor Cyan
+    Write-SafeOutput "Retrieving folder structure (optimized method)..." -Color Cyan
     [void]$OutputText.AppendLine("Retrieving folder structure...")
     
     $StartTime = Get-Date
@@ -385,7 +376,7 @@ try {
     $Folders += $RootFolder
     
     # Add subfolders with optimized method
-    Write-SafeOutput "Finding subfolders..." -ForegroundColor DarkGray
+    Write-SafeOutput "Finding subfolders..." -Color DarkGray
     $SubFolders = Get-SubdirectoriesFast -Path $FolderPath -MaxDepth $MaxDepth
     
     # Remove the first item as it's the root folder we already added
@@ -397,16 +388,15 @@ try {
     $TotalFolders = $Folders.Count
     $TimeElapsed = (Get-Date) - $StartTime
     
-    Write-SafeOutput "Found $TotalFolders folders to process in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds" -ForegroundColor Cyan
+    Write-SafeOutput "Found $TotalFolders folders to process in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds" -Color Cyan
     [void]$OutputText.AppendLine("Found $TotalFolders folders to process")
     
     # Set up runspace pool for parallel processing
-    Write-SafeOutput "Initializing parallel processing engine..." -ForegroundColor Cyan
+    Write-SafeOutput "Initializing parallel processing engine..." -Color Cyan
     $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
     $RunspacePool.Open()
     
     # Create runspaces for each folder
-    $Runspaces = @()
     $Counter = 0
     
     # Dictionary to store permissions by folder path
@@ -428,7 +418,7 @@ try {
         $BatchCounter++
         $BatchFolderCount = $Batch.Count
         
-        Write-SafeOutput "Processing batch $BatchCounter of $TotalBatches ($BatchFolderCount folders)..." -ForegroundColor Cyan
+        Write-SafeOutput "Processing batch $BatchCounter of $TotalBatches ($BatchFolderCount folders)..." -Color Cyan
         
         # Create and invoke runspaces for this batch
         $BatchRunspaces = @()
@@ -525,8 +515,8 @@ try {
                         }
                     }
                     else {
-                        Write-SafeOutput "Error processing folder: $($Result.FolderPath)" -ForegroundColor Yellow
-                        Write-SafeOutput "Error details: $($Result.Error)" -ForegroundColor Yellow
+                        Write-SafeOutput "Error processing folder: $($Result.FolderPath)" -Color Yellow
+                        Write-SafeOutput "Error details: $($Result.Error)" -Color Yellow
                         [void]$OutputText.AppendLine("Error processing folder: $($Result.FolderPath)")
                         [void]$OutputText.AppendLine("Error details: $($Result.Error)")
                     }
@@ -555,7 +545,7 @@ try {
             Start-Sleep -Milliseconds 50
         }
         
-        Write-SafeOutput "`nBatch $BatchCounter completed." -ForegroundColor Green
+        Write-SafeOutput "`nBatch $BatchCounter completed." -Color Green
     }
     
     # Clean up the runspace pool
@@ -567,12 +557,12 @@ try {
     
     # Display completion message
     $TimeElapsed = (Get-Date) - $StartTime
-    Write-SafeOutput "Analysis completed in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds." -ForegroundColor Green
-    Write-SafeOutput "Found $TotalPermissions permission entries across $TotalFolders folders." -ForegroundColor Green
+    Write-SafeOutput "Analysis completed in $($TimeElapsed.TotalSeconds.ToString("0.00")) seconds." -Color Green
+    Write-SafeOutput "Found $TotalPermissions permission entries across $TotalFolders folders." -Color Green
     [void]$OutputText.AppendLine("Analysis completed. Found $TotalPermissions permission entries across $TotalFolders folders.")
     
     # Display results grouped by folder with separate tables
-    Write-SafeOutput "`nDisplaying permissions by folder:" -ForegroundColor Cyan
+    Write-SafeOutput "`nDisplaying permissions by folder:" -Color Cyan
     [void]$OutputText.AppendLine("")
     [void]$OutputText.AppendLine("Displaying permissions by folder:")
     
@@ -593,7 +583,7 @@ try {
         $HashToFoldersMap[$Hash] += $FolderPath
     }
     
-    Write-SafeOutput "Processing folder groups for display..." -ForegroundColor DarkGray
+    Write-SafeOutput "Processing folder groups for display..." -Color DarkGray
     
     foreach ($FolderPath in $SortedFolderPaths) {
         # Skip if already processed as part of a group
@@ -608,9 +598,9 @@ try {
         $SeparatorLength = [Math]::Min(100, $FolderPath.Length + 10)
         $Separator = "-" * $SeparatorLength
         
-        Write-SafeOutput "`n$Separator" -ForegroundColor White
-        Write-SafeOutput "Folder: $FolderPath" -ForegroundColor White
-        Write-SafeOutput "$Separator" -ForegroundColor White
+        Write-SafeOutput "`n$Separator" -Color White
+        Write-SafeOutput "Folder: $FolderPath" -Color White
+        Write-SafeOutput "$Separator" -Color White
         
         [void]$OutputText.AppendLine("")
         [void]$OutputText.AppendLine($Separator)
@@ -651,25 +641,25 @@ try {
         
         # If there are subfolders with identical permissions, list them
         if ($IdenticalSubfolders.Count -gt 0) {
-            Write-SafeOutput "The following subfolders have identical permissions:" -ForegroundColor Cyan
+            Write-SafeOutput "The following subfolders have identical permissions:" -Color Cyan
             [void]$OutputText.AppendLine("The following subfolders have identical permissions:")
             
             # For very large lists, summarize instead of showing all
             if ($IdenticalSubfolders.Count -gt 20) {
-                Write-SafeOutput "  - $($IdenticalSubfolders.Count) identical subfolders" -ForegroundColor DarkGray
+                Write-SafeOutput "  - $($IdenticalSubfolders.Count) identical subfolders" -Color DarkGray
                 [void]$OutputText.AppendLine("  - $($IdenticalSubfolders.Count) identical subfolders")
                 
                 # Show first 10 as examples
                 foreach ($Subfolder in $IdenticalSubfolders[0..9]) {
-                    Write-SafeOutput "  - $Subfolder" -ForegroundColor DarkGray
+                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
                     [void]$OutputText.AppendLine("  - $Subfolder")
                 }
-                Write-SafeOutput "  - ... (and $($IdenticalSubfolders.Count - 10) more)" -ForegroundColor DarkGray
+                Write-SafeOutput "  - ... (and $($IdenticalSubfolders.Count - 10) more)" -Color DarkGray
                 [void]$OutputText.AppendLine("  - ... (and $($IdenticalSubfolders.Count - 10) more)")
             }
             else {
                 foreach ($Subfolder in $IdenticalSubfolders) {
-                    Write-SafeOutput "  - $Subfolder" -ForegroundColor DarkGray
+                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
                     [void]$OutputText.AppendLine("  - $Subfolder")
                 }
             }
@@ -683,19 +673,19 @@ try {
     
     # Report skipped folders
     $SkippedCount = $SkippedFolders.Count
-    Write-SafeOutput "`nSkipped displaying $SkippedCount folders with permissions identical to their parent folders." -ForegroundColor Cyan
+    Write-SafeOutput "`nSkipped displaying $SkippedCount folders with permissions identical to their parent folders." -Color Cyan
     [void]$OutputText.AppendLine("")
     [void]$OutputText.AppendLine("Skipped displaying $SkippedCount folders with permissions identical to their parent folders.")
     
     # Save the output to text file
-    Write-SafeOutput "Writing report to file..." -ForegroundColor DarkGray
+    Write-SafeOutput "Writing report to file..." -Color DarkGray
     $OutputText.ToString() | Out-File -FilePath $OutputLog -Encoding UTF8
-    Write-SafeOutput "`nPermissions report exported to: $OutputLog" -ForegroundColor Green
+    Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
     
     # Final performance summary
     $TotalTime = (Get-Date) - $StartTime
-    Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString("0.00")) seconds" -ForegroundColor Green
-    Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -ForegroundColor Green
+    Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString("0.00")) seconds" -Color Green
+    Write-SafeOutput "Processed $TotalFolders folders ($($TotalTime.TotalSeconds / $TotalFolders * 1000 -as [int]) ms per folder)" -Color Green
 }
 catch {
     # Super failsafe error handling with no dependencies on PowerShell cmdlets
