@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:40:00 UTC
+# Last Updated: 2025-03-06 23:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.5
+# Version: 1.4.6
 # Additional Info: Fixed function parameter calls, removed unused variables, and wrapped main processing block in try/catch.
 # =============================================================================
 
@@ -268,7 +268,7 @@ function Get-FolderPermissionsModule {
         [string]$FolderPath
     )
     try {
-        $acl = [System.IO.Directory]::GetAccessControl($FolderPath)
+        $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::All)
         $permissions = foreach ($access in $acl.Access) {
             [PSCustomObject]@{
                 FolderPath       = $FolderPath
