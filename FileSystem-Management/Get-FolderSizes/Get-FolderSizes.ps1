@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 16:54:00 UTC
+# Last Updated: 2025-03-06 17:04:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.8
-# Additional Info: Added verbose diagnostic logging for NuGet provider installation
+# Version: 1.7.9
+# Additional Info: Fixed unsupported -Scope parameter in Set-PSRepository command
 # =============================================================================
 
 # Requires -Version 5.1
@@ -137,6 +137,7 @@
     1.7.6 - Moved Initialize-ThreadJobModule function to top of script
     1.7.7 - Changed log file location to use script directory instead of C:\temp
     1.7.8 - Added verbose diagnostic logging for NuGet provider installation
+    1.7.9 - Fixed unsupported -Scope parameter in Set-PSRepository command
 #>
 
 param (
@@ -427,7 +428,7 @@ try {
     # Force the PSGallery repository to be trusted for current user
     try {
         Write-DiagnosticMessage "Setting PSGallery as trusted repository" -Color DarkGray
-        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -Scope CurrentUser -ErrorAction SilentlyContinue
+        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue
         Write-DiagnosticMessage "PSGallery set as trusted successfully" -Color Green
     } catch {
         Write-DiagnosticMessage "Error setting PSGallery as trusted: $($_.Exception.Message)" -Color "Error"
@@ -973,7 +974,7 @@ function Initialize-NuGetProvider {
             }
         }
         # Force the PSGallery repository to be trusted for current user
-        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -Scope CurrentUser -ErrorAction SilentlyContinue
+        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue
         return $true
     }
     catch {
