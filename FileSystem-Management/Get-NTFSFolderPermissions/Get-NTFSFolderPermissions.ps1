@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:55:00 UTC
+# Last Updated: 2025-03-06 23:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.2
-# Additional Info: Fixed StringBuilder initialization and error handling
+# Version: 1.4.3
+# Additional Info: Fixed function declaration order and output log path variable
 # =============================================================================
 
 <#
@@ -88,10 +88,104 @@ $consoleTechColor = [ConsoleColor]::DarkGray
 # Get script directory using .NET methods rather than PowerShell cmdlets
 $scriptDirectory = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
 $outputLogPath = [System.IO.Path]::Combine($scriptDirectory, "NTFSPermissions_$formattedDateTime.log")
+$OutputLog = $outputLogPath # Ensure OutputLog is set to the proper path
+
+# Safe direct output function that works with no PowerShell cmdlets
+function Write-Output-Safe {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$NoNewline
+    )
+    
+    try {
+        # Try direct .NET console output (works everywhere)
+        if ($NoNewline) {
+            [Console]::Write($Message)
+        } else {
+            [Console]::WriteLine($Message)
+        }
+    }
+    catch {
+        # If even Console fails, we can't output anything
+    }
+}
+
+# Direct file writing function that doesn't rely on Out-File
+function Write-File-Safe {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Content,
+        [Parameter(Mandatory=$true)]
+        [string]$FilePath,
+        [string]$Encoding = "UTF8"
+    )
+    
+    try {
+        # Use System.IO.File directly
+        [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.Encoding]::UTF8)
+        return $true
+    }
+    catch {
+        try {
+            # Try alternate method
+            $stream = New-Object System.IO.StreamWriter($FilePath, $false, [System.Text.Encoding]::UTF8)
+            $stream.Write($Content)
+            $stream.Close()
+            return $true
+        }
+        catch {
+            # If even direct .NET methods fail, we can't write to file
+            return $false
+        }
+    }
+}
+
+# Safe output function with PowerShell Write-Host fallback (MUST BE DEFINED BEFORE FIRST USE)
+function Write-SafeOutput {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$NoNewline
+    )
+    
+    try {
+        # First try Write-Host for normal PowerShell environments
+        if ($NoNewline) {
+            Write-Host $Message -ForegroundColor $Color -NoNewline
+        } else {
+            Write-Host $Message -ForegroundColor $Color
+        }
+        
+        # Also capture to our OutputText for logging
+        if ($null -ne $OutputText) {
+            if (!$NoNewline) {
+                [void]$OutputText.AppendLine($Message)
+            } else {
+                [void]$OutputText.Append($Message)
+            }
+        }
+    }
+    catch {
+        # Try direct .NET console output (works everywhere)
+        try {
+            if ($NoNewline) {
+                [Console]::Write($Message)
+            } else {
+                [Console]::WriteLine($Message)
+            }
+        }
+        catch {
+            # If even Console fails, we can't output anything
+        }
+    }
+}
 
 # Create an output log file using pure .NET methods
 try {
-    $fileStream = [System.IO.FileStream]::new($outputLogPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+    $fileStream = [System.IO.FileStream]::new($OutputLog, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
     $streamWriter = [System.IO.StreamWriter]::new($fileStream, [System.Text.Encoding]::UTF8)
     
     # Write basic header info 
@@ -274,99 +368,6 @@ function Get-FolderPermissionsWorker {
             Permissions = @()
             PermissionsHash = 0
             Error = $_.Exception.Message
-        }
-    }
-}
-
-# Safe direct output function that works with no PowerShell cmdlets
-function Write-Output-Safe {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        [string]$Color = "White",
-        [switch]$NoNewline
-    )
-    
-    try {
-        # Try direct .NET console output (works everywhere)
-        if ($NoNewline) {
-            [Console]::Write($Message)
-        } else {
-            [Console]::WriteLine($Message)
-        }
-    }
-    catch {
-        # If even Console fails, we can't output anything
-    }
-}
-
-# Direct file writing function that doesn't rely on Out-File
-function Write-File-Safe {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$Content,
-        [Parameter(Mandatory=$true)]
-        [string]$FilePath,
-        [string]$Encoding = "UTF8"
-    )
-    
-    try {
-        # Use System.IO.File directly
-        [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.Encoding]::UTF8)
-        return $true
-    }
-    catch {
-        try {
-            # Try alternate method
-            $stream = New-Object System.IO.StreamWriter($FilePath, $false, [System.Text.Encoding]::UTF8)
-            $stream.Write($Content)
-            $stream.Close()
-            return $true
-        }
-        catch {
-            # If even direct .NET methods fail, we can't write to file
-            return $false
-        }
-    }
-}
-
-# Safe direct output function that works with no PowerShell cmdlets
-function Write-SafeOutput {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        [string]$Color = "White",
-        [switch]$NoNewline
-    )
-    
-    try {
-        # First try Write-Host for normal PowerShell environments
-        if ($NoNewline) {
-            Write-Host $Message -ForegroundColor $Color -NoNewline
-        } else {
-            Write-Host $Message -ForegroundColor $Color
-        }
-        
-        # Also capture to our OutputText for logging
-        if ($OutputText -ne $null) {
-            if (!$NoNewline) {
-                [void]$OutputText.AppendLine($Message)
-            } else {
-                [void]$OutputText.Append($Message)
-            }
-        }
-    }
-    catch {
-        # Try direct .NET console output (works everywhere)
-        try {
-            if ($NoNewline) {
-                [Console]::Write($Message)
-            } else {
-                [Console]::WriteLine($Message)
-            }
-        }
-        catch {
-            # If even Console fails, we can't output anything
         }
     }
 }
@@ -710,7 +711,16 @@ catch {
     [void]$OutputText.AppendLine($_.Exception.Message)
     
     # Try to save what we have so far using our safe file writing function
-    if ($OutputText.Length -gt 0) {
+    if ($null -ne $OutputText -and $OutputText.Length -gt 0 -and $null -ne $OutputLog -and $OutputLog -ne "") {
         Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog
+    } else {
+        try {
+            # Last-ditch effort to write error to desktop
+            $desktopPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+            $fallbackLog = [System.IO.Path]::Combine($desktopPath, "NTFSPermissions_ERROR_$formattedDateTime.log")
+            [System.IO.File]::WriteAllText($fallbackLog, "Critical error in NTFS permissions script: $($_.Exception.Message)")
+        } catch {
+            # We've tried everything possible
+        }
     }
 }
