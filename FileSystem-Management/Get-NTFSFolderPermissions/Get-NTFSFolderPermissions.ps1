@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 21:05:00 UTC
+# Last Updated: 2025-03-07 21:18:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.3
-# Additional Info: Fixed table display to show full permission descriptions
+# Version: 1.5.4
+# Additional Info: Fixed permission display formatting in output table
 # =============================================================================
 
 <#
@@ -561,26 +561,34 @@ try {
         }
         
         # Display the permissions
-        # Format the table with full descriptions
+        # Format the table with better column names and full descriptions
         $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object @{
-            Name = 'IdentityReference'
+            Name = 'Account'
             Expression = { $_.IdentityReference }
         }, @{
-            Name = 'FileSystemRights'
-            Expression = { $_.FileSystemRights }
+            Name = 'Permissions'
+            Expression = { 
+                $perms = $_.FileSystemRights
+                if ($perms -match '^\(.*\)$') {
+                    # Format specifically for inherited permissions
+                    $perms -replace '^\((.*)\)$', '$1'
+                } else {
+                    $perms
+                }
+            }
         }, @{
-            Name = 'AccessControlType'
+            Name = 'Type'
             Expression = { $_.AccessControlType }
         }, @{
-            Name = 'IsInherited'
+            Name = 'Inherited'
             Expression = { if ($_.IsInherited) { 'Yes' } else { 'No' } }
         }
         
-        # Use Format-Table with AutoSize and Wrap parameters for better readability
-        $PermissionsTable = $SimplifiedPermissions | Format-Table -AutoSize -Wrap | Out-String
+        # Use Format-Table with custom properties for better readability
+        $PermissionsTable = ($SimplifiedPermissions | Format-Table -Wrap -AutoSize | Out-String).Trim()
         
         Write-SafeOutput $PermissionsTable
-        [void]$OutputText.Append($PermissionsTable)
+        [void]$OutputText.Append($PermissionsTable + "`n")
         
         # Mark this folder as displayed
         $DisplayedFolders[$FolderPath] = $true
