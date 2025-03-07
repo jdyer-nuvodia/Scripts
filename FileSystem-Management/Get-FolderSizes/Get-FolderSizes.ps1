@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 21:01:00 UTC
+# Last Updated: 2025-03-06 17:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.2
-# Additional Info: Implemented foolproof NuGet provider silent installation
+# Version: 1.9.0
+# Additional Info: Replaced ThreadJob with runspace pools for better performance
 # =============================================================================
 
 # Requires -Version 5.1
@@ -141,6 +141,7 @@
     1.8.0 - Fixed duplicate transcript initialization causing file access errors
     1.8.1 - Fixed UTC timestamp formatting in completion message
     1.8.2 - Implemented foolproof NuGet provider silent installation
+    1.9.0 - Replaced ThreadJob with runspace pools for better performance
 #>
 
 param (
@@ -987,6 +988,83 @@ Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd H
 
 #region Folder Scanning Logic
 
+function Start-FolderSizeProcessing {
+    param(
+        [array]$Folders,
+        [int]$MaxThreads
+    )
+    
+    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
+    $RunspacePool.Open()
+    $FolderSizeMap = @{
+    }
+    $Runspaces = @()
+
+    foreach ($folder in $Folders) {
+        $ps = [powershell]::Create()
+        $ps.RunspacePool = $RunspacePool
+
+        [void]$ps.AddScript({
+            param($FolderPath, $FolderSizeHelper)
+            
+            try {
+                $size = [FolderSizeHelper]::GetDirectorySize($FolderPath)
+                $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
+                $largestFile = [FolderSizeHelper]::GetLargestFile($FolderPath)
+                
+                return @{
+                    Success = $true
+                    FolderPath = $FolderPath
+                    Size = $size
+                    FileCount = $counts.Item1
+                    FolderCount = $counts.Item2
+                    LargestFile = $largestFile
+                }
+            }
+            catch {
+                return @{
+                    Success = $false
+                    FolderPath = $FolderPath
+                    Error = $_.Exception.Message
+                }
+            }
+        }).AddArgument($folder.FullName).AddArgument([FolderSizeHelper])
+        
+        $Runspaces += [PSCustomObject]@{
+            Instance = $ps
+            Handle = $ps.BeginInvoke()
+            Folder = $folder.FullName
+        }
+    }
+    
+    foreach ($r in $Runspaces) {
+        try {
+            $result = $r.Instance.EndInvoke($r.Handle)
+            if ($result.Success) {
+                $FolderSizeMap[$result.FolderPath] = @{
+                    Size = $result.Size
+                    FileCount = $result.FileCount
+                    FolderCount = $result.FolderCount
+                    LargestFile = $result.LargestFile
+                }
+            }
+            else {
+                Write-Warning "Error processing folder: $($r.Folder) - $($result.Error)"
+            }
+        }
+        catch {
+            Write-Warning "Critical error in runspace for folder $($r.Folder): $($_.Exception.Message)"
+        }
+        finally {
+            $r.Instance.Dispose()
+        }
+    }
+    
+    $RunspacePool.Close()
+    $RunspacePool.Dispose()
+    return $FolderSizeMap
+}
+
 function Get-FolderSize {
     param (
         [string]$FolderPath,
@@ -1077,48 +1155,19 @@ function Get-FolderSize {
             $folderCount = $subFolders.Count
             Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan
             
-            # Calculate folder sizes for sorting
-            $sortedFolders = @()
-            $currentIndex = 0
-            $totalFolders = $subFolders.Count
+            # Process all folders in parallel using runspace pools
+            $folderResults = Start-FolderSizeProcessing -Folders $subFolders -MaxThreads 10
             
-            foreach ($folder in $subFolders) {
-                $currentIndex++
-                if ($currentIndex % 10 -eq 0 -and $totalFolders -gt 50) {
-                    Write-Progress -Activity "Calculating folder sizes" -Status "$currentIndex of $totalFolders" -PercentComplete (($currentIndex / $totalFolders) * 100)
+            # Convert results to sorted array
+            $sortedFolders = $folderResults.GetEnumerator() | ForEach-Object {
+                [PSCustomObject]@{
+                    Path = $_.Key
+                    Size = $_.Value.Size
+                    FileCount = $_.Value.FileCount
+                    FolderCount = $_.Value.FolderCount
+                    LargestFile = $_.Value.LargestFile
                 }
-                
-                $subFolderPath = $folder.FullName
-                
-                # Check if folder is a symbolic link or junction point
-                $subPathType = Get-PathType -InputPath $subFolderPath
-                
-                # Special handling for special Windows folders like "All Users" - silent processing
-                $isSpecialFolder = $false
-                if ($subFolderPath -match '\\All Users$') {
-                    $isSpecialFolder = $true
-                }
-                
-                $subFolderSize = try { [FolderSizeHelper]::GetDirectorySize($subFolderPath) } catch { 0 }
-                $subFolderCounts = try { [FolderSizeHelper]::GetDirectoryCounts($subFolderPath) } catch { New-Object -TypeName 'System.Tuple[int,int]'(0, 0) }
-                $subFolderLargestFile = try { [FolderSizeHelper]::GetLargestFile($subFolderPath) } catch { $null }
-                
-                $sortedFolders += [PSCustomObject]@{
-                    Path = $subFolderPath
-                    Size = $subFolderSize
-                    FileCount = $subFolderCounts.Item1
-                    FolderCount = $subFolderCounts.Item2
-                    LargestFile = $subFolderLargestFile
-                    PathType = $subPathType.Type
-                    Target = $subPathType.Target
-                    IsSpecialFolder = $isSpecialFolder
-                }
-            }
-            
-            Write-Progress -Activity "Calculating folder sizes" -Completed
-            
-            # Sort folders by size in descending order
-            $sortedFolders = $sortedFolders | Sort-Object -Property Size -Descending
+            } | Sort-Object -Property Size -Descending
             
             # Always display the table header
             Write-TableHeader
