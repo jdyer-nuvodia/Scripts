@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 00:25:00 UTC
+# Last Updated: 2025-03-06 00:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.9
-# Additional Info: Fixed string interpolation issues in error handling and logging
+# Version: 1.4.10
+# Additional Info: Fixed string formatting in error handling and logging
 # =============================================================================
 
 <#
@@ -370,9 +370,10 @@ function Get-FolderPermissionsModule {
         # Log detailed error information including stack trace and full exception details
         $errorMsg = [string]::Format("Critical error processing folder {0}: {1}", $FolderPath, $_.Exception.Message)
         $errorStack = [string]::Format("Stack trace: {0}", $_.Exception.StackTrace)
+        $errorDetail = $_ | Out-String  # Convert error object to string first
         Write-Log $errorMsg "Red"
         Write-Log $errorStack "Red"
-        Write-Log ([string]::Format("Full error detail: {0}", $_ | Out-String)) "Red"
+        Write-Log ([string]::Format("Full error detail: {0}", $errorDetail)) "Red"
         return @{ 
             Success = $false; 
             FolderPath = $FolderPath; 
