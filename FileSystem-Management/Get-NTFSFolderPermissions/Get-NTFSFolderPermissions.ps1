@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:27:00 UTC
+# Last Updated: 2025-03-07 15:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.13
-# Additional Info: Fixed function scope and runspace initialization issues
+# Version: 1.4.14
+# Additional Info: Fixed GetAccessControl method by using proper .NET API
 # =============================================================================
 
 <#
@@ -282,60 +282,14 @@ function Write-Log {
 
 # Updated Get-FolderPermissionsModule with fixed string handling
 function Get-FolderPermissionsModule {
-    param(
-        [string]$FolderPath
-    )
+    param([string]$FolderPath)
+    
     try {
-        # First attempt using full AccessControlSections
-        try {
-            $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::All)
-        }
-        catch {
-            Write-Log ([string]::Format("First attempt to get full ACL failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
-            # Second attempt with lower privileges
-            try {
-                $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::Access)
-            }
-            catch {
-                Write-Log ([string]::Format("Second attempt (Access only) failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
-                # Third attempt using DirectoryInfo object
-                try {
-                    $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-                    $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
-                }
-                catch {
-                    Write-Log ([string]::Format("Third attempt using DirectoryInfo failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
-                    # Fourth fallback using DirectorySecurity with owner info
-                    try {
-                        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
-                        $owner = [System.IO.DirectoryInfo]::new($FolderPath).GetAccessControl([System.Security.AccessControl.AccessControlSections]::Owner).GetOwner([System.Security.Principal.NTAccount])
-                        $acl.SetOwner($owner)
-                    }
-                    catch {
-                        Write-Log ([string]::Format("Fallback method failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
-                        # Create a placeholder ACL with error details if all methods fail
-                        $permissions = @([PSCustomObject]@{
-                            FolderPath = $FolderPath
-                            IdentityReference = "ACCESS DENIED"
-                            FileSystemRights = "Unknown"
-                            AccessControlType = "Unknown"
-                            IsInherited = $true
-                            InheritanceFlags = "None"
-                            PropagationFlags = "None"
-                        })
-                        return @{ 
-                            Success = $true; 
-                            FolderPath = $FolderPath; 
-                            Permissions = $permissions; 
-                            Hash = -1;  
-                            Limited = $true 
-                        }
-                    }
-                }
-            }
-        }
+        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+        $acl.SetAccessRuleProtection($true, $false)
+        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
+        $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
         
-        # Process the ACL if retrieved successfully
         $permissions = @()
         foreach ($access in $acl.Access) {
             $permissions += [PSCustomObject]@{
@@ -367,27 +321,62 @@ function Get-FolderPermissionsModule {
         return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
     }
     catch {
-        # Log detailed error information including stack trace and full exception details
-        $errorMsg = [string]::Format("Critical error processing folder {0}: {1}", $FolderPath, $_.Exception.Message)
-        $errorStack = [string]::Format("Stack trace: {0}", $_.Exception.StackTrace)
-        $errorDetail = $_ | Out-String  # Convert error object to string first
-        Write-Log $errorMsg "Red"
-        Write-Log $errorStack "Red"
-        Write-Log ([string]::Format("Full error detail: {0}", $errorDetail)) "Red"
-        return @{ 
-            Success = $false; 
-            FolderPath = $FolderPath; 
-            Permissions = @([PSCustomObject]@{
-                FolderPath = $FolderPath
-                IdentityReference = "ERROR"
-                FileSystemRights = [string]::Format("Error details: {0}", $_.Exception.Message)
-                AccessControlType = "Unknown"
-                IsInherited = $true
-                InheritanceFlags = "N/A"
-                PropagationFlags = "N/A"
-            }); 
-            Hash = -2;
-            Error = $_.Exception.Message
+        Write-Log "Error getting ACL for $FolderPath using primary method: $($_.Exception.Message)" "Yellow"
+        try {
+            $acl = [System.IO.File]::GetAccessControl($FolderPath)
+            $permissions = @()
+            foreach ($access in $acl.Access) {
+                $permissions += [PSCustomObject]@{
+                    FolderPath       = $FolderPath
+                    IdentityReference = $access.IdentityReference
+                    FileSystemRights  = $access.FileSystemRights
+                    AccessControlType = $access.AccessControlType
+                    IsInherited       = $access.IsInherited
+                    InheritanceFlags  = $access.InheritanceFlags
+                    PropagationFlags  = $access.PropagationFlags
+                }
+            }
+            
+            if ($permissions.Count -eq 0) {
+                $permissions = @([PSCustomObject]@{
+                    FolderPath = $FolderPath
+                    IdentityReference = "LIMITED ACCESS"
+                    FileSystemRights = "Unknown"
+                    AccessControlType = "Unknown"
+                    IsInherited = $true
+                    InheritanceFlags = "None"
+                    PropagationFlags = "None"
+                })
+            }
+            
+            $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
+                       ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+            
+            return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
+        }
+        catch {
+            # Log detailed error information including stack trace and full exception details
+            $errorMsg = [string]::Format("Critical error processing folder {0}: {1}", $FolderPath, $_.Exception.Message)
+            $errorStack = [string]::Format("Stack trace: {0}", $_.Exception.StackTrace)
+            $errorDetail = $_ | Out-String  # Convert error object to string first
+            Write-Log $errorMsg "Red"
+            Write-Log $errorStack "Red"
+            Write-Log ([string]::Format("Full error detail: {0}", $errorDetail)) "Red"
+            return @{ 
+                Success = $false; 
+                FolderPath = $FolderPath; 
+                Permissions = @([PSCustomObject]@{
+                    FolderPath = $FolderPath
+                    IdentityReference = "ERROR"
+                    FileSystemRights = [string]::Format("Error details: {0}", $_.Exception.Message)
+                    AccessControlType = "Unknown"
+                    IsInherited = $true
+                    InheritanceFlags = "N/A"
+                    PropagationFlags = "N/A"
+                }); 
+                Hash = -2;
+                Error = $_.Exception.Message
+            }
         }
     }
 }
