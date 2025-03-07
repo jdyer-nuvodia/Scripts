@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:45:00 UTC
+# Last Updated: 2025-03-06 17:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.0
-# Additional Info: Replaced ThreadJob with runspace pools for better performance
+# Version: 1.9.1
+# Additional Info: Fixed syntax error in comment escaping
 # =============================================================================
 
 # Requires -Version 5.1
@@ -142,6 +142,7 @@
     1.8.1 - Fixed UTC timestamp formatting in completion message
     1.8.2 - Implemented foolproof NuGet provider silent installation
     1.9.0 - Replaced ThreadJob with runspace pools for better performance
+    1.9.1 - Fixed syntax error in comment escaping
 #>
 
 param (
