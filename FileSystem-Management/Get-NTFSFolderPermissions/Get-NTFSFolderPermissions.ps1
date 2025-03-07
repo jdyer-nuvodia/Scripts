@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:25:00 UTC
+# Last Updated: 2025-03-07 15:27:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.13
 # Additional Info: Fixed function scope and runspace initialization issues
@@ -404,26 +404,22 @@ function Start-FolderProcessing {
     $FolderPermissionsMap = @{}
     $Runspaces = @()
     
-    # Create initial session state and add function definition directly
-    $InitialSessionState = [initialsessionstate]::CreateDefault()
-    
-    # Add the Write-Log function to the session state
-    $WriteLogFunction = Get-Content Function:\Write-Log | Out-String
-    $InitialSessionState.Variables.Add([System.Management.Automation.Runspaces.SessionStateVariableEntry]::new('OutputText', $OutputText, 'StringBuilder for output'))
-    $InitialSessionState.Commands.Add([System.Management.Automation.Runspaces.SessionStateFunctionEntry]::new('Write-Log', $WriteLogFunction, $null))
-    
-    # Add Get-FolderPermissionsModule function to session state
-    $FolderPermissionsFunction = Get-Content Function:\Get-FolderPermissionsModule | Out-String
-    $InitialSessionState.Commands.Add([System.Management.Automation.Runspaces.SessionStateFunctionEntry]::new('Get-FolderPermissionsModule', $FolderPermissionsFunction, $null))
-    
+    # Get function definitions as strings
+    $GetFolderPermissionsModuleDefinition = ${function:Get-FolderPermissionsModule}.ToString()
+    $WriteLogDefinition = ${function:Write-Log}.ToString()
+
     foreach ($folder in $Folders) {
-        $ps = [powershell]::Create($InitialSessionState)
+        $ps = [powershell]::Create()
         $ps.RunspacePool = $RunspacePool
-        
+
         [void]$ps.AddScript({
-            param($FolderPath)
+            param($FolderPath, $GetFolderPermissionsModuleDef, $WriteLogDef, $OutputText)
+            
+            # Define required functions in runspace
+            ${function:Write-Log} = $WriteLogDef
+            ${function:Get-FolderPermissionsModule} = $GetFolderPermissionsModuleDef
+            
             try {
-                # Function is now available in runspace scope
                 return Get-FolderPermissionsModule -FolderPath $FolderPath
             }
             catch {
@@ -434,12 +430,12 @@ function Start-FolderProcessing {
                     FullError = $_ | Out-String
                 }
             }
-        }).AddArgument($folder.FullName)
+        }).AddArgument($folder.FullName).AddArgument($GetFolderPermissionsModuleDefinition).AddArgument($WriteLogDefinition).AddArgument($OutputText)
         
-        $Runspaces += [PSCustomObject]@{ 
+        $Runspaces += [PSCustomObject]@{
             Instance = $ps
             Handle = $ps.BeginInvoke()
-            Folder = $folder.FullName 
+            Folder = $folder.FullName
         }
     }
     
