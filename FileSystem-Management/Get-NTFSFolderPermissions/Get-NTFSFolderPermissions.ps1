@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:32:00 UTC
+# Last Updated: 2025-03-07 15:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.14
-# Additional Info: Fixed GetAccessControl method by using proper .NET API
+# Version: 1.4.15
+# Additional Info: Enhanced ACL access with SecurityIdentifier translation and proper DirectorySecurity object handling
 # =============================================================================
 
 <#
@@ -285,27 +285,49 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Use Get-Acl with provider path instead of DirectoryInfo
-        $acl = Get-Acl -LiteralPath $FolderPath
+        # Request all security information sections
+        $SecuritySections = [System.Security.AccessControl.AccessControlSections]::Owner -bor
+                          [System.Security.AccessControl.AccessControlSections]::Group -bor
+                          [System.Security.AccessControl.AccessControlSections]::Access
+        
+        # Use Get-Acl with explicit security sections
+        $acl = Get-Acl -Path $FolderPath -Audit
         if ($null -eq $acl) {
             throw "Unable to get ACL"
         }
         
-        $permissions = foreach ($access in $acl.Access) {
-            [PSCustomObject]@{
-                IdentityReference = $access.IdentityReference
-                FileSystemRights = $access.FileSystemRights
-                AccessControlType = $access.AccessControlType
-                IsInherited = $access.IsInherited
-                InheritanceFlags = $access.InheritanceFlags
-                PropagationFlags = $access.PropagationFlags
+        # Get the full DirectorySecurity object with all access rules
+        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
+        $fullAcl = $dirInfo.GetAccessControl($SecuritySections)
+        
+        $permissions = foreach ($access in $fullAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+            try {
+                [PSCustomObject]@{
+                    IdentityReference = $access.IdentityReference.Translate([System.Security.Principal.NTAccount]).Value
+                    FileSystemRights = $access.FileSystemRights
+                    AccessControlType = $access.AccessControlType
+                    IsInherited = $access.IsInherited
+                    InheritanceFlags = $access.InheritanceFlags
+                    PropagationFlags = $access.PropagationFlags
+                }
+            }
+            catch {
+                # If translation fails, use the SID
+                [PSCustomObject]@{
+                    IdentityReference = $access.IdentityReference.Value
+                    FileSystemRights = $access.FileSystemRights
+                    AccessControlType = $access.AccessControlType
+                    IsInherited = $access.IsInherited
+                    InheritanceFlags = $access.InheritanceFlags
+                    PropagationFlags = $access.PropagationFlags
+                }
             }
         }
-        
+
         if ($permissions.Count -eq 0) {
+            Write-Log "No permissions found for $FolderPath - this might indicate an access issue" "Yellow"
             $permissions = @([PSCustomObject]@{
-                FolderPath = $FolderPath
-                IdentityReference = "LIMITED ACCESS"
+                IdentityReference = "NO PERMISSIONS FOUND"
                 FileSystemRights = "Unknown"
                 AccessControlType = "Unknown"
                 IsInherited = $true
@@ -326,8 +348,8 @@ function Get-FolderPermissionsModule {
             FolderPath = $FolderPath
             Error = $_.Exception.Message
             Permissions = @([PSCustomObject]@{
-                IdentityReference = "ERROR"
-                FileSystemRights = "Access Denied: $($_.Exception.Message)"
+                IdentityReference = "ACCESS ERROR"
+                FileSystemRights = "Access Error: $($_.Exception.Message)"
                 AccessControlType = "N/A"
                 IsInherited = $true
                 InheritanceFlags = "N/A"
