@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 21:20:00 UTC
+# Last Updated: 2025-03-07 21:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.5
-# Additional Info: Fixed permission display to properly expand letter codes in table output
+# Version: 1.5.6
+# Additional Info: Added separate display sections for inherited and non-inherited identical permissions
 # =============================================================================
 
 <#
@@ -608,28 +608,63 @@ try {
         # Mark this folder as displayed
         $DisplayedFolders[$FolderPath] = $true
         
-        # If there are subfolders with identical permissions, list them
+        # If there are subfolders with identical permissions, split them by inheritance
         if ($IdenticalSubfolders.Count -gt 0) {
-            Write-SafeOutput "The following subfolders have identical permissions:" -Color Cyan
-            [void]$OutputText.AppendLine("The following subfolders have identical permissions:")
+            $inheritedSubfolders = @()
+            $nonInheritedSubfolders = @()
             
-            # For very large lists, summarize instead of showing all
-            if ($IdenticalSubfolders.Count -gt 20) {
-                Write-SafeOutput "  - $($IdenticalSubfolders.Count) identical subfolders" -Color DarkGray
-                [void]$OutputText.AppendLine("  - $($IdenticalSubfolders.Count) identical subfolders")
-                
-                # Show first 10 as examples
-                foreach ($Subfolder in $IdenticalSubfolders[0..9]) {
-                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
-                    [void]$OutputText.AppendLine("  - $Subfolder")
+            foreach($subfolder in $IdenticalSubfolders) {
+                $subfolderPerms = $FolderPermissionsMap[$subfolder].Permissions
+                if ($subfolderPerms[0].IsInherited) {
+                    $inheritedSubfolders += $subfolder
+                } else {
+                    $nonInheritedSubfolders += $subfolder
                 }
-                Write-SafeOutput "  - ... (and $($IdenticalSubfolders.Count - 10) more)" -Color DarkGray
-                [void]$OutputText.AppendLine("  - ... (and $($IdenticalSubfolders.Count - 10) more)")
             }
-            else {
-                foreach ($Subfolder in $IdenticalSubfolders) {
-                    Write-SafeOutput "  - $Subfolder" -Color DarkGray
-                    [void]$OutputText.AppendLine("  - $Subfolder")
+            
+            # Display inherited permissions subfolders
+            if ($inheritedSubfolders.Count -gt 0) {
+                Write-SafeOutput "The following subfolders have identical inherited permissions:" -Color Cyan
+                [void]$OutputText.AppendLine("The following subfolders have identical inherited permissions:")
+                
+                if ($inheritedSubfolders.Count -gt 20) {
+                    Write-SafeOutput "  - $($inheritedSubfolders.Count) identical subfolders with inherited permissions" -Color DarkGray
+                    [void]$OutputText.AppendLine("  - $($inheritedSubfolders.Count) identical subfolders with inherited permissions")
+                    
+                    foreach ($Subfolder in $inheritedSubfolders[0..9]) {
+                        Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                        [void]$OutputText.AppendLine("  - $Subfolder")
+                    }
+                    Write-SafeOutput "  - ... (and $($inheritedSubfolders.Count - 10) more)" -Color DarkGray
+                    [void]$OutputText.AppendLine("  - ... (and $($inheritedSubfolders.Count - 10) more)")
+                } else {
+                    foreach ($Subfolder in $inheritedSubfolders) {
+                        Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                        [void]$OutputText.AppendLine("  - $Subfolder")
+                    }
+                }
+            }
+            
+            # Display explicitly set permissions subfolders
+            if ($nonInheritedSubfolders.Count -gt 0) {
+                Write-SafeOutput "`nThe following subfolders have identical explicit permissions:" -Color Cyan
+                [void]$OutputText.AppendLine("`nThe following subfolders have identical explicit permissions:")
+                
+                if ($nonInheritedSubfolders.Count -gt 20) {
+                    Write-SafeOutput "  - $($nonInheritedSubfolders.Count) identical subfolders with explicit permissions" -Color DarkGray
+                    [void]$OutputText.AppendLine("  - $($nonInheritedSubfolders.Count) identical subfolders with explicit permissions")
+                    
+                    foreach ($Subfolder in $nonInheritedSubfolders[0..9]) {
+                        Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                        [void]$OutputText.AppendLine("  - $Subfolder")
+                    }
+                    Write-SafeOutput "  - ... (and $($nonInheritedSubfolders.Count - 10) more)" -Color DarkGray
+                    [void]$OutputText.AppendLine("  - ... (and $($nonInheritedSubfolders.Count - 10) more)")
+                } else {
+                    foreach ($Subfolder in $nonInheritedSubfolders) {
+                        Write-SafeOutput "  - $Subfolder" -Color DarkGray
+                        [void]$OutputText.AppendLine("  - $Subfolder")
+                    }
                 }
             }
         }
