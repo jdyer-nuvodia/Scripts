@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 22:56:00 UTC
+# Last Updated: 2025-03-07 23:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.9
-# Additional Info: Fixed ICACLS permission flag expansion and inheritance detection
+# Version: 1.6.0
+# Additional Info: Added SID to account name translation for better readability
 # =============================================================================
 
 <#
@@ -531,6 +531,35 @@ try {
         return $SortedPermissions.GetHashCode()
     }
 
+    # Add after the Compare-PermissionSets function and before the results display section
+    function Convert-SidToAccountName {
+        param (
+            [Parameter(Mandatory=$true)]
+            [string]$Identity
+        )
+        
+        try {
+            # Check if the identity is already in domain\user format
+            if ($Identity -match '^.*\\.*$' -or $Identity -match '^[^@]+@[^@]+$') {
+                return $Identity
+            }
+            
+            # Check if it's a SID
+            if ($Identity -match '^S-\d-(\d+-){1,14}\d+$') {
+                $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
+                $account = $sid.Translate([System.Security.Principal.NTAccount])
+                return $account.Value
+            }
+            
+            return $Identity
+        }
+        catch {
+            # Return original value if translation fails
+            Write-Log "Unable to translate identity: $Identity - $_" "Yellow"
+            return "$Identity (Unable to translate)"
+        }
+    }
+
     # Display results grouped by folder with separate tables
     Write-SafeOutput "`nDisplaying permissions by folder:" -Color Cyan
     [void]$OutputText.AppendLine("")
@@ -600,16 +629,18 @@ try {
         }
         
         # Display the permissions
-        # Format the table with better column names and full descriptions
+        # Replace the SimplifiedPermissions select statement with this updated version
         $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object @{
             Name = 'Account'
-            Expression = { $_.IdentityReference }
+            Expression = { 
+                $accountName = Convert-SidToAccountName -Identity $_.IdentityReference
+                $accountName
+            }
         }, @{
             Name = 'Permissions'
             Expression = { 
                 $perms = $_.FileSystemRights
                 if ($perms -match '^\(.*\)$') {
-                    # Format specifically for inherited permissions
                     $perms -replace '^\((.*)\)$', '$1'
                 } else {
                     $perms
