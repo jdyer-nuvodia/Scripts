@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 18:11:00 UTC
+# Last Updated: 2025-03-06 18:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.3
-# Additional Info: Fixed string formatting in transcript path creation
+# Version: 1.9.4
+# Additional Info: Fixed string formatting in date format variable
 # =============================================================================
 
 # Requires -Version 5.1
@@ -145,6 +145,7 @@
     1.9.1 - Fixed syntax error in comment escaping
     1.9.2 - Fixed PSGallery repository name quoting in Set-PSRepository command
     1.9.3 - Fixed string formatting in transcript path creation
+    1.9.4 - Fixed string formatting in date format variable
 #>
 
 param (
@@ -449,8 +450,8 @@ try {
     
     # Ensure we have a valid path - script directory should always exist when running from a script
     if (Test-Path $transcriptPath) {
-        $dateFormat = 'yyyy-MM-dd_HH-mm-ss'
-        $transcriptFile = Join-Path -Path $transcriptPath -ChildPath ("FolderScan_" + $env:COMPUTERNAME + "_" + (Get-Date -Format $dateFormat) + ".log")
+        $dateFormat = "yyyy-MM-dd_HH-mm-ss"  # Changed to double quotes
+        $transcriptFile = Join-Path -Path $transcriptPath -ChildPath ("FolderScan_${env:COMPUTERNAME}_$(Get-Date -Format $dateFormat).log")
         Write-DiagnosticMessage "Starting transcript at: $transcriptFile" -Color DarkGray
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
         
@@ -461,8 +462,8 @@ try {
         }
     } else {
         # Fallback to user temp directory if script path is not accessible for some reason
-        $dateFormat = 'yyyy-MM-dd_HH-mm-ss'
-        $transcriptFile = Join-Path -Path $env:TEMP -ChildPath ("FolderScan_" + $env:COMPUTERNAME + "_" + (Get-Date -Format $dateFormat) + ".log")
+        $dateFormat = "yyyy-MM-dd_HH-mm-ss"  # Changed to double quotes
+        $transcriptFile = Join-Path -Path $env:TEMP -ChildPath ("FolderScan_${env:COMPUTERNAME}_$(Get-Date -Format $dateFormat).log")
         Write-DiagnosticMessage "Could not access script directory, using $transcriptFile instead" -Color Yellow
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
     }
