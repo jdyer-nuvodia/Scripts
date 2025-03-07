@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:55:00 UTC
+# Last Updated: 2025-03-07 21:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.1
-# Additional Info: Added proper parsing of ICACLS inheritance flags
+# Version: 1.5.2
+# Additional Info: Updated permission display to show full descriptions instead of letter codes
 # =============================================================================
 
 <#
@@ -306,29 +306,27 @@ function Get-FolderPermissionsModule {
                 $identity = $matches[1].Trim()
                 $rights = $matches[2]
                 
-                # Parse ICACLS flags:
-                # (I) = Inherited
-                # (OI) = Object Inherit
-                # (CI) = Container Inherit
-                # (IO) = Inherit Only
-                # (NP) = No Propagate
-                
-                $isInherited = $rights -match '\(I\)'
-                $inheritanceFlags = @()
-                if ($rights -match '\(OI\)') { $inheritanceFlags += 'ObjectInherit' }
-                if ($rights -match '\(CI\)') { $inheritanceFlags += 'ContainerInherit' }
-                
-                $propagationFlags = @()
-                if ($rights -match '\(IO\)') { $propagationFlags += 'InheritOnly' }
-                if ($rights -match '\(NP\)') { $propagationFlags += 'NoPropagateInherit' }
+                # Convert ICACLS flags to full descriptions
+                $rightsDescription = $rights
+                $rightsDescription = $rightsDescription -replace '\(I\)', 'Inherited from parent'
+                $rightsDescription = $rightsDescription -replace '\(OI\)', 'Set to inherit to files'
+                $rightsDescription = $rightsDescription -replace '\(CI\)', 'Set to inherit to folders'
+                $rightsDescription = $rightsDescription -replace '\(IO\)', 'Inherit-only'
+                $rightsDescription = $rightsDescription -replace '\(NP\)', 'No propagation to children'
                 
                 $permissions += [PSCustomObject]@{
                     IdentityReference = $identity
-                    FileSystemRights = $rights
+                    FileSystemRights = $rightsDescription
                     AccessControlType = if ($rights -match '\bDENY\b') { 'Deny' } else { 'Allow' }
-                    IsInherited = $isInherited
-                    InheritanceFlags = if ($inheritanceFlags) { $inheritanceFlags -join ', ' } else { 'None' }
-                    PropagationFlags = if ($propagationFlags) { $propagationFlags -join ', ' } else { 'None' }
+                    IsInherited = $rights -match '\(I\)'
+                    InheritanceFlags = @(
+                        if ($rights -match '\(OI\)') { 'Set to inherit to files' }
+                        if ($rights -match '\(CI\)') { 'Set to inherit to folders' }
+                    ) -join ', '
+                    PropagationFlags = @(
+                        if ($rights -match '\(IO\)') { 'Inherit-only' }
+                        if ($rights -match '\(NP\)') { 'No propagation to children' }
+                    ) -join ', '
                 }
             }
         }
