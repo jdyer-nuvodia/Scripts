@@ -1,13 +1,11 @@
-using namespace System.Security.AccessControl
-
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 19:34:00 UTC
+# Last Updated: 2025-03-06 20:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.20
-# Additional Info: Fixed using statement location and namespace import
+# Version: 1.4.21
+# Additional Info: Fixed GetAccessControl method usage in folder permission retrieval
 # =============================================================================
 
 <#
@@ -53,6 +51,10 @@ using namespace System.Security.AccessControl
     Required Permissions: Read access to the folders being scanned
     Validation Requirements: Verify FolderPath exists and is accessible
 #>
+
+using namespace System.Security.AccessControl
+using namespace System.IO
+using namespace System.Security.Principal
 
 [CmdletBinding()]
 param (
@@ -287,18 +289,14 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Create DirectoryInfo object explicitly
-        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-        
-        # Use the .NET Framework method to get security information
-        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
-        $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        # Use the Directory class directly for access control
+        $acl = [Directory]::GetAccessControl($FolderPath)
         
         if ($null -eq $acl) {
             throw "Unable to get ACL for $FolderPath"
         }
         
-        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.NTAccount])) {
+        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [NTAccount])) {
             try {
                 [PSCustomObject]@{
                     IdentityReference = $access.IdentityReference.Value
