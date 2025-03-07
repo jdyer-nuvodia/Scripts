@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 00:34:00 UTC
+# Last Updated: 2025-03-07 15:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.11
-# Additional Info: Fixed runspace error handling to properly capture and display error details
+# Version: 1.4.12
+# Additional Info: Fixed function scope issues in runspaces by properly defining and exporting module function
 # =============================================================================
 
 <#
@@ -391,6 +391,9 @@ function Get-FolderPermissionsModule {
         }
     }
 }
+
+# Export the function to make it available to runspaces
+Export-ModuleMember -Function Get-FolderPermissionsModule
 
 function Start-FolderProcessing {
     param(
