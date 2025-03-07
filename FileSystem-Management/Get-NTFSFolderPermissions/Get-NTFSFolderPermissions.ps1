@@ -291,20 +291,20 @@ function Get-FolderPermissionsModule {
             $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::All)
         }
         catch {
-            Write-Log "First attempt to get full ACL failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+            Write-Log ("First attempt to get full ACL failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
             # Second attempt with lower privileges
             try {
                 $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::Access)
             }
             catch {
-                Write-Log "Second attempt (Access only) failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+                Write-Log ("Second attempt (Access only) failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
                 # Third attempt using DirectoryInfo object
                 try {
                     $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
                     $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
                 }
                 catch {
-                    Write-Log "Third attempt using DirectoryInfo failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+                    Write-Log ("Third attempt using DirectoryInfo failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
                     # Fourth fallback using DirectorySecurity with owner info
                     try {
                         $acl = [System.Security.AccessControl.DirectorySecurity]::new()
@@ -312,7 +312,7 @@ function Get-FolderPermissionsModule {
                         $acl.SetOwner($owner)
                     }
                     catch {
-                        Write-Log "Fallback method failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+                        Write-Log ("Fallback method failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
                         # Create a placeholder ACL with error details if all methods fail
                         $permissions = @([PSCustomObject]@{
                             FolderPath = $FolderPath
