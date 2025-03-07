@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 21:25:00 UTC
+# Last Updated: 2025-03-07 22:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.6
-# Additional Info: Added separate display sections for inherited and non-inherited identical permissions
+# Version: 1.5.7
+# Additional Info: Fixed incorrect inheritance detection in permission parsing
 # =============================================================================
 
 <#
@@ -306,6 +306,9 @@ function Get-FolderPermissionsModule {
                 $identity = $matches[1].Trim()
                 $rights = $matches[2]
                 
+                # Check if permissions are inherited by looking for (I) without any other inheritance flags
+                $isInherited = $rights -match '\(I\)'
+                
                 # Convert ICACLS flags to full descriptions immediately during parsing
                 $expandedRights = @()
                 
@@ -316,7 +319,13 @@ function Get-FolderPermissionsModule {
                     
                     # Expand each flag to its full description
                     $expandedPart = switch -Regex ($part) {
-                        'I' { 'Inherited from parent' }
+                        'F' { 'Full Control' }
+                        'M' { 'Modify' }
+                        'RX' { 'Read & Execute' }
+                        'R' { 'Read' }
+                        'W' { 'Write' }
+                        'D' { 'Delete' }
+                        'I' { if ($isInherited) { 'Inherited from parent' } else { 'Inherited flag present' } }
                         'OI' { 'Set to inherit to files' }
                         'CI' { 'Set to inherit to folders' }
                         'IO' { 'Inherit-only' }
@@ -333,7 +342,7 @@ function Get-FolderPermissionsModule {
                     IdentityReference = $identity
                     FileSystemRights = $rightsDescription
                     AccessControlType = if ($rights -match '\bDENY\b') { 'Deny' } else { 'Allow' }
-                    IsInherited = $rights -match '\(I\)'
+                    IsInherited = $isInherited
                     InheritanceFlags = @(
                         if ($rights -match '\(OI\)') { 'Set to inherit to files' }
                         if ($rights -match '\(CI\)') { 'Set to inherit to folders' }
