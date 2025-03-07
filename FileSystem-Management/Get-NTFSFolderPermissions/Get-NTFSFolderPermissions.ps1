@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 00:13:00 UTC
+# Last Updated: 2025-03-06 00:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.7
+# Version: 1.4.8
 # Additional Info: Enhanced folder permission retrieval with improved access methods and robust error handling
 # =============================================================================
 
@@ -263,6 +263,23 @@ function Get-AllDirectoriesModuleRecursive {
     return $results
 }
 
+# Define Write-Log function first so it's available to other functions
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Color = "White"
+    )
+    try {
+        Write-Host "[DEBUG] $Message" -ForegroundColor $Color
+    }
+    catch {
+        [Console]::WriteLine("[DEBUG] " + $Message)
+    }
+    if ($null -ne $OutputText) {
+        [void]$OutputText.AppendLine($Message)
+    }
+}
+
 # Updated Get-FolderPermissionsModule with detailed error logging.
 function Get-FolderPermissionsModule {
     param(
@@ -371,22 +388,6 @@ function Get-FolderPermissionsModule {
             Hash = -2;
             Error = $($_.Exception.Message)
         }
-    }
-}
-
-function Write-Log {
-    param(
-        [string]$Message,
-        [string]$Color = "White"
-    )
-    try {
-        Write-Host "[DEBUG] $Message" -ForegroundColor $Color
-    }
-    catch {
-        [Console]::WriteLine("[DEBUG] " + $Message)
-    }
-    if ($null -ne $OutputText) {
-        [void]$OutputText.AppendLine($Message)
     }
 }
 
