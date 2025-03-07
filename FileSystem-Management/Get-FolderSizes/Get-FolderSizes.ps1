@@ -349,7 +349,7 @@ Remove-Item -Path "$env:TEMP\Install-NuGetProvider_*.ps1" -Force -ErrorAction Si
     Write-DiagnosticMessage "Running independent script to install NuGet provider..." -Color Yellow
     
     # Run it in a completely separate process to ensure no prompts can appear
-    # The Start-Process with -Wait ensures we don't proceed until it's complete
+    # The Start-Process with -Wait ensures we do not proceed until it is complete
     # The -NoNewWindow makes it run invisibly
     # The -NonInteractive prevents any interactive prompts
     Start-Process -FilePath powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", "`"$tempScriptPath`"" -WindowStyle Hidden -Wait
