@@ -2,10 +2,10 @@
 # File: copilot-instructions.md
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:13:00 UTC
+# Last Updated: 2025-03-06 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.4
-# Additional Info: Added explicit version control requirements
+# Version: 4.0.0
+# Additional Info: Changed to semantic versioning (MAJOR.MINOR.PATCH)
 # =============================================================================
 
 ## ⚠️ MANDATORY VERSION CONTROL REQUIREMENTS - STRICT ENFORCEMENT
@@ -18,9 +18,10 @@
    - NO EXCEPTIONS OR OMISSIONS PERMITTED
 
 2. STRICT Version numbering policy:
-   - Format: Major.Minor (Example: 1.0, 1.1, 2.0)
-   - Minor changes: +0.1 (Example: 1.0 -> 1.1)
-   - Major changes: +1.0 (Example: 1.9 -> 2.0)
+   - Format: MAJOR.MINOR.PATCH (Example: 1.0.0, 1.1.0, 2.0.0)
+   - Patch changes: +0.0.1 (Example: 1.0.0 -> 1.0.1) for backwards compatible bug fixes
+   - Minor changes: +0.1.0 (Example: 1.0.0 -> 1.1.0) for backwards compatible features
+   - Major changes: +1.0.0 (Example: 1.9.9 -> 2.0.0) for breaking changes
    - ALL changes require version increment
 
 3. TIMESTAMP REQUIREMENTS (CRITICAL):
@@ -31,10 +32,10 @@
 
 Example header update:
 ```
-# Last Updated: 2025-03-07 12:00:00 UTC  # Always current UTC
+# Last Updated: 2025-03-07 15:30:00 UTC  # Always current UTC
 # Updated By: editor-name                 # Person making changes
-# Version: 1.1                           # Incremented from 1.0
-# Additional Info: Added new parameter    # What changed
+# Version: 1.0.1                         # Incremented from 1.0.0
+# Additional Info: Fixed logging bug      # What changed
 ```
 
 ## ⚠️ MANDATORY CODING REQUIREMENTS - STRICT ENFORCEMENT
