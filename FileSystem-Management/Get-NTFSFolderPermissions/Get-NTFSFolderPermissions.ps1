@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 22:34:00 UTC
+# Last Updated: 2025-03-07 22:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.7
-# Additional Info: Fixed incorrect inheritance detection in permission parsing
+# Version: 1.5.8
+# Additional Info: Fixed ICACLS permission flag expansion and inheritance detection
 # =============================================================================
 
 <#
@@ -298,7 +298,7 @@ function Get-FolderPermissionsModule {
         
         # Parse icacls output into permission objects
         $permissions = @()
-        foreach ($line in $icaclsOutput | Select-Object -Skip 1) { # Skip first line (path)
+        foreach ($line in $icaclsOutput | Select-Object -Skip 1) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
             
             # Parse each permission line
@@ -306,51 +306,57 @@ function Get-FolderPermissionsModule {
                 $identity = $matches[1].Trim()
                 $rights = $matches[2]
                 
-                # Check if permissions are inherited by looking for (I) without any other inheritance flags
-                $isInherited = $rights -match '\(I\)'
-                
-                # Convert ICACLS flags to full descriptions immediately during parsing
+                # Convert ICACLS flags to full descriptions
                 $expandedRights = @()
+                $isInherited = $false
                 
                 # Split multiple permission flags and process each one
                 $rightParts = $rights -split '\)\('
                 foreach($part in $rightParts) {
                     $part = $part.Trim('()')
                     
-                    # Expand each flag to its full description
-                    $expandedPart = switch -Regex ($part) {
+                    # Map basic permissions first
+                    $basicPermission = switch ($part) {
                         'F' { 'Full Control' }
                         'M' { 'Modify' }
                         'RX' { 'Read & Execute' }
                         'R' { 'Read' }
                         'W' { 'Write' }
                         'D' { 'Delete' }
-                        'I' { if ($isInherited) { 'Inherited from parent' } else { 'Inherited flag present' } }
-                        'OI' { 'Set to inherit to files' }
-                        'CI' { 'Set to inherit to folders' }
-                        'IO' { 'Inherit-only' }
-                        'NP' { 'No propagation to children' }
-                        default { $part }  # Keep any unmatched parts as-is
+                        default { $null }
                     }
-                    $expandedRights += $expandedPart
+                    
+                    if ($basicPermission) {
+                        $expandedRights += $basicPermission
+                        continue
+                    }
+                    
+                    # Handle inheritance flags
+                    switch -Regex ($part) {
+                        'I' { 
+                            $isInherited = $true
+                            $expandedRights += 'Inherited from parent'
+                        }
+                        'OI' { $expandedRights += 'Object inherit' }
+                        'CI' { $expandedRights += 'Container inherit' }
+                        'IO' { $expandedRights += 'Inherit only' }
+                        'NP' { $expandedRights += 'Do not propagate' }
+                        default { 
+                            if ($part -notmatch '^[FMRWDX]+$') {
+                                $expandedRights += $part
+                            }
+                        }
+                    }
                 }
                 
                 # Join all expanded rights with commas for display
-                $rightsDescription = $expandedRights -join ', '
+                $rightsDescription = ($expandedRights | Where-Object { $_ }) -join ', '
                 
                 $permissions += [PSCustomObject]@{
                     IdentityReference = $identity
                     FileSystemRights = $rightsDescription
                     AccessControlType = if ($rights -match '\bDENY\b') { 'Deny' } else { 'Allow' }
                     IsInherited = $isInherited
-                    InheritanceFlags = @(
-                        if ($rights -match '\(OI\)') { 'Set to inherit to files' }
-                        if ($rights -match '\(CI\)') { 'Set to inherit to folders' }
-                    ) -join ', '
-                    PropagationFlags = @(
-                        if ($rights -match '\(IO\)') { 'Inherit-only' }
-                        if ($rights -match '\(NP\)') { 'No propagation to children' }
-                    ) -join ', '
                 }
             }
         }
