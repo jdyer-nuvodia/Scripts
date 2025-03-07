@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 00:26:00 UTC
+# Last Updated: 2025-03-07 00:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.10
-# Additional Info: Fixed string formatting in error handling and logging
+# Version: 1.4.11
+# Additional Info: Fixed runspace error handling to properly capture and display error details
 # =============================================================================
 
 <#
@@ -402,25 +402,64 @@ function Start-FolderProcessing {
     $RunspacePool.Open()
     $FolderPermissionsMap = @{}
     $Runspaces = @()
+    
+    # Add error handling function to initial session state
+    $InitialSessionState = [initialsessionstate]::CreateDefault()
+    $FunctionDefinition = Get-Content Function:\Get-FolderPermissionsModule | Out-String
+    $SessionStateFunction = [System.Management.Automation.Runspaces.SessionStateFunctionEntry]::new('Get-FolderPermissionsModule', $FunctionDefinition)
+    $InitialSessionState.Commands.Add($SessionStateFunction)
+    
     foreach ($folder in $Folders) {
-        $ps = [powershell]::Create().AddScript({
-            param($FolderPath)
-            return Get-FolderPermissionsModule -FolderPath $FolderPath
-        }).AddArgument($folder.FullName)
+        $ps = [powershell]::Create($InitialSessionState)
         $ps.RunspacePool = $RunspacePool
-        $Runspaces += [PSCustomObject]@{ Instance = $ps; Handle = $ps.BeginInvoke(); Folder = $folder.FullName }
+        
+        [void]$ps.AddScript({
+            param($FolderPath)
+            try {
+                return Get-FolderPermissionsModule -FolderPath $FolderPath
+            }
+            catch {
+                return @{
+                    Success = $false
+                    FolderPath = $FolderPath
+                    Error = $_.Exception.Message
+                    FullError = $_ | Out-String
+                }
+            }
+        }).AddArgument($folder.FullName)
+        
+        $Runspaces += [PSCustomObject]@{ 
+            Instance = $ps
+            Handle = $ps.BeginInvoke()
+            Folder = $folder.FullName 
+        }
     }
+    
     foreach ($r in $Runspaces) {
-        $result = $r.Instance.EndInvoke($r.Handle)
-        if ($result.Success) {
-            $FolderPermissionsMap[$result.FolderPath] = @{ Permissions = $result.Permissions; Hash = $result.Hash }
-            Write-Log "Successfully processed folder: $($result.FolderPath)" "Cyan"
+        try {
+            $result = $r.Instance.EndInvoke($r.Handle)
+            if ($result.Success) {
+                $FolderPermissionsMap[$result.FolderPath] = @{ 
+                    Permissions = $result.Permissions
+                    Hash = $result.Hash 
+                }
+                Write-Log "Successfully processed folder: $($result.FolderPath)" "Cyan"
+            }
+            else {
+                Write-Log "Error processing folder: $($r.Folder) - Error details: $($result.Error)" "Yellow"
+                if ($result.FullError) {
+                    Write-Log "Full error: $($result.FullError)" "Yellow"
+                }
+            }
         }
-        else {
-            Write-Log "Error processing folder: $($r.Folder) - Error details: $($result.Error)" "Yellow"
+        catch {
+            Write-Log "Critical error in runspace for folder $($r.Folder): $($_.Exception.Message)" "Red"
         }
-        $r.Instance.Dispose()
+        finally {
+            $r.Instance.Dispose()
+        }
     }
+    
     $RunspacePool.Close()
     $RunspacePool.Dispose()
     return $FolderPermissionsMap
