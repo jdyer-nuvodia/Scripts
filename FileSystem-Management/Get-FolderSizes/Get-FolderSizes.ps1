@@ -274,7 +274,7 @@ $PSDefaultParameterValues = @{
     'Install-PackageProvider:SkipPublisherCheck' = $true
 }
 
-# Create the NuGet provider assemblies directory if it doesn't exist
+# Create the NuGet provider assemblies directory if it does not exist
 $nugetPath = "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget"
 if (-not (Test-Path $nugetPath)) {
     New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null
@@ -428,7 +428,7 @@ $Path = $originalPath
 try {
     Write-DiagnosticMessage "Starting transcript logging..." -Color Cyan
 
-    # Check for elevated privileges but don't prompt user - continue with limited functionality
+    # Check for elevated privileges but do not prompt user - continue with limited functionality
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
     if (-not $isAdmin) {
         Write-DiagnosticMessage "Running with limited privileges. Some directories may be inaccessible." -Color Yellow
@@ -555,7 +555,7 @@ function Get-PathType {
                 }
             }
             
-            # Method 2: Try .NET method if fsutil didn't work or target is empty
+            # Method 2: Try .NET method if fsutil did not work or target is empty
             if ([string]::IsNullOrEmpty($target)) {
                 try {
                     # For Windows 10/Server 2016+
@@ -841,7 +841,7 @@ function Write-ProgressBar {
 
 #region Setup
 
-# Check for elevated privileges but don't prompt user - continue with limited functionality
+# Check for elevated privileges but do not prompt user - continue with limited functionality
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
 if (-not $isAdmin) {
     Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
@@ -1174,7 +1174,7 @@ function Get-FolderSize {
             # Always display the table header
             Write-TableHeader
             
-            # Get top folders but ensure we don't exceed available folders
+            # Get top folders but ensure we do not exceed available folders
             $topFoldersCount = [Math]::Min($Top, $sortedFolders.Count)
             $topFolders = $sortedFolders | Select-Object -First $topFoldersCount
             
