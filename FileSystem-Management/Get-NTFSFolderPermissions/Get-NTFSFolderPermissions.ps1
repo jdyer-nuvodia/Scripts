@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 20:20:00 UTC
+# Last Updated: 2025-03-06 20:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.21
-# Additional Info: Fixed GetAccessControl method usage in folder permission retrieval
+# Version: 1.4.22
+# Additional Info: Fixed Directory class reference to use full namespace path
 # =============================================================================
 
 <#
@@ -289,14 +289,14 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Use the Directory class directly for access control
-        $acl = [Directory]::GetAccessControl($FolderPath)
+        # Use full namespace path for Directory class
+        $acl = [System.IO.Directory]::GetAccessControl($FolderPath)
         
         if ($null -eq $acl) {
             throw "Unable to get ACL for $FolderPath"
         }
         
-        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [NTAccount])) {
+        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.NTAccount])) {
             try {
                 [PSCustomObject]@{
                     IdentityReference = $access.IdentityReference.Value
