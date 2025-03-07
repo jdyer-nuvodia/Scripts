@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 20:50:00 UTC
+# Last Updated: 2025-03-07 15:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Replaced .NET permission methods with icacls for improved reliability
+# Version: 1.5.1
+# Additional Info: Added proper parsing of ICACLS inheritance flags
 # =============================================================================
 
 <#
@@ -306,13 +306,29 @@ function Get-FolderPermissionsModule {
                 $identity = $matches[1].Trim()
                 $rights = $matches[2]
                 
+                # Parse ICACLS flags:
+                # (I) = Inherited
+                # (OI) = Object Inherit
+                # (CI) = Container Inherit
+                # (IO) = Inherit Only
+                # (NP) = No Propagate
+                
+                $isInherited = $rights -match '\(I\)'
+                $inheritanceFlags = @()
+                if ($rights -match '\(OI\)') { $inheritanceFlags += 'ObjectInherit' }
+                if ($rights -match '\(CI\)') { $inheritanceFlags += 'ContainerInherit' }
+                
+                $propagationFlags = @()
+                if ($rights -match '\(IO\)') { $propagationFlags += 'InheritOnly' }
+                if ($rights -match '\(NP\)') { $propagationFlags += 'NoPropagateInherit' }
+                
                 $permissions += [PSCustomObject]@{
                     IdentityReference = $identity
                     FileSystemRights = $rights
                     AccessControlType = if ($rights -match '\bDENY\b') { 'Deny' } else { 'Allow' }
-                    IsInherited = $rights -match '\bI\)'
-                    InheritanceFlags = if ($rights -match '\b\(I\)') { 'ContainerInherit, ObjectInherit' } else { 'None' }
-                    PropagationFlags = 'None'
+                    IsInherited = $isInherited
+                    InheritanceFlags = if ($inheritanceFlags) { $inheritanceFlags -join ', ' } else { 'None' }
+                    PropagationFlags = if ($propagationFlags) { $propagationFlags -join ', ' } else { 'None' }
                 }
             }
         }
