@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 22:40:00 UTC
+# Last Updated: 2025-03-07 22:56:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.8
+# Version: 1.5.9
 # Additional Info: Fixed ICACLS permission flag expansion and inheritance detection
 # =============================================================================
 
@@ -315,14 +315,20 @@ function Get-FolderPermissionsModule {
                 foreach($part in $rightParts) {
                     $part = $part.Trim('()')
                     
-                    # Map basic permissions first
-                    $basicPermission = switch ($part) {
-                        'F' { 'Full Control' }
-                        'M' { 'Modify' }
-                        'RX' { 'Read & Execute' }
-                        'R' { 'Read' }
-                        'W' { 'Write' }
-                        'D' { 'Delete' }
+                    # Check if permission is explicitly marked as inherited
+                    # Only mark as inherited if the 'I' flag is present without CI/OI flags
+                    if ($part -eq 'I') {
+                        $isInherited = $true
+                    }
+                    
+                    # Map basic permissions
+                    $basicPermission = switch -Regex ($part) {
+                        '^F$' { 'Full control' }
+                        '^M$' { 'Modify' }
+                        '^RX$' { 'Read & Execute' }
+                        '^R$' { 'Read' }
+                        '^W$' { 'Write' }
+                        '^D$' { 'Delete' }
                         default { $null }
                     }
                     
@@ -331,22 +337,25 @@ function Get-FolderPermissionsModule {
                         continue
                     }
                     
-                    # Handle inheritance flags
+                    # Handle inheritance and propagation flags
                     switch -Regex ($part) {
-                        'I' { 
-                            $isInherited = $true
-                            $expandedRights += 'Inherited from parent'
-                        }
                         'OI' { $expandedRights += 'Object inherit' }
                         'CI' { $expandedRights += 'Container inherit' }
                         'IO' { $expandedRights += 'Inherit only' }
                         'NP' { $expandedRights += 'Do not propagate' }
-                        default { 
-                            if ($part -notmatch '^[FMRWDX]+$') {
-                                $expandedRights += $part
+                        'I[^O]' { 
+                            # Only add inherited text if it's a pure inheritance flag
+                            if ($part -eq 'I') {
+                                $expandedRights += 'Inherited'
+                                $isInherited = $true
                             }
                         }
                     }
+                }
+                
+                # If there are inheritance flags (CI/OI) but no 'I' flag, it's not inherited
+                if ($expandedRights -match '(Container inherit|Object inherit)' -and -not ($expandedRights -contains 'Inherited')) {
+                    $isInherited = $false
                 }
                 
                 # Join all expanded rights with commas for display
