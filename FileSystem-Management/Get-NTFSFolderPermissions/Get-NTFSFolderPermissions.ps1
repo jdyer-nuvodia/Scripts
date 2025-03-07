@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 22:40:00 UTC
+# Last Updated: 2025-03-07 22:52:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.5.8
 # Additional Info: Fixed ICACLS permission flag expansion and inheritance detection
@@ -289,12 +289,16 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Use icacls to get permissions
+        # Get both icacls and effective permissions
         $icaclsOutput = & icacls $FolderPath
         
         if ($LASTEXITCODE -ne 0) {
             throw "icacls command failed with exit code $LASTEXITCODE"
         }
+        
+        # Get the ACL directly to check inheritance
+        $acl = [System.IO.Directory]::GetAccessControl($FolderPath)
+        $isProtectionEnabled = $acl.AreAccessRulesProtected
         
         # Parse icacls output into permission objects
         $permissions = @()
@@ -314,6 +318,11 @@ function Get-FolderPermissionsModule {
                 $rightParts = $rights -split '\)\('
                 foreach($part in $rightParts) {
                     $part = $part.Trim('()')
+                    
+                    # Check for inheritance flags but don't automatically set inherited
+                    if ($part -match 'I[^O]') {  # Matches I but not IO (Inherit Only)
+                        $isInherited = -not $isProtectionEnabled  # Only mark as inherited if protection is off
+                    }
                     
                     # Map basic permissions first
                     $basicPermission = switch ($part) {
@@ -528,7 +537,19 @@ try {
     [void]$OutputText.AppendLine("Displaying permissions by folder:")
 
     # Get all folder paths and sort them by depth (for parent-child relationship checking)
-    $SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object { ($_ -split '\\').Count }
+    $SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object { 
+        # Split path into segments and pad numbers for proper sorting
+        $path = $_
+        $segments = $path -split '\\'
+        $paddedPath = $segments | ForEach-Object {
+            if ($_ -match '^\d+$') {
+                return $_.PadLeft(20, '0')
+            }
+            return $_
+        }
+        # Join back together for sorting
+        $paddedPath -join '\\'
+    }
 
     # Keep track of folders already displayed and build hash table for faster lookups
     $DisplayedFolders = @{}
