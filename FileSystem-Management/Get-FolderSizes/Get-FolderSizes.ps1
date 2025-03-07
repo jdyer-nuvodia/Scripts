@@ -181,7 +181,7 @@ Write-DiagnosticMessage "Script executed by: $env:USERNAME on $env:COMPUTERNAME"
 # Store original Path parameter value to prevent overwrites
 $originalPath = $Path
 
-# Define Initialize-ThreadJobModule at the top before it's called
+# Define Initialize-ThreadJobModule at the top before it is called
 function Initialize-ThreadJobModule {
     Write-DiagnosticMessage "Checking for ThreadJob module..." -Color DarkGray
     
@@ -443,7 +443,7 @@ try {
         $global:useThreadJobs = Initialize-ThreadJobModule
     }
 
-    # Use script's own directory for logs instead of C:\temp
+    # Use script directory for logs instead of C:\temp
     $transcriptPath = $PSScriptRoot
     
     # Ensure we have a valid path - script directory should always exist when running from a script
@@ -458,7 +458,7 @@ try {
             Write-DiagnosticMessage "Failed to create transcript file" -Color "Error"
         }
     } else {
-        # Fallback to user's temp directory if script path is not accessible for some reason
+        # Fallback to user temp directory if script path is not accessible for some reason
         $transcriptFile = Join-Path $env:TEMP "FolderScan_$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').log"
         Write-DiagnosticMessage "Could not access script directory, using $transcriptFile instead" -Color Yellow
         Start-Transcript -Path $transcriptFile -Force -ErrorAction SilentlyContinue
@@ -708,7 +708,7 @@ function Initialize-NuGetProvider {
         $minimumVersion = [Version]"2.8.5.201"
 
         if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
-            # Direct silent installation using PowerShell's Start-Job to avoid prompt propagation
+            # Direct silent installation using PowerShell Start-Job to avoid prompt propagation
             Start-Job -ScriptBlock {
                 param($PSDefaultParams)
                 $PSDefaultParameterValues = $PSDefaultParams
@@ -1099,7 +1099,7 @@ function Get-FolderSize {
         
         # Silently handle special paths - no console output for junction detection
         if ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
-            # If it's a link and we're configured to follow links, try to use the target path instead
+            # If it is a link and we are configured to follow links, try to use the target path instead
             if ($FollowJunctions -and $pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
                 # Handle relative paths in targets
                 if (-not [System.IO.Path]::IsPathRooted($pathType.Target)) {
@@ -1211,7 +1211,7 @@ function Get-FolderSize {
                 }
             }
             
-            # Return structured information about this level's processing
+            # Return structured information about this level of processing
             return @{ 
                 ProcessedFolders = $true;           # This level processed folders
                 HasSubfolders = $true;              # This level had subfolders
