@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 20:38:00 UTC
+# Last Updated: 2025-03-06 20:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.22
-# Additional Info: Fixed Directory class reference to use full namespace path
+# Version: 1.5.0
+# Additional Info: Replaced .NET permission methods with icacls for improved reliability
 # =============================================================================
 
 <#
@@ -284,32 +284,36 @@ function Write-Log {
     }
 }
 
-# Updated Get-FolderPermissionsModule with fixed string handling
+# Updated Get-FolderPermissionsModule to use icacls
 function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Use full namespace path for Directory class
-        $acl = [System.IO.Directory]::GetAccessControl($FolderPath)
+        # Use icacls to get permissions
+        $icaclsOutput = & icacls $FolderPath
         
-        if ($null -eq $acl) {
-            throw "Unable to get ACL for $FolderPath"
+        if ($LASTEXITCODE -ne 0) {
+            throw "icacls command failed with exit code $LASTEXITCODE"
         }
         
-        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.NTAccount])) {
-            try {
-                [PSCustomObject]@{
-                    IdentityReference = $access.IdentityReference.Value
-                    FileSystemRights = $access.FileSystemRights
-                    AccessControlType = $access.AccessControlType
-                    IsInherited = $access.IsInherited
-                    InheritanceFlags = $access.InheritanceFlags
-                    PropagationFlags = $access.PropagationFlags
+        # Parse icacls output into permission objects
+        $permissions = @()
+        foreach ($line in $icaclsOutput | Select-Object -Skip 1) { # Skip first line (path)
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            
+            # Parse each permission line
+            if ($line -match '^\s*(.+?):\((.*?)\)') {
+                $identity = $matches[1].Trim()
+                $rights = $matches[2]
+                
+                $permissions += [PSCustomObject]@{
+                    IdentityReference = $identity
+                    FileSystemRights = $rights
+                    AccessControlType = if ($rights -match '\bDENY\b') { 'Deny' } else { 'Allow' }
+                    IsInherited = $rights -match '\bI\)'
+                    InheritanceFlags = if ($rights -match '\b\(I\)') { 'ContainerInherit, ObjectInherit' } else { 'None' }
+                    PropagationFlags = 'None'
                 }
-            }
-            catch {
-                Write-Log "Error processing access rule for $FolderPath : $($_.Exception.Message)" "Yellow"
-                continue
             }
         }
         
