@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:56:00 UTC
+# Last Updated: 2025-03-07 16:51:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.15
-# Additional Info: Enhanced ACL access with SecurityIdentifier translation and proper DirectorySecurity object handling
+# Version: 1.4.16
+# Additional Info: Updated ACL access for .NET Core compatibility using System.IO.FileSystemAclExtensions
 # =============================================================================
 
 <#
@@ -285,28 +285,62 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Explicitly load required .NET types
-        Add-Type -AssemblyName System.Security
+        # Use FileSystemAclExtensions for .NET Core compatibility
+        Add-Type -TypeDefinition @"
+            using System.Runtime.InteropServices;
+            using System.IO;
+            public static class FileSystemAclExtensions {
+                [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+                private static extern IntPtr CreateFile(
+                    string lpFileName,
+                    uint dwDesiredAccess,
+                    uint dwShareMode,
+                    IntPtr lpSecurityAttributes,
+                    uint dwCreationDisposition,
+                    uint dwFlagsAndAttributes,
+                    IntPtr hTemplateFile);
 
-        # Create DirectoryInfo object with proper typing
-        $dirInfo = New-Object System.IO.DirectoryInfo($FolderPath)
+                [DllImport("advapi32.dll", SetLastError = true)]
+                private static extern bool GetSecurityInfo(
+                    IntPtr handle,
+                    uint objectType,
+                    uint securityInfo,
+                    out IntPtr pSidOwner,
+                    out IntPtr pSidGroup,
+                    out IntPtr pDacl,
+                    out IntPtr pSacl,
+                    out IntPtr pSecurityDescriptor);
+
+                public static System.Security.AccessControl.DirectorySecurity GetAccessControl(string path) {
+                    IntPtr handle = CreateFile(path, 0x80000000, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
+                    if (handle == new IntPtr(-1)) {
+                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                    }
+                    try {
+                        IntPtr pOwner, pGroup, pDacl, pSacl, pSecurityDescriptor;
+                        if (!GetSecurityInfo(handle, 1, 7, out pOwner, out pGroup, out pDacl, out pSacl, out pSecurityDescriptor)) {
+                            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                        }
+                        return new System.Security.AccessControl.DirectorySecurity(path, System.Security.AccessControl.AccessControlSections.All);
+                    }
+                    finally {
+                        if (handle != IntPtr.Zero) {
+                            System.IO.File.Close(handle.ToInt32());
+                        }
+                    }
+                }
+            }
+"@
         
-        # Request all security information sections with proper type
-        $securitySections = [System.Security.AccessControl.AccessControlSections]::Owner -bor 
-                          [System.Security.AccessControl.AccessControlSections]::Group -bor 
-                          [System.Security.AccessControl.AccessControlSections]::Access
-        
-        # Get the DirectorySecurity object using typed parameters
-        $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections])
-        
-        if ($null -eq $acl) {
-            throw "Unable to get ACL"
-        }
+        # Get access control using our custom extension
+        $acl = [FileSystemAclExtensions]::GetAccessControl($FolderPath)
         
         $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
             try {
+                # Attempt to translate the SID to an account name
+                $identity = $access.IdentityReference.Translate([System.Security.Principal.NTAccount])
                 [PSCustomObject]@{
-                    IdentityReference = $access.IdentityReference.Translate([System.Security.Principal.NTAccount]).Value
+                    IdentityReference = $identity.Value
                     FileSystemRights = $access.FileSystemRights
                     AccessControlType = $access.AccessControlType
                     IsInherited = $access.IsInherited
@@ -315,7 +349,7 @@ function Get-FolderPermissionsModule {
                 }
             }
             catch {
-                # If translation fails, use the SID
+                # Fall back to SID if translation fails
                 [PSCustomObject]@{
                     IdentityReference = $access.IdentityReference.Value
                     FileSystemRights = $access.FileSystemRights
@@ -328,17 +362,17 @@ function Get-FolderPermissionsModule {
         }
 
         if ($permissions.Count -eq 0) {
-            Write-Log "No permissions found for $FolderPath - this might indicate an access issue" "Yellow"
+            Write-Log "No permissions found for $FolderPath" "Yellow"
             $permissions = @([PSCustomObject]@{
                 IdentityReference = "NO PERMISSIONS FOUND"
-                FileSystemRights = "Unknown"
-                AccessControlType = "Unknown"
+                FileSystemRights = "N/A"
+                AccessControlType = "N/A"
                 IsInherited = $true
                 InheritanceFlags = "None"
                 PropagationFlags = "None"
             })
         }
-        
+
         $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
                    ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
         
