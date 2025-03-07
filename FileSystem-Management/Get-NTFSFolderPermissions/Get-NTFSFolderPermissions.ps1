@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 22:40:00 UTC
+# Last Updated: 2025-03-07 22:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.8
-# Additional Info: Fixed ICACLS permission flag expansion and inheritance detection
+# Version: 1.5.9
+# Additional Info: Fixed inheritance detection and folder grouping logic
 # =============================================================================
 
 <#
@@ -306,11 +306,15 @@ function Get-FolderPermissionsModule {
                 $identity = $matches[1].Trim()
                 $rights = $matches[2]
                 
-                # Convert ICACLS flags to full descriptions
-                $expandedRights = @()
-                $isInherited = $false
+                # Extract flags for inheritance detection
+                $hasInheritanceFlags = $rights -match '\((I|CI|OI|IO|NP)\)'
+                $hasExplicitPerms = $rights -match '\b(F|M|RX|R|W|D)\b'
                 
-                # Split multiple permission flags and process each one
+                # Determine if truly inherited
+                $isInherited = $hasInheritanceFlags -and ($rights -match '\(I\)') -and (-not $hasExplicitPerms)
+                
+                # Map permission flags
+                $expandedRights = @()
                 $rightParts = $rights -split '\)\('
                 foreach($part in $rightParts) {
                     $part = $part.Trim('()')
@@ -333,10 +337,7 @@ function Get-FolderPermissionsModule {
                     
                     # Handle inheritance flags
                     switch -Regex ($part) {
-                        'I' { 
-                            $isInherited = $true
-                            $expandedRights += 'Inherited from parent'
-                        }
+                        'I' { if ($isInherited) { $expandedRights += 'Inherited from parent' } }
                         'OI' { $expandedRights += 'Object inherit' }
                         'CI' { $expandedRights += 'Container inherit' }
                         'IO' { $expandedRights += 'Inherit only' }
@@ -357,6 +358,7 @@ function Get-FolderPermissionsModule {
                     FileSystemRights = $rightsDescription
                     AccessControlType = if ($rights -match '\bDENY\b') { 'Deny' } else { 'Allow' }
                     IsInherited = $isInherited
+                    ParentPath = [System.IO.Path]::GetDirectoryName($FolderPath)
                 }
             }
         }
@@ -527,8 +529,14 @@ try {
     [void]$OutputText.AppendLine("")
     [void]$OutputText.AppendLine("Displaying permissions by folder:")
 
-    # Get all folder paths and sort them by depth (for parent-child relationship checking)
-    $SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object { ($_ -split '\\').Count }
+    # Get all folder paths and sort them by depth and path
+    $SortedFolderPaths = $FolderPermissionsMap.Keys | Sort-Object {
+        $path = $_
+        $depth = ($path -split '\\').Count
+        $parentPath = [System.IO.Path]::GetDirectoryName($path)
+        # Create a sortable key that keeps child folders with their parents
+        "$parentPath|$depth|$path"
+    }
 
     # Keep track of folders already displayed and build hash table for faster lookups
     $DisplayedFolders = @{}
