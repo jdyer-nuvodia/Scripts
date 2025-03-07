@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 16:51:00 UTC
+# Last Updated: 2025-03-06 17:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.16
-# Additional Info: Updated ACL access for .NET Core compatibility using System.IO.FileSystemAclExtensions
+# Version: 1.4.17
+# Additional Info: Updated class references and improved DirectorySecurity object handling
 # =============================================================================
 
 <#
@@ -285,56 +285,72 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Use FileSystemAclExtensions for .NET Core compatibility
-        Add-Type -TypeDefinition @"
-            using System.Runtime.InteropServices;
-            using System.IO;
-            public static class FileSystemAclExtensions {
-                [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-                private static extern IntPtr CreateFile(
-                    string lpFileName,
-                    uint dwDesiredAccess,
-                    uint dwShareMode,
-                    IntPtr lpSecurityAttributes,
-                    uint dwCreationDisposition,
-                    uint dwFlagsAndAttributes,
-                    IntPtr hTemplateFile);
+        # Import required types with proper access modifiers
+        $TypeDefinition = @"
+using System;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using System.Security.AccessControl;
 
-                [DllImport("advapi32.dll", SetLastError = true)]
-                private static extern bool GetSecurityInfo(
-                    IntPtr handle,
-                    uint objectType,
-                    uint securityInfo,
-                    out IntPtr pSidOwner,
-                    out IntPtr pSidGroup,
-                    out IntPtr pDacl,
-                    out IntPtr pSacl,
-                    out IntPtr pSecurityDescriptor);
+public class FileSystemAclExtensions
+{
+    private const int FILE_READ_EA = 0x0008;
+    private const int FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
 
-                public static System.Security.AccessControl.DirectorySecurity GetAccessControl(string path) {
-                    IntPtr handle = CreateFile(path, 0x80000000, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
-                    if (handle == new IntPtr(-1)) {
-                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                    }
-                    try {
-                        IntPtr pOwner, pGroup, pDacl, pSacl, pSecurityDescriptor;
-                        if (!GetSecurityInfo(handle, 1, 7, out pOwner, out pGroup, out pDacl, out pSacl, out pSecurityDescriptor)) {
-                            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                        }
-                        return new System.Security.AccessControl.DirectorySecurity(path, System.Security.AccessControl.AccessControlSections.All);
-                    }
-                    finally {
-                        if (handle != IntPtr.Zero) {
-                            System.IO.File.Close(handle.ToInt32());
-                        }
-                    }
-                }
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr CreateFileW(
+        string lpFileName,
+        int dwDesiredAccess,
+        int dwShareMode,
+        IntPtr lpSecurityAttributes,
+        int dwCreationDisposition,
+        int dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    public static DirectorySecurity GetAccessControl(string path)
+    {
+        IntPtr handle = CreateFileW(
+            path,
+            FILE_READ_EA,
+            7,
+            IntPtr.Zero,
+            3,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            IntPtr.Zero);
+
+        if (handle == new IntPtr(-1))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        try
+        {
+            DirectorySecurity ds = new DirectorySecurity();
+            ds.SetAccessRuleProtection(false, true);
+            return ds;
+        }
+        finally
+        {
+            if (handle != IntPtr.Zero)
+            {
+                CloseHandle(handle);
             }
+        }
+    }
+}
 "@
-        
+        # Only add type if it hasn't been added before
+        if (-not ([System.Management.Automation.PSTypeName]'FileSystemAclExtensions').Type) {
+            Add-Type -TypeDefinition $TypeDefinition -Language CSharp
+        }
+
         # Get access control using our custom extension
-        $acl = [FileSystemAclExtensions]::GetAccessControl($FolderPath)
-        
+        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
+        $acl = [System.IO.Directory]::GetAccessControl($FolderPath)
+
         $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
             try {
                 # Attempt to translate the SID to an account name
