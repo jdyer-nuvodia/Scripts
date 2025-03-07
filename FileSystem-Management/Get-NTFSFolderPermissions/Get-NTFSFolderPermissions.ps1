@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:30:00 UTC
+# Last Updated: 2025-03-07 15:32:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.14
 # Additional Info: Fixed GetAccessControl method by using proper .NET API
@@ -285,21 +285,20 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
-        $acl.SetAccessRuleProtection($true, $false)
-        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-        $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        # Use Get-Acl with provider path instead of DirectoryInfo
+        $acl = Get-Acl -LiteralPath $FolderPath
+        if ($null -eq $acl) {
+            throw "Unable to get ACL"
+        }
         
-        $permissions = @()
-        foreach ($access in $acl.Access) {
-            $permissions += [PSCustomObject]@{
-                FolderPath       = $FolderPath
+        $permissions = foreach ($access in $acl.Access) {
+            [PSCustomObject]@{
                 IdentityReference = $access.IdentityReference
-                FileSystemRights  = $access.FileSystemRights
+                FileSystemRights = $access.FileSystemRights
                 AccessControlType = $access.AccessControlType
-                IsInherited       = $access.IsInherited
-                InheritanceFlags  = $access.InheritanceFlags
-                PropagationFlags  = $access.PropagationFlags
+                IsInherited = $access.IsInherited
+                InheritanceFlags = $access.InheritanceFlags
+                PropagationFlags = $access.PropagationFlags
             }
         }
         
@@ -321,62 +320,20 @@ function Get-FolderPermissionsModule {
         return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
     }
     catch {
-        Write-Log "Error getting ACL for $FolderPath using primary method: $($_.Exception.Message)" "Yellow"
-        try {
-            $acl = [System.IO.File]::GetAccessControl($FolderPath)
-            $permissions = @()
-            foreach ($access in $acl.Access) {
-                $permissions += [PSCustomObject]@{
-                    FolderPath       = $FolderPath
-                    IdentityReference = $access.IdentityReference
-                    FileSystemRights  = $access.FileSystemRights
-                    AccessControlType = $access.AccessControlType
-                    IsInherited       = $access.IsInherited
-                    InheritanceFlags  = $access.InheritanceFlags
-                    PropagationFlags  = $access.PropagationFlags
-                }
-            }
-            
-            if ($permissions.Count -eq 0) {
-                $permissions = @([PSCustomObject]@{
-                    FolderPath = $FolderPath
-                    IdentityReference = "LIMITED ACCESS"
-                    FileSystemRights = "Unknown"
-                    AccessControlType = "Unknown"
-                    IsInherited = $true
-                    InheritanceFlags = "None"
-                    PropagationFlags = "None"
-                })
-            }
-            
-            $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
-                       ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
-            
-            return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
-        }
-        catch {
-            # Log detailed error information including stack trace and full exception details
-            $errorMsg = [string]::Format("Critical error processing folder {0}: {1}", $FolderPath, $_.Exception.Message)
-            $errorStack = [string]::Format("Stack trace: {0}", $_.Exception.StackTrace)
-            $errorDetail = $_ | Out-String  # Convert error object to string first
-            Write-Log $errorMsg "Red"
-            Write-Log $errorStack "Red"
-            Write-Log ([string]::Format("Full error detail: {0}", $errorDetail)) "Red"
-            return @{ 
-                Success = $false; 
-                FolderPath = $FolderPath; 
-                Permissions = @([PSCustomObject]@{
-                    FolderPath = $FolderPath
-                    IdentityReference = "ERROR"
-                    FileSystemRights = [string]::Format("Error details: {0}", $_.Exception.Message)
-                    AccessControlType = "Unknown"
-                    IsInherited = $true
-                    InheritanceFlags = "N/A"
-                    PropagationFlags = "N/A"
-                }); 
-                Hash = -2;
-                Error = $_.Exception.Message
-            }
+        Write-Log "Error accessing permissions for $FolderPath : $($_.Exception.Message)" "Yellow"
+        return @{
+            Success = $false
+            FolderPath = $FolderPath
+            Error = $_.Exception.Message
+            Permissions = @([PSCustomObject]@{
+                IdentityReference = "ERROR"
+                FileSystemRights = "Access Denied: $($_.Exception.Message)"
+                AccessControlType = "N/A"
+                IsInherited = $true
+                InheritanceFlags = "N/A"
+                PropagationFlags = "N/A"
+            })
+            Hash = -1
         }
     }
 }
