@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 00:19:00 UTC
+# Last Updated: 2025-03-06 00:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.8
-# Additional Info: Enhanced folder permission retrieval with improved access methods and robust error handling
+# Version: 1.4.9
+# Additional Info: Fixed string interpolation issues in error handling and logging
 # =============================================================================
 
 <#
@@ -280,7 +280,7 @@ function Write-Log {
     }
 }
 
-# Updated Get-FolderPermissionsModule with detailed error logging.
+# Updated Get-FolderPermissionsModule with fixed string handling
 function Get-FolderPermissionsModule {
     param(
         [string]$FolderPath
@@ -291,20 +291,20 @@ function Get-FolderPermissionsModule {
             $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::All)
         }
         catch {
-            Write-Log ("First attempt to get full ACL failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
+            Write-Log ([string]::Format("First attempt to get full ACL failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
             # Second attempt with lower privileges
             try {
                 $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::Access)
             }
             catch {
-                Write-Log ("Second attempt (Access only) failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
+                Write-Log ([string]::Format("Second attempt (Access only) failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
                 # Third attempt using DirectoryInfo object
                 try {
                     $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
                     $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
                 }
                 catch {
-                    Write-Log ("Third attempt using DirectoryInfo failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
+                    Write-Log ([string]::Format("Third attempt using DirectoryInfo failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
                     # Fourth fallback using DirectorySecurity with owner info
                     try {
                         $acl = [System.Security.AccessControl.DirectorySecurity]::new()
@@ -312,7 +312,7 @@ function Get-FolderPermissionsModule {
                         $acl.SetOwner($owner)
                     }
                     catch {
-                        Write-Log ("Fallback method failed for {0}: {1}" -f $FolderPath, $_.Exception.Message) "DarkGray"
+                        Write-Log ([string]::Format("Fallback method failed for {0}: {1}", $FolderPath, $_.Exception.Message)) "DarkGray"
                         # Create a placeholder ACL with error details if all methods fail
                         $permissions = @([PSCustomObject]@{
                             FolderPath = $FolderPath
@@ -368,25 +368,25 @@ function Get-FolderPermissionsModule {
     }
     catch {
         # Log detailed error information including stack trace and full exception details
-        $errorMsg = "Critical error processing folder $FolderPath: $($_.Exception.Message)"
-        $errorStack = "Stack trace: $($_.Exception.StackTrace)"
+        $errorMsg = [string]::Format("Critical error processing folder {0}: {1}", $FolderPath, $_.Exception.Message)
+        $errorStack = [string]::Format("Stack trace: {0}", $_.Exception.StackTrace)
         Write-Log $errorMsg "Red"
         Write-Log $errorStack "Red"
-        Write-Log "Full error detail: $($_ | Out-String)" "Red"
+        Write-Log ([string]::Format("Full error detail: {0}", $_ | Out-String)) "Red"
         return @{ 
             Success = $false; 
             FolderPath = $FolderPath; 
             Permissions = @([PSCustomObject]@{
                 FolderPath = $FolderPath
                 IdentityReference = "ERROR"
-                FileSystemRights = "Error details: $($_.Exception.Message)"
+                FileSystemRights = [string]::Format("Error details: {0}", $_.Exception.Message)
                 AccessControlType = "Unknown"
                 IsInherited = $true
                 InheritanceFlags = "N/A"
                 PropagationFlags = "N/A"
             }); 
             Hash = -2;
-            Error = $($_.Exception.Message)
+            Error = $_.Exception.Message
         }
     }
 }
