@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:08:00 UTC
+# Last Updated: 2025-03-06 17:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.18
-# Additional Info: Updated class references and improved DirectorySecurity object handling
+# Version: 1.4.19
+# Additional Info: Fixed DirectorySecurity access method to use proper .NET calls
 # =============================================================================
 
 <#
@@ -641,5 +641,31 @@ catch {
         } catch {
             # We've tried everything possible
         }
+    }
+}
+
+# Add required .NET type
+using namespace System.Security.AccessControl
+
+function Get-FolderPermissions {
+    param (
+        [string]$FolderPath
+    )
+    
+    try {
+        # Use .NET Security methods directly
+        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
+        $security = [System.Security.AccessControl.DirectorySecurity]::new()
+        $security.SetAccessRuleProtection($false, $true)
+        
+        # Get the actual security descriptor using Windows API
+        $rawSecurityDescriptor = [System.IO.Directory]::GetAccessControl($FolderPath)
+        $security.SetSecurityDescriptorBinaryForm($rawSecurityDescriptor.GetSecurityDescriptorBinaryForm())
+        
+        return $security
+    }
+    catch {
+        Write-DiagnosticMessage "Error accessing permissions for $FolderPath : $_" -Color Red
+        return $null
     }
 }
