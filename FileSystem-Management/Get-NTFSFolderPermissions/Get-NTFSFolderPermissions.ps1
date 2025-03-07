@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 23:50:00 UTC
+# Last Updated: 2025-03-06 00:13:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.7
 # Additional Info: Enhanced folder permission retrieval with improved access methods and robust error handling
@@ -263,36 +263,40 @@ function Get-AllDirectoriesModuleRecursive {
     return $results
 }
 
+# Updated Get-FolderPermissionsModule with detailed error logging.
 function Get-FolderPermissionsModule {
     param(
         [string]$FolderPath
     )
     try {
-        # First attempt with AccessControlSections.All
+        # First attempt using full AccessControlSections
         try {
             $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::All)
         }
         catch {
-            # Second attempt with lower privileges if first fails
+            Write-Log "First attempt to get full ACL failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+            # Second attempt with lower privileges
             try {
                 $acl = [System.IO.Directory]::GetAccessControl($FolderPath, [System.Security.AccessControl.AccessControlSections]::Access)
             }
             catch {
-                # Third attempt using System.IO.DirectorySecurity
+                Write-Log "Second attempt (Access only) failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+                # Third attempt using DirectoryInfo object
                 try {
                     $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
                     $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
                 }
                 catch {
-                    # Fourth attempt using FileSystemSecurity as a fallback
+                    Write-Log "Third attempt using DirectoryInfo failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+                    # Fourth fallback using DirectorySecurity with owner info
                     try {
                         $acl = [System.Security.AccessControl.DirectorySecurity]::new()
                         $owner = [System.IO.DirectoryInfo]::new($FolderPath).GetAccessControl([System.Security.AccessControl.AccessControlSections]::Owner).GetOwner([System.Security.Principal.NTAccount])
                         $acl.SetOwner($owner)
                     }
                     catch {
-                        # If all methods fail, create a placeholder ACL with error info
-                        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+                        Write-Log "Fallback method failed for $FolderPath: $($_.Exception.Message)" "DarkGray"
+                        # Create a placeholder ACL with error details if all methods fail
                         $permissions = @([PSCustomObject]@{
                             FolderPath = $FolderPath
                             IdentityReference = "ACCESS DENIED"
@@ -302,12 +306,11 @@ function Get-FolderPermissionsModule {
                             InheritanceFlags = "None"
                             PropagationFlags = "None"
                         })
-                        
                         return @{ 
                             Success = $true; 
                             FolderPath = $FolderPath; 
                             Permissions = $permissions; 
-                            Hash = -1;  # Special hash for denied access
+                            Hash = -1;  
                             Limited = $true 
                         }
                     }
@@ -315,7 +318,7 @@ function Get-FolderPermissionsModule {
             }
         }
         
-        # Process the ACL if we got it successfully
+        # Process the ACL if retrieved successfully
         $permissions = @()
         foreach ($access in $acl.Access) {
             $permissions += [PSCustomObject]@{
@@ -329,7 +332,6 @@ function Get-FolderPermissionsModule {
             }
         }
         
-        # If we have no permissions but didn't fail completely, create a restricted access entry
         if ($permissions.Count -eq 0) {
             $permissions = @([PSCustomObject]@{
                 FolderPath = $FolderPath
@@ -343,25 +345,31 @@ function Get-FolderPermissionsModule {
         }
         
         $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
-                 ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+                   ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
         
         return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
     }
     catch {
-        # Last resort error handling
-        Write-Log "Critical error processing folder $FolderPath : $($_.Exception.Message)" "Red"
+        # Log detailed error information including stack trace and full exception details
+        $errorMsg = "Critical error processing folder $FolderPath: $($_.Exception.Message)"
+        $errorStack = "Stack trace: $($_.Exception.StackTrace)"
+        Write-Log $errorMsg "Red"
+        Write-Log $errorStack "Red"
+        Write-Log "Full error detail: $($_ | Out-String)" "Red"
         return @{ 
             Success = $false; 
             FolderPath = $FolderPath; 
             Permissions = @([PSCustomObject]@{
                 FolderPath = $FolderPath
                 IdentityReference = "ERROR"
-                FileSystemRights = "Error: $($_.Exception.Message)"
+                FileSystemRights = "Error details: $($_.Exception.Message)"
                 AccessControlType = "Unknown"
                 IsInherited = $true
+                InheritanceFlags = "N/A"
+                PropagationFlags = "N/A"
             }); 
-            Hash = -2;  # Special hash for errors
-            Error = $_.Exception.Message 
+            Hash = -2;
+            Error = $($_.Exception.Message)
         }
     }
 }
@@ -372,10 +380,10 @@ function Write-Log {
         [string]$Color = "White"
     )
     try {
-        Write-Host $Message -ForegroundColor $Color
+        Write-Host "[DEBUG] $Message" -ForegroundColor $Color
     }
     catch {
-        [Console]::WriteLine($Message)
+        [Console]::WriteLine("[DEBUG] " + $Message)
     }
     if ($null -ne $OutputText) {
         [void]$OutputText.AppendLine($Message)
@@ -404,9 +412,10 @@ function Start-FolderProcessing {
         $result = $r.Instance.EndInvoke($r.Handle)
         if ($result.Success) {
             $FolderPermissionsMap[$result.FolderPath] = @{ Permissions = $result.Permissions; Hash = $result.Hash }
+            Write-Log "Successfully processed folder: $($result.FolderPath)" "Cyan"
         }
         else {
-            Write-Log "Error processing folder: $($r.Folder)" "Yellow"
+            Write-Log "Error processing folder: $($r.Folder) - Error details: $($result.Error)" "Yellow"
         }
         $r.Instance.Dispose()
     }
