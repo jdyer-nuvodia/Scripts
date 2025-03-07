@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 21:03:00 UTC
+# Last Updated: 2025-03-07 21:05:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.2
-# Additional Info: Updated permission display to show full descriptions instead of letter codes
+# Version: 1.5.3
+# Additional Info: Fixed table display to show full permission descriptions
 # =============================================================================
 
 <#
@@ -561,8 +561,23 @@ try {
         }
         
         # Display the permissions
-        $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited
-        $PermissionsTable = $SimplifiedPermissions | Format-Table -AutoSize | Out-String
+        # Format the table with full descriptions
+        $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object @{
+            Name = 'IdentityReference'
+            Expression = { $_.IdentityReference }
+        }, @{
+            Name = 'FileSystemRights'
+            Expression = { $_.FileSystemRights }
+        }, @{
+            Name = 'AccessControlType'
+            Expression = { $_.AccessControlType }
+        }, @{
+            Name = 'IsInherited'
+            Expression = { if ($_.IsInherited) { 'Yes' } else { 'No' } }
+        }
+        
+        # Use Format-Table with AutoSize and Wrap parameters for better readability
+        $PermissionsTable = $SimplifiedPermissions | Format-Table -AutoSize -Wrap | Out-String
         
         Write-SafeOutput $PermissionsTable
         [void]$OutputText.Append($PermissionsTable)
