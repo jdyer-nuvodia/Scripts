@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:50:00 UTC
+# Last Updated: 2025-03-07 15:56:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.15
 # Additional Info: Enhanced ACL access with SecurityIdentifier translation and proper DirectorySecurity object handling
@@ -285,22 +285,25 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Request all security information sections
-        $SecuritySections = [System.Security.AccessControl.AccessControlSections]::Owner -bor
-                          [System.Security.AccessControl.AccessControlSections]::Group -bor
+        # Explicitly load required .NET types
+        Add-Type -AssemblyName System.Security
+
+        # Create DirectoryInfo object with proper typing
+        $dirInfo = New-Object System.IO.DirectoryInfo($FolderPath)
+        
+        # Request all security information sections with proper type
+        $securitySections = [System.Security.AccessControl.AccessControlSections]::Owner -bor 
+                          [System.Security.AccessControl.AccessControlSections]::Group -bor 
                           [System.Security.AccessControl.AccessControlSections]::Access
         
-        # Use Get-Acl with explicit security sections
-        $acl = Get-Acl -Path $FolderPath -Audit
+        # Get the DirectorySecurity object using typed parameters
+        $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections])
+        
         if ($null -eq $acl) {
             throw "Unable to get ACL"
         }
         
-        # Get the full DirectorySecurity object with all access rules
-        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-        $fullAcl = $dirInfo.GetAccessControl($SecuritySections)
-        
-        $permissions = foreach ($access in $fullAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
             try {
                 [PSCustomObject]@{
                     IdentityReference = $access.IdentityReference.Translate([System.Security.Principal.NTAccount]).Value
