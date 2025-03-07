@@ -2,14 +2,39 @@
 # File: copilot-instructions.md
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 22:45:00 UTC
+# Last Updated: 2025-03-06 17:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.2
-# Additional Info: Expanded color schema to match organizational standards.
-#
-# IMPORTANT: When editing any script, update the header information including 
-# Last Updated, Updated By, and Version fields. Use a current, reliable UTC timestamp.
+# Version: 3.3
+# Additional Info: Added explicit version control requirements
 # =============================================================================
+
+## ⚠️ VERSION CONTROL RULES - MUST FOLLOW
+
+1. EVERY script modification requires:
+   - Increment version number
+   - Update "Last Updated" timestamp
+   - Update "Updated By" field
+   - Update "Additional Info" with change summary
+
+2. Version numbering:
+   - Major.Minor format (e.g., 1.0, 1.1, 2.0)
+   - Minor changes: increment decimal (1.0 -> 1.1)
+   - Major changes: increment whole number (1.9 -> 2.0)
+
+3. Timestamps:
+   - Must be in UTC
+   - Format: YYYY-MM-DD HH:MM:SS UTC
+   - Never use placeholder dates
+
+Example header update:
+```
+# Last Updated: 2025-03-07 12:00:00 UTC  # Always current UTC
+# Updated By: editor-name                 # Person making changes
+# Version: 1.1                           # Incremented from 1.0
+# Additional Info: Added new parameter    # What changed
+```
+
+
 
 The current year is 2025.
 The month is 03.
