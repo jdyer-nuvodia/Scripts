@@ -64,6 +64,10 @@ Example header update:
    - Example: Use [System.IO.File]::ReadAllText() instead of Get-Content
    - Example: Use [System.IO.Directory]::GetFiles() instead of Get-ChildItem
 
+5. SCRIPT GRAMMAR REQUIREMENTS
+   - Do NOT use contractions in comments or documentation. 
+      - Contractions are words that end in 're, 's, 'nt, etc.
+
 These requirements are NON-NEGOTIABLE and MUST be followed without exception.
 Failure to comply will result in automatic rejection of contributions.
 
