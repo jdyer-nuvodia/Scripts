@@ -1,11 +1,13 @@
+using namespace System.Security.AccessControl
+
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:40:00 UTC
+# Last Updated: 2025-03-06 19:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.19
-# Additional Info: Fixed DirectorySecurity access method to use proper .NET calls
+# Version: 1.4.20
+# Additional Info: Fixed using statement location and namespace import
 # =============================================================================
 
 <#
@@ -644,9 +646,6 @@ catch {
     }
 }
 
-# Add required .NET type
-using namespace System.Security.AccessControl
-
 function Get-FolderPermissions {
     param (
         [string]$FolderPath
@@ -655,7 +654,7 @@ function Get-FolderPermissions {
     try {
         # Use .NET Security methods directly
         $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-        $security = [System.Security.AccessControl.DirectorySecurity]::new()
+        $security = [DirectorySecurity]::new()  # Now we can use short name since namespace is imported
         $security.SetAccessRuleProtection($false, $true)
         
         # Get the actual security descriptor using Windows API
