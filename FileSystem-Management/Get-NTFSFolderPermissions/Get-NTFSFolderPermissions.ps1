@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 21:18:00 UTC
+# Last Updated: 2025-03-07 21:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.4
-# Additional Info: Fixed permission display formatting in output table
+# Version: 1.5.5
+# Additional Info: Fixed permission display to properly expand letter codes in table output
 # =============================================================================
 
 <#
@@ -306,13 +306,28 @@ function Get-FolderPermissionsModule {
                 $identity = $matches[1].Trim()
                 $rights = $matches[2]
                 
-                # Convert ICACLS flags to full descriptions
-                $rightsDescription = $rights
-                $rightsDescription = $rightsDescription -replace '\(I\)', 'Inherited from parent'
-                $rightsDescription = $rightsDescription -replace '\(OI\)', 'Set to inherit to files'
-                $rightsDescription = $rightsDescription -replace '\(CI\)', 'Set to inherit to folders'
-                $rightsDescription = $rightsDescription -replace '\(IO\)', 'Inherit-only'
-                $rightsDescription = $rightsDescription -replace '\(NP\)', 'No propagation to children'
+                # Convert ICACLS flags to full descriptions immediately during parsing
+                $expandedRights = @()
+                
+                # Split multiple permission flags and process each one
+                $rightParts = $rights -split '\)\('
+                foreach($part in $rightParts) {
+                    $part = $part.Trim('()')
+                    
+                    # Expand each flag to its full description
+                    $expandedPart = switch -Regex ($part) {
+                        'I' { 'Inherited from parent' }
+                        'OI' { 'Set to inherit to files' }
+                        'CI' { 'Set to inherit to folders' }
+                        'IO' { 'Inherit-only' }
+                        'NP' { 'No propagation to children' }
+                        default { $part }  # Keep any unmatched parts as-is
+                    }
+                    $expandedRights += $expandedPart
+                }
+                
+                # Join all expanded rights with commas for display
+                $rightsDescription = $expandedRights -join ', '
                 
                 $permissions += [PSCustomObject]@{
                     IdentityReference = $identity
