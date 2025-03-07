@@ -37,16 +37,38 @@ Example header update:
 # Additional Info: Added new parameter    # What changed
 ```
 
+## ⚠️ MANDATORY CODING REQUIREMENTS - STRICT ENFORCEMENT
+
+1. COMMIT MESSAGE REQUIREMENTS (MANDATORY):
+   - Every script creation or modification MUST include a commit message
+   - Follow the guidelines at: https://www.gitkraken.com/learn/git/best-practices/git-commit-message
+   - Format: <type>(<scope>): <description>
+   - Example: "feat(logging): implement new error handling system"
+   - NO EXCEPTIONS OR OMISSIONS PERMITTED
+
+2. SCRIPT DOCUMENTATION POLICY (REQUIRED):
+   - ALL scripts MUST include complete header documentation
+   - ALL parameters MUST be documented with examples
+   - ALL functions MUST include usage examples
+   - Additional functionality MUST be reflected in header updates
+   - Version number MUST be incremented (see Version Control section)
+
+3. FILE TYPE REQUIREMENTS:
+   - ALL log files MUST use .log extension
+   - .txt extension for log files is STRICTLY PROHIBITED
+
+4. POWERSHELL CODING STANDARDS:
+   - .NET methods MUST be used when available
+   - Native PowerShell alternatives are ONLY acceptable when .NET methods are unavailable
+   - Example: Use [System.IO.File]::ReadAllText() instead of Get-Content
+   - Example: Use [System.IO.Directory]::GetFiles() instead of Get-ChildItem
+
+These requirements are NON-NEGOTIABLE and MUST be followed without exception.
+Failure to comply will result in automatic rejection of contributions.
 
 # Current date info
 The current year is 2025.
 The month is 03.
-
-# Instructions
-Always give me a commit message when writing, editing, or providing a script. Read this webpage for instructions on how to give me the best commit message you can: https://www.gitkraken.com/learn/git/best-practices/git-commit-message
-Make sure all additional functionlity and examples, parameters, etc. are included in the header of any script when updating and the versioning is increased accordingly each time it is updated. Also update the last updated field in the header each time.
-All log files should be .log and not .txt files.
-Use .NET methods over other methods when available in PowerShell scripts.
 
 ## Mandatory File & Script Header Format
 
