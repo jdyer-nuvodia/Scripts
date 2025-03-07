@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:03:00 UTC
+# Last Updated: 2025-03-06 17:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.17
+# Version: 1.4.18
 # Additional Info: Updated class references and improved DirectorySecurity object handling
 # =============================================================================
 
@@ -285,87 +285,19 @@ function Get-FolderPermissionsModule {
     param([string]$FolderPath)
     
     try {
-        # Import required types with proper access modifiers
-        $TypeDefinition = @"
-using System;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
-using System.Security.AccessControl;
-
-public class FileSystemAclExtensions
-{
-    private const int FILE_READ_EA = 0x0008;
-    private const int FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr CreateFileW(
-        string lpFileName,
-        int dwDesiredAccess,
-        int dwShareMode,
-        IntPtr lpSecurityAttributes,
-        int dwCreationDisposition,
-        int dwFlagsAndAttributes,
-        IntPtr hTemplateFile);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr hObject);
-
-    public static DirectorySecurity GetAccessControl(string path)
-    {
-        IntPtr handle = CreateFileW(
-            path,
-            FILE_READ_EA,
-            7,
-            IntPtr.Zero,
-            3,
-            FILE_FLAG_BACKUP_SEMANTICS,
-            IntPtr.Zero);
-
-        if (handle == new IntPtr(-1))
-        {
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-        }
-
-        try
-        {
-            DirectorySecurity ds = new DirectorySecurity();
-            ds.SetAccessRuleProtection(false, true);
-            return ds;
-        }
-        finally
-        {
-            if (handle != IntPtr.Zero)
-            {
-                CloseHandle(handle);
-            }
-        }
-    }
-}
-"@
-        # Only add type if it hasn't been added before
-        if (-not ([System.Management.Automation.PSTypeName]'FileSystemAclExtensions').Type) {
-            Add-Type -TypeDefinition $TypeDefinition -Language CSharp
-        }
-
-        # Get access control using our custom extension
+        # Create DirectoryInfo object explicitly
         $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-        $acl = [System.IO.Directory]::GetAccessControl($FolderPath)
-
-        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+        
+        # Use the .NET Framework method to get security information
+        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+        $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        
+        if ($null -eq $acl) {
+            throw "Unable to get ACL for $FolderPath"
+        }
+        
+        $permissions = foreach ($access in $acl.GetAccessRules($true, $true, [System.Security.Principal.NTAccount])) {
             try {
-                # Attempt to translate the SID to an account name
-                $identity = $access.IdentityReference.Translate([System.Security.Principal.NTAccount])
-                [PSCustomObject]@{
-                    IdentityReference = $identity.Value
-                    FileSystemRights = $access.FileSystemRights
-                    AccessControlType = $access.AccessControlType
-                    IsInherited = $access.IsInherited
-                    InheritanceFlags = $access.InheritanceFlags
-                    PropagationFlags = $access.PropagationFlags
-                }
-            }
-            catch {
-                # Fall back to SID if translation fails
                 [PSCustomObject]@{
                     IdentityReference = $access.IdentityReference.Value
                     FileSystemRights = $access.FileSystemRights
@@ -375,12 +307,16 @@ public class FileSystemAclExtensions
                     PropagationFlags = $access.PropagationFlags
                 }
             }
+            catch {
+                Write-Log "Error processing access rule for $FolderPath : $($_.Exception.Message)" "Yellow"
+                continue
+            }
         }
-
+        
         if ($permissions.Count -eq 0) {
             Write-Log "No permissions found for $FolderPath" "Yellow"
             $permissions = @([PSCustomObject]@{
-                IdentityReference = "NO PERMISSIONS FOUND"
+                IdentityReference = "NO ACCESS"
                 FileSystemRights = "N/A"
                 AccessControlType = "N/A"
                 IsInherited = $true
@@ -388,11 +324,17 @@ public class FileSystemAclExtensions
                 PropagationFlags = "None"
             })
         }
-
-        $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
-                   ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
         
-        return @{ Success = $true; FolderPath = $FolderPath; Permissions = $permissions; Hash = $sorted.GetHashCode() }
+        # Generate hash of permissions for comparison
+        $sorted = ($permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType, IsInherited |
+                  ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" }) -join ";"
+        
+        return @{
+            Success = $true
+            FolderPath = $FolderPath
+            Permissions = $permissions
+            Hash = $sorted.GetHashCode()
+        }
     }
     catch {
         Write-Log "Error accessing permissions for $FolderPath : $($_.Exception.Message)" "Yellow"
