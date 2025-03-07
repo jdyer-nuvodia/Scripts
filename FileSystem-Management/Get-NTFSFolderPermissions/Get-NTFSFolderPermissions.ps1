@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 15:16:00 UTC
+# Last Updated: 2025-03-07 15:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.12
-# Additional Info: Fixed function scope issues in runspaces by properly defining and exporting module function
+# Version: 1.4.13
+# Additional Info: Fixed function scope and runspace initialization issues
 # =============================================================================
 
 <#
@@ -392,25 +392,29 @@ function Get-FolderPermissionsModule {
     }
 }
 
-# Export the function to make it available to runspaces
-Export-ModuleMember -Function Get-FolderPermissionsModule
-
 function Start-FolderProcessing {
     param(
         [array]$Folders,
         [int]$MaxThreads,
         [switch]$SkipUniquenessCounting
     )
+    
     $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
     $RunspacePool.Open()
     $FolderPermissionsMap = @{}
     $Runspaces = @()
     
-    # Add error handling function to initial session state
+    # Create initial session state and add function definition directly
     $InitialSessionState = [initialsessionstate]::CreateDefault()
-    $FunctionDefinition = Get-Content Function:\Get-FolderPermissionsModule | Out-String
-    $SessionStateFunction = [System.Management.Automation.Runspaces.SessionStateFunctionEntry]::new('Get-FolderPermissionsModule', $FunctionDefinition)
-    $InitialSessionState.Commands.Add($SessionStateFunction)
+    
+    # Add the Write-Log function to the session state
+    $WriteLogFunction = Get-Content Function:\Write-Log | Out-String
+    $InitialSessionState.Variables.Add([System.Management.Automation.Runspaces.SessionStateVariableEntry]::new('OutputText', $OutputText, 'StringBuilder for output'))
+    $InitialSessionState.Commands.Add([System.Management.Automation.Runspaces.SessionStateFunctionEntry]::new('Write-Log', $WriteLogFunction, $null))
+    
+    # Add Get-FolderPermissionsModule function to session state
+    $FolderPermissionsFunction = Get-Content Function:\Get-FolderPermissionsModule | Out-String
+    $InitialSessionState.Commands.Add([System.Management.Automation.Runspaces.SessionStateFunctionEntry]::new('Get-FolderPermissionsModule', $FolderPermissionsFunction, $null))
     
     foreach ($folder in $Folders) {
         $ps = [powershell]::Create($InitialSessionState)
@@ -419,6 +423,7 @@ function Start-FolderProcessing {
         [void]$ps.AddScript({
             param($FolderPath)
             try {
+                # Function is now available in runspace scope
                 return Get-FolderPermissionsModule -FolderPath $FolderPath
             }
             catch {
