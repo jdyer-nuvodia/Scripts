@@ -2,29 +2,32 @@
 # File: copilot-instructions.md
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:10:00 UTC
+# Last Updated: 2025-03-06 17:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3
+# Version: 3.4
 # Additional Info: Added explicit version control requirements
 # =============================================================================
 
-## ⚠️ VERSION CONTROL RULES - MUST FOLLOW
+## ⚠️ MANDATORY VERSION CONTROL REQUIREMENTS - STRICT ENFORCEMENT
 
-1. EVERY script modification requires:
-   - Increment version number
-   - Update "Last Updated" timestamp
-   - Update "Updated By" field
-   - Update "Additional Info" with change summary
+1. VERSION CONTROL IS NOT OPTIONAL. ALL script modifications MUST include:
+   - Version number increment (Required)
+   - UTC timestamp update (Required)
+   - Updated By field revision (Required)
+   - Change summary in Additional Info (Required)
+   - NO EXCEPTIONS OR OMISSIONS PERMITTED
 
-2. Version numbering:
-   - Major.Minor format (e.g., 1.0, 1.1, 2.0)
-   - Minor changes: increment decimal (1.0 -> 1.1)
-   - Major changes: increment whole number (1.9 -> 2.0)
+2. STRICT Version numbering policy:
+   - Format: Major.Minor (Example: 1.0, 1.1, 2.0)
+   - Minor changes: +0.1 (Example: 1.0 -> 1.1)
+   - Major changes: +1.0 (Example: 1.9 -> 2.0)
+   - ALL changes require version increment
 
-3. Timestamps:
-   - Must be in UTC
-   - Format: YYYY-MM-DD HH:MM:SS UTC
-   - Never use placeholder dates
+3. TIMESTAMP REQUIREMENTS (CRITICAL):
+   - UTC timezone ONLY
+   - Format MUST be: YYYY-MM-DD HH:MM:SS UTC
+   - CURRENT timestamps only - NO placeholders
+   - NO historical or future dates
 
 Example header update:
 ```
@@ -35,11 +38,11 @@ Example header update:
 ```
 
 
-
+# Current date info
 The current year is 2025.
 The month is 03.
-NEVER USE RANDOM TIMESTAMPS! IF YOU NEED A TIMESTAMP GET ONE FROM A RELIABLE SOURCE!
-When creating a script or file, make sure the header format below is used and the created date is set to the real life, current timestamp in UTC.
+
+# Instructions
 Always give me a commit message when writing, editing, or providing a script. Read this webpage for instructions on how to give me the best commit message you can: https://www.gitkraken.com/learn/git/best-practices/git-commit-message
 Make sure all additional functionlity and examples, parameters, etc. are included in the header of any script when updating and the versioning is increased accordingly each time it is updated. Also update the last updated field in the header each time.
 All log files should be .log and not .txt files.
