@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 00:03:00 UTC
+# Last Updated: 2025-03-07 00:06:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.6
-# Additional Info: Fixed string formatting escape sequence in Get-PathType error handling
+# Version: 1.9.7
+# Additional Info: Fixed string formatting using double quotes to prevent parser error
 # =============================================================================
 
 # Requires -Version 5.1
@@ -148,6 +148,7 @@
     1.9.4 - Fixed string formatting in date format variable
     1.9.5 - Fixed string formatting in Get-PathType error handling
     1.9.6 - Fixed string formatting escape sequence in Get-PathType error handling
+    1.9.7 - Fixed string formatting using double quotes to prevent parser error
 #>
 
 param (
@@ -645,7 +646,7 @@ function Get-PathType {
         }
     }
     catch {
-        Write-Warning ("Error determining path type for '{0}': {1}" -f $InputPath, $_.Exception.Message)
+        Write-Warning ("Error determining path type for '$InputPath': $($_.Exception.Message)")
         # Check if it might be an OneDrive path
         if ($InputPath -match "OneDrive -") {
             return @{
