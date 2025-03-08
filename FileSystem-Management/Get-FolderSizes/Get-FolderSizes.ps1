@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:38:00 UTC
+# Last Updated: 2025-03-08 00:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.1
-# Additional Info: Added MaxThreads parameter documentation and examples
+# Version: 2.1.2
+# Additional Info: Added parallel execution diagnostics and monitoring
 # =============================================================================
 
 # Requires -Version 5.1
@@ -155,6 +155,7 @@
     2.0.0 - Removed ThreadJob and NuGet dependencies for simpler execution
     2.1.0 - Added multi-threading using runspaces for improved performance
     2.1.1 - Added MaxThreads parameter documentation and examples
+    2.1.2 - Added parallel execution diagnostics and monitoring
 #>
 
 param (
@@ -665,13 +666,26 @@ function Start-FolderProcessing {
     $RunspacePool.Open()
     $FolderSizeMap = @{}
     $Runspaces = @()
+    $activeRunspaces = 0
+    $processedCount = 0
+    $totalFolders = $Folders.Count
+    
+    Write-Host "`nParallel Processing Configuration:" -ForegroundColor Cyan
+    Write-Host "Maximum Threads: $MaxThreads" -ForegroundColor DarkGray
+    Write-Host "Total Folders to Process: $totalFolders" -ForegroundColor DarkGray
     
     foreach ($folder in $Folders) {
         $ps = [powershell]::Create()
         $ps.RunspacePool = $RunspacePool
+        $activeRunspaces++
+
+        Write-Host "`rActive Runspaces: $activeRunspaces/$MaxThreads" -NoNewline -ForegroundColor Magenta
 
         [void]$ps.AddScript({
             param($FolderPath)
+            
+            $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
+            Write-Host "`nThread $threadId processing: $FolderPath" -ForegroundColor DarkGray
             
             try {
                 $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
@@ -685,6 +699,7 @@ function Start-FolderProcessing {
                     FileCount = $counts.Item1
                     FolderCount = $counts.Item2
                     LargestFile = $largestFile
+                    ThreadId = $threadId
                 }
             }
             catch {
@@ -692,6 +707,7 @@ function Start-FolderProcessing {
                     Success = $false
                     FolderPath = $FolderPath
                     Error = $_.Exception.Message
+                    ThreadId = $threadId
                 }
             }
         }).AddArgument($folder.FullName)
@@ -700,12 +716,21 @@ function Start-FolderProcessing {
             Instance = $ps
             Handle = $ps.BeginInvoke()
             Folder = $folder.FullName
+            StartTime = [DateTime]::Now
         }
     }
     
+    Write-Host "`n`nProcessing Results:" -ForegroundColor Cyan
+    
     foreach ($r in $Runspaces) {
         try {
+            $processedCount++
+            $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
+            Write-Host "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -NoNewline -ForegroundColor Yellow
+            
             $result = $r.Instance.EndInvoke($r.Handle)
+            $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
+            
             if ($result.Success) {
                 $FolderSizeMap[$result.FolderPath] = @{ 
                     Size = $result.Size
@@ -713,19 +738,25 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                Write-DiagnosticMessage "Successfully processed folder: $($result.FolderPath)" -Color Cyan
+                Write-Host "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -ForegroundColor Green
             }
             else {
-                Write-DiagnosticMessage "Error processing folder: $($r.Folder) - $($result.Error)" -Color Yellow
+                Write-Host "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)" -ForegroundColor Red
             }
+            $activeRunspaces--
         }
         catch {
-            Write-DiagnosticMessage "Critical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -Color Red
+            Write-Host "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -ForegroundColor Red
+            $activeRunspaces--
         }
         finally {
             $r.Instance.Dispose()
         }
     }
+    
+    Write-Host "`n`nParallel Processing Summary:" -ForegroundColor Cyan
+    Write-Host "Total Folders Processed: $processedCount" -ForegroundColor DarkGray
+    Write-Host "Maximum Concurrent Threads: $MaxThreads" -ForegroundColor DarkGray
     
     $RunspacePool.Close()
     $RunspacePool.Dispose()
