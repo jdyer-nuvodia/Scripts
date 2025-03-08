@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:20:00 UTC
+# Last Updated: 2025-03-08 00:24:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.0
-# Additional Info: Removed ThreadJob and NuGet dependencies for simpler execution
+# Version: 2.1.0 
+# Additional Info: Added multi-threading using runspaces for improved performance
 # =============================================================================
 
 # Requires -Version 5.1
@@ -145,6 +145,7 @@
     1.9.9 - Fixed parser error in Get-PathType using string concatenation
     1.9.10 - Fixed syntax errors and parser issues in string handling
     2.0.0 - Removed ThreadJob and NuGet dependencies for simpler execution
+    2.1.0 - Added multi-threading using runspaces for improved performance
 #>
 
 param (
@@ -153,7 +154,8 @@ param (
     [ValidateRange(1, 50)]
     [int]$Top = 3,
     [bool]$IncludeHiddenSystem = $true,
-    [bool]$FollowJunctions = $true
+    [bool]$FollowJunctions = $true,
+    [int]$MaxThreads = 10
 )
 
 # Console colors for diagnostic output
@@ -643,34 +645,85 @@ Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd H
 
 #region Folder Scanning Logic
 
-function Start-FolderSizeProcessing {
+# New function to process folders in parallel using runspaces
+function Start-FolderProcessing {
     param(
-        [array]$Folders
+        [array]$Folders,
+        [int]$MaxThreads
     )
     
+    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
+    $RunspacePool.Open()
     $FolderSizeMap = @{}
-
+    $Runspaces = @()
+    
     foreach ($folder in $Folders) {
-        try {
-            $size = [FolderSizeHelper]::GetDirectorySize($folder.FullName)
-            $counts = [FolderSizeHelper]::GetDirectoryCounts($folder.FullName)
-            $largestFile = [FolderSizeHelper]::GetLargestFile($folder.FullName)
+        $ps = [powershell]::Create()
+        $ps.RunspacePool = $RunspacePool
+
+        [void]$ps.AddScript({
+            param($FolderPath)
             
-            $FolderSizeMap[$folder.FullName] = @{
-                Size = $size
-                FileCount = $counts.Item1
-                FolderCount = $counts.Item2
-                LargestFile = $largestFile
+            try {
+                $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
+                $size = [FolderSizeHelper]::GetDirectorySize($FolderPath)
+                $largestFile = [FolderSizeHelper]::GetLargestFile($FolderPath)
+                
+                return @{
+                    Success = $true
+                    FolderPath = $FolderPath
+                    Size = $size
+                    FileCount = $counts.Item1
+                    FolderCount = $counts.Item2
+                    LargestFile = $largestFile
+                }
             }
-        }
-        catch {
-            Write-Warning "Error processing folder: $($folder.FullName) - $($_.Exception.Message)"
+            catch {
+                return @{
+                    Success = $false
+                    FolderPath = $FolderPath
+                    Error = $_.Exception.Message
+                }
+            }
+        }).AddArgument($folder.FullName)
+        
+        $Runspaces += [PSCustomObject]@{
+            Instance = $ps
+            Handle = $ps.BeginInvoke()
+            Folder = $folder.FullName
         }
     }
     
+    foreach ($r in $Runspaces) {
+        try {
+            $result = $r.Instance.EndInvoke($r.Handle)
+            if ($result.Success) {
+                $FolderSizeMap[$result.FolderPath] = @{ 
+                    Size = $result.Size
+                    FileCount = $result.FileCount
+                    FolderCount = $result.FolderCount
+                    LargestFile = $result.LargestFile
+                }
+                Write-DiagnosticMessage "Successfully processed folder: $($result.FolderPath)" -Color Cyan
+            }
+            else {
+                Write-DiagnosticMessage "Error processing folder: $($r.Folder) - $($result.Error)" -Color Yellow
+            }
+        }
+        catch {
+            Write-DiagnosticMessage "Critical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -Color Red
+        }
+        finally {
+            $r.Instance.Dispose()
+        }
+    }
+    
+    $RunspacePool.Close()
+    $RunspacePool.Dispose()
     return $FolderSizeMap
 }
 
+# Modify the Get-FolderSize function to use parallel processing
 function Get-FolderSize {
     param (
         [string]$FolderPath,
@@ -762,7 +815,7 @@ function Get-FolderSize {
             Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan
             
             # Process all folders in parallel using runspace pools
-            $folderResults = Start-FolderSizeProcessing -Folders $subFolders
+            $folderResults = Start-FolderProcessing -Folders $subFolders -MaxThreads $MaxThreads
             
             # Convert results to sorted array
             $sortedFolders = $folderResults.GetEnumerator() | ForEach-Object {
