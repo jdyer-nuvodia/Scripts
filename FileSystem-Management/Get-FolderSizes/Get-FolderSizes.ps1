@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 00:02:00 UTC
+# Last Updated: 2025-03-07 00:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.5
-# Additional Info: Fixed string formatting in Get-PathType error handling
+# Version: 1.9.6
+# Additional Info: Fixed string formatting escape sequence in Get-PathType error handling
 # =============================================================================
 
 # Requires -Version 5.1
@@ -147,6 +147,7 @@
     1.9.3 - Fixed string formatting in transcript path creation
     1.9.4 - Fixed string formatting in date format variable
     1.9.5 - Fixed string formatting in Get-PathType error handling
+    1.9.6 - Fixed string formatting escape sequence in Get-PathType error handling
 #>
 
 param (
