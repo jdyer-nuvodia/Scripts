@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:24:00 UTC
+# Last Updated: 2025-03-08 00:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.0 
-# Additional Info: Added multi-threading using runspaces for improved performance
+# Version: 2.1.1
+# Additional Info: Added MaxThreads parameter documentation and examples
 # =============================================================================
 
 # Requires -Version 5.1
@@ -53,6 +53,10 @@
 .PARAMETER FollowJunctions
     Follow junction points and symbolic links when calculating sizes. Defaults to $true.
 
+.PARAMETER MaxThreads
+    Maximum number of parallel threads to use for processing folders. Defaults to 10.
+    Higher values may improve performance on systems with many CPU cores but will use more memory.
+
 .EXAMPLE
     .\Get-FolderSizes.ps1
     Scans the C:\ drive with default settings
@@ -72,6 +76,10 @@
 .EXAMPLE
     .\Get-FolderSizes.ps1 -IncludeHiddenSystem $false
     Scans the C:\ drive but excludes hidden and system folders
+
+.EXAMPLE
+    .\Get-FolderSizes.ps1 -Path "D:\Data" -MaxThreads 20
+    Scans the D:\Data directory using 20 parallel threads for faster processing on multi-core systems.
 
 .NOTES
     Security Level: Medium
@@ -146,6 +154,7 @@
     1.9.10 - Fixed syntax errors and parser issues in string handling
     2.0.0 - Removed ThreadJob and NuGet dependencies for simpler execution
     2.1.0 - Added multi-threading using runspaces for improved performance
+    2.1.1 - Added MaxThreads parameter documentation and examples
 #>
 
 param (
