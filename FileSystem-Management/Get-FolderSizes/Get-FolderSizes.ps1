@@ -2,9 +2,9 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:08:00 UTC
+# Last Updated: 2025-03-08 00:09:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.8
+# Version: 1.9.9
 # Additional Info: Fixed parser error in Get-PathType using string concatenation
 # =============================================================================
 
@@ -647,7 +647,7 @@ function Get-PathType {
         }
     }
     catch {
-        Write-Warning ("Error determining path type for '" + $InputPath + "': " + $_.Exception.Message)
+        Write-Warning "Error determining path type for '$InputPath': $($_.Exception.Message)"
         # Check if it might be an OneDrive path
         if ($InputPath -match "OneDrive -") {
             return @{
