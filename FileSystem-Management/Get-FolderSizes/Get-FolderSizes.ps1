@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:16:00 UTC
+# Last Updated: 2025-03-08 00:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.10
-# Additional Info: Fixed syntax errors and parser issues in string handling
+# Version: 2.0.0
+# Additional Info: Removed ThreadJob and NuGet dependencies for simpler execution
 # =============================================================================
 
 # Requires -Version 5.1
@@ -15,16 +15,10 @@
     Ultra-fast directory scanner that analyzes folder sizes and identifies largest files.
 
 .DESCRIPTION
-    This script performs a high-performance recursive directory scan to identify the largest
-    folders and files in a given directory path. It uses multi-threading when available
-    and optimized .NET methods for maximum performance, even when scanning system directories.
+    This script performs a high-performance recursive directory scan using
+    optimized .NET methods for maximum performance, even when scanning system directories.
     
-    All dependencies are installed automatically without user interaction.
-
     Features:
-    - Multi-threaded scanning when ThreadJob module is available
-    - Silent installation of required modules without user interaction
-    - Fallback to single-threaded mode when ThreadJob is not available
     - Handles access-denied errors gracefully
     - Identifies largest files in each directory
     - Creates detailed log file of the scan
@@ -35,7 +29,6 @@
 
     Dependencies:
     - Windows PowerShell 5.1 or later
-    - ThreadJob module (optional - will be installed automatically if not present)
     - Administrative privileges recommended but not required
     - Minimum 4GB RAM recommended
 
@@ -90,7 +83,6 @@
     Validation Requirements:
     - Check available memory (4GB+)
     - Validate write access to log directory
-    - Test ThreadJob module availability
 
     Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
@@ -152,6 +144,7 @@
     1.9.8 - Fixed parser error in Get-PathType using string concatenation
     1.9.9 - Fixed parser error in Get-PathType using string concatenation
     1.9.10 - Fixed syntax errors and parser issues in string handling
+    2.0.0 - Removed ThreadJob and NuGet dependencies for simpler execution
 #>
 
 param (
@@ -189,249 +182,6 @@ Write-DiagnosticMessage "Script executed by: $env:USERNAME on $env:COMPUTERNAME"
 # Store original Path parameter value to prevent overwrites
 $originalPath = $Path
 
-# Define Initialize-ThreadJobModule at the top before it is called
-function Initialize-ThreadJobModule {
-    Write-DiagnosticMessage "Checking for ThreadJob module..." -Color DarkGray
-    
-    if (!(Get-Module -Name ThreadJob -ListAvailable)) {
-        Write-DiagnosticMessage "ThreadJob module not found, attempting to install..." -Color Yellow
-        try {
-            Install-Module ThreadJob -Force -Scope CurrentUser -ErrorAction Stop
-            Write-DiagnosticMessage "ThreadJob module installed successfully" -Color Green
-        }
-        catch {
-            Write-DiagnosticMessage "Could not install ThreadJob module: $($_.Exception.Message)" -Color "Error"
-            return $false
-        }
-    } else {
-        Write-DiagnosticMessage "ThreadJob module is already installed" -Color Green
-    }
-    
-    try {
-        Import-Module ThreadJob -ErrorAction Stop
-        Write-DiagnosticMessage "ThreadJob module imported successfully" -Color Green
-        return $true
-    }
-    catch {
-        Write-DiagnosticMessage "Failed to import ThreadJob module: $($_.Exception.Message)" -Color "Error"
-        return $false
-    }
-}
-
-# NuGet Provider Installation - Start this BEFORE transcript logging
-Write-DiagnosticMessage "Starting NuGet provider pre-installation phase..." -Color Cyan
-
-try {
-    # Save original preference variables to restore later
-    $script:ConfirmPreference = $ConfirmPreference
-    $script:ProgressPreference = $ProgressPreference
-    $script:ErrorActionPreference = $ErrorActionPreference
-    $script:VerbosePreference = $VerbosePreference
-    
-    Write-DiagnosticMessage "Setting strict silent mode for package installation" -Color DarkGray
-    # Set strict silent mode from the very start
-    $ConfirmPreference = 'None'
-    $ProgressPreference = 'SilentlyContinue'
-    $ErrorActionPreference = 'SilentlyContinue'
-    $VerbosePreference = 'SilentlyContinue'  # Hide verbose output during installation
-    
-    # Set up global parameter defaults to prevent prompts
-    $PSDefaultParameterValues = @{
-        'Install-Module:Force' = $true
-        'Install-Module:SkipPublisherCheck' = $true
-        'Install-Module:Confirm' = $false
-        'Install-Module:Scope' = 'CurrentUser'
-        'Install-PackageProvider:Force' = $true
-        'Install-PackageProvider:Confirm' = $false
-        'Install-PackageProvider:Scope' = 'CurrentUser'
-        'Install-PackageProvider:SkipPublisherCheck' = $true
-        'Register-PSRepository:InstallationPolicy' = 'Trusted'
-        'Import-Module:ErrorAction' = 'SilentlyContinue'
-        '*:Confirm' = $false
-    }
-    
-    Write-DiagnosticMessage "Setting required environment variables" -Color DarkGray
-    # Add required environment variables
-    $env:POWERSHELL_UPDATECHECK = 'Off'
-    $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
-    $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 'true'
-    $env:NUGET_XMLDOC_MODE = 'skip'
-    
-    # Force PackageManagement to use CurrentUser scope
-    [System.Environment]::SetEnvironmentVariable('POWERSHELL_UPDATECHECK', 'Off', [System.EnvironmentVariableTarget]::Process)
-    
-    # Check if NuGet is already available (quickly, without prompting)
-    Write-DiagnosticMessage "Checking if NuGet provider is already installed..." -Color DarkGray
-    
-    # Super aggressive NuGet provider installation that completely bypasses prompts
-    # by running in a new process with stdin redirected to prevent any chance of prompting
-    
-    # Create a temporary script file that will auto-answer "Y" to any prompts
-    $tempScriptPath = Join-Path $env:TEMP "Install-NuGetProvider_$(Get-Random).ps1"
-    
-    $installScript = @'
-# Set all the preference variables to prevent prompts
-$ConfirmPreference = 'None'
-$ProgressPreference = 'SilentlyContinue'
-$ErrorActionPreference = 'SilentlyContinue'
-$VerbosePreference = 'SilentlyContinue'
-$PSDefaultParameterValues = @{
-    '*:Confirm' = $false
-    'Install-PackageProvider:Force' = $true
-    'Install-PackageProvider:Scope' = 'CurrentUser'
-    'Install-PackageProvider:SkipPublisherCheck' = $true
-}
-
-# Create the NuGet provider assemblies directory if it does not exist
-$nugetPath = "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget"
-if (-not (Test-Path $nugetPath)) {
-    New-Item -Path $nugetPath -ItemType Directory -Force | Out-Null
-}
-
-# Direct download the NuGet provider assembly
-$webClient = New-Object System.Net.WebClient
-$webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
-$webClient.DownloadFile("https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll", 
-                       "$nugetPath\Microsoft.PackageManagement.NuGetProvider.dll")
-
-# Create registry keys to mark NuGet as trusted
-$regPaths = @(
-    'HKCU:\SOFTWARE\Microsoft\PowerShellGet\',
-    'HKCU:\SOFTWARE\Microsoft\PackageManagement\'
-)
-
-foreach ($regPath in $regPaths) {
-    if (-not (Test-Path $regPath)) {
-        New-Item -Path $regPath -Force | Out-Null
-    }
-    New-ItemProperty -Path $regPath -Name 'NuGetProviderApproved' -Value 1 -PropertyType DWORD -Force | Out-Null
-}
-
-if (-not (Test-Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget')) {
-    New-Item -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Force | Out-Null
-}
-New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\PackageManagement\ProviderAssemblies\nuget' -Name 'ProviderBootstrapped' -Value 1 -PropertyType DWORD -Force | Out-Null
-
-# Alternative method to manually register the NuGet provider
-# This is the nuclear option that completely avoids Install-PackageProvider
-$code = @'
-using System;
-using System.IO;
-using System.Management.Automation;
-using System.Reflection;
-
-public static class NuGetProviderInstaller 
-{
-    public static void RegisterProvider() 
-    {
-        try {
-            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string providerPath = Path.Combine(localAppData, "PackageManagement", "ProviderAssemblies", "nuget", "Microsoft.PackageManagement.NuGetProvider.dll");
-            
-            if (File.Exists(providerPath)) {
-                Assembly asm = Assembly.LoadFrom(providerPath);
-                if (asm != null) {
-                    Console.WriteLine("NuGet provider assembly loaded successfully");
-                }
-            }
-        }
-        catch (Exception ex) {
-            Console.WriteLine("Error: " + ex.Message);
-        }
-    }
-}
-'@
-
-Add-Type -TypeDefinition $code
-[NuGetProviderInstaller]::RegisterProvider()
-
-# Initialize the PackageManagement and PowerShellGet modules to use our NuGet provider
-Import-Module PackageManagement -Force
-Import-Module PowerShellGet -Force
-
-# Clean up after ourselves
-Remove-Item -Path "$env:TEMP\Install-NuGetProvider_*.ps1" -Force -ErrorAction SilentlyContinue
-'@
-
-    $installScript | Out-File -FilePath $tempScriptPath -Encoding UTF8
-    
-    Write-DiagnosticMessage "Running independent script to install NuGet provider..." -Color Yellow
-    
-    # Run it in a completely separate process to ensure no prompts can appear
-    # The Start-Process with -Wait ensures we do not proceed until it is complete
-    # The -NoNewWindow makes it run invisibly
-    # The -NonInteractive prevents any interactive prompts
-    Start-Process -FilePath powershell.exe -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-File", "`"$tempScriptPath`"" -WindowStyle Hidden -Wait
-    
-    # Verify the installation (silently)
-    $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-    
-    if ($nugetProvider) {
-        Write-DiagnosticMessage "NuGet provider is now installed (Version: $($nugetProvider.Version))" -Color Green
-    } else {
-        # Try to load it explicitly before giving up
-        Write-DiagnosticMessage "NuGet provider not detected, attempting to load from local path..." -Color Yellow
-        
-        # Check the most likely locations for the NuGet provider
-        $nugetProviderPaths = @(
-            "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
-            "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
-            "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll"
-        )
-        
-        $imported = $false
-        foreach ($path in $nugetProviderPaths) {
-            if (Test-Path $path) {
-                try {
-                    Import-Module $path -Force -ErrorAction SilentlyContinue
-                    $imported = $true
-                    Write-DiagnosticMessage "Imported NuGet provider from: $path" -Color Green
-                    break
-                } catch {
-                    Write-DiagnosticMessage "Failed to import from: $path" -Color "Error"
-                }
-            }
-        }
-        
-        if ($imported) {
-            # Try again after import
-            $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-            if ($nugetProvider) {
-                Write-DiagnosticMessage "NuGet provider is now available (Version: $($nugetProvider.Version))" -Color Green
-            } else {
-                Write-DiagnosticMessage "NuGet provider still not detected after manual import" -Color "Error"
-            }
-        }
-    }
-    
-    # Force the PSGallery repository to be trusted for current user
-    try {
-        Write-DiagnosticMessage "Setting PSGallery as trusted repository" -Color DarkGray
-        Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-        Write-DiagnosticMessage "PSGallery set as trusted successfully" -Color Green
-    } catch {
-        Write-DiagnosticMessage "Error setting PSGallery as trusted: $($_.Exception.Message)" -Color "Error"
-    }
-    
-    # Restore original preference variables
-    $ConfirmPreference = $script:ConfirmPreference
-    $ProgressPreference = $script:ProgressPreference
-    $ErrorActionPreference = $script:ErrorActionPreference
-    $VerbosePreference = $script:VerbosePreference
-} 
-catch {
-    Write-DiagnosticMessage "Unexpected error in NuGet provider installation: $($_.Exception.Message)" -Color "Error"
-    
-    # Restore original preference variables
-    $ConfirmPreference = $script:ConfirmPreference
-    $ProgressPreference = $script:ProgressPreference
-    $ErrorActionPreference = $script:ErrorActionPreference
-    $VerbosePreference = $script:VerbosePreference
-}
-
-# Restore original Path parameter
-$Path = $originalPath
-
 # Start transcript logging
 try {
     Write-DiagnosticMessage "Starting transcript logging..." -Color Cyan
@@ -440,15 +190,6 @@ try {
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
     if (-not $isAdmin) {
         Write-DiagnosticMessage "Running with limited privileges. Some directories may be inaccessible." -Color Yellow
-    }
-
-    # PowerShell Version Check and ThreadJob Initialization
-    $script:isLegacyPowerShell = $PSVersionTable.PSVersion.Major -lt 5
-    if ($script:isLegacyPowerShell) {
-        Write-DiagnosticMessage "Running in PowerShell 4.0 compatibility mode. Some features may be limited." -Color Yellow
-        $global:useThreadJobs = $false
-    } else {
-        $global:useThreadJobs = Initialize-ThreadJobModule
     }
 
     # Use script directory for logs instead of C:\temp
@@ -669,100 +410,6 @@ function Get-PathType {
     }
 }
 
-function Initialize-NuGetProvider {
-    try {
-        # Force disable all prompts through environment variables
-        $env:DOTNET_NOLOGO = 'true'
-        $env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
-        $env:POWERSHELL_TELEMETRY_OPTOUT = 'true'
-        
-        # Completely bypass PackageManagement prompts
-        if (-not $env:POWERSHELL_UPDATECHECK) {
-            $env:POWERSHELL_UPDATECHECK = 'Off'
-        }
-        
-        # Set confirmation preference to None to suppress prompts
-        $ConfirmPreference = 'None'
-        $ProgressPreference = 'SilentlyContinue'  # Hide progress bars
-        
-        # Disable all possible prompt mechanisms - use script scope instead of global
-        $script:PSDefaultParameterValues = @{
-            'Install-Module:Confirm' = $false
-            'Install-Module:Force' = $true
-            'Install-PackageProvider:Confirm' = $false
-            'Install-PackageProvider:Force' = $true
-            'Install-PackageProvider:SkipPublisherCheck' = $true
-            'Install-PackageProvider:Scope' = 'CurrentUser'
-            '*:Confirm' = $false
-        }
-        
-        # Directly try to import the provider we downloaded at script start
-        $nugetProviderPaths = @(
-            "$env:ProgramFiles\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
-            "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll",
-            "$env:windir\System32\WindowsPowerShell\v1.0\Modules\PackageManagement\ProviderAssemblies\nuget\Microsoft.PackageManagement.NuGetProvider.dll"
-        )
-        
-        foreach ($nugetProviderDll in $nugetProviderPaths) {
-            if (Test-Path $nugetProviderDll) {
-                try {
-                    Import-Module $nugetProviderDll -Force -ErrorAction SilentlyContinue
-                }
-                catch {
-                    # Continue silently
-                }
-            }
-        }
-        
-        $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-        $minimumVersion = [Version]"2.8.5.201"
-
-        if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
-            # Direct silent installation using PowerShell Start-Job to avoid prompt propagation
-            Start-Job -ScriptBlock {
-                param($PSDefaultParams)
-                $PSDefaultParameterValues = $PSDefaultParams
-                $ProgressPreference = 'SilentlyContinue'
-                $ConfirmPreference = 'None'
-                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser -SkipPublisherCheck
-            } -ArgumentList $script:PSDefaultParameterValues | Wait-Job | Remove-Job
-            
-            # Re-check if provider is available
-            $nugetProvider = Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue
-            
-            # If still not available, now try the other methods
-            if (-not $nugetProvider -or $nugetProvider.Version -lt $minimumVersion) {
-                # ...existing code for provider installation attempts...
-                
-                # Web download fallback as last resort
-                try {
-                    $nugetPath = "$env:LOCALAPPDATA\PackageManagement\ProviderAssemblies\nuget"
-                    if (-not (Test-Path $nugetPath)) {
-                        $null = New-Item -Path $nugetPath -ItemType Directory -Force -ErrorAction SilentlyContinue
-                    }
-                    
-                    $webClient = New-Object System.Net.WebClient
-                    $webClient.Headers.Add("User-Agent", "PowerShell Package Installer")
-                    $webClient.DownloadFile("https://onegetcdn.azureedge.net/providers/Microsoft.PackageManagement.NuGetProvider-2.8.5.208.dll", 
-                                           "$nugetPath\Microsoft.PackageManagement.NuGetProvider.dll")
-                    
-                    Import-Module "$nugetPath\Microsoft.PackageManagement.NuGetProvider.dll" -Force
-                }
-                catch {
-                    # Continue silently
-                }
-            }
-        }
-        # Force the PSGallery repository to be trusted for current user
-        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-        return $true
-    }
-    catch {
-        # Silently continue
-        return $false
-    }
-}
-
 function Format-SizeWithPadding {
     param (
         [double]$Size,
@@ -857,9 +504,6 @@ if (-not $isAdmin) {
     Write-Host "Running with limited privileges. Some directories may be inaccessible." -ForegroundColor Yellow
 }
 
-# PowerShell Version Check and ThreadJob Initialization was already done above
-# We already have the transcript initialized above, no need to do it again
-
 # Script Header in Transcript
 Write-Host "======================================================" -ForegroundColor White
 Write-Host "Folder Size Scanner - Execution Log" -ForegroundColor White
@@ -869,7 +513,6 @@ Write-Host "User: $env:USERNAME" -ForegroundColor White
 Write-Host "Computer: $env:COMPUTERNAME" -ForegroundColor White
 Write-Host "Target Path: $Path" -ForegroundColor White
 Write-Host "Admin Privileges: $isAdmin" -ForegroundColor White
-Write-Host "Threading Mode: $(if ($global:useThreadJobs) { 'Multi-threaded' } else { 'Single-threaded' })" -ForegroundColor White
 Write-Host "======================================================" -ForegroundColor White
 Write-Host ""
 
@@ -1002,78 +645,29 @@ Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd H
 
 function Start-FolderSizeProcessing {
     param(
-        [array]$Folders,
-        [int]$MaxThreads
+        [array]$Folders
     )
     
-    $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
-    $RunspacePool.Open()
-    $FolderSizeMap = @{
-    }
-    $Runspaces = @()
+    $FolderSizeMap = @{}
 
     foreach ($folder in $Folders) {
-        $ps = [powershell]::Create()
-        $ps.RunspacePool = $RunspacePool
-
-        [void]$ps.AddScript({
-            param($FolderPath, $FolderSizeHelper)
-            
-            try {
-                $size = [FolderSizeHelper]::GetDirectorySize($FolderPath)
-                $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
-                $largestFile = [FolderSizeHelper]::GetLargestFile($FolderPath)
-                
-                return @{
-                    Success = $true
-                    FolderPath = $FolderPath
-                    Size = $size
-                    FileCount = $counts.Item1
-                    FolderCount = $counts.Item2
-                    LargestFile = $largestFile
-                }
-            }
-            catch {
-                return @{
-                    Success = $false
-                    FolderPath = $FolderPath
-                    Error = $_.Exception.Message
-                }
-            }
-        }).AddArgument($folder.FullName).AddArgument([FolderSizeHelper])
-        
-        $Runspaces += [PSCustomObject]@{
-            Instance = $ps
-            Handle = $ps.BeginInvoke()
-            Folder = $folder.FullName
-        }
-    }
-    
-    foreach ($r in $Runspaces) {
         try {
-            $result = $r.Instance.EndInvoke($r.Handle)
-            if ($result.Success) {
-                $FolderSizeMap[$result.FolderPath] = @{
-                    Size = $result.Size
-                    FileCount = $result.FileCount
-                    FolderCount = $result.FolderCount
-                    LargestFile = $result.LargestFile
-                }
-            }
-            else {
-                Write-Warning "Error processing folder: $($r.Folder) - $($result.Error)"
+            $size = [FolderSizeHelper]::GetDirectorySize($folder.FullName)
+            $counts = [FolderSizeHelper]::GetDirectoryCounts($folder.FullName)
+            $largestFile = [FolderSizeHelper]::GetLargestFile($folder.FullName)
+            
+            $FolderSizeMap[$folder.FullName] = @{
+                Size = $size
+                FileCount = $counts.Item1
+                FolderCount = $counts.Item2
+                LargestFile = $largestFile
             }
         }
         catch {
-            Write-Warning "Critical error in runspace for folder $($r.Folder): $($_.Exception.Message)"
-        }
-        finally {
-            $r.Instance.Dispose()
+            Write-Warning "Error processing folder: $($folder.FullName) - $($_.Exception.Message)"
         }
     }
     
-    $RunspacePool.Close()
-    $RunspacePool.Dispose()
     return $FolderSizeMap
 }
 
@@ -1168,7 +762,7 @@ function Get-FolderSize {
             Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan
             
             # Process all folders in parallel using runspace pools
-            $folderResults = Start-FolderSizeProcessing -Folders $subFolders -MaxThreads 10
+            $folderResults = Start-FolderSizeProcessing -Folders $subFolders
             
             # Convert results to sorted array
             $sortedFolders = $folderResults.GetEnumerator() | ForEach-Object {
