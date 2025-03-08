@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:09:00 UTC
+# Last Updated: 2025-03-08 00:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.9
-# Additional Info: Fixed parser error in Get-PathType using string concatenation
+# Version: 1.9.10
+# Additional Info: Fixed syntax errors and parser issues in string handling
 # =============================================================================
 
 # Requires -Version 5.1
@@ -150,6 +150,8 @@
     1.9.6 - Fixed string formatting escape sequence in Get-PathType error handling
     1.9.7 - Fixed string formatting using double quotes to prevent parser error
     1.9.8 - Fixed parser error in Get-PathType using string concatenation
+    1.9.9 - Fixed parser error in Get-PathType using string concatenation
+    1.9.10 - Fixed syntax errors and parser issues in string handling
 #>
 
 param (
@@ -221,10 +223,10 @@ Write-DiagnosticMessage "Starting NuGet provider pre-installation phase..." -Col
 
 try {
     # Save original preference variables to restore later
-    $originalConfirmPreference = $ConfirmPreference
-    $originalProgressPreference = $ProgressPreference
-    $originalErrorActionPreference = $ErrorActionPreference
-    $originalVerbosePreference = $VerbosePreference
+    $script:ConfirmPreference = $ConfirmPreference
+    $script:ProgressPreference = $ProgressPreference
+    $script:ErrorActionPreference = $ErrorActionPreference
+    $script:VerbosePreference = $VerbosePreference
     
     Write-DiagnosticMessage "Setting strict silent mode for package installation" -Color DarkGray
     # Set strict silent mode from the very start
@@ -412,19 +414,19 @@ Remove-Item -Path "$env:TEMP\Install-NuGetProvider_*.ps1" -Force -ErrorAction Si
     }
     
     # Restore original preference variables
-    $ConfirmPreference = $originalConfirmPreference
-    $ProgressPreference = $originalProgressPreference
-    $ErrorActionPreference = $originalErrorActionPreference
-    $VerbosePreference = $originalVerbosePreference
+    $ConfirmPreference = $script:ConfirmPreference
+    $ProgressPreference = $script:ProgressPreference
+    $ErrorActionPreference = $script:ErrorActionPreference
+    $VerbosePreference = $script:VerbosePreference
 } 
 catch {
     Write-DiagnosticMessage "Unexpected error in NuGet provider installation: $($_.Exception.Message)" -Color "Error"
     
     # Restore original preference variables
-    $ConfirmPreference = $originalConfirmPreference
-    $ProgressPreference = $originalProgressPreference
-    $ErrorActionPreference = $originalErrorActionPreference
-    $VerbosePreference = $originalVerbosePreference
+    $ConfirmPreference = $script:ConfirmPreference
+    $ProgressPreference = $script:ProgressPreference
+    $ErrorActionPreference = $script:ErrorActionPreference
+    $VerbosePreference = $script:VerbosePreference
 }
 
 # Restore original Path parameter
@@ -647,7 +649,7 @@ function Get-PathType {
         }
     }
     catch {
-        Write-Warning "Error determining path type for '$InputPath': $($_.Exception.Message)"
+        Write-Warning "Error determining path type for $InputPath`: $($_.Exception.Message)"
         # Check if it might be an OneDrive path
         if ($InputPath -match "OneDrive -") {
             return @{
