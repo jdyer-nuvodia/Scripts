@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:42:00 UTC
+# Last Updated: 2025-03-08 00:44:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.2
-# Additional Info: Added parallel execution diagnostics and monitoring
+# Version: 2.1.3
+# Additional Info: Removed redundant transcript stopped message
 # =============================================================================
 
 # Requires -Version 5.1
@@ -156,6 +156,7 @@
     2.1.0 - Added multi-threading using runspaces for improved performance
     2.1.1 - Added MaxThreads parameter documentation and examples
     2.1.2 - Added parallel execution diagnostics and monitoring
+    2.1.3 - Removed redundant transcript stopped message
 #>
 
 param (
@@ -988,7 +989,6 @@ catch {
 # Stop Transcript
 try {
     Stop-Transcript
-    Write-Host "Transcript stopped. Log file: $transcriptFile" -ForegroundColor White
 } catch {
     Write-Warning "Failed to stop transcript: $_"
 }
