@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 18:17:00 UTC
+# Last Updated: 2025-03-07 00:02:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.4
-# Additional Info: Fixed string formatting in date format variable
+# Version: 1.9.5
+# Additional Info: Fixed string formatting in Get-PathType error handling
 # =============================================================================
 
 # Requires -Version 5.1
@@ -146,6 +146,7 @@
     1.9.2 - Fixed PSGallery repository name quoting in Set-PSRepository command
     1.9.3 - Fixed string formatting in transcript path creation
     1.9.4 - Fixed string formatting in date format variable
+    1.9.5 - Fixed string formatting in Get-PathType error handling
 #>
 
 param (
@@ -643,7 +644,7 @@ function Get-PathType {
         }
     }
     catch {
-        Write-Warning "Error determining path type for '$InputPath': $($_.Exception.Message)"
+        Write-Warning ("Error determining path type for '{0}': {1}" -f $InputPath, $_.Exception.Message)
         # Check if it might be an OneDrive path
         if ($InputPath -match "OneDrive -") {
             return @{
