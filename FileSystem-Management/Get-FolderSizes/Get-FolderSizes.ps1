@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2/5/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:37:00 UTC
+# Last Updated: 2025-03-09 16:41:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.8
-# Additional Info: Fixed remaining thread completion messages in console output
+# Version: 2.1.9
+# Additional Info: Fixed thread progress messages appearing in console during processing
 # =============================================================================
 
 # Requires -Version 5.1
@@ -162,6 +162,7 @@
     2.1.6 - Fixed thread completion messages appearing in console output
     2.1.7 - Fixed thread messages still appearing in console output
     2.1.8 - Fixed remaining thread completion messages in console output
+    2.1.9 - Fixed thread progress messages appearing in console during processing
 #>
 
 param (
@@ -726,16 +727,26 @@ function Start-FolderProcessing {
     
     Write-Host "`n`nProcessing Results:" -ForegroundColor Cyan
     
-    # Initialize Information stream
+    # Initialize Information stream and set up transcript-only logging
     $InformationPreference = 'Continue'
+    $writeToLogOnly = {
+        param([string]$Message)
+        # Write to transcript without console output
+        [System.Management.Automation.HostInformationMessage]@{
+            Message         = $Message
+            ForegroundColor = 'Gray'
+            BackgroundColor = $Host.UI.RawUI.BackgroundColor
+            NoNewLine      = $false
+        }
+    }
     
     foreach ($r in $Runspaces) {
         try {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
             
-            # Write progress info to transcript only
-            Write-Information -MessageData "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -Tags "Progress"
+            # Progress info to transcript only
+            & $writeToLogOnly "`rProgress: $processedCount/$totalFolders ($percentComplete%)"
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -747,8 +758,8 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                # Write completion info to transcript only
-                Write-Information -MessageData "$($result.Message) completed in $($processingTime.ToString('0.00'))s" -Tags "ThreadCompletion"
+                # Completion info to transcript only
+                & $writeToLogOnly "$($result.Message) completed in $($processingTime.ToString('0.00'))s"
             }
             else {
                 # Keep error messages visible in console
