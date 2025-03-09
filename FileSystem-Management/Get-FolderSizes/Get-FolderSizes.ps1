@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 17:10:00 UTC
+# Last Updated: 2025-03-09 17:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.6
-# Additional Info: Added Write-TranscriptOnly function for improved logging control
+# Version: 2.1.7
+# Additional Info: Enhanced console output control for thread processing messages
 # =============================================================================
 
 # Requires -Version 5.1
@@ -158,6 +158,7 @@
     2.1.2 - Added parallel execution diagnostics and monitoring
     2.1.3 - Removed redundant transcript stopped message
     2.1.6 - Added Write-TranscriptOnly function for improved logging control
+    2.1.7 - Enhanced console output control for thread processing messages
 #>
 
 param (
@@ -734,24 +735,22 @@ function Start-FolderProcessing {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
             
-            # Log to transcript only
-            Write-TranscriptOnly "`nProgress: $processedCount/$totalFolders ($percentComplete%)`n"
-            Write-TranscriptOnly "Thread $($result.ThreadID) completed: $($result.Path) in $($result.Duration)s`n"
-            
-            # Only write important summary info to console
-            Write-Host "Processing: $($result.Path)" -ForegroundColor Cyan
-            
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
             
+            # Log detailed progress to transcript only
+            Write-TranscriptOnly "`nProgress: $processedCount/$totalFolders ($percentComplete%)"
+            Write-TranscriptOnly "Processing: $($r.Folder)"
+            
             if ($result.Success) {
+                Write-TranscriptOnly "Thread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s"
+                
                 $FolderSizeMap[$result.FolderPath] = @{ 
                     Size = $result.Size
                     FileCount = $result.FileCount
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                Write-Host "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -ForegroundColor Green
             }
             else {
                 Write-Host "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)" -ForegroundColor Red
