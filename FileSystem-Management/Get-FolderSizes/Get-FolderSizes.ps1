@@ -2,7 +2,7 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:59:00 UTC
+# Last Updated: 2025-03-09 17:08:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 2.1.5
 # Additional Info: Fixed missing catch block and closing brace syntax errors
@@ -157,7 +157,6 @@
     2.1.1 - Added MaxThreads parameter documentation and examples
     2.1.2 - Added parallel execution diagnostics and monitoring
     2.1.3 - Removed redundant transcript stopped message
-    2.1.4 - Fixed missing catch block and closing brace syntax errors
 #>
 
 param (
@@ -419,7 +418,7 @@ function Get-PathType {
             IsOneDrive = $false
         }
     }
-} # Add missing closing brace
+}
 
 function Format-SizeWithPadding {
     param (
@@ -719,16 +718,19 @@ function Start-FolderProcessing {
         }
     }
     
-    # Write processing results header to transcript only
-    Write-Output "`n`nProcessing Results:"
+    Write-Host "`n`nProcessing Results:" -ForegroundColor Cyan
     
     foreach ($r in $Runspaces) {
         try {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
             
-            # Write progress and results to transcript only
-            Write-Output "`rProgress: $processedCount/$totalFolders ($percentComplete%)"
+            # Log to transcript only
+            Write-TranscriptOnly "`nProgress: $processedCount/$totalFolders ($percentComplete%)`n"
+            Write-TranscriptOnly "Thread $($result.ThreadID) completed: $($result.Path) in $($result.Duration)s`n"
+            
+            # Only write important summary info to console
+            Write-Host "Processing: $($result.Path)" -ForegroundColor Cyan
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -740,15 +742,15 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                Write-Output "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s"
+                Write-Host "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -ForegroundColor Green
             }
             else {
-                Write-Output "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)"
+                Write-Host "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)" -ForegroundColor Red
             }
             $activeRunspaces--
         }
         catch {
-            Write-Output "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)"
+            Write-Host "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -ForegroundColor Red
             $activeRunspaces--
         }
         finally {
@@ -982,7 +984,7 @@ try {
     Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
     Show-DriveInfo -Volume $lowestVolume
 }
-catch { # Add missing catch block
+catch {
     Write-Error "Error accessing drive information. Error: $_"
 }
 #endregion
