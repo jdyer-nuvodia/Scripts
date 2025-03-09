@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 17:12:00 UTC
+# Last Updated: 2025-03-09 17:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.7
-# Additional Info: Enhanced console output control for thread processing messages
+# Version: 2.1.8
+# Additional Info: Moved processing results header to transcript-only logging
 # =============================================================================
 
 # Requires -Version 5.1
@@ -159,6 +159,7 @@
     2.1.3 - Removed redundant transcript stopped message
     2.1.6 - Added Write-TranscriptOnly function for improved logging control
     2.1.7 - Enhanced console output control for thread processing messages
+    2.1.8 - Moved processing results header to transcript-only logging
 #>
 
 param (
@@ -728,7 +729,7 @@ function Start-FolderProcessing {
         }
     }
     
-    Write-Host "`n`nProcessing Results:" -ForegroundColor Cyan
+    Write-TranscriptOnly "`n`nProcessing Results:"
     
     foreach ($r in $Runspaces) {
         try {
