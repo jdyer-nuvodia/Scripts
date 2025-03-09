@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-08 00:44:00 UTC
+# Last Updated: 2025-03-09 16:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.3
-# Additional Info: Removed redundant transcript stopped message
+# Version: 2.1.4
+# Additional Info: Fixed missing catch block and closing brace syntax errors
 # =============================================================================
 
 # Requires -Version 5.1
@@ -157,6 +157,7 @@
     2.1.1 - Added MaxThreads parameter documentation and examples
     2.1.2 - Added parallel execution diagnostics and monitoring
     2.1.3 - Removed redundant transcript stopped message
+    2.1.4 - Fixed missing catch block and closing brace syntax errors
 #>
 
 param (
@@ -418,7 +419,7 @@ function Get-PathType {
             IsOneDrive = $false
         }
     }
-}
+} # Add missing closing brace
 
 function Format-SizeWithPadding {
     param (
@@ -978,7 +979,7 @@ try {
     Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
     Show-DriveInfo -Volume $lowestVolume
 }
-catch {
+catch { # Add missing catch block
     Write-Error "Error accessing drive information. Error: $_"
 }
 #endregion
