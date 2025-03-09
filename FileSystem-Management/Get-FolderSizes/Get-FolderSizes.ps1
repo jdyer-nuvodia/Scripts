@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-FolderSizes.ps1
-# Created: 2/5/2025 00:55:03 UTC
+# Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:51:00 UTC
+# Last Updated: 2025-03-09 16:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.11
-# Additional Info: Fixed thread progress messages not being written to log file
+# Version: 2.1.4
+# Additional Info: Fixed missing catch block and closing brace syntax errors
 # =============================================================================
 
 # Requires -Version 5.1
@@ -158,13 +158,6 @@
     2.1.2 - Added parallel execution diagnostics and monitoring
     2.1.3 - Removed redundant transcript stopped message
     2.1.4 - Fixed missing catch block and closing brace syntax errors
-    2.1.5 - Suppressed processing progress messages from console output
-    2.1.6 - Fixed thread completion messages appearing in console output
-    2.1.7 - Fixed thread messages still appearing in console output
-    2.1.8 - Fixed remaining thread completion messages in console output
-    2.1.9 - Fixed thread progress messages appearing in console during processing
-    2.1.10 - Fixed thread progress messages not appearing in transcript log
-    2.1.11 - Fixed thread progress messages not being written to log file
 #>
 
 param (
@@ -512,30 +505,6 @@ function Write-ProgressBar {
     }
 }
 
-# Add this helper function after the other helper functions
-function Write-TranscriptLog {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$Message,
-        [string]$Category = "Progress"
-    )
-    
-    try {
-        $timeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $logMessage = "[$timeStamp] [$Category] $Message"
-        
-        # Write directly to transcript file
-        Add-Content -Path $transcriptFile -Value $logMessage -ErrorAction Stop
-        
-        # Also send to Information stream for transcript capture
-        $InformationPreference = 'Continue'
-        Write-Information -MessageData $logMessage -Tags $Category
-    }
-    catch {
-        Write-Warning "Failed to write to transcript log: $_"
-    }
-}
-
 #endregion
 
 #region Setup
@@ -715,7 +684,8 @@ function Start-FolderProcessing {
             param($FolderPath)
             
             $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
-            # Return thread info instead of writing it
+            Write-Host "`nThread $threadId processing: $FolderPath" -ForegroundColor DarkGray
+            
             try {
                 $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
                 $size = [FolderSizeHelper]::GetDirectorySize($FolderPath)
@@ -729,7 +699,6 @@ function Start-FolderProcessing {
                     FolderCount = $counts.Item2
                     LargestFile = $largestFile
                     ThreadId = $threadId
-                    Message = "Thread $threadId processing: $FolderPath"
                 }
             }
             catch {
@@ -738,7 +707,6 @@ function Start-FolderProcessing {
                     FolderPath = $FolderPath
                     Error = $_.Exception.Message
                     ThreadId = $threadId
-                    Message = "Thread $threadId failed: $FolderPath"
                 }
             }
         }).AddArgument($folder.FullName)
@@ -753,16 +721,11 @@ function Start-FolderProcessing {
     
     Write-Host "`n`nProcessing Results:" -ForegroundColor Cyan
     
-    # Initialize Information stream
-    $InformationPreference = 'Continue'
-    
     foreach ($r in $Runspaces) {
         try {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
-            
-            # Progress info to transcript only
-            Write-TranscriptLog -Message "Progress: $processedCount/$totalFolders ($percentComplete%)" -Category "Progress"
+            Write-Host "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -NoNewline -ForegroundColor Yellow
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -774,22 +737,15 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                # Completion info to transcript with thread details
-                Write-TranscriptLog -Message "Thread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -Category "ThreadComplete"
+                Write-Host "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -ForegroundColor Green
             }
             else {
-                # Keep error messages visible in console and log
-                $errorMsg = "Thread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)"
-                Write-Host "`n$errorMsg" -ForegroundColor Red
-                Write-TranscriptLog -Message $errorMsg -Category "Error"
+                Write-Host "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)" -ForegroundColor Red
             }
             $activeRunspaces--
         }
         catch {
-            # Keep error messages visible in console and log
-            $errorMsg = "Critical error in runspace for folder $($r.Folder): $($_.Exception.Message)"
-            Write-Host "`n$errorMsg" -ForegroundColor Red
-            Write-TranscriptLog -Message $errorMsg -Category "Error"
+            Write-Host "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -ForegroundColor Red
             $activeRunspaces--
         }
         finally {
