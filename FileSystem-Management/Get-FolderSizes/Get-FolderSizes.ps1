@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2/5/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:46:00 UTC
+# Last Updated: 2025-03-09 16:51:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.10
-# Additional Info: Fixed thread progress messages not appearing in transcript log
+# Version: 2.1.11
+# Additional Info: Fixed thread progress messages not being written to log file
 # =============================================================================
 
 # Requires -Version 5.1
@@ -164,6 +164,7 @@
     2.1.8 - Fixed remaining thread completion messages in console output
     2.1.9 - Fixed thread progress messages appearing in console during processing
     2.1.10 - Fixed thread progress messages not appearing in transcript log
+    2.1.11 - Fixed thread progress messages not being written to log file
 #>
 
 param (
@@ -519,8 +520,20 @@ function Write-TranscriptLog {
         [string]$Category = "Progress"
     )
     
-    # Write to transcript but not console
-    Write-Information -MessageData $Message -Tags $Category 6>&1 | Out-File -FilePath $transcriptFile -Append
+    try {
+        $timeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $logMessage = "[$timeStamp] [$Category] $Message"
+        
+        # Write directly to transcript file
+        Add-Content -Path $transcriptFile -Value $logMessage -ErrorAction Stop
+        
+        # Also send to Information stream for transcript capture
+        $InformationPreference = 'Continue'
+        Write-Information -MessageData $logMessage -Tags $Category
+    }
+    catch {
+        Write-Warning "Failed to write to transcript log: $_"
+    }
 }
 
 #endregion
@@ -749,7 +762,7 @@ function Start-FolderProcessing {
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
             
             # Progress info to transcript only
-            Write-TranscriptLog -Message "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -Category "Progress"
+            Write-TranscriptLog -Message "Progress: $processedCount/$totalFolders ($percentComplete%)" -Category "Progress"
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -761,18 +774,22 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                # Completion info to transcript only
-                Write-TranscriptLog -Message "$($result.Message) completed in $($processingTime.ToString('0.00'))s" -Category "ThreadComplete"
+                # Completion info to transcript with thread details
+                Write-TranscriptLog -Message "Thread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -Category "ThreadComplete"
             }
             else {
-                # Keep error messages visible in console
-                Write-Host "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)" -ForegroundColor Red
+                # Keep error messages visible in console and log
+                $errorMsg = "Thread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)"
+                Write-Host "`n$errorMsg" -ForegroundColor Red
+                Write-TranscriptLog -Message $errorMsg -Category "Error"
             }
             $activeRunspaces--
         }
         catch {
-            # Keep error messages visible in console
-            Write-Host "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -ForegroundColor Red
+            # Keep error messages visible in console and log
+            $errorMsg = "Critical error in runspace for folder $($r.Folder): $($_.Exception.Message)"
+            Write-Host "`n$errorMsg" -ForegroundColor Red
+            Write-TranscriptLog -Message $errorMsg -Category "Error"
             $activeRunspaces--
         }
         finally {
