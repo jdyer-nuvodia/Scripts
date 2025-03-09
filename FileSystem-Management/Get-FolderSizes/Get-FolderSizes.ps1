@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2/5/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:34:00 UTC
+# Last Updated: 2025-03-09 16:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.7
-# Additional Info: Fixed thread messages still appearing in console output
+# Version: 2.1.8
+# Additional Info: Fixed remaining thread completion messages in console output
 # =============================================================================
 
 # Requires -Version 5.1
@@ -161,6 +161,7 @@
     2.1.5 - Suppressed processing progress messages from console output
     2.1.6 - Fixed thread completion messages appearing in console output
     2.1.7 - Fixed thread messages still appearing in console output
+    2.1.8 - Fixed remaining thread completion messages in console output
 #>
 
 param (
@@ -687,9 +688,7 @@ function Start-FolderProcessing {
             param($FolderPath)
             
             $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
-            # Change Write-Host to Write-Information for thread messages
-            Write-Information -MessageData "`nThread $threadId processing: $FolderPath" -InformationAction Continue
-            
+            # Return thread info instead of writing it
             try {
                 $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
                 $size = [FolderSizeHelper]::GetDirectorySize($FolderPath)
@@ -703,6 +702,7 @@ function Start-FolderProcessing {
                     FolderCount = $counts.Item2
                     LargestFile = $largestFile
                     ThreadId = $threadId
+                    Message = "Thread $threadId processing: $FolderPath"
                 }
             }
             catch {
@@ -711,6 +711,7 @@ function Start-FolderProcessing {
                     FolderPath = $FolderPath
                     Error = $_.Exception.Message
                     ThreadId = $threadId
+                    Message = "Thread $threadId failed: $FolderPath"
                 }
             }
         }).AddArgument($folder.FullName)
@@ -734,7 +735,7 @@ function Start-FolderProcessing {
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
             
             # Write progress info to transcript only
-            Write-Information -MessageData "`rProgress: $processedCount/$totalFolders ($percentComplete%)"
+            Write-Information -MessageData "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -Tags "Progress"
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -747,7 +748,7 @@ function Start-FolderProcessing {
                     LargestFile = $result.LargestFile
                 }
                 # Write completion info to transcript only
-                Write-Information -MessageData "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s"
+                Write-Information -MessageData "$($result.Message) completed in $($processingTime.ToString('0.00'))s" -Tags "ThreadCompletion"
             }
             else {
                 # Keep error messages visible in console
