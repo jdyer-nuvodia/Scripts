@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-FolderSizes.ps1
-# Created: 5/2/2025 00:55:03 UTC
+# Created: 2/5/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:26:00 UTC
+# Last Updated: 2025-03-09 16:29:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.4
-# Additional Info: Fixed missing catch block and closing brace syntax errors
+# Version: 2.1.5
+# Additional Info: Suppressed processing progress messages from console output
 # =============================================================================
 
 # Requires -Version 5.1
@@ -158,6 +158,7 @@
     2.1.2 - Added parallel execution diagnostics and monitoring
     2.1.3 - Removed redundant transcript stopped message
     2.1.4 - Fixed missing catch block and closing brace syntax errors
+    2.1.5 - Suppressed processing progress messages from console output
 #>
 
 param (
@@ -725,7 +726,9 @@ function Start-FolderProcessing {
         try {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
-            Write-Host "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -NoNewline -ForegroundColor Yellow
+            
+            # Write to transcript only
+            Write-Information "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -InformationAction Continue
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -737,14 +740,17 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                Write-Host "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -ForegroundColor Green
+                # Write to transcript only
+                Write-Information "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -InformationAction Continue
             }
             else {
+                # Keep error messages visible in console
                 Write-Host "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)" -ForegroundColor Red
             }
             $activeRunspaces--
         }
         catch {
+            # Keep error messages visible in console
             Write-Host "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -ForegroundColor Red
             $activeRunspaces--
         }
