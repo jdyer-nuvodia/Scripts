@@ -2,9 +2,9 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:26:00 UTC
+# Last Updated: 2025-03-09 16:59:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.4
+# Version: 2.1.5
 # Additional Info: Fixed missing catch block and closing brace syntax errors
 # =============================================================================
 
@@ -719,13 +719,16 @@ function Start-FolderProcessing {
         }
     }
     
-    Write-Host "`n`nProcessing Results:" -ForegroundColor Cyan
+    # Write processing results header to transcript only
+    Write-Output "`n`nProcessing Results:"
     
     foreach ($r in $Runspaces) {
         try {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
-            Write-Host "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -NoNewline -ForegroundColor Yellow
+            
+            # Write progress and results to transcript only
+            Write-Output "`rProgress: $processedCount/$totalFolders ($percentComplete%)"
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -737,15 +740,15 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                Write-Host "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -ForegroundColor Green
+                Write-Output "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s"
             }
             else {
-                Write-Host "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)" -ForegroundColor Red
+                Write-Output "`nThread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)"
             }
             $activeRunspaces--
         }
         catch {
-            Write-Host "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)" -ForegroundColor Red
+            Write-Output "`nCritical error in runspace for folder $($r.Folder): $($_.Exception.Message)"
             $activeRunspaces--
         }
         finally {
