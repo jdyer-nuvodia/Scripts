@@ -192,9 +192,6 @@ Write-DiagnosticMessage "Script starting - Get-FolderSizes.ps1" -Color Cyan
 Write-DiagnosticMessage "PowerShell Version: $($PSVersionTable.PSVersion)" -Color Cyan
 Write-DiagnosticMessage "Script executed by: $env:USERNAME on $env:COMPUTERNAME" -Color Cyan
 
-# Store original Path parameter value to prevent overwrites
-$originalPath = $Path
-
 # Start transcript logging
 try {
     Write-DiagnosticMessage "Starting transcript logging..." -Color Cyan
