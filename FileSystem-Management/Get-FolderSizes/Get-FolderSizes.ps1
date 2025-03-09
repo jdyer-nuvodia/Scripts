@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2/5/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:32:00 UTC
+# Last Updated: 2025-03-09 16:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.6
-# Additional Info: Fixed thread completion messages appearing in console output
+# Version: 2.1.7
+# Additional Info: Fixed thread messages still appearing in console output
 # =============================================================================
 
 # Requires -Version 5.1
@@ -160,6 +160,7 @@
     2.1.4 - Fixed missing catch block and closing brace syntax errors
     2.1.5 - Suppressed processing progress messages from console output
     2.1.6 - Fixed thread completion messages appearing in console output
+    2.1.7 - Fixed thread messages still appearing in console output
 #>
 
 param (
@@ -686,7 +687,8 @@ function Start-FolderProcessing {
             param($FolderPath)
             
             $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
-            Write-Host "`nThread $threadId processing: $FolderPath" -ForegroundColor DarkGray
+            # Change Write-Host to Write-Information for thread messages
+            Write-Information -MessageData "`nThread $threadId processing: $FolderPath" -InformationAction Continue
             
             try {
                 $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
