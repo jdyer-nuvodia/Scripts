@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 5/2/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 17:08:00 UTC
+# Last Updated: 2025-03-09 17:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.5
-# Additional Info: Fixed missing catch block and closing brace syntax errors
+# Version: 2.1.6
+# Additional Info: Added Write-TranscriptOnly function for improved logging control
 # =============================================================================
 
 # Requires -Version 5.1
@@ -157,6 +157,7 @@
     2.1.1 - Added MaxThreads parameter documentation and examples
     2.1.2 - Added parallel execution diagnostics and monitoring
     2.1.3 - Removed redundant transcript stopped message
+    2.1.6 - Added Write-TranscriptOnly function for improved logging control
 #>
 
 param (
@@ -233,6 +234,14 @@ try {
 # Continue with the rest of the script...
 
 #region Helper Functions
+
+# Function to log to transcript only without console output
+function Write-TranscriptOnly {
+    param([string]$Message)
+    $InformationPreference = 'Continue'
+    Write-Information $Message 6> $null
+    $InformationPreference = 'SilentlyContinue'
+}
 
 # Function to initialize color scheme for console output
 function Show-ColorLegend {
