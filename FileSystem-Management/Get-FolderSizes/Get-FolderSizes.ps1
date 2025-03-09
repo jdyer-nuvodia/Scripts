@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2/5/2025 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 16:29:00 UTC
+# Last Updated: 2025-03-09 16:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.5
-# Additional Info: Suppressed processing progress messages from console output
+# Version: 2.1.6
+# Additional Info: Fixed thread completion messages appearing in console output
 # =============================================================================
 
 # Requires -Version 5.1
@@ -159,6 +159,7 @@
     2.1.3 - Removed redundant transcript stopped message
     2.1.4 - Fixed missing catch block and closing brace syntax errors
     2.1.5 - Suppressed processing progress messages from console output
+    2.1.6 - Fixed thread completion messages appearing in console output
 #>
 
 param (
@@ -722,13 +723,16 @@ function Start-FolderProcessing {
     
     Write-Host "`n`nProcessing Results:" -ForegroundColor Cyan
     
+    # Initialize Information stream
+    $InformationPreference = 'Continue'
+    
     foreach ($r in $Runspaces) {
         try {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
             
-            # Write to transcript only
-            Write-Information "`rProgress: $processedCount/$totalFolders ($percentComplete%)" -InformationAction Continue
+            # Write progress info to transcript only
+            Write-Information -MessageData "`rProgress: $processedCount/$totalFolders ($percentComplete%)"
             
             $result = $r.Instance.EndInvoke($r.Handle)
             $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
@@ -740,8 +744,8 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-                # Write to transcript only
-                Write-Information "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s" -InformationAction Continue
+                # Write completion info to transcript only
+                Write-Information -MessageData "`nThread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s"
             }
             else {
                 # Keep error messages visible in console
