@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 17:15:00 UTC
+# Last Updated: 2025-03-10 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.4
-# Additional Info: Enhanced Active Directory integration and SID translation diagnostics
+# Version: 1.7.5
+# Additional Info: Fixed assembly loading and syntax errors in AD integration
 # =============================================================================
 
 <#
@@ -791,7 +791,16 @@ catch {
     }
 }
 
-# Initialize SID cache with well-known SIDs and add domain context
+# Initialize AD support variables
+$script:adDiagnostics = @{
+    LastError = $null
+    FailedTranslations = @{}
+    TranslationMethods = @{}
+    DomainControllers = @()
+    ConnectedDC = $null
+}
+
+# Initialize SID cache with well-known SIDs
 $script:sidCache = @{
     'S-1-5-32-544' = 'BUILTIN\Administrators'
     'S-1-5-32-545' = 'BUILTIN\Users'
@@ -802,154 +811,6 @@ $script:sidCache = @{
     'S-1-5-11' = 'NT AUTHORITY\Authenticated Users'
     'S-1-1-0' = 'Everyone'
     'S-1-5-4' = 'NT AUTHORITY\INTERACTIVE'
-}
-
-# Add domain context tracking
-$script:domainContext = $null
-$script:failedTranslations = @{}
-$script:maxRetries = 3
-$script:retryDelay = 1
-
-function Initialize-DomainContext {
-    try {
-        $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-        $script:domainContext = @{
-            Name = $domain.Name
-            DomainControllers = @($domain.DomainControllers | ForEach-Object { $_.Name })
-            IsAvailable = $true
-        }
-        Write-Log "Domain context initialized: $($domain.Name)" "Magenta"
-    }
-    catch {
-        $script:domainContext = @{
-            Name = $env:USERDOMAIN
-            DomainControllers = @()
-            IsAvailable = $false
-        }
-        Write-Log "Working in offline/local mode: $($env:USERDOMAIN)" "Yellow"
-    }
-}
-
-function Convert-SidToAccountName {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Identity
-    )
-    
-    try {
-        # Return if not a SID
-        if (-not ($Identity -match '^S-\d-(\d+-){1,14}\d+$')) {
-            return $Identity
-        }
-
-        # Check cache first
-        if ($script:sidCache.ContainsKey($Identity)) {
-            Write-Log "Cache hit for SID: $Identity = $($script:sidCache[$Identity])" "Magenta"
-            return $script:sidCache[$Identity]
-        }
-
-        # Check if we have tried this SID too many times
-        if ($script:failedTranslations.ContainsKey($Identity) -and 
-            $script:failedTranslations[$Identity].Count -ge $script:maxRetries) {
-            Write-Log "Maximum retry attempts reached for SID: $Identity" "Yellow"
-            return "SID: $Identity (Max Retries)"
-        }
-
-        # Initialize domain context if needed
-        if ($null -eq $script:domainContext) {
-            Initialize-DomainContext
-        }
-
-        # Try multiple translation methods
-        $result = $null
-        $error.Clear()
-
-        try {
-            # Method 1: Direct .NET translation
-            $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
-            $result = $sid.Translate([System.Security.Principal.NTAccount]).Value
-        }
-        catch {
-            Write-Log "Primary translation failed for $Identity - Attempting fallback methods" "Yellow"
-            
-            try {
-                # Method 2: ADSI lookup if domain is available
-                if ($script:domainContext.IsAvailable) {
-                    $searcher = [adsisearcher]"(objectSid=$Identity)"
-                    $found = $searcher.FindOne()
-                    if ($found) {
-                        $result = $found.Properties["samaccountname"][0]
-                        if ($found.Properties["domain"][0]) {
-                            $result = "$($found.Properties['domain'][0])\$result"
-                        }
-                    }
-                }
-            }
-            catch {
-                Write-Log "ADSI lookup failed for $Identity" "Yellow"
-            }
-            
-            if (-not $result) {
-                # Track failed attempts
-                if (-not $script:failedTranslations.ContainsKey($Identity)) {
-                    $script:failedTranslations[$Identity] = @()
-                }
-                $script:failedTranslations[$Identity] += [DateTime]::Now
-                
-                # Return formatted SID
-                return "SID: $Identity (Translation Failed)"
-            }
-        }
-
-        # Cache successful translations
-        if ($result) {
-            $script:sidCache[$Identity] = $result
-            Write-Log "Cached translation for SID: $Identity = $result" "Magenta"
-            return $result
-        }
-
-        return "SID: $Identity"
-    }
-    catch {
-        Write-Log "Critical error in SID translation: $Identity - $_" "Red"
-        return "SID: $Identity (Error)"
-    }
-}
-
-# Update the permission processing to use the new function
-function Get-FolderPermissions {
-    param (
-        [string]$FolderPath
-    )
-    
-    try {
-        # Use .NET Security methods directly
-        $security = [DirectorySecurity]::new()  # Now we can use short name since namespace is imported
-        $security.SetAccessRuleProtection($false, $true)
-        
-        # Get the actual security descriptor using Windows API
-        $rawSecurityDescriptor = [System.IO.Directory]::GetAccessControl($FolderPath)
-        $security.SetSecurityDescriptorBinaryForm($rawSecurityDescriptor.GetSecurityDescriptorBinaryForm())
-        
-        return $security
-    }
-    catch {
-        Write-DiagnosticMessage "Error accessing permissions for $FolderPath : $_" -Color Red
-        return $null
-    }
-}
-
-# Add Active Directory Type Acceleration
-using assembly System.DirectoryServices.AccountManagement
-using namespace System.DirectoryServices.AccountManagement
-
-# Initialize diagnostic tracking
-$script:adDiagnostics = @{
-    LastError = $null
-    FailedTranslations = @{}
-    TranslationMethods = @{}
-    DomainControllers = @()
-    ConnectedDC = $null
 }
 
 function Initialize-ADConnection {
@@ -974,20 +835,23 @@ function Initialize-ADConnection {
 function Get-DetailedSIDError {
     param (
         [string]$SID,
-        [System.Exception]$Error
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
     )
     
     $errorDetails = @{
         SID = $SID
-        ErrorMessage = $Error.Message
-        ErrorType = $Error.GetType().Name
-        InnerError = if ($Error.InnerException) { $Error.InnerException.Message } else { "None" }
-        Stack = $Error.StackTrace
+        ErrorMessage = $ErrorRecord.Exception.Message
+        ErrorType = $ErrorRecord.Exception.GetType().Name
+        InnerError = if ($ErrorRecord.Exception.InnerException) { 
+            $ErrorRecord.Exception.InnerException.Message 
+        } else { 
+            "None" 
+        }
+        Stack = $ErrorRecord.ScriptStackTrace
         DCAttempted = $script:adDiagnostics.ConnectedDC
         ADModuleLoaded = $null -ne (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)
     }
     
-    # Add to diagnostics
     $script:adDiagnostics.LastError = $errorDetails
     
     return "SID Translation Error for $SID`n" +
@@ -1025,59 +889,47 @@ function Convert-SidToAccountName {
             @{
                 Name = "AD Module"
                 Method = {
-                    $obj = Get-ADObject -Identity $Identity -Properties sAMAccountName, distinguishedName -ErrorAction Stop
-                    $obj.sAMAccountName
-                }
-            },
-            @{
-                Name = "Principal Context"
-                Method = {
-                    $ctx = [PrincipalContext]::new([ContextType]::Domain)
-                    $principal = [Principal]::FindByIdentity($ctx, [IdentityType]::Sid, $Identity)
-                    $principal.Name
+                    try {
+                        $obj = Get-ADObject -Identity $Identity -Properties sAMAccountName, distinguishedName -ErrorAction Stop
+                        return $obj.sAMAccountName
+                    }
+                    catch {
+                        Write-Log "AD Module method failed: $_" "Yellow"
+                        return $null
+                    }
                 }
             },
             @{
                 Name = "Direct SID Translation"
                 Method = {
-                    $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
-                    $sid.Translate([System.Security.Principal.NTAccount]).Value
+                    try {
+                        $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
+                        return $sid.Translate([System.Security.Principal.NTAccount]).Value
+                    }
+                    catch {
+                        Write-Log "Direct SID translation failed: $_" "Yellow"
+                        return $null
+                    }
                 }
             }
         )
 
-        $lastError = $null
         foreach ($method in $translationMethods) {
-            try {
-                $result = & $method.Method
-                if ($result) {
-                    # Track successful method
-                    $script:adDiagnostics.TranslationMethods[$Identity] = $method.Name
-                    
-                    # Cache the result
-                    $script:sidCache[$Identity] = $result
-                    Write-Log "Successfully translated SID using $($method.Name): $Identity -> $result" "Green"
-                    return $result
-                }
-            }
-            catch {
-                $lastError = $_
-                Write-Log "Method $($method.Name) failed for SID $Identity : $($_.Exception.Message)" "Yellow"
-                continue
+            $result = & $method.Method
+            if ($result) {
+                $script:adDiagnostics.TranslationMethods[$Identity] = $method.Name
+                $script:sidCache[$Identity] = $result
+                Write-Log "Successfully translated SID using $($method.Name): $Identity -> $result" "Green"
+                return $result
             }
         }
 
-        # If all methods failed, log detailed error and return formatted SID
-        $errorDetails = Get-DetailedSIDError -SID $Identity -Error $lastError
-        Write-Log $errorDetails "Red"
-        
-        # Track failed translation
-        $script:adDiagnostics.FailedTranslations[$Identity] = $errorDetails
-        
-        return "SID: $Identity (Translation Failed - See Log)"
+        # If all methods failed, return formatted SID
+        Write-Log "All translation methods failed for SID: $Identity" "Yellow"
+        return "SID: $Identity (Translation Failed)"
     }
     catch {
-        $errorDetails = Get-DetailedSIDError -SID $Identity -Error $_
+        $errorDetails = Get-DetailedSIDError -SID $Identity -ErrorRecord $_
         Write-Log $errorDetails "Red"
         return "SID: $Identity (Critical Error)"
     }
