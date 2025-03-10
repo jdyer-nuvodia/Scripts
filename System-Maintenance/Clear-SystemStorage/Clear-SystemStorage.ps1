@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:30:00 UTC
+# Last Updated: 2025-03-10 21:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.12
-# Additional Info: Added file cleanup and process monitoring improvements
+# Version: 4.0.13
+# Additional Info: Enhanced process monitoring and file cleanup logic
 # =============================================================================
 
 <#
@@ -251,110 +251,114 @@ catch {
         $completed = $false
         $lastStatus = ""
         
-        while ((Get-Date) -lt $timeout -and -not $completed) {
-            if ([System.IO.File]::Exists($statusFile)) {
-                try {
-                    $currentStatus = [System.IO.File]::ReadAllText($statusFile)
-                    
-                    if ($currentStatus -ne $lastStatus) {
-                        if ($currentStatus.StartsWith("{")) {
-                            try {
-                                $statusObj = $currentStatus | ConvertFrom-Json
-                                Write-Host "`r$(' ' * 80)" -NoNewline
-                                Write-Host "`rRuntime: $($statusObj.Runtime) | CPU: $($statusObj.CPU)% | Memory: $($statusObj.Memory)MB" -NoNewline -ForegroundColor Cyan
-                            }
-                            catch {
-                                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Yellow
-                            }
-                        }
-                        else {
-                            Write-Host "`r$(' ' * 80)" -NoNewline
-                            Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
-                                if ($currentStatus.StartsWith("Error:")) { "Red" }
-                                elseif ($currentStatus -eq "Complete") { "Green" }
-                                else { "Cyan" }
-                            )
-                        }
-                        
-                        $lastStatus = $currentStatus
-                    }
-                    
-                    if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
-                        $completed = $true
-                        Write-Host "`n"
-                    }
-                }
-                catch {
-                    Write-Log "Error reading status: $($_.Exception.Message)" -Level Warning
-                }
-            }
-            
-            Start-Sleep -Milliseconds 500
-        }
-        
-        # Clear the progress line
-        Write-Host "`r                                                   " -NoNewline
-        
-        if ($completed) {
-            Write-Host "`rSystem cleanup completed!" -ForegroundColor Green
-            Write-Log "System cleanup completed via SYSTEM context" -Level Info
-            
-            # Display the SYSTEM log to the console for more visibility
-            if (Test-Path $logFile) {
-                Write-Host "`n===== SYSTEM Context Execution Log =====" -ForegroundColor Yellow
-                Get-Content -Path $logFile | ForEach-Object {
-                    Write-Host $_ -ForegroundColor DarkGray
-                }
-                Write-Host "===== End of SYSTEM Context Log =====" -ForegroundColor Yellow
-            }
-            
-            # Enhanced cleanup process
+        # Enhanced process monitoring
+        $iterationCount = 0
+        $maxRetries = 3
+        $retryDelay = 2
+
+        while ($iterationCount -lt $maxRetries) {
             try {
-                Write-Log "Initiating cleanup process" -Level Debug
-                
-                # Remove scheduled task first
-                if (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
-                    Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
-                    Write-Log "Unregistered scheduled task: $jobName" -Level Debug
-                    Start-Sleep -Seconds 2  # Give system time to release file handles
+                $currentStatus = "Starting iteration $($iterationCount + 1)..."
+                Write-Log $currentStatus -Level Info
+                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Cyan
+
+                # Check and release any existing file locks
+                if ([System.IO.File]::Exists($statusFile)) {
+                    try {
+                        [System.IO.File]::Delete($statusFile)
+                        Write-Log "Successfully cleared previous status file" -Level Debug
+                    }
+                    catch {
+                        Write-Log "Warning: Could not clear previous status file: $($_.Exception.Message)" -Level Warning
+                        Start-Sleep -Seconds $retryDelay
+                    }
                 }
-                
-                # Clean up files with retries
-                $filesToClean = @($executorScript, $systemAccessibleScriptPath, $markerFile, "${markerFile}.status", $logFile)
-                foreach ($file in $filesToClean) {
-                    $retryCount = 0
-                    $maxRetries = 3
-                    
-                    while ($retryCount -lt $maxRetries) {
+
+                # Monitor process with timeout
+                $processTimeout = (Get-Date).AddSeconds($TimeoutSeconds)
+                $completed = $false
+                $lastStatus = ""
+
+                while ((Get-Date) -lt $processTimeout -and -not $completed) {
+                    if ([System.IO.File]::Exists($statusFile)) {
                         try {
-                            if ([System.IO.File]::Exists($file)) {
-                                [System.IO.File]::Delete($file)
-                                Write-Log "Successfully removed: $file" -Level Debug
-                                break
+                            $currentStatus = [System.IO.File]::ReadAllText($statusFile)
+                            
+                            if ($currentStatus -ne $lastStatus) {
+                                Write-Host "`r$(' ' * 80)" -NoNewline
+                                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
+                                    if ($currentStatus.StartsWith("Error:")) { "Red" }
+                                    elseif ($currentStatus -eq "Complete") { "Green" }
+                                    else { "Cyan" }
+                                )
+                                
+                                $lastStatus = $currentStatus
+                                
+                                if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
+                                    $completed = $true
+                                    Write-Host "`n"
+                                    break
+                                }
                             }
                         }
                         catch {
-                            $retryCount++
-                            if ($retryCount -eq $maxRetries) {
-                                Write-Log "Warning: Could not remove file after $maxRetries attempts: $file" -Level Warning
-                            }
-                            Start-Sleep -Seconds 1
+                            Write-Log "Warning: Status file read error: $($_.Exception.Message)" -Level Warning
                         }
                     }
+                    
+                    Start-Sleep -Milliseconds 500
+                }
+
+                if ($completed) {
+                    break
+                }
+                
+                $iterationCount++
+                if ($iterationCount -lt $maxRetries) {
+                    Write-Log "Retrying iteration..." -Level Warning
+                    Start-Sleep -Seconds $retryDelay
                 }
             }
             catch {
-                Write-Log "Cleanup warning: $($_.Exception.Message)" -Level Warning
+                Write-Log "Error in iteration $($iterationCount + 1): $($_.Exception.Message)" -Level Error
+                $iterationCount++
+                if ($iterationCount -lt $maxRetries) {
+                    Write-Log "Retrying after error..." -Level Warning
+                    Start-Sleep -Seconds $retryDelay
+                }
             }
-        } else {
-            Write-Host "`rTimeout reached waiting for system cleanup to complete." -ForegroundColor Yellow
-            Write-Log "Timeout reached before completion." -Level Warning
         }
+
+        # Final cleanup with improved error handling
+        Write-Log "Performing final cleanup..." -Level Info
         
+        $filesToClean = @($executorScript, $systemAccessibleScriptPath, $markerFile, "${markerFile}.status", $logFile)
+        foreach ($file in $filesToClean) {
+            $retryCount = 0
+            while ($retryCount -lt $maxRetries) {
+                try {
+                    if ([System.IO.File]::Exists($file)) {
+                        [System.IO.File]::Delete($file)
+                        Write-Log "Successfully removed: $file" -Level Debug
+                        break
+                    }
+                }
+                catch {
+                    $retryCount++
+                    Write-Log "Cleanup retry $retryCount for $file" -Level Warning
+                    Start-Sleep -Seconds 1
+                    
+                    if ($retryCount -eq $maxRetries) {
+                        Write-Log "Warning: Could not remove file after $maxRetries attempts: $file" -Level Warning
+                    }
+                }
+            }
+        }
+
         return $completed
     }
     catch {
-        Write-Log "Error during SYSTEM context setup: $($_.Exception.Message)" -Level Error
+        Write-Log "Critical error during system context operation: $($_.Exception.Message)" -Level Error
         return $false
     }
 }
