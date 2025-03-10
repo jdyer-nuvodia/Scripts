@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 19:30:00 UTC
+# Last Updated: 2025-03-10 20:57:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.0
-# Additional Info: Added proper handling of Verbose/Debug modes and progress bar
+# Version: 1.9.0
+# Additional Info: Removed SID translation to separate script
 # =============================================================================
 
 <#
@@ -611,35 +611,6 @@ try {
         return $SortedPermissions.GetHashCode()
     }
 
-    # Add after the Compare-PermissionSets function and before the results display section
-    function Convert-SidToAccountName {
-        param (
-            [Parameter(Mandatory=$true)]
-            [string]$Identity
-        )
-        
-        try {
-            # Check if the identity is already in domain\user format
-            if ($Identity -match '^.*\\.*$' -or $Identity -match '^[^@]+@[^@]+$') {
-                return $Identity
-            }
-            
-            # Check if it's a SID
-            if ($Identity -match '^S-\d-(\d+-){1,14}\d+$') {
-                $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
-                $account = $sid.Translate([System.Security.Principal.NTAccount])
-                return $account.Value
-            }
-            
-            return $Identity
-        }
-        catch {
-            # Return original value if translation fails
-            Write-Log "Unable to translate identity: $Identity - $_" "Yellow"
-            return "$Identity (Unable to translate)"
-        }
-    }
-
     # Display results grouped by folder with separate tables
     Write-SafeOutput "`nDisplaying permissions by folder:" -Color Cyan
     [void]$OutputText.AppendLine("")
@@ -712,10 +683,7 @@ try {
         # Replace the SimplifiedPermissions select statement with this updated version
         $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object @{
             Name = 'Account'
-            Expression = { 
-                $accountName = Convert-SidToAccountName -Identity $_.IdentityReference
-                $accountName
-            }
+            Expression = { $_.IdentityReference }
         }, @{
             Name = 'Permissions'
             Expression = { 
@@ -867,162 +835,5 @@ catch {
         } catch {
             # We've tried everything possible
         }
-    }
-}
-
-# Initialize AD support variables
-$script:adDiagnostics = @{
-    LastError = $null
-    FailedTranslations = @{}
-    TranslationMethods = @{}
-    DomainControllers = @()
-    ConnectedDC = $null
-}
-
-# Initialize SID cache with well-known SIDs
-$script:sidCache = @{
-    'S-1-5-32-544' = 'BUILTIN\Administrators'
-    'S-1-5-32-545' = 'BUILTIN\Users'
-    'S-1-5-32-546' = 'BUILTIN\Guests'
-    'S-1-5-18' = 'NT AUTHORITY\SYSTEM'
-    'S-1-5-19' = 'NT AUTHORITY\LOCAL SERVICE'
-    'S-1-5-20' = 'NT AUTHORITY\NETWORK SERVICE'
-    'S-1-5-11' = 'NT AUTHORITY\Authenticated Users'
-    'S-1-1-0' = 'Everyone'
-    'S-1-5-4' = 'NT AUTHORITY\INTERACTIVE'
-}
-
-function Initialize-ADConnection {
-    try {
-        # Import AD module and validate connection
-        if (-not (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)) {
-            Import-Module ActiveDirectory -ErrorAction Stop
-        }
-        
-        # Get current domain info
-        $domain = Get-ADDomain -ErrorAction Stop
-        $script:adDiagnostics.DomainControllers = $domain.ReplicaDirectoryServers
-        $script:adDiagnostics.ConnectedDC = $env:LOGONSERVER.TrimStart("\\")
-        
-        Write-Log "Successfully connected to AD. Primary DC: $($script:adDiagnostics.ConnectedDC)" "Green"
-        return $true
-    }
-    catch {
-        Write-Log "AD Module initialization failed: $($_.Exception.Message)" "Red"
-        return $false
-    }
-}
-
-function Get-DetailedSIDError {
-    param (
-        [string]$SID,
-        [System.Management.Automation.ErrorRecord]$ErrorRecord
-    )
-    
-    $errorDetails = @{
-        SID = $SID
-        ErrorMessage = $ErrorRecord.Exception.Message
-        ErrorType = $ErrorRecord.Exception.GetType().Name
-        InnerError = if ($ErrorRecord.Exception.InnerException) { 
-            $ErrorRecord.Exception.InnerException.Message 
-        } else { 
-            "None" 
-        }
-        Stack = $ErrorRecord.ScriptStackTrace
-        DCAttempted = $script:adDiagnostics.ConnectedDC
-        ADModuleLoaded = $null -ne (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)
-    }
-    
-    $script:adDiagnostics.LastError = $errorDetails
-    
-    return @"
-SID Translation Error Details:
-SID: $SID
-Error Type: $($errorDetails.ErrorType)
-Message: $($errorDetails.ErrorMessage)
-Connected DC: $($errorDetails.DCAttempted)
-AD Module Loaded: $($errorDetails.ADModuleLoaded)
-Stack Trace: $($errorDetails.Stack)
-"@
-}
-
-function Convert-SidToAccountName {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Identity
-    )
-    
-    try {
-        # Return if not a SID
-        if (-not ($Identity -match '^S-\d-(\d+-){1,14}\d+$')) {
-            return $Identity
-        }
-
-        # Check cache first
-        if ($script:sidCache.ContainsKey($Identity)) {
-            Write-Log "Cache hit for SID: $Identity = $($script:sidCache[$Identity])" "Magenta"
-            return $script:sidCache[$Identity]
-        }
-
-        # Initialize AD connection if needed
-        if (-not $script:adDiagnostics.ConnectedDC) {
-            Initialize-ADConnection
-        }
-
-        # Try multiple translation methods
-        $translationMethods = @(
-            @{
-                Name = "Get-ADObject"
-                Method = {
-                    try {
-                        $obj = Get-ADObject -Identity $Identity -Properties samAccountName, distinguishedName -ErrorAction Stop
-                        if ($obj.samAccountName) {
-                            return $obj.samAccountName
-                        }
-                        return $null
-                    }
-                    catch {
-                        Write-Log "Get-ADObject method failed: $_" "Yellow"
-                        return $null
-                    }
-                }
-            },
-            @{
-                Name = "SecurityIdentifier"
-                Method = {
-                    try {
-                        $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
-                        $result = $sid.Translate([System.Security.Principal.NTAccount]).Value
-                        if ($result) {
-                            return $result
-                        }
-                        return $null
-                    }
-                    catch {
-                        Write-Log "SecurityIdentifier method failed: $_" "Yellow"
-                        return $null
-                    }
-                }
-            }
-        )
-
-        foreach ($method in $translationMethods) {
-            $result = & $method.Method
-            if ($result) {
-                $script:adDiagnostics.TranslationMethods[$Identity] = $method.Name
-                $script:sidCache[$Identity] = $result
-                Write-Log "Successfully translated SID using $($method.Name): $Identity -> $result" "Green"
-                return $result
-            }
-        }
-
-        # If all methods failed, get detailed error info
-        Write-Log "All translation methods failed for SID: $Identity" "Yellow"
-        return "SID: $Identity (Translation Failed - See Log)"
-    }
-    catch {
-        $errorDetails = Get-DetailedSIDError -SID $Identity -ErrorRecord $_
-        Write-Log $errorDetails "Red"
-        return "SID: $Identity (Critical Error)"
     }
 }
