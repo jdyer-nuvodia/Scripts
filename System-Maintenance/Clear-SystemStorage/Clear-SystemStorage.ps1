@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 21:02:00 UTC
+# Last Updated: 2025-03-10 21:05:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 4.1.0
-# Additional Info: Enhanced process monitoring for PowerShell 5.1+ compatibility
+# Additional Info: Enhanced process monitoring for real-time status display
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.0.7" -Level Info
+Write-Log "Script version: 4.1.0" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -150,93 +150,62 @@ function Start-SystemContext {
 `$VerbosePreference = 'Continue'
 Start-Transcript -Path '$logFile' -Force
 
-function Write-Progress {
-    param([string]`$Message)
-    `$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    "[`$timestamp] `$Message" | Out-File -FilePath '$logFile' -Append
+function Write-StatusFile {
+    param([string]`$Status)
+    Set-Content -Path '${markerFile}.status' -Value `$Status -Force
 }
 
 try {
-    Write-Progress '[SYSTEM EXECUTOR] Starting execution of main script as SYSTEM'
+    Write-StatusFile "Starting system cleanup process..."
     
     # Run cleanup with detailed output
-    Write-Progress 'Configuring Disk Cleanup settings...'
+    Write-StatusFile "Configuring cleanup settings..."
     `$sagesetProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sageset:1" -Wait -PassThru
-    Write-Progress "Sageset configuration completed with exit code: `$(`$sagesetProcess.ExitCode)"
+    Write-StatusFile "Configuration completed. Starting cleanup..."
     
-    Write-Progress 'Starting Disk Cleanup process...'
     `$cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
     `$processId = `$cleanmgrProcess.Id
-    Write-Progress "Disk Cleanup started with PID: `$processId"
-    
     `$startTime = Get-Date
-    `$lastOutputTime = Get-Date
-    `$noActivityCounter = 0
     
     while (!`$cleanmgrProcess.HasExited) {
         try {
             `$process = Get-Process -Id `$processId -ErrorAction Stop
-            `$currentTime = Get-Date
+            `$wmi = Get-WmiObject -Class Win32_Process -Filter "ProcessId = `$processId"
             
-            # Get process metrics using WMI for better compatibility
-            `$wmiProcess = Get-WmiObject -Class Win32_Process -Filter "ProcessId = `$processId"
-            if (`$wmiProcess) {
-                `$cpuInfo = Get-WmiObject -Class Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess = `$processId"
-                `$cpuPercent = if (`$cpuInfo) { [math]::Round(`$cpuInfo.PercentProcessorTime, 1) } else { 0 }
-                `$memoryMB = [math]::Round(`$wmiProcess.WorkingSetSize / 1MB, 2)
+            if (`$wmi) {
+                `$cpuCounter = Get-Counter -Counter "\Process(cleanmgr)\% Processor Time" -ErrorAction SilentlyContinue
+                `$cpuUsage = if (`$cpuCounter) {
+                    [math]::Round(`$cpuCounter.CounterSamples[0].CookedValue, 1)
+                } else { 0 }
                 
-                `$activity = `$cpuPercent -gt 0.1 -or `$memoryMB -gt 0
-                if (`$activity) {
-                    `$noActivityCounter = 0
-                } else {
-                    `$noActivityCounter++
-                }
+                `$memoryMB = [math]::Round(`$process.WorkingSet64 / 1MB, 2)
+                `$runtime = (Get-Date) - `$startTime
                 
-                `$elapsedTime = `$currentTime - `$startTime
-                `$status = @(
-                    "Runtime: `$(`$elapsedTime.ToString('mm\:ss'))",
-                    "CPU: `$cpuPercent%",
-                    "Memory: `${memoryMB}MB",
-                    "Status: `$(if (`$activity) { 'Active' } else { 'Idle' })"
-                ) -join ' | '
+                `$status = @{
+                    Runtime = `$runtime.ToString('mm\:ss')
+                    CPU = `$cpuUsage
+                    Memory = `$memoryMB
+                    Path = `$wmi.CommandLine
+                } | ConvertTo-Json
                 
-                if ((`$currentTime - `$lastOutputTime).TotalSeconds -ge 2) {
-                    Write-Progress "`$status"
-                    `$lastOutputTime = `$currentTime
-                }
+                Write-StatusFile `$status
             }
             
             Start-Sleep -Seconds 1
-            
-            if (`$noActivityCounter -ge 120) {
-                Write-Progress "Warning: No activity detected for 2 minutes, process may be stuck"
-                break
-            }
         }
         catch {
-            Write-Progress "Error monitoring process: `$(`$_.Exception.Message)"
+            Write-StatusFile "Error: `$(`$_.Exception.Message)"
             break
         }
     }
     
-    `$duration = (Get-Date) - `$startTime
-    Write-Progress "Disk Cleanup completed in `$(`$duration.ToString('mm\:ss'))"
-    
-    # Continue with main script execution
+    # Continue with main script
     & '$systemAccessibleScriptPath' -Debug -Verbose *>> '$logFile'
-    `$exitCode = `$LASTEXITCODE
-    Write-Progress "[SYSTEM EXECUTOR] Script completed with exit code: `$exitCode"
-    Set-Content -Path '$markerFile' -Value "Complete:`$exitCode" -Force
+    Write-StatusFile "Complete"
 }
 catch {
-    Write-Progress "[SYSTEM EXECUTOR] Error occurred: `$(`$_.Exception.Message)"
-    Write-Error "[SYSTEM EXECUTOR] Error occurred: `$(`$_.Exception.Message)"
-    Set-Content -Path '$markerFile' -Value 'Error:1' -Force
+    Write-StatusFile "Error: `$(`$_.Exception.Message)"
     exit 1
-}
-finally {
-    Write-Progress '[SYSTEM EXECUTOR] Execution complete.'
-    Stop-Transcript
 }
 "@
         Write-Log "Creating executor script at $executorScript" -Level Verbose
@@ -254,38 +223,45 @@ finally {
         
         Write-Log "Waiting for system cleanup to complete..." -Level Info
         Write-Host "`n===== System Cleanup Progress =====" -ForegroundColor Cyan
-        Write-Host "Task running as SYSTEM. This may take a few minutes..." -ForegroundColor Cyan
+        Write-Host "Task running as SYSTEM. Monitoring cleanup progress..." -ForegroundColor Cyan
         
+        $statusFile = "${markerFile}.status"
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
+        $lastStatus = ""
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
-            if (Test-Path $markerFile) {
-                $completed = $true
-                Write-Log "Completion marker found." -Level Verbose
-                break
-            }
-            
-            # Show progress from log file
-            if (Test-Path $logFile) {
-                try {
-                    $latestLogs = Get-Content -Path $logFile -Tail 1 -ErrorAction SilentlyContinue
-                    if ($latestLogs) {
-                        # Clear the previous line
-                        Write-Host "`r                                                                     " -NoNewline
-                        
-                        # Write the latest log entry
-                        if ($latestLogs -match '^\[(.*?)\](.*)$') {
-                            $time = $matches[1]
-                            $message = $matches[2].Trim()
-                            Write-Host "`r[$time]" -NoNewline -ForegroundColor DarkGray
-                            Write-Host " $message" -ForegroundColor Cyan
-                        } else {
-                            Write-Host "`r$latestLogs" -ForegroundColor Cyan
+            if (Test-Path $statusFile) {
+                $currentStatus = Get-Content $statusFile -Raw
+                
+                if ($currentStatus -ne $lastStatus) {
+                    if ($currentStatus.StartsWith("{")) {
+                        try {
+                            $statusObj = $currentStatus | ConvertFrom-Json
+                            
+                            # Clear the line and write the new status
+                            Write-Host "`r$(' ' * 80)" -NoNewline
+                            Write-Host "`rRuntime: $($statusObj.Runtime) | CPU: $($statusObj.CPU)% | Memory: $($statusObj.Memory)MB" -NoNewline -ForegroundColor Cyan
+                        }
+                        catch {
+                            Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Yellow
                         }
                     }
-                } catch {
-                    # Silently continue if we can't read the log
+                    else {
+                        Write-Host "`r$(' ' * 80)" -NoNewline
+                        Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
+                            if ($currentStatus.StartsWith("Error:")) { "Red" }
+                            elseif ($currentStatus -eq "Complete") { "Green" }
+                            else { "Cyan" }
+                        )
+                    }
+                    
+                    $lastStatus = $currentStatus
+                }
+                
+                if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
+                    $completed = $true
+                    Write-Host "`n"
                 }
             }
             
