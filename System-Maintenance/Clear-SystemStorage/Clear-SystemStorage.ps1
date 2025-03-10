@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 21:32:00 UTC
+# Last Updated: 2025-03-11 21:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.13
-# Additional Info: Enhanced process monitoring and file cleanup logic
+# Version: 4.0.14
+# Additional Info: Enhanced file locking and retry mechanism for status file handling
 # =============================================================================
 
 <#
@@ -262,11 +262,18 @@ catch {
                 Write-Log $currentStatus -Level Info
                 Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Cyan
 
-                # Check and release any existing file locks
+                # Implement file stream with proper locking
                 if ([System.IO.File]::Exists($statusFile)) {
                     try {
+                        $fs = [System.IO.FileStream]::new($statusFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+                        $fs.Close()
+                        $fs.Dispose()
                         [System.IO.File]::Delete($statusFile)
                         Write-Log "Successfully cleared previous status file" -Level Debug
+                    }
+                    catch [System.IO.IOException] {
+                        Write-Log "Status file is locked, waiting for release..." -Level Warning
+                        Start-Sleep -Seconds $retryDelay
                     }
                     catch {
                         Write-Log "Warning: Could not clear previous status file: $($_.Exception.Message)" -Level Warning
@@ -274,7 +281,7 @@ catch {
                     }
                 }
 
-                # Monitor process with timeout
+                # Monitor process with timeout and proper file handling
                 $processTimeout = (Get-Date).AddSeconds($TimeoutSeconds)
                 $completed = $false
                 $lastStatus = ""
@@ -282,7 +289,12 @@ catch {
                 while ((Get-Date) -lt $processTimeout -and -not $completed) {
                     if ([System.IO.File]::Exists($statusFile)) {
                         try {
-                            $currentStatus = [System.IO.File]::ReadAllText($statusFile)
+                            # Use FileStream with proper sharing mode
+                            $fs = [System.IO.FileStream]::new($statusFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                            $sr = [System.IO.StreamReader]::new($fs)
+                            $currentStatus = $sr.ReadToEnd()
+                            $sr.Close()
+                            $fs.Close()
                             
                             if ($currentStatus -ne $lastStatus) {
                                 Write-Host "`r$(' ' * 80)" -NoNewline
@@ -301,8 +313,16 @@ catch {
                                 }
                             }
                         }
+                        catch [System.IO.IOException] {
+                            Write-Log "Status file is being written to, retrying..." -Level Warning
+                            Start-Sleep -Milliseconds 100
+                        }
                         catch {
                             Write-Log "Warning: Status file read error: $($_.Exception.Message)" -Level Warning
+                        }
+                        finally {
+                            if ($sr) { $sr.Dispose() }
+                            if ($fs) { $fs.Dispose() }
                         }
                     }
                     
@@ -338,14 +358,23 @@ catch {
             while ($retryCount -lt $maxRetries) {
                 try {
                     if ([System.IO.File]::Exists($file)) {
+                        # Use FileStream to properly release file handles
+                        $fs = [System.IO.FileStream]::new($file, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+                        $fs.Close()
+                        $fs.Dispose()
                         [System.IO.File]::Delete($file)
                         Write-Log "Successfully removed: $file" -Level Debug
                         break
                     }
                 }
+                catch [System.IO.IOException] {
+                    $retryCount++
+                    Write-Log "File is locked, cleanup retry $retryCount for $file" -Level Warning
+                    Start-Sleep -Seconds 2
+                }
                 catch {
                     $retryCount++
-                    Write-Log "Cleanup retry $retryCount for $file" -Level Warning
+                    Write-Log "Cleanup retry $retryCount for $file: $($_.Exception.Message)" -Level Warning
                     Start-Sleep -Seconds 1
                     
                     if ($retryCount -eq $maxRetries) {
