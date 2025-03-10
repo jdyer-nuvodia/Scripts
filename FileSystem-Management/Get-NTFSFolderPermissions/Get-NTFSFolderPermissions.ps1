@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 20:57:00 UTC
+# Last Updated: 2025-03-10 20:59:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.0
-# Additional Info: Removed SID translation to separate script
+# Version: 1.10.0
+# Additional Info: Integrated AD SID resolution directly into script
 # =============================================================================
 
 <#
@@ -475,6 +475,50 @@ function Get-FolderPermissionsModule {
     }
 }
 
+# Add AD SID Resolution Function
+function Resolve-ADAccountFromSID {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$SID,
+        [string]$DomainController
+    )
+    
+    try {
+        # Skip if not a valid SID format
+        if (-not ($SID -match '^S-\d-\d+(-\d+)+$')) {
+            return $SID
+        }
+
+        # Check for AD module
+        if (-not (Get-Module -ListAvailable ActiveDirectory)) {
+            Write-Log "Active Directory module not available - displaying raw SID" "Yellow"
+            return $SID
+        }
+
+        Import-Module ActiveDirectory -ErrorAction Stop
+
+        $params = @{
+            Filter     = {ObjectSID -eq $SID}
+            Properties = 'Name', 'SamAccountName'
+            ErrorAction = 'Stop'
+        }
+
+        if ($DomainController) {
+            $params['Server'] = $DomainController
+        }
+
+        $result = Get-ADObject @params
+        if ($result.SamAccountName) {
+            return $result.SamAccountName
+        }
+        return $result.Name
+    }
+    catch {
+        Write-Log "Failed to resolve SID ($SID): $($_.Exception.Message)" "Yellow"
+        return $SID
+    }
+}
+
 function Start-FolderProcessing {
     param(
         [array]$Folders,
@@ -683,7 +727,19 @@ try {
         # Replace the SimplifiedPermissions select statement with this updated version
         $SimplifiedPermissions = $CurrentFolderPermissions | Select-Object @{
             Name = 'Account'
-            Expression = { $_.IdentityReference }
+            Expression = { 
+                $identity = $_.IdentityReference
+                if ($identity -match '^S-\d-\d+(-\d+)+$') {
+                    $resolved = Resolve-ADAccountFromSID -SID $identity
+                    if ($resolved -ne $identity) {
+                        "$resolved ($identity)"
+                    } else {
+                        $identity
+                    }
+                } else {
+                    $identity
+                }
+            }
         }, @{
             Name = 'Permissions'
             Expression = { 
