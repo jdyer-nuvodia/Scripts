@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 5-03-06 21:06:43 UTC
+# Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 20:59:00 UTC
+# Last Updated: 2025-03-10 21:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.0
-# Additional Info: Integrated AD SID resolution directly into script
+# Version: 1.11.0
+# Additional Info: Added SkipADResolution parameter and improved SID resolution handling
 # =============================================================================
 
 <#
@@ -37,6 +37,8 @@
     Maximum folder depth to traverse. Set to 0 for unlimited depth. Default is 0.
 .PARAMETER SkipUniquenessCounting
     Skip counting unique permissions for large directories to improve performance. Default is false.
+.PARAMETER SkipADResolution
+    Skip Active Directory SID resolution to avoid AD module dependency. Default is false.
 .EXAMPLE
     .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Important\Data"
     Retrieves NTFS permissions for C:\Important\Data and all subfolders, and exports the results to a text file.
@@ -46,6 +48,9 @@
 .EXAMPLE
     .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\VeryLargeFolder" -MaxDepth 3
     Only processes folders up to a maximum depth of 3 levels from the root folder.
+.EXAMPLE
+    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Data" -SkipADResolution
+    Processes permissions without attempting to resolve SIDs through Active Directory.
 .NOTES
     Security Level: Low
     Required Permissions: Read access to the folders being scanned
@@ -69,7 +74,10 @@ param (
     [int]$MaxDepth = 0,
     
     [Parameter(Mandatory = $false)]
-    [switch]$SkipUniquenessCounting
+    [switch]$SkipUniquenessCounting,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipADResolution
 )
 
 $StartTime = [DateTime]::Now
@@ -476,6 +484,26 @@ function Get-FolderPermissionsModule {
 }
 
 # Add AD SID Resolution Function
+function Initialize-ADModule {
+    if ($SkipADResolution) {
+        return $false
+    }
+
+    try {
+        $module = Get-Module -Name ActiveDirectory -ListAvailable -ErrorAction Stop
+        if ($module) {
+            Import-Module ActiveDirectory -ErrorAction Stop
+            return $true
+        }
+        return $false
+    }
+    catch {
+        Write-Log "Unable to load Active Directory module: $($_.Exception.Message)" "Yellow"
+        return $false
+    }
+}
+
+# Replace the existing Resolve-ADAccountFromSID function with this updated version
 function Resolve-ADAccountFromSID {
     param(
         [Parameter(Mandatory=$true)]
@@ -484,21 +512,62 @@ function Resolve-ADAccountFromSID {
     )
     
     try {
+        # Skip if SID resolution is disabled
+        if ($SkipADResolution) {
+            return $SID
+        }
+
         # Skip if not a valid SID format
         if (-not ($SID -match '^S-\d-\d+(-\d+)+$')) {
             return $SID
         }
 
-        # Check for AD module
-        if (-not (Get-Module -ListAvailable ActiveDirectory)) {
-            Write-Log "Active Directory module not available - displaying raw SID" "Yellow"
-            return $SID
+        # Check for static/well-known SIDs first
+        $wellKnownSIDs = @{
+            'S-1-0'='Null Authority'
+            'S-1-0-0'='Nobody'
+            'S-1-1'='World Authority'
+            'S-1-1-0'='Everyone'
+            'S-1-2'='Local Authority'
+            'S-1-2-0'='Local'
+            'S-1-2-1'='Console Logon'
+            'S-1-3'='Creator Authority'
+            'S-1-3-0'='Creator Owner'
+            'S-1-3-1'='Creator Group'
+            'S-1-5-18'='Local System'
+            'S-1-5-19'='NT Authority\Local Service'
+            'S-1-5-20'='NT Authority\Network Service'
+            'S-1-5-32-544'='BUILTIN\Administrators'
+            'S-1-5-32-545'='BUILTIN\Users'
+            'S-1-5-32-546'='BUILTIN\Guests'
+            'S-1-5-32-547'='BUILTIN\Power Users'
         }
 
-        Import-Module ActiveDirectory -ErrorAction Stop
+        if ($wellKnownSIDs.ContainsKey($SID)) {
+            return $wellKnownSIDs[$SID]
+        }
+
+        # Try to translate using .NET first (works for local accounts and some domain accounts)
+        try {
+            $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
+            if ($ntAccount) {
+                return $ntAccount.Value
+            }
+        }
+        catch {
+            # Continue to AD module if .NET translation fails
+        }
+
+        # Only proceed with AD module if it's available
+        if (-not (Get-Module ActiveDirectory)) {
+            # Try to load the module only once
+            if (-not (Initialize-ADModule)) {
+                return $SID
+            }
+        }
 
         $params = @{
-            Filter     = {ObjectSID -eq $SID}
+            Filter     = "ObjectSID -eq '$SID'"
             Properties = 'Name', 'SamAccountName'
             ErrorAction = 'Stop'
         }
@@ -514,7 +583,7 @@ function Resolve-ADAccountFromSID {
         return $result.Name
     }
     catch {
-        Write-Log "Failed to resolve SID ($SID): $($_.Exception.Message)" "Yellow"
+        # Return original SID if resolution fails
         return $SID
     }
 }
