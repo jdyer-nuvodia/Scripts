@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 2025-03-06 21:06:43 UTC
+# Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 16:04:00 UTC
+# Last Updated: 2025-03-10 16:09:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.1
-# Additional Info: Fixed unused variable and added system name to log filename
+# Version: 1.7.0
+# Additional Info: Added robust SID translation with caching
 # =============================================================================
 
 <#
@@ -791,6 +791,36 @@ catch {
     }
 }
 
+# Add SID translation cache
+$script:sidCache = @{}
+
+function Convert-SIDToName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Security.Principal.SecurityIdentifier]$SID
+    )
+
+    try {
+        # Check cache first
+        if ($script:sidCache.ContainsKey($SID.Value)) {
+            return $script:sidCache[$SID.Value]
+        }
+
+        # Use .NET methods for translation
+        $ntAccount = $SID.Translate([System.Security.Principal.NTAccount])
+        $name = $ntAccount.Value
+
+        # Cache the result
+        $script:sidCache[$SID.Value] = $name
+        return $name
+    }
+    catch {
+        Write-Host "Failed to translate SID: $($SID.Value)" -ForegroundColor Yellow
+        return $SID.Value
+    }
+}
+
+# Update the permission processing to use the new function
 function Get-FolderPermissions {
     param (
         [string]$FolderPath
