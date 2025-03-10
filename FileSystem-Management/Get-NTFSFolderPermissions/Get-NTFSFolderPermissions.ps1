@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 21:15:00 UTC
+# Last Updated: 2025-03-10 21:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.0
-# Additional Info: Added SkipADResolution parameter and improved SID resolution handling
+# Version: 1.11.2
+# Additional Info: Fix function definition order for Initialize-ADModule
 # =============================================================================
 
 <#
@@ -483,7 +483,7 @@ function Get-FolderPermissionsModule {
     }
 }
 
-# Add AD SID Resolution Function
+# Function must be defined before first usage
 function Initialize-ADModule {
     if ($SkipADResolution) {
         return $false
@@ -503,6 +503,12 @@ function Initialize-ADModule {
     }
 }
 
+# Initialize AD module at startup
+$Global:ADModuleAvailable = Initialize-ADModule
+if (-not $Global:ADModuleAvailable -and -not $SkipADResolution) {
+    Write-Log "Active Directory module not available. SIDs will not be resolved. Use -SkipADResolution to suppress this warning." -Color "Yellow"
+}
+
 # Replace the existing Resolve-ADAccountFromSID function with this updated version
 function Resolve-ADAccountFromSID {
     param(
@@ -512,8 +518,8 @@ function Resolve-ADAccountFromSID {
     )
     
     try {
-        # Skip if SID resolution is disabled
-        if ($SkipADResolution) {
+        # Skip if SID resolution is disabled or module not available
+        if ($SkipADResolution -or -not $Global:ADModuleAvailable) {
             return $SID
         }
 
