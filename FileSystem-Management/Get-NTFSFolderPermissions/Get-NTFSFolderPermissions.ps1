@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 17:26:00 UTC
+# Last Updated: 2025-03-10 17:53:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.8
-# Additional Info: Fixed unapproved verb usage in function name
+# Version: 1.7.9
+# Additional Info: Fixed duplicate Debug parameter definition
 # =============================================================================
 
 <#
@@ -282,9 +282,9 @@ function Write-Log {
     # Always write to log file
     [void]$OutputText.AppendLine($Message)
     
-    # Only write debug messages if Debug switch is present
+    # Only write debug messages if script:Debug switch is present
     if ($Message.StartsWith("[DEBUG]")) {
-        if ($Debug) {
+        if ($script:Debug) {
             Write-Host $Message -ForegroundColor $Color -NoNewline:$NoNewline
         }
         return
