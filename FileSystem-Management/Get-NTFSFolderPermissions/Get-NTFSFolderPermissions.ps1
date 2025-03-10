@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 16:36:00 UTC
+# Last Updated: 2025-03-10 17:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.3
-# Additional Info: Enhanced SID translation with domain context and offline support
+# Version: 1.7.4
+# Additional Info: Enhanced Active Directory integration and SID translation diagnostics
 # =============================================================================
 
 <#
@@ -936,5 +936,149 @@ function Get-FolderPermissions {
     catch {
         Write-DiagnosticMessage "Error accessing permissions for $FolderPath : $_" -Color Red
         return $null
+    }
+}
+
+# Add Active Directory Type Acceleration
+using assembly System.DirectoryServices.AccountManagement
+using namespace System.DirectoryServices.AccountManagement
+
+# Initialize diagnostic tracking
+$script:adDiagnostics = @{
+    LastError = $null
+    FailedTranslations = @{}
+    TranslationMethods = @{}
+    DomainControllers = @()
+    ConnectedDC = $null
+}
+
+function Initialize-ADConnection {
+    try {
+        # Import AD module and validate connection
+        Import-Module ActiveDirectory -ErrorAction Stop
+        
+        # Get current domain info
+        $domain = Get-ADDomain
+        $script:adDiagnostics.DomainControllers = $domain.ReplicaDirectoryServers
+        $script:adDiagnostics.ConnectedDC = $env:LOGONSERVER.TrimStart("\\")
+        
+        Write-Log "Successfully connected to AD. Primary DC: $($script:adDiagnostics.ConnectedDC)" "Green"
+        return $true
+    }
+    catch {
+        Write-Log "AD Module initialization failed: $($_.Exception.Message)" "Red"
+        return $false
+    }
+}
+
+function Get-DetailedSIDError {
+    param (
+        [string]$SID,
+        [System.Exception]$Error
+    )
+    
+    $errorDetails = @{
+        SID = $SID
+        ErrorMessage = $Error.Message
+        ErrorType = $Error.GetType().Name
+        InnerError = if ($Error.InnerException) { $Error.InnerException.Message } else { "None" }
+        Stack = $Error.StackTrace
+        DCAttempted = $script:adDiagnostics.ConnectedDC
+        ADModuleLoaded = $null -ne (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)
+    }
+    
+    # Add to diagnostics
+    $script:adDiagnostics.LastError = $errorDetails
+    
+    return "SID Translation Error for $SID`n" +
+           "Error Type: $($errorDetails.ErrorType)`n" +
+           "Message: $($errorDetails.ErrorMessage)`n" +
+           "Connected DC: $($errorDetails.DCAttempted)`n" +
+           "AD Module: $($errorDetails.ADModuleLoaded)"
+}
+
+function Convert-SidToAccountName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Identity
+    )
+    
+    try {
+        # Return if not a SID
+        if (-not ($Identity -match '^S-\d-(\d+-){1,14}\d+$')) {
+            return $Identity
+        }
+
+        # Check cache first
+        if ($script:sidCache.ContainsKey($Identity)) {
+            Write-Log "Cache hit for SID: $Identity = $($script:sidCache[$Identity])" "Magenta"
+            return $script:sidCache[$Identity]
+        }
+
+        # Initialize AD connection if needed
+        if (-not $script:adDiagnostics.ConnectedDC) {
+            Initialize-ADConnection
+        }
+
+        # Try multiple translation methods
+        $translationMethods = @(
+            @{
+                Name = "AD Module"
+                Method = {
+                    $obj = Get-ADObject -Identity $Identity -Properties sAMAccountName, distinguishedName -ErrorAction Stop
+                    $obj.sAMAccountName
+                }
+            },
+            @{
+                Name = "Principal Context"
+                Method = {
+                    $ctx = [PrincipalContext]::new([ContextType]::Domain)
+                    $principal = [Principal]::FindByIdentity($ctx, [IdentityType]::Sid, $Identity)
+                    $principal.Name
+                }
+            },
+            @{
+                Name = "Direct SID Translation"
+                Method = {
+                    $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
+                    $sid.Translate([System.Security.Principal.NTAccount]).Value
+                }
+            }
+        )
+
+        $lastError = $null
+        foreach ($method in $translationMethods) {
+            try {
+                $result = & $method.Method
+                if ($result) {
+                    # Track successful method
+                    $script:adDiagnostics.TranslationMethods[$Identity] = $method.Name
+                    
+                    # Cache the result
+                    $script:sidCache[$Identity] = $result
+                    Write-Log "Successfully translated SID using $($method.Name): $Identity -> $result" "Green"
+                    return $result
+                }
+            }
+            catch {
+                $lastError = $_
+                Write-Log "Method $($method.Name) failed for SID $Identity : $($_.Exception.Message)" "Yellow"
+                continue
+            }
+        }
+
+        # If all methods failed, log detailed error and return formatted SID
+        $errorDetails = Get-DetailedSIDError -SID $Identity -Error $lastError
+        Write-Log $errorDetails "Red"
+        
+        # Track failed translation
+        $script:adDiagnostics.FailedTranslations[$Identity] = $errorDetails
+        
+        return "SID: $Identity (Translation Failed - See Log)"
+    }
+    catch {
+        $errorDetails = Get-DetailedSIDError -SID $Identity -Error $_
+        Write-Log $errorDetails "Red"
+        return "SID: $Identity (Critical Error)"
     }
 }
