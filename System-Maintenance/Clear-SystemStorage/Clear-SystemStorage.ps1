@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 20:33:00 UTC
+# Last Updated: 2025-03-10 20:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.7
-# Additional Info: Enhanced process monitoring for disk cleanup status
+# Version: 4.0.8
+# Additional Info: Updated script header documentation to meet standards
 # =============================================================================
 
 <#
@@ -149,24 +149,64 @@ function Start-SystemContext {
 `$DebugPreference = 'Continue'
 `$VerbosePreference = 'Continue'
 Start-Transcript -Path '$logFile' -Force
+
+function Write-Progress {
+    param([string]`$Message)
+    `$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    "[`$timestamp] `$Message" | Out-File -FilePath '$logFile' -Append
+}
+
 try {
-    Write-Host '[SYSTEM EXECUTOR] Starting execution of main script as SYSTEM'
-    # Run with debug and verbose output enabled
-    & '$systemAccessibleScriptPath' -Debug -Verbose *> '$logFile'
+    Write-Progress '[SYSTEM EXECUTOR] Starting execution of main script as SYSTEM'
+    
+    # Run cleanup with detailed output
+    Write-Progress 'Configuring Disk Cleanup settings...'
+    `$sagesetProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sageset:1" -Wait -PassThru
+    Write-Progress "Sageset configuration completed with exit code: `$(`$sagesetProcess.ExitCode)"
+    
+    Write-Progress 'Starting Disk Cleanup process...'
+    `$cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
+    `$processId = `$cleanmgrProcess.Id
+    Write-Progress "Disk Cleanup started with PID: `$processId"
+    
+    `$startTime = Get-Date
+    `$lastCPU = 0
+    `$lastMemory = 0
+    
+    while (!`$cleanmgrProcess.HasExited) {
+        try {
+            `$process = Get-Process -Id `$processId -ErrorAction Stop
+            `$currentCPU = `$process.CPU
+            `$currentMemory = [math]::Round(`$process.WorkingSet64 / 1MB, 2)
+            
+            `$status = "Cleanup in progress - CPU: `$([math]::Round(`$currentCPU, 1))%, Memory: `${currentMemory}MB"
+            Write-Progress `$status
+            
+            Start-Sleep -Seconds 2
+        }
+        catch {
+            Write-Progress "Error monitoring cleanup: `$(`$_.Exception.Message)"
+            break
+        }
+    }
+    
+    `$duration = (Get-Date) - `$startTime
+    Write-Progress "Disk Cleanup completed in `$(`$duration.ToString('mm\:ss'))"
+    
+    # Continue with main script execution
+    & '$systemAccessibleScriptPath' -Debug -Verbose *>> '$logFile'
     `$exitCode = `$LASTEXITCODE
-    Write-Host "[SYSTEM EXECUTOR] Script completed with exit code: `$exitCode"
-    # Always create marker file to indicate completion
+    Write-Progress "[SYSTEM EXECUTOR] Script completed with exit code: `$exitCode"
     Set-Content -Path '$markerFile' -Value "Complete:`$exitCode" -Force
 }
 catch {
-    Write-Host '[SYSTEM EXECUTOR] Error occurred: ' + `$_.Exception.Message -ForegroundColor Red
-    Write-Error '[SYSTEM EXECUTOR] Error occurred: ' + `$_.Exception.Message
-    # Create marker even on error
+    Write-Progress "[SYSTEM EXECUTOR] Error occurred: `$(`$_.Exception.Message)"
+    Write-Error "[SYSTEM EXECUTOR] Error occurred: `$(`$_.Exception.Message)"
     Set-Content -Path '$markerFile' -Value 'Error:1' -Force
     exit 1
 }
 finally {
-    Write-Host '[SYSTEM EXECUTOR] Execution complete.'
+    Write-Progress '[SYSTEM EXECUTOR] Execution complete.'
     Stop-Transcript
 }
 "@
@@ -199,29 +239,30 @@ finally {
                 break
             }
             
-            # Show a simple spinner to indicate progress
-            $counter++
-            $progressChar = $progressChars[$counter % $progressChars.Length]
-            $timeNow = Get-Date -Format "HH:mm:ss"
-            Write-Host "`r[$timeNow] Processing $progressChar" -NoNewline -ForegroundColor Cyan
-            
-            Start-Sleep -Seconds 1
-            
-            # Check if the log file exists and show latest entries every second
+            # Show progress from log file
             if (Test-Path $logFile) {
                 try {
-                    $latestLogs = Get-Content -Path $logFile -Tail 2 -ErrorAction SilentlyContinue
+                    $latestLogs = Get-Content -Path $logFile -Tail 1 -ErrorAction SilentlyContinue
                     if ($latestLogs) {
-                        Write-Host "`r                                                                     " -NoNewline
-                        $latestLog = $latestLogs | Where-Object { $_ -match '\S' } | Select-Object -Last 1
-                        if ($latestLog) {
-                            Write-Host "`r$timeNow - $latestLog" -ForegroundColor Cyan
+                        # Clear the previous line
+                        Write-Host "`r                                                                                " -NoNewline
+                        
+                        # Write the latest log entry
+                        if ($latestLogs -match '^\[(.*?)\](.*)$') {
+                            $time = $matches[1]
+                            $message = $matches[2].Trim()
+                            Write-Host "`r[$time]" -NoNewline -ForegroundColor DarkGray
+                            Write-Host " $message" -ForegroundColor Cyan
+                        } else {
+                            Write-Host "`r$latestLogs" -ForegroundColor Cyan
                         }
                     }
                 } catch {
                     # Silently continue if we can't read the log
                 }
             }
+            
+            Start-Sleep -Milliseconds 500
         }
         
         # Clear the progress line
