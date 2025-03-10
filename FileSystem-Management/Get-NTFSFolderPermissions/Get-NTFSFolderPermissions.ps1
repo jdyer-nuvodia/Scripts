@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 17:25:00 UTC
+# Last Updated: 2025-03-10 17:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.7
-# Additional Info: Added Debug parameter support and progress bar functionality
+# Version: 1.7.8
+# Additional Info: Fixed unapproved verb usage in function name
 # =============================================================================
 
 <#
@@ -314,7 +314,7 @@ function Write-ProgressBar {
     }
 }
 
-function Process-Folder {
+function Invoke-FolderProcessing {
     param(
         [string]$Path,
         [int]$CurrentCount,
