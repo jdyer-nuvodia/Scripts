@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 18:45:00 UTC
+# Last Updated: 2025-03-10 18:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.11
-# Additional Info: Fixed header formatting to comply with standards
+# Version: 2.1.12
+# Additional Info: Fixed initial path scanning to start from root directory
 # =============================================================================
 
 # Requires -Version 5.1
@@ -162,10 +162,11 @@
     2.1.8 - Moved processing results header to transcript-only logging
     2.1.9 - Fixed incorrect root directory processing order
     2.1.10 - Fixed syntax errors in Try-Catch blocks
+    2.1.12 - Fixed initial path scanning to start from root directory
 #>
 
 param (
-    [string]$Path = 'C:',
+    [string]$Path = 'C:\',  # Note the explicit backslash
     [int]$MaxDepth = 10,
     [ValidateRange(1, 50)]
     [int]$Top = 3,
@@ -788,10 +789,13 @@ function Get-FolderSize {
     )
 
     try {
+        # Normalize path to ensure consistent formatting
+        $FolderPath = [System.IO.Path]::GetFullPath($FolderPath)
+        
         if ($CurrentDepth -gt $MaxDepth) {
             return @{ 
-                ProcessedFolders = $false; 
-                HasSubfolders = $false; 
+                ProcessedFolders = $false
+                HasSubfolders = $false
                 CompletionMessageShown = $false
             }
         }
@@ -800,8 +804,8 @@ function Get-FolderSize {
         if (-not (Test-Path -Path $folderPath -PathType Container)) {
             Write-Warning "Path '$FolderPath' does not exist or is not a directory."
             return @{ 
-                ProcessedFolders = $false; 
-                HasSubfolders = $false; 
+                ProcessedFolders = $false
+                HasSubfolders = $false
                 CompletionMessageShown = $false
             }
         }
@@ -891,15 +895,15 @@ function Get-FolderSize {
             }
             
             return @{ 
-                ProcessedFolders = $true;
-                HasSubfolders = $true;
+                ProcessedFolders = $true
+                HasSubfolders = $true
                 CompletionMessageShown = $completionMessageShown
             }
         } else {
             Write-Host "No subfolders found to process." -ForegroundColor Yellow
             return @{ 
-                ProcessedFolders = $true;
-                HasSubfolders = $false;
+                ProcessedFolders = $true
+                HasSubfolders = $false
                 CompletionMessageShown = $false
             }
         }
@@ -907,8 +911,8 @@ function Get-FolderSize {
     catch {
         Write-Warning "Error processing folder '$FolderPath': $($_.Exception.Message)"
         return @{ 
-            ProcessedFolders = $false;
-            HasSubfolders = $false;
+            ProcessedFolders = $false
+            HasSubfolders = $false
             CompletionMessageShown = $false
         }
     }
