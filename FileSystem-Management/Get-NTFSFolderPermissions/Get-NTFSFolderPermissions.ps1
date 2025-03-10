@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 17:30:00 UTC
+# Last Updated: 2025-03-10 17:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.5
-# Additional Info: Fixed assembly loading and syntax errors in AD integration
+# Version: 1.7.6
+# Additional Info: Fixed assembly loading issues and improved AD integration
 # =============================================================================
 
 <#
@@ -816,10 +816,12 @@ $script:sidCache = @{
 function Initialize-ADConnection {
     try {
         # Import AD module and validate connection
-        Import-Module ActiveDirectory -ErrorAction Stop
+        if (-not (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)) {
+            Import-Module ActiveDirectory -ErrorAction Stop
+        }
         
         # Get current domain info
-        $domain = Get-ADDomain
+        $domain = Get-ADDomain -ErrorAction Stop
         $script:adDiagnostics.DomainControllers = $domain.ReplicaDirectoryServers
         $script:adDiagnostics.ConnectedDC = $env:LOGONSERVER.TrimStart("\\")
         
@@ -854,11 +856,15 @@ function Get-DetailedSIDError {
     
     $script:adDiagnostics.LastError = $errorDetails
     
-    return "SID Translation Error for $SID`n" +
-           "Error Type: $($errorDetails.ErrorType)`n" +
-           "Message: $($errorDetails.ErrorMessage)`n" +
-           "Connected DC: $($errorDetails.DCAttempted)`n" +
-           "AD Module: $($errorDetails.ADModuleLoaded)"
+    return @"
+SID Translation Error Details:
+SID: $SID
+Error Type: $($errorDetails.ErrorType)
+Message: $($errorDetails.ErrorMessage)
+Connected DC: $($errorDetails.DCAttempted)
+AD Module Loaded: $($errorDetails.ADModuleLoaded)
+Stack Trace: $($errorDetails.Stack)
+"@
 }
 
 function Convert-SidToAccountName {
@@ -887,27 +893,34 @@ function Convert-SidToAccountName {
         # Try multiple translation methods
         $translationMethods = @(
             @{
-                Name = "AD Module"
+                Name = "Get-ADObject"
                 Method = {
                     try {
-                        $obj = Get-ADObject -Identity $Identity -Properties sAMAccountName, distinguishedName -ErrorAction Stop
-                        return $obj.sAMAccountName
+                        $obj = Get-ADObject -Identity $Identity -Properties samAccountName, distinguishedName -ErrorAction Stop
+                        if ($obj.samAccountName) {
+                            return $obj.samAccountName
+                        }
+                        return $null
                     }
                     catch {
-                        Write-Log "AD Module method failed: $_" "Yellow"
+                        Write-Log "Get-ADObject method failed: $_" "Yellow"
                         return $null
                     }
                 }
             },
             @{
-                Name = "Direct SID Translation"
+                Name = "SecurityIdentifier"
                 Method = {
                     try {
                         $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
-                        return $sid.Translate([System.Security.Principal.NTAccount]).Value
+                        $result = $sid.Translate([System.Security.Principal.NTAccount]).Value
+                        if ($result) {
+                            return $result
+                        }
+                        return $null
                     }
                     catch {
-                        Write-Log "Direct SID translation failed: $_" "Yellow"
+                        Write-Log "SecurityIdentifier method failed: $_" "Yellow"
                         return $null
                     }
                 }
@@ -924,9 +937,9 @@ function Convert-SidToAccountName {
             }
         }
 
-        # If all methods failed, return formatted SID
+        # If all methods failed, get detailed error info
         Write-Log "All translation methods failed for SID: $Identity" "Yellow"
-        return "SID: $Identity (Translation Failed)"
+        return "SID: $Identity (Translation Failed - See Log)"
     }
     catch {
         $errorDetails = Get-DetailedSIDError -SID $Identity -ErrorRecord $_
