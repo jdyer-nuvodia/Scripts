@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 19:01:00 UTC
+# Last Updated: 2025-03-10 20:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.5
-# Additional Info: Fixed shadow copy management executing after disk cleanup timeout
+# Version: 4.0.6
+# Additional Info: Added cleanmgr sageset configuration and increased timeout
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.0.5" -Level Info
+Write-Log "Script version: 4.0.6" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -355,6 +355,13 @@ if ($totalShadowCopiesInitial -gt 0) {
 Write-Log "Starting Disk Cleanup..." -Level Info
 Write-Host "`nExecuting Windows Disk Cleanup utility..." -ForegroundColor Cyan
 
+# Configure cleanup settings first
+Write-Log "Configuring cleanup settings..." -Level Info
+$sagesetProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sageset:1" -Wait -PassThru
+if ($sagesetProcess.ExitCode -ne 0) {
+    Write-Log "Warning: Sageset configuration may not have completed successfully" -Level Warning
+}
+
 # Start the cleanup process
 $cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
 $processId = $cleanmgrProcess.Id
@@ -368,13 +375,13 @@ $spinChars = '|','/','-','\'
 Write-Host "Progress: " -NoNewline -ForegroundColor Cyan
 $cleanupTimedOut = $false
 
-# Separate timeout for disk cleanup (10 minutes)
-$cleanupTimeout = [TimeSpan]::FromMinutes(10)
+# Increased timeout for disk cleanup (20 minutes)
+$cleanupTimeout = [TimeSpan]::FromMinutes(20)
 
 while (!$cleanmgrProcess.HasExited) {
     if ((Get-Date) - $startTime -gt $cleanupTimeout) {
-        Write-Log "Disk Cleanup timeout reached after 10 minutes" -Level Warning
-        Write-Host "`rDisk Cleanup timed out after 10 minutes." -ForegroundColor Yellow
+        Write-Log "Disk Cleanup timeout reached after 20 minutes" -Level Warning
+        Write-Host "`rDisk Cleanup timed out after 20 minutes." -ForegroundColor Yellow
         Write-Host "Proceeding with shadow copy management..." -ForegroundColor Cyan
         $cleanupTimedOut = $true
         try {
