@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-FolderSizes.ps1
-# Created: 5/2/2025 00:55:03 UTC
+# Created: 5/2/5 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-09 17:14:00 UTC
+# Last Updated: 2025-03-10 18:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.8
-# Additional Info: Moved processing results header to transcript-only logging
+# Version: 2.1.10
+# Additional Info: Fixed syntax errors in Try-Catch blocks
 # =============================================================================
 
 # Requires -Version 5.1
@@ -160,6 +160,8 @@
     2.1.6 - Added Write-TranscriptOnly function for improved logging control
     2.1.7 - Enhanced console output control for thread processing messages
     2.1.8 - Moved processing results header to transcript-only logging
+    2.1.9 - Fixed incorrect root directory processing order
+    2.1.10 - Fixed syntax errors in Try-Catch blocks
 #>
 
 param (
@@ -804,54 +806,11 @@ function Get-FolderSize {
             }
         }
 
-        # Check if this path is a symbolic link, junction, or mount point
-        $pathType = Get-PathType -InputPath $folderPath
-        
-        # Silently handle special paths - no console output for junction detection
-        if ($pathType.Type -ne "Directory" -and $pathType.Type -ne "Unknown") {
-            # If it is a link and we are configured to follow links, try to use the target path instead
-            if ($FollowJunctions -and $pathType.Target -and $pathType.Target -ne "Unknown Target" -and $pathType.Target -ne "Cloud Storage") {
-                # Handle relative paths in targets
-                if (-not [System.IO.Path]::IsPathRooted($pathType.Target)) {
-                    $targetPath = Join-Path (Split-Path $folderPath -Parent) $pathType.Target
-                } else {
-                    $targetPath = $pathType.Target
-                }
-                
-                # Check if the target exists
-                if (Test-Path -Path $targetPath -PathType Container) {
-                    $folderPath = $targetPath
-                }
-            }
-        }
-
         Write-Host "`nTop $Top Largest Folders in: $folderPath" -ForegroundColor Cyan
         Write-Host ""
 
-        # Get Folder Size and Counts using .NET methods
-        $counts = [FolderSizeHelper]::GetDirectoryCounts($folderPath)
-        $folderCount = $counts.Item2
-
-        # Get Largest File
-        $largestFile = [FolderSizeHelper]::GetLargestFile($folderPath)
-
-        # Display largest file information
-        if ($largestFile) {
-            Write-Host "`nLargest file in $folderPath :" -ForegroundColor White
-            Write-Host "Name: $($largestFile.Name)" -ForegroundColor DarkGray
-            $fileSize = if ($largestFile.Size -gt 1MB) {
-                "$([Math]::Round($largestFile.Size / 1MB, 2)) MB"
-            } elseif ($largestFile.Size -gt 1KB) {
-                "$([Math]::Round($largestFile.Size / 1KB, 2)) KB"
-            } else {
-                "$($largestFile.Size) bytes"
-            }
-            Write-Host "Size: $fileSize" -ForegroundColor DarkGray
-        }
-
-        # Get Subfolders and Process - include hidden and system folders if specified
-        $subFolders = try { 
-            # Include hidden and system folders if specified
+        # First, get all immediate subfolders in the root and process them
+        $rootFolders = try { 
             if ($IncludeHiddenSystem) {
                 Get-ChildItem -Path $folderPath -Directory -Force -ErrorAction Stop
             }
@@ -859,16 +818,16 @@ function Get-FolderSize {
                 Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop
             }
         } catch { 
-            Write-Warning "Error getting subfolders in '$folderPath': $($_.Exception.Message)"
+            Write-Warning "Error getting root folders in '$folderPath': $($_.Exception.Message)"
             @() 
         }
 
-        if ($subFolders -and $subFolders.Count -gt 0) {
-            $folderCount = $subFolders.Count
-            Write-Host "`nFound $folderCount subfolders to process..." -ForegroundColor Cyan
+        # Process root level folders first
+        if ($rootFolders -and $rootFolders.Count -gt 0) {
+            Write-Host "Processing $($rootFolders.Count) folders in root directory..." -ForegroundColor Cyan
             
-            # Process all folders in parallel using runspace pools
-            $folderResults = Start-FolderProcessing -Folders $subFolders -MaxThreads $MaxThreads
+            # Process root folders in parallel
+            $folderResults = Start-FolderProcessing -Folders $rootFolders -MaxThreads $MaxThreads
             
             # Convert results to sorted array
             $sortedFolders = $folderResults.GetEnumerator() | ForEach-Object {
@@ -881,21 +840,20 @@ function Get-FolderSize {
                 }
             } | Sort-Object -Property Size -Descending
             
-            # Always display the table header
+            # Display table of root folders
             Write-TableHeader
             
             # Get top folders but ensure we do not exceed available folders
             $topFoldersCount = [Math]::Min($Top, $sortedFolders.Count)
             $topFolders = $sortedFolders | Select-Object -First $topFoldersCount
             
-            # Display each folder in table format
             foreach ($folder in $topFolders) {
                 Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
             }
             
             Write-Host ("-" * 150) -ForegroundColor DarkGray
             Write-Host ""
-            
+
             # Process only the largest subfolder if within depth limit
             $completionMessageShown = $false
             if ($CurrentDepth + 1 -le $MaxDepth -and $sortedFolders.Count -gt 0) {
@@ -906,42 +864,35 @@ function Get-FolderSize {
                 # Call recursively and capture the structured return value
                 $result = Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
                 
-                # Only show a completion message if:
-                # 1. Processing happened
-                # 2. The child had subfolders
-                # 3. No completion message has been shown in this branch yet
                 if ($result.ProcessedFolders -eq $true -and 
                     $result.HasSubfolders -eq $true -and 
                     $result.CompletionMessageShown -eq $false) {
                     Write-Host "`nCompleted processing the largest subfolder." -ForegroundColor Green
                     $completionMessageShown = $true
                 } else {
-                    # Propagate the completion message state from child to parent
                     $completionMessageShown = $result.CompletionMessageShown
                 }
             }
             
-            # Return structured information about this level of processing
             return @{ 
-                ProcessedFolders = $true;           # This level processed folders
-                HasSubfolders = $true;              # This level had subfolders
-                CompletionMessageShown = $completionMessageShown  # Track if any completion message was shown
+                ProcessedFolders = $true;
+                HasSubfolders = $true;
+                CompletionMessageShown = $completionMessageShown
             }
         } else {
             Write-Host "No subfolders found to process." -ForegroundColor Yellow
-            # Return structured information - processed but had no subfolders
             return @{ 
-                ProcessedFolders = $true;    # We did process this folder 
-                HasSubfolders = $false;      # But it had no subfolders
-                CompletionMessageShown = $false  # No completion message needed for leaf nodes
+                ProcessedFolders = $true;
+                HasSubfolders = $false;
+                CompletionMessageShown = $false
             }
         }
     }
     catch {
         Write-Warning "Error processing folder '$FolderPath': $($_.Exception.Message)"
         return @{ 
-            ProcessedFolders = $false; 
-            HasSubfolders = $false; 
+            ProcessedFolders = $false;
+            HasSubfolders = $false;
             CompletionMessageShown = $false
         }
     }
