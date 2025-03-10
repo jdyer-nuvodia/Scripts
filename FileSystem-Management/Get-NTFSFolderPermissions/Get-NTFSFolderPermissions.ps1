@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 17:20:00 UTC
+# Last Updated: 2025-03-10 17:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.6
-# Additional Info: Fixed assembly loading issues and improved AD integration
+# Version: 1.7.7
+# Additional Info: Added Debug parameter support and progress bar functionality
 # =============================================================================
 
 <#
@@ -69,7 +69,10 @@ param (
     [int]$MaxDepth = 0,
     
     [Parameter(Mandatory = $false)]
-    [switch]$SkipUniquenessCounting
+    [switch]$SkipUniquenessCounting,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$Debug
 )
 
 $StartTime = [DateTime]::Now
@@ -272,16 +275,67 @@ function Get-AllDirectoriesModuleRecursive {
 function Write-Log {
     param(
         [string]$Message,
-        [string]$Color = "White"
+        [string]$Color = "White",
+        [switch]$NoNewline
     )
+    
+    # Always write to log file
+    [void]$OutputText.AppendLine($Message)
+    
+    # Only write debug messages if Debug switch is present
+    if ($Message.StartsWith("[DEBUG]")) {
+        if ($Debug) {
+            Write-Host $Message -ForegroundColor $Color -NoNewline:$NoNewline
+        }
+        return
+    }
+    
+    # Write non-debug messages normally
+    Write-Host $Message -ForegroundColor $Color -NoNewline:$NoNewline
+}
+
+function Write-ProgressBar {
+    param(
+        [int]$Current,
+        [int]$Total,
+        [string]$Activity = "Processing Folders",
+        [string]$Status = "Current Progress"
+    )
+    
+    if (-not $Debug) {
+        $percentComplete = [math]::Round(($Current / $Total) * 100, 1)
+        $progressParams = @{
+            Activity = $Activity
+            Status = $Status
+            PercentComplete = $percentComplete
+            CurrentOperation = "Folder $Current of $Total"
+        }
+        Write-Progress @progressParams
+    }
+}
+
+function Process-Folder {
+    param(
+        [string]$Path,
+        [int]$CurrentCount,
+        [int]$TotalCount
+    )
+    
     try {
-        Write-Host "[DEBUG] $Message" -ForegroundColor $Color
+        # Get permissions for the folder
+        $permissions = Get-FolderPermissions -FolderPath $Path
+        
+        # Update progress
+        Write-ProgressBar -Current $CurrentCount -Total $TotalCount -Status "Processing: $Path"
+        
+        # Log success in debug mode
+        Write-Log "[DEBUG] Successfully processed folder: $Path" -Color "Magenta"
+        
+        return $permissions
     }
     catch {
-        [Console]::WriteLine("[DEBUG] " + $Message)
-    }
-    if ($null -ne $OutputText) {
-        [void]$OutputText.AppendLine($Message)
+        Write-Log "Error processing folder: $Path - $($_.Exception.Message)" -Color "Red"
+        return $null
     }
 }
 
