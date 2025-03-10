@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 16:09:00 UTC
+# Last Updated: 2025-03-10 16:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.0
-# Additional Info: Added robust SID translation with caching
+# Version: 1.7.1
+# Additional Info: Enhanced SID translation with pre-cached well-known SIDs and improved error handling
 # =============================================================================
 
 <#
@@ -793,30 +793,68 @@ catch {
 
 # Add SID translation cache
 $script:sidCache = @{}
-
-function Convert-SIDToName {
-    param(
+    'S-1-5-32-544' = 'BUILTIN\Administrators'
+function Convert-SIDToName {N\Users'
+    param(-32-546' = 'BUILTIN\Guests'
         [Parameter(Mandatory = $true)]
         [System.Security.Principal.SecurityIdentifier]$SID
-    )
-
-    try {
-        # Check cache first
+    )S-1-5-20' = 'NT AUTHORITY\NETWORK SERVICE'
+    'S-1-5-11' = 'NT AUTHORITY\Authenticated Users'
+    try {1-0' = 'Everyone'
+        # Check cache firstTY\INTERACTIVE'
         if ($script:sidCache.ContainsKey($SID.Value)) {
             return $script:sidCache[$SID.Value]
-        }
-
+        }Convert-SIDToName {
+    param(
         # Use .NET methods for translation
         $ntAccount = $SID.Translate([System.Security.Principal.NTAccount])
         $name = $ntAccount.Value
-
+    
         # Cache the result
         $script:sidCache[$SID.Value] = $name
-        return $name
+        return $namedentity -match '^S-\d-(\d+-){1,14}\d+$')) {
+            return $Identity
+        }
+
+        # Check cache first
+        if ($script:sidCache.ContainsKey($Identity)) {
+            Write-Log "Cache hit for SID: $Identity = $($script:sidCache[$Identity])" "Magenta"
+            return $script:sidCache[$Identity]
+        }
+
+        # Try multiple translation methods
+        $result = try {
+            $sid = [System.Security.Principal.SecurityIdentifier]::new($Identity)
+            try {
+                # Try primary translation method
+                $account = $sid.Translate([System.Security.Principal.NTAccount])
+                $account.Value
+            }
+            catch {
+                # Fallback to Win32 API if .NET method fails
+                $objSID = New-Object System.Security.Principal.SecurityIdentifier($Identity)
+                $objUser = $objSID.Translate([System.Security.Principal.NTAccount])
+                $objUser.Value
+            }
+        }
+        catch {
+            # If all translation methods fail, format SID for display
+            $formattedSID = "SID: $Identity"
+            Write-Log "Translation failed for SID: $Identity - $_" "Yellow"
+            $formattedSID
+        }
+
+        # Cache successful translations
+        if ($result -and -not $result.StartsWith("SID:")) {
+            $script:sidCache[$Identity] = $result
+            Write-Log "Cached translation for SID: $Identity = $result" "Magenta"
+        }
+
+        return $result
     }
     catch {
-        Write-Host "Failed to translate SID: $($SID.Value)" -ForegroundColor Yellow
-        return $SID.Value
+        Write-Log "Critical error in SID translation: $Identity - $_" "Red"
+        return "SID: $Identity (Error)"
     }
 }
 
