@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 18:10:00 UTC
+# Last Updated: 2025-03-10 19:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.11
-# Additional Info: Fixed duplicate Debug parameter by using PowerShell native verbose preference
+# Version: 1.8.0
+# Additional Info: Added proper handling of Verbose/Debug modes and progress bar
 # =============================================================================
 
 <#
@@ -157,6 +157,14 @@ function global:Write-SafeOutput {
         [switch]$NoNewline
     )
     
+    # Check if we're in verbose mode
+    $isVerboseMode = $VerbosePreference -eq 'Continue' -or $DebugPreference -eq 'Continue'
+    
+    # Skip progress messages in non-verbose mode
+    if (!$isVerboseMode -and $Message -match 'Successfully processed') {
+        return
+    }
+    
     try {
         # First try Write-Host for normal PowerShell environments
         if ($NoNewline) {
@@ -276,12 +284,15 @@ function Write-Log {
         [switch]$NoNewline
     )
     
-    # Always write to log file
+    # Always append to log file
     [void]$OutputText.AppendLine($Message)
     
-    # Only write debug messages if verbose flag is present
-    if ($Message.StartsWith("[DEBUG]")) {
-        if ($VerbosePreference -eq 'Continue') {
+    # Check if we're in verbose mode
+    $isVerboseMode = $VerbosePreference -eq 'Continue' -or $DebugPreference -eq 'Continue'
+    
+    # Only write debug/progress messages to console in verbose mode
+    if ($Message -match '^\[DEBUG\]' -or $Message -match 'Successfully processed') {
+        if ($isVerboseMode) {
             Write-Host $Message -ForegroundColor $Color -NoNewline:$NoNewline
         }
         return
@@ -511,9 +522,21 @@ function Start-FolderProcessing {
         }
     }
     
+    # Initialize progress counter
+    $processedCount = 0
+    $totalCount = $Folders.Count
+    
     foreach ($r in $Runspaces) {
         try {
             $result = $r.Instance.EndInvoke($r.Handle)
+            $processedCount++
+            
+            # Update progress bar in non-verbose mode
+            if ($VerbosePreference -ne 'Continue' -and $DebugPreference -ne 'Continue') {
+                Write-Progress -Activity "Processing Folders" -Status "Processed $processedCount of $totalCount folders" `
+                             -PercentComplete (($processedCount / $totalCount) * 100)
+            }
+            
             if ($result.Success) {
                 $FolderPermissionsMap[$result.FolderPath] = @{ 
                     Permissions = $result.Permissions
@@ -534,6 +557,11 @@ function Start-FolderProcessing {
         finally {
             $r.Instance.Dispose()
         }
+    }
+    
+    # Complete the progress bar
+    if ($VerbosePreference -ne 'Continue' -and $DebugPreference -ne 'Continue') {
+        Write-Progress -Activity "Processing Folders" -Completed
     }
     
     $RunspacePool.Close()
