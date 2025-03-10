@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-07 23:45:00 UTC
+# Last Updated: 2025-03-10 16:04:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.0
-# Additional Info: Added SID to account name translation for better readability
+# Version: 1.6.1
+# Additional Info: Fixed unused variable and added system name to log filename
 # =============================================================================
 
 <#
@@ -92,7 +92,8 @@ $consoleInfoColor = [ConsoleColor]::Cyan
 
 # Get script directory using .NET methods rather than PowerShell cmdlets
 $scriptDirectory = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
-$outputLogPath = [System.IO.Path]::Combine($scriptDirectory, "NTFSPermissions_$formattedDateTime.log")
+$systemName = [System.Environment]::MachineName
+$outputLogPath = [System.IO.Path]::Combine($scriptDirectory, "NTFSPermissions_${systemName}_$formattedDateTime.log")
 $OutputLog = $outputLogPath # Ensure OutputLog is set to the proper path
 
 # Safe direct output function that works with no PowerShell cmdlets
@@ -797,7 +798,6 @@ function Get-FolderPermissions {
     
     try {
         # Use .NET Security methods directly
-        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
         $security = [DirectorySecurity]::new()  # Now we can use short name since namespace is imported
         $security.SetAccessRuleProtection($false, $true)
         
