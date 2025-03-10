@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 20:47:00 UTC
+# Last Updated: 2025-03-10 21:02:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.9
-# Additional Info: Removed unused variables from script monitoring
+# Version: 4.1.0
+# Additional Info: Enhanced process monitoring for PowerShell 5.1+ compatibility
 # =============================================================================
 
 <#
@@ -170,22 +170,51 @@ try {
     Write-Progress "Disk Cleanup started with PID: `$processId"
     
     `$startTime = Get-Date
-    `$lastCPU = 0
-    `$lastMemory = 0
+    `$lastOutputTime = Get-Date
+    `$noActivityCounter = 0
     
     while (!`$cleanmgrProcess.HasExited) {
         try {
             `$process = Get-Process -Id `$processId -ErrorAction Stop
-            `$currentCPU = `$process.CPU
-            `$currentMemory = [math]::Round(`$process.WorkingSet64 / 1MB, 2)
+            `$currentTime = Get-Date
             
-            `$status = "Cleanup in progress - CPU: `$([math]::Round(`$currentCPU, 1))%, Memory: `${currentMemory}MB"
-            Write-Progress `$status
+            # Get process metrics using WMI for better compatibility
+            `$wmiProcess = Get-WmiObject -Class Win32_Process -Filter "ProcessId = `$processId"
+            if (`$wmiProcess) {
+                `$cpuInfo = Get-WmiObject -Class Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess = `$processId"
+                `$cpuPercent = if (`$cpuInfo) { [math]::Round(`$cpuInfo.PercentProcessorTime, 1) } else { 0 }
+                `$memoryMB = [math]::Round(`$wmiProcess.WorkingSetSize / 1MB, 2)
+                
+                `$activity = `$cpuPercent -gt 0.1 -or `$memoryMB -gt 0
+                if (`$activity) {
+                    `$noActivityCounter = 0
+                } else {
+                    `$noActivityCounter++
+                }
+                
+                `$elapsedTime = `$currentTime - `$startTime
+                `$status = @(
+                    "Runtime: `$(`$elapsedTime.ToString('mm\:ss'))",
+                    "CPU: `$cpuPercent%",
+                    "Memory: `${memoryMB}MB",
+                    "Status: `$(if (`$activity) { 'Active' } else { 'Idle' })"
+                ) -join ' | '
+                
+                if ((`$currentTime - `$lastOutputTime).TotalSeconds -ge 2) {
+                    Write-Progress "`$status"
+                    `$lastOutputTime = `$currentTime
+                }
+            }
             
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 1
+            
+            if (`$noActivityCounter -ge 120) {
+                Write-Progress "Warning: No activity detected for 2 minutes, process may be stuck"
+                break
+            }
         }
         catch {
-            Write-Progress "Error monitoring cleanup: `$(`$_.Exception.Message)"
+            Write-Progress "Error monitoring process: `$(`$_.Exception.Message)"
             break
         }
     }
@@ -420,40 +449,25 @@ $cleanupTimeout = [TimeSpan]::FromMinutes(20)
 while (!$cleanmgrProcess.HasExited) {
     try {
         $process = Get-Process -Id $processId -ErrorAction Stop
-        $currentCPU = $process.CPU
-        $currentMemory = [math]::Round($process.WorkingSet64 / 1MB, 2)
+        $wmiProcess = Get-WmiObject -Class Win32_Process -Filter "ProcessId = $processId"
         
-        # Check for process activity
-        $cpuDelta = [math]::Abs($currentCPU - $lastCPU)
-        $memoryDelta = [math]::Abs($currentMemory - $lastMemory)
-        
-        $status = if ($cpuDelta -gt 0.1 -or $memoryDelta -gt 0.1) {
-            $noActivityCounter = 0
-            "Active - CPU: $([math]::Round($currentCPU, 1))%, Memory: ${currentMemory}MB"
-        } else {
-            $noActivityCounter++
-            "Idle - Last activity $noActivityCounter seconds ago"
+        if ($wmiProcess) {
+            $cpuInfo = Get-WmiObject -Class Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess = $processId"
+            $cpuPercent = if ($cpuInfo) { [math]::Round($cpuInfo.PercentProcessorTime, 1) } else { 0 }
+            $memoryMB = [math]::Round($wmiProcess.WorkingSetSize / 1MB, 2)
+            
+            $elapsedTime = (Get-Date) - $startTime
+            $status = "Time: $($elapsedTime.ToString('mm\:ss')) | CPU: $cpuPercent% | Memory: ${memoryMB}MB"
+            
+            # Clear line and update status
+            Write-Host "`r$(' ' * 80)" -NoNewline
+            Write-Host "`r$status" -NoNewline -ForegroundColor Cyan
         }
-        
-        # Update last values
-        $lastCPU = $currentCPU
-        $lastMemory = $currentMemory
-        
-        # Clear the previous line and write the new status
-        Write-Host "`r$(Get-Date -Format 'HH:mm:ss') - $status                     " -NoNewline -ForegroundColor Cyan
         
         if ((Get-Date) - $startTime -gt $cleanupTimeout) {
             Write-Log "Disk Cleanup timeout reached after 20 minutes" -Level Warning
             Write-Host "`rDisk Cleanup timed out after 20 minutes." -ForegroundColor Yellow
             $cleanupTimedOut = $true
-            Stop-Process -Id $processId -Force -ErrorAction Stop
-            break
-        }
-        
-        # If no activity for 2 minutes, assume process is stuck
-        if ($noActivityCounter -ge 120) {
-            Write-Log "No disk cleanup activity detected for 2 minutes" -Level Warning
-            Write-Host "`rDisk Cleanup appears stuck, terminating process..." -ForegroundColor Yellow
             Stop-Process -Id $processId -Force -ErrorAction Stop
             break
         }
