@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 17:53:00 UTC
+# Last Updated: 2025-03-10 18:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.9
-# Additional Info: Fixed duplicate Debug parameter definition
+# Version: 1.7.11
+# Additional Info: Fixed duplicate Debug parameter by using PowerShell native verbose preference
 # =============================================================================
 
 <#
@@ -69,10 +69,7 @@ param (
     [int]$MaxDepth = 0,
     
     [Parameter(Mandatory = $false)]
-    [switch]$SkipUniquenessCounting,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$Debug
+    [switch]$SkipUniquenessCounting
 )
 
 $StartTime = [DateTime]::Now
@@ -282,9 +279,9 @@ function Write-Log {
     # Always write to log file
     [void]$OutputText.AppendLine($Message)
     
-    # Only write debug messages if script:Debug switch is present
+    # Only write debug messages if verbose flag is present
     if ($Message.StartsWith("[DEBUG]")) {
-        if ($script:Debug) {
+        if ($VerbosePreference -eq 'Continue') {
             Write-Host $Message -ForegroundColor $Color -NoNewline:$NoNewline
         }
         return
@@ -302,7 +299,7 @@ function Write-ProgressBar {
         [string]$Status = "Current Progress"
     )
     
-    if (-not $Debug) {
+    if ($VerbosePreference -ne 'Continue') {
         $percentComplete = [math]::Round(($Current / $Total) * 100, 1)
         $progressParams = @{
             Activity = $Activity
