@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 21:05:00 UTC
+# Last Updated: 2025-03-10 21:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.0
-# Additional Info: Enhanced process monitoring for real-time status display
+# Version: 4.0.10
+# Additional Info: Removed unused variables and optimized process monitoring
 # =============================================================================
 
 <#
@@ -412,33 +412,18 @@ $processId = $cleanmgrProcess.Id
 Write-Log "Disk Cleanup process started with PID: $processId" -Level Debug
 
 $startTime = Get-Date
-Write-Host "Disk Cleanup started at: $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
-
-$lastCPU = 0
-$lastMemory = 0
-$noActivityCounter = 0
 $cleanupTimedOut = $false
-
-# Increased timeout for disk cleanup (20 minutes)
-$cleanupTimeout = [TimeSpan]::FromMinutes(20)
 
 while (!$cleanmgrProcess.HasExited) {
     try {
-        $process = Get-Process -Id $processId -ErrorAction Stop
-        $wmiProcess = Get-WmiObject -Class Win32_Process -Filter "ProcessId = $processId"
+        # Get current process information
+        $processInfo = Get-Process -Id $processId -ErrorAction Stop
+        $currentMemory = [math]::Round($processInfo.WorkingSet64 / 1MB, 2)
         
-        if ($wmiProcess) {
-            $cpuInfo = Get-WmiObject -Class Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess = $processId"
-            $cpuPercent = if ($cpuInfo) { [math]::Round($cpuInfo.PercentProcessorTime, 1) } else { 0 }
-            $memoryMB = [math]::Round($wmiProcess.WorkingSetSize / 1MB, 2)
-            
-            $elapsedTime = (Get-Date) - $startTime
-            $status = "Time: $($elapsedTime.ToString('mm\:ss')) | CPU: $cpuPercent% | Memory: ${memoryMB}MB"
-            
-            # Clear line and update status
-            Write-Host "`r$(' ' * 80)" -NoNewline
-            Write-Host "`r$status" -NoNewline -ForegroundColor Cyan
-        }
+        # Display process status
+        $status = "Runtime: $((Get-Date - $startTime).ToString('mm\:ss')) | Memory: ${currentMemory}MB"
+        Write-Host "`r$(' ' * 80)" -NoNewline
+        Write-Host "`r$status" -NoNewline -ForegroundColor Cyan
         
         if ((Get-Date) - $startTime -gt $cleanupTimeout) {
             Write-Log "Disk Cleanup timeout reached after 20 minutes" -Level Warning
