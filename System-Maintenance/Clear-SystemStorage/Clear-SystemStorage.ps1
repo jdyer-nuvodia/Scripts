@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 21:08:00 UTC
+# Last Updated: 2025-03-10 21:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.10
-# Additional Info: Removed unused variables and optimized process monitoring
+# Version: 4.0.11
+# Additional Info: Replaced interactive cleanmgr configuration with predefined state flags
 # =============================================================================
 
 <#
@@ -399,11 +399,44 @@ if ($totalShadowCopiesInitial -gt 0) {
 Write-Log "Starting Disk Cleanup..." -Level Info
 Write-Host "`nExecuting Windows Disk Cleanup utility..." -ForegroundColor Cyan
 
-# Configure cleanup settings first
+# Define StateFlags for silent cleanup (all standard cleanup options)
+$cleanupFlags = @(
+    "Active Setup Temp Folders",
+    "BranchCache",
+    "Downloaded Program Files",
+    "Internet Cache Files",
+    "Memory Dump Files",
+    "Offline Pages Files",
+    "Old ChkDsk Files",
+    "Previous Installations",
+    "Recycle Bin",
+    "Service Pack Cleanup",
+    "Setup Log Files",
+    "System error memory dump files",
+    "System error minidump files",
+    "Temporary Files",
+    "Temporary Setup Files",
+    "Temporary Sync Files",
+    "Thumbnail Cache",
+    "Update Cleanup",
+    "Upgrade Discarded Files",
+    "Windows Defender",
+    "Windows Error Reporting Files",
+    "Windows ESD installation files",
+    "Windows Upgrade Log Files"
+)
+
 Write-Log "Configuring cleanup settings..." -Level Info
-$sagesetProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sageset:1" -Wait -PassThru
-if ($sagesetProcess.ExitCode -ne 0) {
-    Write-Log "Warning: Sageset configuration may not have completed successfully" -Level Warning
+Write-Host "Configuring cleanup settings..." -ForegroundColor Cyan
+
+# Set registry values for silent cleanup
+$regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
+foreach ($flag in $cleanupFlags) {
+    $flagPath = Join-Path $regPath $flag
+    if (Test-Path $flagPath) {
+        Set-ItemProperty -Path $flagPath -Name "StateFlags0001" -Value 2 -Type DWord
+        Write-Log "Enabled cleanup for: $flag" -Level Debug
+    }
 }
 
 # Start the cleanup process
