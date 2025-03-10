@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 21:26:00 UTC
+# Last Updated: 2025-03-11 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.11
-# Additional Info: Replaced interactive cleanmgr configuration with predefined state flags
+# Version: 4.0.12
+# Additional Info: Added file cleanup and process monitoring improvements
 # =============================================================================
 
 <#
@@ -106,9 +106,30 @@ function Start-SystemContext {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
         Write-Log "Created job with name: $jobName" -Level Debug
         
-        $systemAccessibleTemp = "$env:SystemRoot\Temp"
+        # Use more reliable temp path creation
+        $systemAccessibleTemp = [System.IO.Path]::Combine($env:SystemRoot, "Temp")
         $scriptFileName = Split-Path -Leaf $ScriptPath
-        $systemAccessibleScriptPath = Join-Path -Path $systemAccessibleTemp -ChildPath $scriptFileName
+        $systemAccessibleScriptPath = [System.IO.Path]::Combine($systemAccessibleTemp, $scriptFileName)
+        
+        # Ensure cleanup of any existing files
+        $filesToClean = @(
+            $systemAccessibleScriptPath,
+            "${markerFile}.status",
+            $executorScript,
+            $logFile
+        )
+        
+        foreach ($file in $filesToClean) {
+            if ([System.IO.File]::Exists($file)) {
+                try {
+                    [System.IO.File]::Delete($file)
+                    Write-Log "Cleaned up existing file: $file" -Level Debug
+                }
+                catch {
+                    Write-Log "Warning: Could not delete existing file $file : $($_.Exception.Message)" -Level Warning
+                }
+            }
+        }
         
         Write-Log "Copying script to system-accessible location: $systemAccessibleScriptPath" -Level Verbose
         
@@ -231,37 +252,40 @@ catch {
         $lastStatus = ""
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
-            if (Test-Path $statusFile) {
-                $currentStatus = Get-Content $statusFile -Raw
-                
-                if ($currentStatus -ne $lastStatus) {
-                    if ($currentStatus.StartsWith("{")) {
-                        try {
-                            $statusObj = $currentStatus | ConvertFrom-Json
-                            
-                            # Clear the line and write the new status
+            if ([System.IO.File]::Exists($statusFile)) {
+                try {
+                    $currentStatus = [System.IO.File]::ReadAllText($statusFile)
+                    
+                    if ($currentStatus -ne $lastStatus) {
+                        if ($currentStatus.StartsWith("{")) {
+                            try {
+                                $statusObj = $currentStatus | ConvertFrom-Json
+                                Write-Host "`r$(' ' * 80)" -NoNewline
+                                Write-Host "`rRuntime: $($statusObj.Runtime) | CPU: $($statusObj.CPU)% | Memory: $($statusObj.Memory)MB" -NoNewline -ForegroundColor Cyan
+                            }
+                            catch {
+                                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Yellow
+                            }
+                        }
+                        else {
                             Write-Host "`r$(' ' * 80)" -NoNewline
-                            Write-Host "`rRuntime: $($statusObj.Runtime) | CPU: $($statusObj.CPU)% | Memory: $($statusObj.Memory)MB" -NoNewline -ForegroundColor Cyan
+                            Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
+                                if ($currentStatus.StartsWith("Error:")) { "Red" }
+                                elseif ($currentStatus -eq "Complete") { "Green" }
+                                else { "Cyan" }
+                            )
                         }
-                        catch {
-                            Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Yellow
-                        }
-                    }
-                    else {
-                        Write-Host "`r$(' ' * 80)" -NoNewline
-                        Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
-                            if ($currentStatus.StartsWith("Error:")) { "Red" }
-                            elseif ($currentStatus -eq "Complete") { "Green" }
-                            else { "Cyan" }
-                        )
+                        
+                        $lastStatus = $currentStatus
                     }
                     
-                    $lastStatus = $currentStatus
+                    if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
+                        $completed = $true
+                        Write-Host "`n"
+                    }
                 }
-                
-                if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
-                    $completed = $true
-                    Write-Host "`n"
+                catch {
+                    Write-Log "Error reading status: $($_.Exception.Message)" -Level Warning
                 }
             }
             
@@ -284,18 +308,42 @@ catch {
                 Write-Host "===== End of SYSTEM Context Log =====" -ForegroundColor Yellow
             }
             
-            # Clean up files after successful completion
+            # Enhanced cleanup process
             try {
-                Write-Log "Cleaning up temporary task and files" -Level Debug
+                Write-Log "Initiating cleanup process" -Level Debug
+                
+                # Remove scheduled task first
                 if (Get-ScheduledTask -TaskName $jobName -ErrorAction SilentlyContinue) {
-                    Unregister-ScheduledTask -TaskName $jobName -Confirm:$false -ErrorAction SilentlyContinue
+                    Unregister-ScheduledTask -TaskName $jobName -Confirm:$false
                     Write-Log "Unregistered scheduled task: $jobName" -Level Debug
+                    Start-Sleep -Seconds 2  # Give system time to release file handles
                 }
-                Remove-Item -Path $executorScript -Force -ErrorAction SilentlyContinue
-                Remove-Item -Path $systemAccessibleScriptPath -Force -ErrorAction SilentlyContinue
-                Remove-Item -Path $markerFile -Force -ErrorAction SilentlyContinue
-                Write-Log "Temporary files removed" -Level Debug
-            } catch {
+                
+                # Clean up files with retries
+                $filesToClean = @($executorScript, $systemAccessibleScriptPath, $markerFile, "${markerFile}.status", $logFile)
+                foreach ($file in $filesToClean) {
+                    $retryCount = 0
+                    $maxRetries = 3
+                    
+                    while ($retryCount -lt $maxRetries) {
+                        try {
+                            if ([System.IO.File]::Exists($file)) {
+                                [System.IO.File]::Delete($file)
+                                Write-Log "Successfully removed: $file" -Level Debug
+                                break
+                            }
+                        }
+                        catch {
+                            $retryCount++
+                            if ($retryCount -eq $maxRetries) {
+                                Write-Log "Warning: Could not remove file after $maxRetries attempts: $file" -Level Warning
+                            }
+                            Start-Sleep -Seconds 1
+                        }
+                    }
+                }
+            }
+            catch {
                 Write-Log "Cleanup warning: $($_.Exception.Message)" -Level Warning
             }
         } else {
