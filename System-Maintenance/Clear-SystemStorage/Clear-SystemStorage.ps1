@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 17:35:00 UTC
+# Last Updated: 2025-03-10 18:39:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.3
-# Additional Info: Removed unused variable to improve code quality.
+# Version: 4.0.4
+# Additional Info: Modified to handle shadow copies independently of disk cleanup timeout
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.0.2" -Level Info
+Write-Log "Script version: 4.0.4" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -367,12 +367,24 @@ Write-Host "Disk Cleanup started at: $(Get-Date -Format 'HH:mm:ss')" -Foreground
 $i = 0
 $spinChars = '|','/','-','\'
 Write-Host "Progress: " -NoNewline -ForegroundColor Cyan
+$cleanupTimedOut = $false
 
 while (!$cleanmgrProcess.HasExited) {
+    if ((Get-Date) - $startTime -gt [TimeSpan]::FromMinutes(30)) {
+        Write-Log "Disk Cleanup timeout reached after 30 minutes" -Level Warning
+        Write-Host "`rDisk Cleanup timed out after 30 minutes. Proceeding with shadow copy management..." -ForegroundColor Yellow
+        $cleanupTimedOut = $true
+        try {
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Log "Failed to stop cleanup process: $($_.Exception.Message)" -Level Warning
+        }
+        break
+    }
+
     $char = $spinChars[$i % $spinChars.Length]
     Write-Host "`r$(Get-Date -Format 'HH:mm:ss') - Cleaning in progress $char" -NoNewline -ForegroundColor Cyan
     
-    # Check if we can get the window title of cleanmgr for more info
     try {
         $title = (Get-Process -Id $processId -ErrorAction SilentlyContinue).MainWindowTitle
         if ($title -and $title -ne "") {
@@ -387,10 +399,12 @@ while (!$cleanmgrProcess.HasExited) {
 }
 
 $duration = (Get-Date) - $startTime
-Write-Host "`rDisk Cleanup completed in $($duration.ToString('mm\:ss')) minutes:seconds" -ForegroundColor Green
-Write-Log "Disk Cleanup complete. Duration: $($duration.ToString('mm\:ss'))" -Level Info
+if (!$cleanupTimedOut) {
+    Write-Host "`rDisk Cleanup completed in $($duration.ToString('mm\:ss')) minutes:seconds" -ForegroundColor Green
+    Write-Log "Disk Cleanup complete. Duration: $($duration.ToString('mm\:ss'))" -Level Info
+}
 
-# ----- Shadow Copy Management -----
+# Always proceed with Shadow Copy Management regardless of cleanup status
 Write-Log "===== Starting Shadow Copy Management =====" -Level Info
 Write-Host "`n===== Shadow Copy Management =====" -ForegroundColor Cyan
 
