@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-FolderSizes.ps1
-# Created: 5/2/5 00:55:03 UTC
+# Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 18:32:00 UTC
+# Last Updated: 2025-03-10 18:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.10
-# Additional Info: Fixed syntax errors in Try-Catch blocks
+# Version: 2.1.11
+# Additional Info: Fixed header formatting to comply with standards
 # =============================================================================
 
 # Requires -Version 5.1
@@ -808,8 +808,24 @@ function Get-FolderSize {
 
         Write-Host "`nTop $Top Largest Folders in: $folderPath" -ForegroundColor Cyan
         Write-Host ""
+        
+        # First, analyze the root path itself
+        if ($CurrentDepth -eq 1) {
+            $rootSize = [FolderSizeHelper]::GetDirectorySize($folderPath)
+            $rootCounts = [FolderSizeHelper]::GetDirectoryCounts($folderPath)
+            $rootLargestFile = [FolderSizeHelper]::GetLargestFile($folderPath)
+            
+            Write-TableHeader
+            Write-TableRow -FolderPath $folderPath `
+                          -Size $rootSize `
+                          -SubfolderCount $rootCounts.Item2 `
+                          -FileCount $rootCounts.Item1 `
+                          -LargestFile $rootLargestFile
+            Write-Host ("-" * 150) -ForegroundColor DarkGray
+            Write-Host ""
+        }
 
-        # First, get all immediate subfolders in the root and process them
+        # Get all immediate subfolders in the root and process them
         $rootFolders = try { 
             if ($IncludeHiddenSystem) {
                 Get-ChildItem -Path $folderPath -Directory -Force -ErrorAction Stop
