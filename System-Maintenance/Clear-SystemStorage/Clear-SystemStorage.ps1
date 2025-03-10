@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 20:27:00 UTC
+# Last Updated: 2025-03-10 20:33:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.6
-# Additional Info: Added cleanmgr sageset configuration and increased timeout
+# Version: 4.0.7
+# Additional Info: Enhanced process monitoring for disk cleanup status
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.0.6" -Level Info
+Write-Log "Script version: 4.0.7" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -370,43 +370,61 @@ Write-Log "Disk Cleanup process started with PID: $processId" -Level Debug
 $startTime = Get-Date
 Write-Host "Disk Cleanup started at: $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
 
-$i = 0
-$spinChars = '|','/','-','\'
-Write-Host "Progress: " -NoNewline -ForegroundColor Cyan
+$lastCPU = 0
+$lastMemory = 0
+$noActivityCounter = 0
 $cleanupTimedOut = $false
 
 # Increased timeout for disk cleanup (20 minutes)
 $cleanupTimeout = [TimeSpan]::FromMinutes(20)
 
 while (!$cleanmgrProcess.HasExited) {
-    if ((Get-Date) - $startTime -gt $cleanupTimeout) {
-        Write-Log "Disk Cleanup timeout reached after 20 minutes" -Level Warning
-        Write-Host "`rDisk Cleanup timed out after 20 minutes." -ForegroundColor Yellow
-        Write-Host "Proceeding with shadow copy management..." -ForegroundColor Cyan
-        $cleanupTimedOut = $true
-        try {
-            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-            Write-Log "Successfully stopped cleanup process" -Level Info
-        } catch {
-            Write-Log "Failed to stop cleanup process: $($_.Exception.Message)" -Level Warning
+    try {
+        $process = Get-Process -Id $processId -ErrorAction Stop
+        $currentCPU = $process.CPU
+        $currentMemory = [math]::Round($process.WorkingSet64 / 1MB, 2)
+        
+        # Check for process activity
+        $cpuDelta = [math]::Abs($currentCPU - $lastCPU)
+        $memoryDelta = [math]::Abs($currentMemory - $lastMemory)
+        
+        $status = if ($cpuDelta -gt 0.1 -or $memoryDelta -gt 0.1) {
+            $noActivityCounter = 0
+            "Active - CPU: $([math]::Round($currentCPU, 1))%, Memory: ${currentMemory}MB"
+        } else {
+            $noActivityCounter++
+            "Idle - Last activity $noActivityCounter seconds ago"
         }
+        
+        # Update last values
+        $lastCPU = $currentCPU
+        $lastMemory = $currentMemory
+        
+        # Clear the previous line and write the new status
+        Write-Host "`r$(Get-Date -Format 'HH:mm:ss') - $status                     " -NoNewline -ForegroundColor Cyan
+        
+        if ((Get-Date) - $startTime -gt $cleanupTimeout) {
+            Write-Log "Disk Cleanup timeout reached after 20 minutes" -Level Warning
+            Write-Host "`rDisk Cleanup timed out after 20 minutes." -ForegroundColor Yellow
+            $cleanupTimedOut = $true
+            Stop-Process -Id $processId -Force -ErrorAction Stop
+            break
+        }
+        
+        # If no activity for 2 minutes, assume process is stuck
+        if ($noActivityCounter -ge 120) {
+            Write-Log "No disk cleanup activity detected for 2 minutes" -Level Warning
+            Write-Host "`rDisk Cleanup appears stuck, terminating process..." -ForegroundColor Yellow
+            Stop-Process -Id $processId -Force -ErrorAction Stop
+            break
+        }
+    }
+    catch {
+        Write-Log "Error monitoring cleanup process: $($_.Exception.Message)" -Level Warning
         break
     }
-
-    $char = $spinChars[$i % $spinChars.Length]
-    Write-Host "`r$(Get-Date -Format 'HH:mm:ss') - Cleaning in progress $char" -NoNewline -ForegroundColor Cyan
     
-    try {
-        $title = (Get-Process -Id $processId -ErrorAction SilentlyContinue).MainWindowTitle
-        if ($title -and $title -ne "") {
-            Write-Host "`r$(Get-Date -Format 'HH:mm:ss') - $title" -ForegroundColor Cyan
-        }
-    } catch {
-        # Just continue
-    }
-    
-    $i++
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 1
 }
 
 $duration = (Get-Date) - $startTime
