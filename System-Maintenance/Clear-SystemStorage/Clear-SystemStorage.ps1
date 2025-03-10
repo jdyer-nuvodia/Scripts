@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 18:39:00 UTC
+# Last Updated: 2025-03-10 19:01:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.4
-# Additional Info: Modified to handle shadow copies independently of disk cleanup timeout
+# Version: 4.0.5
+# Additional Info: Fixed shadow copy management executing after disk cleanup timeout
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.0.4" -Level Info
+Write-Log "Script version: 4.0.5" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -91,7 +91,7 @@ function Test-RunningAsSystem {
 function Start-SystemContext {
     param(
         [string]$ScriptPath = $MyInvocation.PSCommandPath,
-        [int]$TimeoutSeconds = 300
+        [int]$TimeoutSeconds = 3600  # Increased to 1 hour to ensure completion
     )
     
     if (Test-RunningAsSystem) {
@@ -152,17 +152,17 @@ Start-Transcript -Path '$logFile' -Force
 try {
     Write-Host '[SYSTEM EXECUTOR] Starting execution of main script as SYSTEM'
     # Run with debug and verbose output enabled
-    & '$systemAccessibleScriptPath' -Debug -Verbose
-    if (`$?) {
-        Write-Host '[SYSTEM EXECUTOR] Script executed successfully.'
-        Set-Content -Path '$markerFile' -Value 'Complete' -Force
-    } else {
-        Write-Error '[SYSTEM EXECUTOR] Script failed with non-zero exit code.'
-    }
+    & '$systemAccessibleScriptPath' -Debug -Verbose *> '$logFile'
+    `$exitCode = `$LASTEXITCODE
+    Write-Host "[SYSTEM EXECUTOR] Script completed with exit code: `$exitCode"
+    # Always create marker file to indicate completion
+    Set-Content -Path '$markerFile' -Value "Complete:`$exitCode" -Force
 }
 catch {
     Write-Host '[SYSTEM EXECUTOR] Error occurred: ' + `$_.Exception.Message -ForegroundColor Red
     Write-Error '[SYSTEM EXECUTOR] Error occurred: ' + `$_.Exception.Message
+    # Create marker even on error
+    Set-Content -Path '$markerFile' -Value 'Error:1' -Force
     exit 1
 }
 finally {
@@ -363,19 +363,23 @@ Write-Log "Disk Cleanup process started with PID: $processId" -Level Debug
 $startTime = Get-Date
 Write-Host "Disk Cleanup started at: $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
 
-# Monitor the cleanmgr process
 $i = 0
 $spinChars = '|','/','-','\'
 Write-Host "Progress: " -NoNewline -ForegroundColor Cyan
 $cleanupTimedOut = $false
 
+# Separate timeout for disk cleanup (30 minutes)
+$cleanupTimeout = [TimeSpan]::FromMinutes(30)
+
 while (!$cleanmgrProcess.HasExited) {
-    if ((Get-Date) - $startTime -gt [TimeSpan]::FromMinutes(30)) {
+    if ((Get-Date) - $startTime -gt $cleanupTimeout) {
         Write-Log "Disk Cleanup timeout reached after 30 minutes" -Level Warning
-        Write-Host "`rDisk Cleanup timed out after 30 minutes. Proceeding with shadow copy management..." -ForegroundColor Yellow
+        Write-Host "`rDisk Cleanup timed out after 30 minutes." -ForegroundColor Yellow
+        Write-Host "Proceeding with shadow copy management..." -ForegroundColor Cyan
         $cleanupTimedOut = $true
         try {
             Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+            Write-Log "Successfully stopped cleanup process" -Level Info
         } catch {
             Write-Log "Failed to stop cleanup process: $($_.Exception.Message)" -Level Warning
         }
