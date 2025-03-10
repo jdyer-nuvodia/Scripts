@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 20:45:00 UTC
+# Last Updated: 2025-03-10 20:47:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.8
-# Additional Info: Updated script header documentation to meet standards
+# Version: 4.0.9
+# Additional Info: Removed unused variables from script monitoring
 # =============================================================================
 
 <#
@@ -229,8 +229,6 @@ finally {
         
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
-        $counter = 0
-        $progressChars = @('|', '/', '-', '\')
         
         while ((Get-Date) -lt $timeout -and -not $completed) {
             if (Test-Path $markerFile) {
@@ -245,7 +243,7 @@ finally {
                     $latestLogs = Get-Content -Path $logFile -Tail 1 -ErrorAction SilentlyContinue
                     if ($latestLogs) {
                         # Clear the previous line
-                        Write-Host "`r                                                                                " -NoNewline
+                        Write-Host "`r                                                                     " -NoNewline
                         
                         # Write the latest log entry
                         if ($latestLogs -match '^\[(.*?)\](.*)$') {
