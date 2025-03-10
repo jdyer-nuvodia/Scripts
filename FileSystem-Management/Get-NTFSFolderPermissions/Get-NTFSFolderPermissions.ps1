@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 16:19:00 UTC
+# Last Updated: 2025-03-10 16:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.1
-# Additional Info: Enhanced SID translation with pre-cached well-known SIDs and improved error handling
+# Version: 1.7.2
+# Additional Info: Fixed SID translation syntax errors and improved error handling
 # =============================================================================
 
 <#
@@ -791,28 +791,28 @@ catch {
     }
 }
 
-# Add SID translation cache
-$script:sidCache = @{}
+# Initialize SID cache with well-known SIDs
+$script:sidCache = @{
     'S-1-5-32-544' = 'BUILTIN\Administrators'
-function Convert-SIDToName {N\Users'
-    param(-32-546' = 'BUILTIN\Guests'
-        [Parameter(Mandatory = $true)]
-        [System.Security.Principal.SecurityIdentifier]$SID
-    )S-1-5-20' = 'NT AUTHORITY\NETWORK SERVICE'
+    'S-1-5-32-545' = 'BUILTIN\Users'
+    'S-1-5-32-546' = 'BUILTIN\Guests'
+    'S-1-5-18' = 'NT AUTHORITY\SYSTEM'
+    'S-1-5-19' = 'NT AUTHORITY\LOCAL SERVICE'
+    'S-1-5-20' = 'NT AUTHORITY\NETWORK SERVICE'
     'S-1-5-11' = 'NT AUTHORITY\Authenticated Users'
-    try {1-0' = 'Everyone'
-        # Check cache firstTY\INTERACTIVE'
-        if ($script:sidCache.ContainsKey($SID.Value)) {
-            return $script:sidCache[$SID.Value]
-        }Convert-SIDToName {
+    'S-1-1-0' = 'Everyone'
+    'S-1-5-4' = 'NT AUTHORITY\INTERACTIVE'
+}
+
+function Convert-SidToAccountName {
     param(
-        # Use .NET methods for translation
-        $ntAccount = $SID.Translate([System.Security.Principal.NTAccount])
-        $name = $ntAccount.Value
+        [Parameter(Mandatory = $true)]
+        [string]$Identity
+    )
     
-        # Cache the result
-        $script:sidCache[$SID.Value] = $name
-        return $namedentity -match '^S-\d-(\d+-){1,14}\d+$')) {
+    try {
+        # Return if not a SID
+        if (-not ($Identity -match '^S-\d-(\d+-){1,14}\d+$')) {
             return $Identity
         }
 
@@ -823,28 +823,19 @@ function Convert-SIDToName {N\Users'
         }
 
         # Try multiple translation methods
+        $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
         $result = try {
-            $sid = [System.Security.Principal.SecurityIdentifier]::new($Identity)
-            try {
-                # Try primary translation method
-                $account = $sid.Translate([System.Security.Principal.NTAccount])
-                $account.Value
-            }
-            catch {
-                # Fallback to Win32 API if .NET method fails
-                $objSID = New-Object System.Security.Principal.SecurityIdentifier($Identity)
-                $objUser = $objSID.Translate([System.Security.Principal.NTAccount])
-                $objUser.Value
-            }
+            # Try primary translation method
+            $ntAccount = $sid.Translate([System.Security.Principal.NTAccount])
+            $ntAccount.Value
         }
         catch {
-            # If all translation methods fail, format SID for display
-            $formattedSID = "SID: $Identity"
-            Write-Log "Translation failed for SID: $Identity - $_" "Yellow"
-            $formattedSID
+            # Fallback to direct string for known SIDs
+            Write-Log "Failed to translate SID: $Identity - $_" "Yellow"
+            "SID: $Identity"
         }
 
-        # Cache successful translations
+        # Cache successful translations if not an error
         if ($result -and -not $result.StartsWith("SID:")) {
             $script:sidCache[$Identity] = $result
             Write-Log "Cached translation for SID: $Identity = $result" "Magenta"
@@ -854,7 +845,7 @@ function Convert-SIDToName {N\Users'
     }
     catch {
         Write-Log "Critical error in SID translation: $Identity - $_" "Red"
-        return "SID: $Identity (Error)"
+        return "SID: $Identity"
     }
 }
 
