@@ -91,7 +91,7 @@ function Test-RunningAsSystem {
 function Start-SystemContext {
     param(
         [string]$ScriptPath = $MyInvocation.PSCommandPath,
-        [int]$TimeoutSeconds = 3600  # Increased to 1 hour to ensure completion
+        [int]$TimeoutSeconds = 900  # Decreased to 15 minutes to ensure timely completion
     )
     
     if (Test-RunningAsSystem) {
@@ -368,13 +368,13 @@ $spinChars = '|','/','-','\'
 Write-Host "Progress: " -NoNewline -ForegroundColor Cyan
 $cleanupTimedOut = $false
 
-# Separate timeout for disk cleanup (30 minutes)
-$cleanupTimeout = [TimeSpan]::FromMinutes(30)
+# Separate timeout for disk cleanup (10 minutes)
+$cleanupTimeout = [TimeSpan]::FromMinutes(10)
 
 while (!$cleanmgrProcess.HasExited) {
     if ((Get-Date) - $startTime -gt $cleanupTimeout) {
-        Write-Log "Disk Cleanup timeout reached after 30 minutes" -Level Warning
-        Write-Host "`rDisk Cleanup timed out after 30 minutes." -ForegroundColor Yellow
+        Write-Log "Disk Cleanup timeout reached after 10 minutes" -Level Warning
+        Write-Host "`rDisk Cleanup timed out after 10 minutes." -ForegroundColor Yellow
         Write-Host "Proceeding with shadow copy management..." -ForegroundColor Cyan
         $cleanupTimedOut = $true
         try {
