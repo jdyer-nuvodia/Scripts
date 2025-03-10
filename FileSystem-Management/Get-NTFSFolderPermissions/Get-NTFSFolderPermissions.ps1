@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 16:20:00 UTC
+# Last Updated: 2025-03-10 16:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.2
-# Additional Info: Fixed SID translation syntax errors and improved error handling
+# Version: 1.7.3
+# Additional Info: Enhanced SID translation with domain context and offline support
 # =============================================================================
 
 <#
@@ -791,7 +791,7 @@ catch {
     }
 }
 
-# Initialize SID cache with well-known SIDs
+# Initialize SID cache with well-known SIDs and add domain context
 $script:sidCache = @{
     'S-1-5-32-544' = 'BUILTIN\Administrators'
     'S-1-5-32-545' = 'BUILTIN\Users'
@@ -802,6 +802,32 @@ $script:sidCache = @{
     'S-1-5-11' = 'NT AUTHORITY\Authenticated Users'
     'S-1-1-0' = 'Everyone'
     'S-1-5-4' = 'NT AUTHORITY\INTERACTIVE'
+}
+
+# Add domain context tracking
+$script:domainContext = $null
+$script:failedTranslations = @{}
+$script:maxRetries = 3
+$script:retryDelay = 1
+
+function Initialize-DomainContext {
+    try {
+        $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+        $script:domainContext = @{
+            Name = $domain.Name
+            DomainControllers = @($domain.DomainControllers | ForEach-Object { $_.Name })
+            IsAvailable = $true
+        }
+        Write-Log "Domain context initialized: $($domain.Name)" "Magenta"
+    }
+    catch {
+        $script:domainContext = @{
+            Name = $env:USERDOMAIN
+            DomainControllers = @()
+            IsAvailable = $false
+        }
+        Write-Log "Working in offline/local mode: $($env:USERDOMAIN)" "Yellow"
+    }
 }
 
 function Convert-SidToAccountName {
@@ -822,30 +848,71 @@ function Convert-SidToAccountName {
             return $script:sidCache[$Identity]
         }
 
+        # Check if we have tried this SID too many times
+        if ($script:failedTranslations.ContainsKey($Identity) -and 
+            $script:failedTranslations[$Identity].Count -ge $script:maxRetries) {
+            Write-Log "Maximum retry attempts reached for SID: $Identity" "Yellow"
+            return "SID: $Identity (Max Retries)"
+        }
+
+        # Initialize domain context if needed
+        if ($null -eq $script:domainContext) {
+            Initialize-DomainContext
+        }
+
         # Try multiple translation methods
-        $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
-        $result = try {
-            # Try primary translation method
-            $ntAccount = $sid.Translate([System.Security.Principal.NTAccount])
-            $ntAccount.Value
+        $result = $null
+        $error.Clear()
+
+        try {
+            # Method 1: Direct .NET translation
+            $sid = New-Object System.Security.Principal.SecurityIdentifier($Identity)
+            $result = $sid.Translate([System.Security.Principal.NTAccount]).Value
         }
         catch {
-            # Fallback to direct string for known SIDs
-            Write-Log "Failed to translate SID: $Identity - $_" "Yellow"
-            "SID: $Identity"
+            Write-Log "Primary translation failed for $Identity - Attempting fallback methods" "Yellow"
+            
+            try {
+                # Method 2: ADSI lookup if domain is available
+                if ($script:domainContext.IsAvailable) {
+                    $searcher = [adsisearcher]"(objectSid=$Identity)"
+                    $found = $searcher.FindOne()
+                    if ($found) {
+                        $result = $found.Properties["samaccountname"][0]
+                        if ($found.Properties["domain"][0]) {
+                            $result = "$($found.Properties['domain'][0])\$result"
+                        }
+                    }
+                }
+            }
+            catch {
+                Write-Log "ADSI lookup failed for $Identity" "Yellow"
+            }
+            
+            if (-not $result) {
+                # Track failed attempts
+                if (-not $script:failedTranslations.ContainsKey($Identity)) {
+                    $script:failedTranslations[$Identity] = @()
+                }
+                $script:failedTranslations[$Identity] += [DateTime]::Now
+                
+                # Return formatted SID
+                return "SID: $Identity (Translation Failed)"
+            }
         }
 
-        # Cache successful translations if not an error
-        if ($result -and -not $result.StartsWith("SID:")) {
+        # Cache successful translations
+        if ($result) {
             $script:sidCache[$Identity] = $result
             Write-Log "Cached translation for SID: $Identity = $result" "Magenta"
+            return $result
         }
 
-        return $result
+        return "SID: $Identity"
     }
     catch {
         Write-Log "Critical error in SID translation: $Identity - $_" "Red"
-        return "SID: $Identity"
+        return "SID: $Identity (Error)"
     }
 }
 
