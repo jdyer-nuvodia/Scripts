@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 15:15:00 UTC
+# Last Updated: 2025-03-11 15:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.0
-# Additional Info: Enhanced disk cleanup with optimized .NET methods and VSS management
+# Version: 4.1.1
+# Additional Info: Fixed null comparison bug, removed unused variables, corrected path handling
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.1.0" -Level Info
+Write-Log "Script version: 4.1.1" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -114,7 +114,7 @@ function Start-SystemContext {
         # Ensure cleanup of any existing files
         $filesToClean = @(
             $systemAccessibleScriptPath,
-            "${markerFile}.status",
+            "$markerFile.status",
             $executorScript,
             $logFile
         )
@@ -173,7 +173,7 @@ Start-Transcript -Path '$logFile' -Force
 
 function Write-StatusFile {
     param([string]`$Status)
-    Set-Content -Path '${markerFile}.status' -Value `$Status -Force
+    Set-Content -Path '$markerFile.status' -Value `$Status -Force
 }
 
 try {
@@ -246,7 +246,7 @@ catch {
         Write-Host "`n===== System Cleanup Progress =====" -ForegroundColor Cyan
         Write-Host "Task running as SYSTEM. Monitoring cleanup progress..." -ForegroundColor Cyan
         
-        $statusFile = "${markerFile}.status"
+        $statusFile = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName.status"
         $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
         $lastStatus = ""
@@ -255,7 +255,6 @@ catch {
         $iterationCount = 0
         $maxRetries = 3
         $retryDelay = 2
-        $processLockTimeout = 5 # seconds to wait for process locks
 
         while ($iterationCount -lt $maxRetries) {
             try {
@@ -319,11 +318,7 @@ catch {
                             
                             if ($currentStatus -ne $lastStatus) {
                                 Write-Host "`r$(' ' * 80)" -NoNewline
-                                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
-                                    if ($currentStatus.StartsWith("Error:")) { "Red" }
-                                    elseif ($currentStatus -eq "Complete") { "Green" }
-                                    else { "Cyan" }
-                                )
+                                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(if ($currentStatus.StartsWith("Error:")) { "Red" } elseif ($currentStatus -eq "Complete") { "Green" } else { "Cyan" })
                                 
                                 $lastStatus = $currentStatus
                                 
@@ -369,7 +364,7 @@ catch {
         # Enhanced final cleanup
         Write-Log "Performing final cleanup..." -Level Info
         
-        $filesToClean = @($executorScript, $systemAccessibleScriptPath, $markerFile, "${markerFile}.status", $logFile)
+        $filesToClean = @($executorScript, $systemAccessibleScriptPath, $markerFile, "$markerFile.status", $logFile)
         foreach ($file in $filesToClean) {
             $retryCount = 0
             while ($retryCount -lt $maxRetries -and [System.IO.File]::Exists($file)) {
@@ -463,8 +458,7 @@ function Clear-SystemStorageOptimized {
     Write-Log "Initializing optimized system storage cleanup..." -Level Info
     
     try {
-        # Initialize WMI objects for VSS management
-        $vssMgmt = Get-WmiObject -Namespace "root\cimv2" -Class Win32_ShadowCopy
+        # Initialize only required VSS object
         $vssService = Get-WmiObject -Class Win32_ShadowCopy
 
         # Enhanced cleanup paths using .NET methods
@@ -481,9 +475,9 @@ function Clear-SystemStorageOptimized {
         Write-Log "Managing Volume Shadow Copies..." -Level Info
         try {
             # Get all shadow copies
-            $shadowCopies = $vssService | Where-Object { $_.ID -ne $null }
+            $shadowCopies = $vssService | Where-Object { $null -ne $_.ID }
             
-            if ($shadowCopies) {
+            if ($null -ne ($shadowCopies | Where-Object { $null -ne $_.ID })) {
                 $shadowCopies | ForEach-Object {
                     try {
                         $_.Delete()
