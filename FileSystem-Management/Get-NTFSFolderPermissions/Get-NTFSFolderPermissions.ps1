@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 16:06:00 UTC
+# Last Updated: 2025-03-11 16:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.7
-# Additional Info: Added Windows Client support for AD module initialization
+# Version: 1.11.8
+# Additional Info: Removed Get-WindowsFeature dependency and improved client OS handling
 # =============================================================================
 
 <#
@@ -487,32 +487,25 @@ function Initialize-ADModule {
     }
 
     try {
-        # Check if we're on Windows Server or Windows Client
-        $isWindowsServer = (Get-WmiObject -Class Win32_OperatingSystem).ProductType -eq 3
-
-        if ($isWindowsServer) {
-            # Server: Try to install RSAT AD PowerShell module if not present
-            if (-not (Get-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction SilentlyContinue)) {
-                Write-Log "Installing RSAT AD PowerShell module..." "Yellow"
-                Add-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop
-            }
-        } else {
-            # Client: Check if AD module is available
-            $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory
-            if (-not $adModuleAvailable) {
-                Write-Log "ActiveDirectory module not found. Attempting to install RSAT AD tools..." "Yellow"
-                try {
-                    # Try to install RSAT AD tools using Windows Capability
-                    Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0 -ErrorAction Stop
-                } catch {
-                    Write-Log "Could not install RSAT AD tools. SID resolution will be limited." "Yellow"
-                    $Global:UseFallbackSIDResolution = $true
-                    return $false
-                }
+        # Check if AD module is available
+        $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory
+        if (-not $adModuleAvailable) {
+            Write-Log "ActiveDirectory module not found." "Yellow"
+            
+            # Try to load from Windows PowerShell
+            $psModulePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules\ActiveDirectory"
+            if (Test-Path $psModulePath) {
+                $env:PSModulePath = $env:PSModulePath + ";$psModulePath"
+                Import-Module ActiveDirectory -ErrorAction Stop
+                Write-Log "Successfully loaded Active Directory module from Windows PowerShell path" "Green"
+            } else {
+                Write-Log "RSAT AD tools not installed. SID resolution will be limited." "Yellow"
+                $Global:UseFallbackSIDResolution = $true
+                return $false
             }
         }
 
-        # Force import the AD module
+        # Force import the AD module if not already imported
         if (-not (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)) {
             Import-Module ActiveDirectory -Force -ErrorAction Stop
             Write-Log "Successfully force-loaded Active Directory module" "Green"
@@ -524,7 +517,7 @@ function Initialize-ADModule {
             Write-Log "Successfully verified AD domain connectivity" "Green"
             return $true
         } catch {
-            Write-Log "Not running on a domain controller - will use alternate SID resolution" "Yellow"
+            Write-Log "Not running on a domain-joined machine - will use alternate SID resolution" "Yellow"
             $Global:UseFallbackSIDResolution = $true
             return $false
         }
