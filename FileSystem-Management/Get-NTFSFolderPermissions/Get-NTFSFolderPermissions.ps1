@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 17:11:00 UTC
+# Last Updated: 2025-03-11 23:18:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.13
-# Additional Info: Enhanced AD module import handling for non-domain environments
+# Version: 1.11.14
+# Additional Info: Fixed unused variable warning and improved SID resolution logic
 # =============================================================================
 
 <#
@@ -483,6 +483,7 @@ function Get-FolderPermissionsModule {
 # Function must be defined before first usage
 function Initialize-ADModule {
     if ($SkipADResolution) {
+        $Global:UseFallbackSIDResolution = $true
         return $false
     }
 
@@ -526,6 +527,7 @@ function Initialize-ADModule {
             try {
                 $null = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
                 Write-Log "Successfully verified AD domain connectivity" "Green"
+                $Global:UseFallbackSIDResolution = $false
                 return $true
             } catch {
                 Write-Log "Not domain-joined - using alternate SID resolution" "Yellow"
@@ -609,8 +611,8 @@ function Resolve-ADAccountFromSID {
             return $wellKnownSIDs[$SID]
         }
 
-        # If in fallback mode, only use .NET translation
-        if ($Global:UseFallbackSIDResolution) {
+        # If in fallback mode or AD module not available, only use .NET translation
+        if ($Global:UseFallbackSIDResolution -or !(Get-Module ActiveDirectory)) {
             try {
                 $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
                 return $ntAccount.Value
@@ -620,38 +622,26 @@ function Resolve-ADAccountFromSID {
             }
         }
 
-        # Not in fallback mode, try AD module first
-        if (Get-Module ActiveDirectory) {
-            try {
-                $params = @{
-                    Filter = "ObjectSID -eq '$SID'"
-                    Properties = 'Name', 'SamAccountName'
-                    ErrorAction = 'Stop'
-                }
-
-                if ($DomainController) {
-                    $params['Server'] = $DomainController
-                }
-
-                $result = Get-ADObject @params
-                if ($result.SamAccountName) {
-                    return $result.SamAccountName
-                }
-                return $result.Name
+        # Not in fallback mode, try AD module
+        try {
+            $params = @{
+                Filter = "ObjectSID -eq '$SID'"
+                Properties = 'Name', 'SamAccountName'
+                ErrorAction = 'Stop'
             }
-            catch {
-                # AD module failed, try .NET translation as fallback
-                try {
-                    $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
-                    return $ntAccount.Value
-                }
-                catch {
-                    return $SID
-                }
+
+            if ($DomainController) {
+                $params['Server'] = $DomainController
             }
+
+            $result = Get-ADObject @params
+            if ($result.SamAccountName) {
+                return $result.SamAccountName
+            }
+            return $result.Name
         }
-        else {
-            # AD module not available, use .NET translation
+        catch {
+            # AD module failed, try .NET translation as fallback
             try {
                 $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
                 return $ntAccount.Value
