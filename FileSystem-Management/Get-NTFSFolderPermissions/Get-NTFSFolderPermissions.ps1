@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 16:08:00 UTC
+# Last Updated: 2025-03-11 16:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.8
-# Additional Info: Removed Get-WindowsFeature dependency and improved client OS handling
+# Version: 1.11.9
+# Additional Info: Fixed UseFallbackSIDResolution variable usage in Resolve-ADAccountFromSID function
 # =============================================================================
 
 <#
@@ -559,8 +559,8 @@ function Resolve-ADAccountFromSID {
     )
     
     try {
-        # Skip if SID resolution is disabled or module not available
-        if ($SkipADResolution -or -not $Global:ADModuleAvailable) {
+        # Skip if SID resolution is disabled
+        if ($SkipADResolution) {
             return $SID
         }
 
@@ -594,49 +594,57 @@ function Resolve-ADAccountFromSID {
             return $wellKnownSIDs[$SID]
         }
 
-        # Use .NET translation if in fallback mode or try it first anyway
-        if ($Global:UseFallbackSIDResolution -or $true) {
+        # If in fallback mode, only use .NET translation
+        if ($Global:UseFallbackSIDResolution) {
             try {
                 $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
-                if ($ntAccount) {
-                    return $ntAccount.Value
-                }
+                return $ntAccount.Value
             }
             catch {
-                # If in fallback mode and .NET translation fails, return SID
-                if ($Global:UseFallbackSIDResolution) {
-                    return $SID
-                }
-                # Otherwise continue to AD module
+                return $SID
             }
         }
 
-        # Only proceed with AD module if we're not in fallback mode
-        if (-not $Global:UseFallbackSIDResolution) {
-            if (-not (Get-Module ActiveDirectory)) {
-                if (-not (Initialize-ADModule)) {
+        # Not in fallback mode, try AD module first
+        if (Get-Module ActiveDirectory) {
+            try {
+                $params = @{
+                    Filter = "ObjectSID -eq '$SID'"
+                    Properties = 'Name', 'SamAccountName'
+                    ErrorAction = 'Stop'
+                }
+
+                if ($DomainController) {
+                    $params['Server'] = $DomainController
+                }
+
+                $result = Get-ADObject @params
+                if ($result.SamAccountName) {
+                    return $result.SamAccountName
+                }
+                return $result.Name
+            }
+            catch {
+                # AD module failed, try .NET translation as fallback
+                try {
+                    $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
+                    return $ntAccount.Value
+                }
+                catch {
                     return $SID
                 }
             }
-
-            $params = @{
-                Filter = "ObjectSID -eq '$SID'"
-                Properties = 'Name', 'SamAccountName'
-                ErrorAction = 'Stop'
-            }
-
-            if ($DomainController) {
-                $params['Server'] = $DomainController
-            }
-
-            $result = Get-ADObject @params
-            if ($result.SamAccountName) {
-                return $result.SamAccountName
-            }
-            return $result.Name
         }
-        
-        return $SID
+        else {
+            # AD module not available, use .NET translation
+            try {
+                $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
+                return $ntAccount.Value
+            }
+            catch {
+                return $SID
+            }
+        }
     }
     catch {
         # Return original SID if resolution fails
