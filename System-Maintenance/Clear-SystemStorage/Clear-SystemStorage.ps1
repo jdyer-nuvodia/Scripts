@@ -2,7 +2,7 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:30:00 UTC
+# Last Updated: 2025-03-11 21:01:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.1.0
 # Additional Info: Added Downloads folder cleanup functionality
