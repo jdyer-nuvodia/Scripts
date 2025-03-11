@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 16:25:00 UTC
+# Last Updated: 2025-03-11 17:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.10
-# Additional Info: Improved AD module initialization and error handling to avoid unnecessary retries
+# Version: 1.11.11
+# Additional Info: Added verbose AD module loading diagnostics
 # =============================================================================
 
 <#
@@ -487,34 +487,56 @@ function Initialize-ADModule {
     }
 
     try {
-        # First check if module is available without trying to load
-        $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction Stop
+        Write-Log "[DEBUG] Checking PSModulePath..." "Magenta"
+        Write-Log "[DEBUG] Current PSModulePath: $env:PSModulePath" "Magenta"
+        
+        Write-Log "[DEBUG] Checking for ActiveDirectory module..." "Magenta"
+        $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction Stop -Verbose 4>&1
+        Write-Log "[DEBUG] Get-Module result: $($adModuleAvailable | Out-String)" "Magenta"
+
         if (-not $adModuleAvailable) {
-            Write-Log "RSAT AD PowerShell module not installed. Will use fallback SID resolution." "Yellow"
-            $Global:UseFallbackSIDResolution = $true
-            return $false
+            Write-Log "[DEBUG] Module not found in default locations, checking Windows PowerShell path..." "Magenta"
+            $psModulePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules\ActiveDirectory"
+            Write-Log "[DEBUG] Checking path: $psModulePath" "Magenta"
+            
+            if (Test-Path $psModulePath) {
+                Write-Log "[DEBUG] Found module at: $psModulePath" "Magenta"
+                Write-Log "[DEBUG] Adding path to PSModulePath" "Magenta"
+                $env:PSModulePath = $env:PSModulePath + ";$psModulePath"
+                Write-Log "[DEBUG] Updated PSModulePath: $env:PSModulePath" "Magenta"
+                
+                Write-Log "[DEBUG] Attempting to import module..." "Magenta"
+                $importResult = Import-Module ActiveDirectory -ErrorAction Stop -Verbose 4>&1
+                Write-Log "[DEBUG] Import result: $($importResult | Out-String)" "Magenta"
+                Write-Log "Successfully loaded Active Directory module from Windows PowerShell path" "Green"
+            } else {
+                Write-Log "[DEBUG] Module not found at: $psModulePath" "Magenta"
+                Write-Log "RSAT AD tools not installed. SID resolution will be limited." "Yellow"
+                $Global:UseFallbackSIDResolution = $true
+                return $false
+            }
+        } else {
+            Write-Log "[DEBUG] Module found, attempting to import..." "Magenta"
+            $importResult = Import-Module ActiveDirectory -Force -ErrorAction Stop -Verbose 4>&1
+            Write-Log "[DEBUG] Import result: $($importResult | Out-String)" "Magenta"
         }
 
-        # Module exists, try to import it
-        Import-Module ActiveDirectory -Force -ErrorAction Stop
-        Write-Log "Successfully loaded Active Directory module" "Green"
-
-        # Test AD functionality
+        Write-Log "[DEBUG] Testing AD functionality..." "Magenta"
         try {
-            $null = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+            $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+            Write-Log "[DEBUG] Current domain: $($domain.Name)" "Magenta"
             Write-Log "Successfully verified AD domain connectivity" "Green"
             return $true
-        }
-        catch {
+        } catch {
+            Write-Log "[DEBUG] Domain test failed: $($_.Exception.Message)" "Magenta"
             Write-Log "Not running on a domain-joined machine - will use alternate SID resolution" "Yellow"
             $Global:UseFallbackSIDResolution = $true
             return $false
         }
-    }
-    catch {
-        Write-Log "Unable to load AD module: $($_.Exception.Message)" "Yellow"
-        Write-Log "SID resolution will use built-in Windows translation" "Yellow"
-        Write-Log "Use -SkipADResolution to suppress these warnings" "DarkGray"
+    } catch {
+        Write-Log "[DEBUG] Error in AD module initialization: $($_.Exception.Message)" "Magenta"
+        Write-Log "[DEBUG] Stack trace: $($_.ScriptStackTrace)" "Magenta"
+        Write-Log "Unable to load AD module. SID resolution will use built-in Windows translation" "Yellow"
         $Global:UseFallbackSIDResolution = $true
         return $false
     }
