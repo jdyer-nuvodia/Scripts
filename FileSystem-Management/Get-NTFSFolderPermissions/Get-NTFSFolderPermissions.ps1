@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 15:55:00 UTC
+# Last Updated: 2025-03-11 16:06:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.5
-# Additional Info: Fixed Compare-PermissionSets parameter declarations
+# Version: 1.11.7
+# Additional Info: Added Windows Client support for AD module initialization
 # =============================================================================
 
 <#
@@ -487,32 +487,48 @@ function Initialize-ADModule {
     }
 
     try {
-        # Try to import RSAT AD PowerShell module if not already installed
-        if (-not (Get-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction SilentlyContinue)) {
-            Write-Log "Installing RSAT AD PowerShell module..." "Yellow"
-            Add-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop
+        # Check if we're on Windows Server or Windows Client
+        $isWindowsServer = (Get-WmiObject -Class Win32_OperatingSystem).ProductType -eq 3
+
+        if ($isWindowsServer) {
+            # Server: Try to install RSAT AD PowerShell module if not present
+            if (-not (Get-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction SilentlyContinue)) {
+                Write-Log "Installing RSAT AD PowerShell module..." "Yellow"
+                Add-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop
+            }
+        } else {
+            # Client: Check if AD module is available
+            $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory
+            if (-not $adModuleAvailable) {
+                Write-Log "ActiveDirectory module not found. Attempting to install RSAT AD tools..." "Yellow"
+                try {
+                    # Try to install RSAT AD tools using Windows Capability
+                    Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0 -ErrorAction Stop
+                } catch {
+                    Write-Log "Could not install RSAT AD tools. SID resolution will be limited." "Yellow"
+                    $Global:UseFallbackSIDResolution = $true
+                    return $false
+                }
+            }
         }
 
-        # Force import the AD module with -Force parameter
+        # Force import the AD module
         if (-not (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)) {
             Import-Module ActiveDirectory -Force -ErrorAction Stop
             Write-Log "Successfully force-loaded Active Directory module" "Green"
         }
 
-        # Test AD functionality even if not a domain controller
+        # Test AD functionality
         try {
             $null = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
             Write-Log "Successfully verified AD domain connectivity" "Green"
-        }
-        catch {
-            Write-Log "Not running on a domain controller - configuring alternate SID resolution" "Yellow"
-            # Set up alternative SID resolution method for non-DC systems
+            return $true
+        } catch {
+            Write-Log "Not running on a domain controller - will use alternate SID resolution" "Yellow"
             $Global:UseFallbackSIDResolution = $true
+            return $false
         }
-
-        return $true
-    }
-    catch {
+    } catch {
         Write-Log "Error initializing AD module: $($_.Exception.Message)" "Yellow"
         Write-Log "Will attempt alternative SID resolution methods" "Yellow"
         $Global:UseFallbackSIDResolution = $true
@@ -530,7 +546,7 @@ while (-not $Global:ADModuleAvailable -and $retryCount -lt $maxRetries) {
     if (-not $Global:ADModuleAvailable) {
         $retryCount++
         if ($retryCount -lt $maxRetries) {
-            Write-Log "Retry $retryCount of $maxRetries: Attempting to load AD module again..." "Yellow"
+            Write-Log ("Retry $retryCount of $maxRetries : Attempting to load AD module again...") "Yellow"
             Start-Sleep -Seconds 2
         }
     }
@@ -585,40 +601,49 @@ function Resolve-ADAccountFromSID {
             return $wellKnownSIDs[$SID]
         }
 
-        # Try to translate using .NET first (works for local accounts and some domain accounts)
-        try {
-            $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
-            if ($ntAccount) {
-                return $ntAccount.Value
+        # Use .NET translation if in fallback mode or try it first anyway
+        if ($Global:UseFallbackSIDResolution -or $true) {
+            try {
+                $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
+                if ($ntAccount) {
+                    return $ntAccount.Value
+                }
+            }
+            catch {
+                # If in fallback mode and .NET translation fails, return SID
+                if ($Global:UseFallbackSIDResolution) {
+                    return $SID
+                }
+                # Otherwise continue to AD module
             }
         }
-        catch {
-            # Continue to AD module if .NET translation fails
-        }
 
-        # Only proceed with AD module if it's available
-        if (-not (Get-Module ActiveDirectory)) {
-            # Try to load the module only once
-            if (-not (Initialize-ADModule)) {
-                return $SID
+        # Only proceed with AD module if we're not in fallback mode
+        if (-not $Global:UseFallbackSIDResolution) {
+            if (-not (Get-Module ActiveDirectory)) {
+                if (-not (Initialize-ADModule)) {
+                    return $SID
+                }
             }
-        }
 
-        $params = @{
-            Filter     = "ObjectSID -eq '$SID'"
-            Properties = 'Name', 'SamAccountName'
-            ErrorAction = 'Stop'
-        }
+            $params = @{
+                Filter = "ObjectSID -eq '$SID'"
+                Properties = 'Name', 'SamAccountName'
+                ErrorAction = 'Stop'
+            }
 
-        if ($DomainController) {
-            $params['Server'] = $DomainController
-        }
+            if ($DomainController) {
+                $params['Server'] = $DomainController
+            }
 
-        $result = Get-ADObject @params
-        if ($result.SamAccountName) {
-            return $result.SamAccountName
+            $result = Get-ADObject @params
+            if ($result.SamAccountName) {
+                return $result.SamAccountName
+            }
+            return $result.Name
         }
-        return $result.Name
+        
+        return $SID
     }
     catch {
         # Return original SID if resolution fails
