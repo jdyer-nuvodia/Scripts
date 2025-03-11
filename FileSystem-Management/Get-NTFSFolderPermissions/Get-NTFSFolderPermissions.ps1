@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 23:18:00 UTC
+# Last Updated: 2025-03-11 18:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.14
-# Additional Info: Fixed unused variable warning and improved SID resolution logic
+# Version: 1.11.16
+# Additional Info: Fixed duplicate output and removed redundant batch processing
 # =============================================================================
 
 <#
@@ -147,7 +147,7 @@ function Write-File-Safe {
             return $true
         }
         catch {
-            # If even direct .NET methods fail, we can't write to file
+            # If even direct .NET methods fail, we cannot write to file
             return $false
         }
     }
@@ -1032,53 +1032,4 @@ catch {
             # We've tried everything possible
         }
     }
-}
-
-# Process folders and display results
-try {
-    $CurrentBatch = 0
-    $BatchSize = 100 # Process folders in batches of 100
-    
-    while ($CurrentBatch * $BatchSize -lt $TotalFolders) {
-        $StartIndex = $CurrentBatch * $BatchSize
-        $EndIndex = [Math]::Min(($CurrentBatch + 1) * $BatchSize, $TotalFolders)
-        $CurrentFolders = $Folders[$StartIndex..($EndIndex-1)]
-        
-        Write-SafeOutput "Processing batch $($CurrentBatch + 1) (folders $($StartIndex + 1) to $EndIndex of $TotalFolders)..." -Color Cyan
-        
-        # Process the current batch of folders
-        $BatchResults = Start-FolderProcessing -Folders $CurrentFolders -MaxThreads $MaxThreads -SkipUniquenessCounting:$SkipUniquenessCounting
-        
-        # Display results for this batch
-        foreach ($Result in $BatchResults.GetEnumerator()) {
-            # Display result logic here
-            // ...existing code...
-        }
-        
-        $CurrentBatch++
-        
-        # Ask to continue if there are more folders to process
-        if ($EndIndex -lt $TotalFolders) {
-            Write-SafeOutput "`nProcessed $EndIndex of $TotalFolders folders." -Color Cyan
-            $Continue = Read-Host "Continue to iterate? (Y/N)"
-            if ($Continue -notmatch '^[Yy]') {
-                Write-SafeOutput "Processing stopped by user after $EndIndex folders" -Color Yellow
-                break
-            }
-        }
-    }
-    
-    # Final summary
-    Write-SafeOutput "`nProcessing completed for $EndIndex of $TotalFolders folders" -Color Green
-    $TotalTime = ([DateTime]::Now) - $StartTime
-    Write-SafeOutput "Total execution time: $($TotalTime.TotalSeconds.ToString('0.00')) seconds" -Color Green
-    
-    # Save remaining results
-    Write-SafeOutput "Saving final results to log file..." -Color DarkGray
-    Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8"
-    Write-SafeOutput "Results saved to: $OutputLog" -Color Green
-}
-catch {
-    Write-SafeOutput "Error during folder processing: $($_.Exception.Message)" -Color Red
-    Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8"
 }
