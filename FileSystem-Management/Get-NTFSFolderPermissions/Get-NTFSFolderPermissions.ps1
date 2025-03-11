@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-03-11 17:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.11
-# Additional Info: Added verbose AD module loading diagnostics
+# Version: 1.11.12
+# Additional Info: Added forced diagnostic display for AD module loading
 # =============================================================================
 
 <#
@@ -487,56 +487,66 @@ function Initialize-ADModule {
     }
 
     try {
-        Write-Log "[DEBUG] Checking PSModulePath..." "Magenta"
-        Write-Log "[DEBUG] Current PSModulePath: $env:PSModulePath" "Magenta"
-        
-        Write-Log "[DEBUG] Checking for ActiveDirectory module..." "Magenta"
-        $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction Stop -Verbose 4>&1
-        Write-Log "[DEBUG] Get-Module result: $($adModuleAvailable | Out-String)" "Magenta"
+        # Force display diagnostic information
+        Write-Host "=== AD Module Diagnostic Information ===" -ForegroundColor Magenta
+        Write-Host "PSVersion: $($PSVersionTable.PSVersion)" -ForegroundColor Magenta
+        Write-Host "OS: $([System.Environment]::OSVersion.VersionString)" -ForegroundColor Magenta
+        Write-Host "Module Search Paths:" -ForegroundColor Magenta
+        $env:PSModulePath -split ';' | ForEach-Object { Write-Host "  $_" -ForegroundColor Magenta }
 
-        if (-not $adModuleAvailable) {
-            Write-Log "[DEBUG] Module not found in default locations, checking Windows PowerShell path..." "Magenta"
-            $psModulePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules\ActiveDirectory"
-            Write-Log "[DEBUG] Checking path: $psModulePath" "Magenta"
-            
-            if (Test-Path $psModulePath) {
-                Write-Log "[DEBUG] Found module at: $psModulePath" "Magenta"
-                Write-Log "[DEBUG] Adding path to PSModulePath" "Magenta"
-                $env:PSModulePath = $env:PSModulePath + ";$psModulePath"
-                Write-Log "[DEBUG] Updated PSModulePath: $env:PSModulePath" "Magenta"
-                
-                Write-Log "[DEBUG] Attempting to import module..." "Magenta"
-                $importResult = Import-Module ActiveDirectory -ErrorAction Stop -Verbose 4>&1
-                Write-Log "[DEBUG] Import result: $($importResult | Out-String)" "Magenta"
-                Write-Log "Successfully loaded Active Directory module from Windows PowerShell path" "Green"
-            } else {
-                Write-Log "[DEBUG] Module not found at: $psModulePath" "Magenta"
-                Write-Log "RSAT AD tools not installed. SID resolution will be limited." "Yellow"
-                $Global:UseFallbackSIDResolution = $true
-                return $false
+        Write-Host "`nChecking for ActiveDirectory module in available modules..." -ForegroundColor Magenta
+        $modules = Get-Module -ListAvailable | Where-Object { $_.Name -eq 'ActiveDirectory' }
+        
+        if ($modules) {
+            Write-Host "Found ActiveDirectory module(s):" -ForegroundColor Green
+            $modules | ForEach-Object {
+                Write-Host "  Path: $($_.ModuleBase)" -ForegroundColor Green
+                Write-Host "  Version: $($_.Version)" -ForegroundColor Green
             }
         } else {
-            Write-Log "[DEBUG] Module found, attempting to import..." "Magenta"
-            $importResult = Import-Module ActiveDirectory -Force -ErrorAction Stop -Verbose 4>&1
-            Write-Log "[DEBUG] Import result: $($importResult | Out-String)" "Magenta"
+            Write-Host "No ActiveDirectory module found in standard locations" -ForegroundColor Yellow
+            
+            # Check Windows PowerShell path
+            $psModulePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules\ActiveDirectory"
+            Write-Host "`nChecking Windows PowerShell path: $psModulePath" -ForegroundColor Magenta
+            
+            if (Test-Path $psModulePath) {
+                Write-Host "Found module files at: $psModulePath" -ForegroundColor Green
+                $moduleFiles = [System.IO.Directory]::GetFiles($psModulePath, "*", [System.IO.SearchOption]::AllDirectories)
+                Write-Host "Module files found:" -ForegroundColor Magenta
+                $moduleFiles | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+                
+                Write-Host "`nAttempting to import module..." -ForegroundColor Magenta
+                $importResult = Import-Module $psModulePath -PassThru -Force -Verbose 4>&1
+                Write-Host "Import Result: $($importResult | Out-String)" -ForegroundColor Magenta
+            } else {
+                Write-Host "Module not found at: $psModulePath" -ForegroundColor Yellow
+                Write-Host "`nChecking for RSAT AD PowerShell feature..." -ForegroundColor Magenta
+                try {
+                    $rsatStatus = Get-WindowsCapability -Name RSAT.ActiveDirectory* -Online | Select-Object Name, State
+                    Write-Host "RSAT Feature Status:" -ForegroundColor Magenta
+                    $rsatStatus | Format-Table -AutoSize | Out-String | Write-Host -ForegroundColor DarkGray
+                } catch {
+                    Write-Host "Unable to check RSAT feature status: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+            }
         }
 
-        Write-Log "[DEBUG] Testing AD functionality..." "Magenta"
+        Write-Host "`nTesting AD connectivity..." -ForegroundColor Magenta
         try {
             $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-            Write-Log "[DEBUG] Current domain: $($domain.Name)" "Magenta"
-            Write-Log "Successfully verified AD domain connectivity" "Green"
+            Write-Host "Domain connectivity test successful: $($domain.Name)" -ForegroundColor Green
             return $true
         } catch {
-            Write-Log "[DEBUG] Domain test failed: $($_.Exception.Message)" "Magenta"
-            Write-Log "Not running on a domain-joined machine - will use alternate SID resolution" "Yellow"
+            Write-Host "Domain connectivity test failed: $($_.Exception.Message)" -ForegroundColor Yellow
             $Global:UseFallbackSIDResolution = $true
             return $false
         }
     } catch {
-        Write-Log "[DEBUG] Error in AD module initialization: $($_.Exception.Message)" "Magenta"
-        Write-Log "[DEBUG] Stack trace: $($_.ScriptStackTrace)" "Magenta"
-        Write-Log "Unable to load AD module. SID resolution will use built-in Windows translation" "Yellow"
+        Write-Host "`nError during AD module initialization:" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Host "Stack Trace:" -ForegroundColor Red
+        Write-Host $_.ScriptStackTrace -ForegroundColor Red
         $Global:UseFallbackSIDResolution = $true
         return $false
     }
