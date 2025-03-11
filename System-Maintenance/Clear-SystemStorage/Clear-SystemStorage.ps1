@@ -117,13 +117,13 @@ function Remove-TempFiles {
                 }
                 catch {
                     $errorCount++
-                    Write-Log "Could not delete file $_: $($_.Exception.Message)" -Color Yellow
+                    Write-Log "Could not delete file ${_}: $($_.Exception.Message)" -Color Yellow
                 }
             }
             Write-StatusMessage "Cleaned $folder successfully ($filesRemoved files removed)" -Color Green
         }
         catch {
-            Write-StatusMessage "Error accessing folder $folder: $($_.Exception.Message)" -Color Yellow
+            Write-StatusMessage "Error accessing folder ${folder}: $($_.Exception.Message)" -Color Yellow
             $errorCount++
         }
     }
@@ -153,7 +153,7 @@ function Remove-TempFiles {
                         }
                         catch {
                             $errorCount++
-                            Write-Log "Could not delete file $_: $($_.Exception.Message)" -Color Yellow
+                            Write-Log "Could not delete file ${_}: $($_.Exception.Message)" -Color Yellow
                         }
                     }
                     Write-StatusMessage "Cleaned $oldFilesCount old files from $downloadPath" -Color Green
