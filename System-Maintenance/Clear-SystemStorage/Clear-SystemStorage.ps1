@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 19:19:00 UTC
+# Last Updated: 2025-03-12 17:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.4
-# Additional Info: Reduced monitoring timeout and improved file cleanup handling
+# Version: 4.1.5
+# Additional Info: Fixed null reference error in status monitoring loop
 # =============================================================================
 
 <#
@@ -256,106 +256,76 @@ catch {
         $maxRetries = 3
         $retryDelay = 2
 
+        # Enhanced status monitoring with null checks
         while ($iterationCount -lt $maxRetries) {
             try {
                 $currentStatus = "Starting iteration $($iterationCount + 1)..."
                 Write-Log $currentStatus -Level Info
                 Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Cyan
 
-                # Enhanced file lock handling
                 if ([System.IO.File]::Exists($statusFile)) {
-                    $lockReleaseAttempts = 0
-                    while ($lockReleaseAttempts -lt 3) {
+                    try {
+                        $fs = $null
+                        $sr = $null
+                        
                         try {
-                            # Force close any open handles
-                            [System.GC]::Collect()
-                            [System.GC]::WaitForPendingFinalizers()
-                            
-                            # Try to open and immediately close the file
-                            $fs = [System.IO.FileStream]::new(
-                                $statusFile,
-                                [System.IO.FileMode]::Open,
-                                [System.IO.FileAccess]::ReadWrite,
-                                [System.IO.FileShare]::None
-                            )
-                            $fs.Close()
-                            $fs.Dispose()
-                            
-                            # If we got here, we can delete the file
-                            [System.IO.File]::Delete($statusFile)
-                            Write-Log "Successfully cleared previous status file" -Level Debug
-                            break
-                        }
-                        catch [System.IO.IOException] {
-                            $lockReleaseAttempts++
-                            Write-Log ("Attempt " + $lockReleaseAttempts + ": Waiting for file lock to clear...") -Level Warning
-                            Start-Sleep -Seconds 2
-                        }
-                        finally {
-                            if ($fs) { $fs.Dispose() }
-                        }
-                    }
-                }
-
-                # Monitor process with enhanced timeout handling
-                $processTimeout = (Get-Date).AddSeconds($TimeoutSeconds)
-                $completed = $false
-                $lastStatus = ""
-                $statusCheckInterval = 500 # milliseconds
-                $maxMonitoringTime = 300 # 5 minutes
-
-                while ((Get-Date) -lt $processTimeout -and -not $completed) {
-                    if ([System.IO.File]::Exists($statusFile)) {
-                        try {
-                            # Use FileStream with appropriate sharing mode
                             $fs = [System.IO.FileStream]::new(
                                 $statusFile,
                                 [System.IO.FileMode]::Open,
                                 [System.IO.FileAccess]::Read,
                                 [System.IO.FileShare]::ReadWrite
                             )
-                            $sr = [System.IO.StreamReader]::new($fs)
-                            $currentStatus = $sr.ReadToEnd()
                             
-                            if ($currentStatus -ne $lastStatus) {
-                                Write-Host "`r$(' ' * 80)" -NoNewline
-                                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(if ($currentStatus.StartsWith("Error:")) { "Red" } elseif ($currentStatus -eq "Complete") { "Green" } else { "Cyan" })
-                                
-                                $lastStatus = $currentStatus
-                                
-                                if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
-                                    $completed = $true
-                                    Write-Host "`n"
-                                    break
+                            if ($null -ne $fs) {
+                                $sr = [System.IO.StreamReader]::new($fs)
+                                if ($null -ne $sr) {
+                                    $currentStatus = $sr.ReadToEnd()
+                                    
+                                    if (-not [string]::IsNullOrEmpty($currentStatus)) {
+                                        Write-Host "`r$(' ' * 80)" -NoNewline
+                                        Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
+                                            if ($currentStatus.StartsWith("Error:")) { "Red" }
+                                            elseif ($currentStatus -eq "Complete") { "Green" }
+                                            else { "Cyan" }
+                                        )
+                                        
+                                        $lastStatus = $currentStatus
+                                        
+                                        if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
+                                            $completed = $true
+                                            Write-Host "`n"
+                                            break
+                                        }
+                                    }
                                 }
                             }
                         }
-                        catch [System.IO.IOException] {
-                            Write-Log "Status file is being written to, will retry..." -Level Warning
-                        }
                         finally {
-                            if ($sr) { $sr.Dispose() }
-                            if ($fs) { $fs.Dispose() }
+                            if ($null -ne $sr) { 
+                                $sr.Close()
+                                $sr.Dispose() 
+                            }
+                            if ($null -ne $fs) { 
+                                $fs.Close()
+                                $fs.Dispose() 
+                            }
                         }
                     }
-                    
-                    if ((Get-Date) -gt $startTime.AddSeconds($maxMonitoringTime)) {
-                        Write-Log "Monitoring timeout reached after $maxMonitoringTime seconds" -Level Warning
-                        break
+                    catch [System.IO.IOException] {
+                        Write-Log "Status file access error: $($_.Exception.Message)" -Level Warning
                     }
-                    
-                    Start-Sleep -Milliseconds $statusCheckInterval
+                    catch {
+                        Write-Log "Unexpected error reading status: $($_.Exception.Message)" -Level Error
+                        throw
+                    }
                 }
-
-                if ($completed) {
+                
+                if ((Get-Date) -gt $startTime.AddSeconds($maxMonitoringTime)) {
+                    Write-Log "Monitoring timeout reached after $maxMonitoringTime seconds" -Level Warning
                     break
                 }
-
-                $iterationCount++
-                if ($iterationCount -lt $maxRetries) {
-                    Write-Log "Process monitoring iteration completed. Retrying..." -Level Warning
-                    Start-Sleep -Seconds $retryDelay
-                }
+                
+                Start-Sleep -Milliseconds $statusCheckInterval
             }
             catch {
                 Write-Log "Error in iteration $($iterationCount + 1): $($_.Exception.Message)" -Level Error
