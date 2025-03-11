@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 23:42:00 UTC
+# Last Updated: 2025-03-11 23:44:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.18
-# Additional Info: Suppressed unintended boolean output from Write-File-Safe function
+# Version: 1.11.19
+# Additional Info: Fixed Write-File-Safe function parameter handling
 # =============================================================================
 
 <#
@@ -983,7 +983,8 @@ try {
     # Save the output to text file
     try {
         Write-SafeOutput "Writing report to file..." -Color DarkGray
-        [void]$OutputText.ToString() | Write-File-Safe -FilePath $OutputLog -Encoding "UTF8"
+        # Fix the Write-File-Safe function call
+        Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8"
         Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
 
         $TotalTime = ([DateTime]::Now) - $StartTime
