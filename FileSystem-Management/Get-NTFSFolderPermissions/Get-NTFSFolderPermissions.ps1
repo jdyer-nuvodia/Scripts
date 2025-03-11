@@ -2,59 +2,56 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 21:22:00 UTC
+# Last Updated: 2025-03-11 15:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.2
-# Additional Info: Fix function definition order for Initialize-ADModule
+# Version: 1.11.5
+# Additional Info: Fixed Compare-PermissionSets parameter declarations
 # =============================================================================
 
 <#
 .SYNOPSIS
-    Extracts and reports NTFS permissions for a specified folder and its subfolders with optimized performance.
+    Extracts and reports NTFS permissions for specified folders with optimized performance.
 .DESCRIPTION
     This script retrieves NTFS permissions for a specified folder path and all its subfolders.
-    It provides a detailed report including identity references, file system rights, access control types,
-    and inheritance settings. The results are displayed in the console as separate tables for each folder
-    (omitting subfolders with identical permissions) and exported to a text file in the same directory
-    as the script.
-    
-    - Uses optimized directory traversal methods for better performance
-    - Processes folders in parallel with configurable thread limit
-    - Captures all NTFS permission entries for each folder
+    Key features:
+    - Uses optimized directory traversal methods for improved performance
+    - Processes folders in parallel with configurable thread limits
+    - Forces Active Directory module loading for SID resolution
+    - Supports SID resolution on non-domain controller systems
     - Groups folders with identical permissions to reduce output clutter
-    - Exports results to a text file in the script's directory with the same format as console output
+    - Exports results to a formatted log file
     
-    Performance improvements:
-    - Uses .NET methods for faster directory traversal
-    - Implements parallel processing with runspaces
-    - Optimized permission comparison logic
-    - Includes memory management improvements
+    Dependencies:
+    - Windows PowerShell 5.1 or later
+    - RSAT AD PowerShell module (auto-installed if missing)
+    - Read access to target folders
 .PARAMETER FolderPath
-    The path to the folder for which permissions will be extracted. This parameter is mandatory.
+    The path to the folder for which permissions will be extracted.
+    Example: "C:\Important\Data" or "\\server\share\folder"
 .PARAMETER MaxThreads
-    Maximum number of parallel threads to use for processing. Default is 10.
+    Maximum number of parallel threads to use for processing.
+    Default: 10
 .PARAMETER MaxDepth
-    Maximum folder depth to traverse. Set to 0 for unlimited depth. Default is 0.
+    Maximum folder depth to traverse. Set to 0 for unlimited depth.
+    Default: 0
 .PARAMETER SkipUniquenessCounting
-    Skip counting unique permissions for large directories to improve performance. Default is false.
+    Skip counting unique permissions for large directories to improve performance.
+    Default: False
 .PARAMETER SkipADResolution
-    Skip Active Directory SID resolution to avoid AD module dependency. Default is false.
+    Skip Active Directory SID resolution to avoid AD module dependency.
+    Default: False
 .EXAMPLE
     .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Important\Data"
-    Retrieves NTFS permissions for C:\Important\Data and all subfolders, and exports the results to a text file.
+    Retrieves NTFS permissions for C:\Important\Data and all subfolders
 .EXAMPLE
     .\Get-NTFSFolderPermissions.ps1 -FolderPath "\\server\share\folder" -MaxThreads 20
-    Uses 20 parallel threads to process folders, improving performance on network shares.
+    Uses 20 parallel threads to process folders on a network share
 .EXAMPLE
     .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\VeryLargeFolder" -MaxDepth 3
-    Only processes folders up to a maximum depth of 3 levels from the root folder.
+    Processes only folders up to 3 levels deep from the root
 .EXAMPLE
     .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Data" -SkipADResolution
-    Processes permissions without attempting to resolve SIDs through Active Directory.
-.NOTES
-    Security Level: Low
-    Required Permissions: Read access to the folders being scanned
-    Validation Requirements: Verify FolderPath exists and is accessible
+    Processes permissions without attempting to resolve SIDs through Active Directory
 #>
 
 using namespace System.Security.AccessControl
@@ -490,23 +487,58 @@ function Initialize-ADModule {
     }
 
     try {
-        $module = Get-Module -Name ActiveDirectory -ListAvailable -ErrorAction Stop
-        if ($module) {
-            Import-Module ActiveDirectory -ErrorAction Stop
-            return $true
+        # Try to import RSAT AD PowerShell module if not already installed
+        if (-not (Get-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction SilentlyContinue)) {
+            Write-Log "Installing RSAT AD PowerShell module..." "Yellow"
+            Add-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop
         }
-        return $false
+
+        # Force import the AD module with -Force parameter
+        if (-not (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)) {
+            Import-Module ActiveDirectory -Force -ErrorAction Stop
+            Write-Log "Successfully force-loaded Active Directory module" "Green"
+        }
+
+        # Test AD functionality even if not a domain controller
+        try {
+            $null = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+            Write-Log "Successfully verified AD domain connectivity" "Green"
+        }
+        catch {
+            Write-Log "Not running on a domain controller - configuring alternate SID resolution" "Yellow"
+            # Set up alternative SID resolution method for non-DC systems
+            $Global:UseFallbackSIDResolution = $true
+        }
+
+        return $true
     }
     catch {
-        Write-Log "Unable to load Active Directory module: $($_.Exception.Message)" "Yellow"
+        Write-Log "Error initializing AD module: $($_.Exception.Message)" "Yellow"
+        Write-Log "Will attempt alternative SID resolution methods" "Yellow"
+        $Global:UseFallbackSIDResolution = $true
         return $false
     }
 }
 
-# Initialize AD module at startup
-$Global:ADModuleAvailable = Initialize-ADModule
+# Initialize AD module at startup with retry logic
+$maxRetries = 3
+$retryCount = 0
+$Global:ADModuleAvailable = $false
+
+while (-not $Global:ADModuleAvailable -and $retryCount -lt $maxRetries) {
+    $Global:ADModuleAvailable = Initialize-ADModule
+    if (-not $Global:ADModuleAvailable) {
+        $retryCount++
+        if ($retryCount -lt $maxRetries) {
+            Write-Log "Retry $retryCount of $maxRetries: Attempting to load AD module again..." "Yellow"
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
 if (-not $Global:ADModuleAvailable -and -not $SkipADResolution) {
-    Write-Log "Active Directory module not available. SIDs will not be resolved. Use -SkipADResolution to suppress this warning." -Color "Yellow"
+    Write-Log "Warning: Active Directory module could not be loaded after $maxRetries attempts. SID resolution may be limited." -Color "Yellow"
+    Write-Log "Use -SkipADResolution to suppress this warning." -Color "Yellow"
 }
 
 # Replace the existing Resolve-ADAccountFromSID function with this updated version
@@ -701,8 +733,10 @@ try {
 
     # Helper function to compare two permission sets efficiently
     function Compare-PermissionSets {
-        param (
+        param(
+            [Parameter(Mandatory=$true)]
             [Array]$Set1,
+            [Parameter(Mandatory=$true)]
             [Array]$Set2
         )
         
@@ -967,4 +1001,53 @@ catch {
             # We've tried everything possible
         }
     }
+}
+
+# Process folders and display results
+try {
+    $CurrentBatch = 0
+    $BatchSize = 100 # Process folders in batches of 100
+    
+    while ($CurrentBatch * $BatchSize -lt $TotalFolders) {
+        $StartIndex = $CurrentBatch * $BatchSize
+        $EndIndex = [Math]::Min(($CurrentBatch + 1) * $BatchSize, $TotalFolders)
+        $CurrentFolders = $Folders[$StartIndex..($EndIndex-1)]
+        
+        Write-SafeOutput "Processing batch $($CurrentBatch + 1) (folders $($StartIndex + 1) to $EndIndex of $TotalFolders)..." -Color Cyan
+        
+        # Process the current batch of folders
+        $BatchResults = Start-FolderProcessing -Folders $CurrentFolders -MaxThreads $MaxThreads -SkipUniquenessCounting:$SkipUniquenessCounting
+        
+        # Display results for this batch
+        foreach ($Result in $BatchResults.GetEnumerator()) {
+            # Display result logic here
+            // ...existing code...
+        }
+        
+        $CurrentBatch++
+        
+        # Ask to continue if there are more folders to process
+        if ($EndIndex -lt $TotalFolders) {
+            Write-SafeOutput "`nProcessed $EndIndex of $TotalFolders folders." -Color Cyan
+            $Continue = Read-Host "Continue to iterate? (Y/N)"
+            if ($Continue -notmatch '^[Yy]') {
+                Write-SafeOutput "Processing stopped by user after $EndIndex folders" -Color Yellow
+                break
+            }
+        }
+    }
+    
+    # Final summary
+    Write-SafeOutput "`nProcessing completed for $EndIndex of $TotalFolders folders" -Color Green
+    $TotalTime = ([DateTime]::Now) - $StartTime
+    Write-SafeOutput "Total execution time: $($TotalTime.TotalSeconds.ToString('0.00')) seconds" -Color Green
+    
+    # Save remaining results
+    Write-SafeOutput "Saving final results to log file..." -Color DarkGray
+    Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8"
+    Write-SafeOutput "Results saved to: $OutputLog" -Color Green
+}
+catch {
+    Write-SafeOutput "Error during folder processing: $($_.Exception.Message)" -Color Red
+    Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8"
 }
