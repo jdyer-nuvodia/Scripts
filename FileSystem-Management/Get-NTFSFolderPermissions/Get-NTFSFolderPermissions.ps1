@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 16:11:00 UTC
+# Last Updated: 2025-03-11 16:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.9
-# Additional Info: Fixed UseFallbackSIDResolution variable usage in Resolve-ADAccountFromSID function
+# Version: 1.11.10
+# Additional Info: Improved AD module initialization and error handling to avoid unnecessary retries
 # =============================================================================
 
 <#
@@ -487,43 +487,34 @@ function Initialize-ADModule {
     }
 
     try {
-        # Check if AD module is available
-        $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory
+        # First check if module is available without trying to load
+        $adModuleAvailable = Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction Stop
         if (-not $adModuleAvailable) {
-            Write-Log "ActiveDirectory module not found." "Yellow"
-            
-            # Try to load from Windows PowerShell
-            $psModulePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules\ActiveDirectory"
-            if (Test-Path $psModulePath) {
-                $env:PSModulePath = $env:PSModulePath + ";$psModulePath"
-                Import-Module ActiveDirectory -ErrorAction Stop
-                Write-Log "Successfully loaded Active Directory module from Windows PowerShell path" "Green"
-            } else {
-                Write-Log "RSAT AD tools not installed. SID resolution will be limited." "Yellow"
-                $Global:UseFallbackSIDResolution = $true
-                return $false
-            }
+            Write-Log "RSAT AD PowerShell module not installed. Will use fallback SID resolution." "Yellow"
+            $Global:UseFallbackSIDResolution = $true
+            return $false
         }
 
-        # Force import the AD module if not already imported
-        if (-not (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)) {
-            Import-Module ActiveDirectory -Force -ErrorAction Stop
-            Write-Log "Successfully force-loaded Active Directory module" "Green"
-        }
+        # Module exists, try to import it
+        Import-Module ActiveDirectory -Force -ErrorAction Stop
+        Write-Log "Successfully loaded Active Directory module" "Green"
 
         # Test AD functionality
         try {
             $null = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
             Write-Log "Successfully verified AD domain connectivity" "Green"
             return $true
-        } catch {
+        }
+        catch {
             Write-Log "Not running on a domain-joined machine - will use alternate SID resolution" "Yellow"
             $Global:UseFallbackSIDResolution = $true
             return $false
         }
-    } catch {
-        Write-Log "Error initializing AD module: $($_.Exception.Message)" "Yellow"
-        Write-Log "Will attempt alternative SID resolution methods" "Yellow"
+    }
+    catch {
+        Write-Log "Unable to load AD module: $($_.Exception.Message)" "Yellow"
+        Write-Log "SID resolution will use built-in Windows translation" "Yellow"
+        Write-Log "Use -SkipADResolution to suppress these warnings" "DarkGray"
         $Global:UseFallbackSIDResolution = $true
         return $false
     }
