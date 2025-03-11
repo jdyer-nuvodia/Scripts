@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 15:25:00 UTC
+# Last Updated: 2025-03-11 15:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.1
-# Additional Info: Fixed null comparison bug, removed unused variables, corrected path handling
+# Version: 4.1.2
+# Additional Info: Fixed invalid variable references and removed unused timeout variable
 # =============================================================================
 
 <#
@@ -619,7 +619,7 @@ Write-Log "Shadow copy command executed. Processing output..." -Level Debug
 
 $totalShadowCopiesInitial = ($shadowOutputInitial | Select-String "Shadow Copy ID").Count
 Write-Log "Initial Shadow Copy Count: $totalShadowCopiesInitial" -Level Info
-Write-Host "Shadow Copies Found: $totalShadowCopiesInitial" -ForegroundColor Yellow
+Write-Host "Shadow Copy Count: ${totalShadowCopiesInitial}" -ForegroundColor Yellow
 
 # Extract and display more details about shadow copies
 if ($totalShadowCopiesInitial -gt 0) {
@@ -681,6 +681,7 @@ Write-Log "Disk Cleanup process started with PID: $processId" -Level Debug
 
 $startTime = Get-Date
 $cleanupTimedOut = $false
+$lastStatus = ""
 
 while (!$cleanmgrProcess.HasExited) {
     try {
@@ -722,7 +723,7 @@ Write-Host "`n===== Shadow Copy Management =====" -ForegroundColor Cyan
 $shadowOutput = vssadmin list shadows 2>&1
 $totalShadowCopies = ($shadowOutput | Select-String "Shadow Copy ID").Count
 Write-Log ("Shadow Copies Found: $totalShadowCopies") -Level Info
-Write-Host "Shadow Copies Found After Cleanup: $totalShadowCopies" -ForegroundColor Yellow
+Write-Host "Shadow Copies Found: ${totalShadowCopies}" -ForegroundColor Yellow
 
 if ($totalShadowCopies -gt 1) {
     $shadowIDs = $shadowOutput | Select-String "Shadow Copy ID:" | ForEach-Object {
