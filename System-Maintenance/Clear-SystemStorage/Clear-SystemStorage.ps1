@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 15:12:00 UTC
+# Last Updated: 2025-03-11 15:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.0.16
-# Additional Info: Enhanced file locking prevention and process monitoring
+# Version: 4.1.0
+# Additional Info: Enhanced disk cleanup with optimized .NET methods and VSS management
 # =============================================================================
 
 <#
@@ -455,6 +455,147 @@ function Show-DriveInfo {
     Write-Log "Drive $($Volume.DriveLetter) has $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB free of $([math]::Round($Volume.Size/1GB, 2)) GB total" -Level Info
 }
 
+# ----- Function: Clear-SystemStorageOptimized -----
+function Clear-SystemStorageOptimized {
+    [CmdletBinding()]
+    param()
+    
+    Write-Log "Initializing optimized system storage cleanup..." -Level Info
+    
+    try {
+        # Initialize WMI objects for VSS management
+        $vssMgmt = Get-WmiObject -Namespace "root\cimv2" -Class Win32_ShadowCopy
+        $vssService = Get-WmiObject -Class Win32_ShadowCopy
+
+        # Enhanced cleanup paths using .NET methods
+        $cleanupPaths = @(
+            [System.Environment]::GetFolderPath('Windows') + '\Temp',
+            [System.Environment]::GetFolderPath('LocalApplicationData') + '\Temp',
+            [System.Environment]::GetFolderPath('InternetCache')
+        )
+
+        $totalBytesFreed = 0
+        $errors = @()
+
+        # Process VSS copies first for maximum space recovery
+        Write-Log "Managing Volume Shadow Copies..." -Level Info
+        try {
+            # Get all shadow copies
+            $shadowCopies = $vssService | Where-Object { $_.ID -ne $null }
+            
+            if ($shadowCopies) {
+                $shadowCopies | ForEach-Object {
+                    try {
+                        $_.Delete()
+                        Write-Log "Removed shadow copy: $($_.ID)" -Level Debug
+                    }
+                    catch {
+                        Write-Log "Warning: Could not remove shadow copy $($_.ID): $($_.Exception.Message)" -Level Warning
+                        $errors += "VSS:$($_.ID)"
+                    }
+                }
+            }
+            else {
+                Write-Log "No shadow copies found to clean" -Level Debug
+            }
+        }
+        catch {
+            Write-Log "Warning: VSS management error: $($_.Exception.Message)" -Level Warning
+            $errors += "VSS:General"
+        }
+
+        # Enhanced temp file cleanup using .NET methods
+        foreach ($path in $cleanupPaths) {
+            if ([System.IO.Directory]::Exists($path)) {
+                Write-Log "Processing directory: $path" -Level Info
+                
+                try {
+                    $files = [System.IO.Directory]::GetFiles($path, "*", [System.IO.SearchOption]::AllDirectories)
+                    $directories = [System.IO.Directory]::GetDirectories($path, "*", [System.IO.SearchOption]::AllDirectories)
+                    
+                    # Process files first
+                    foreach ($file in $files) {
+                        try {
+                            $fileInfo = [System.IO.FileInfo]::new($file)
+                            $size = $fileInfo.Length
+                            
+                            # Use robust file deletion with retries
+                            $retryCount = 0
+                            $maxRetries = 3
+                            $deleted = $false
+                            
+                            while (-not $deleted -and $retryCount -lt $maxRetries) {
+                                try {
+                                    [System.IO.File]::Delete($file)
+                                    $totalBytesFreed += $size
+                                    $deleted = $true
+                                }
+                                catch [System.IO.IOException] {
+                                    $retryCount++
+                                    if ($retryCount -lt $maxRetries) {
+                                        Start-Sleep -Milliseconds 500
+                                        [System.GC]::Collect()
+                                        [System.GC]::WaitForPendingFinalizers()
+                                    }
+                                }
+                            }
+                            
+                            if (-not $deleted) {
+                                $errors += "File:$file"
+                            }
+                        }
+                        catch {
+                            Write-Log "Warning: Could not process file $file : $($_.Exception.Message)" -Level Warning
+                            $errors += "File:$file"
+                            continue
+                        }
+                    }
+                    
+                    # Process directories in reverse order (deepest first)
+                    [array]::Reverse($directories)
+                    foreach ($dir in $directories) {
+                        try {
+                            if ([System.IO.Directory]::GetFileSystemEntries($dir).Count -eq 0) {
+                                [System.IO.Directory]::Delete($dir, $false)
+                            }
+                        }
+                        catch {
+                            Write-Log "Warning: Could not remove empty directory $dir : $($_.Exception.Message)" -Level Warning
+                            $errors += "Dir:$dir"
+                            continue
+                        }
+                    }
+                }
+                catch {
+                    Write-Log "Error processing path $path : $($_.Exception.Message)" -Level Error
+                    $errors += "Path:$path"
+                    continue
+                }
+            }
+        }
+
+        # Report results
+        $freedSpaceGB = [math]::Round($totalBytesFreed / 1GB, 2)
+        Write-Log "Cleanup completed. Freed $freedSpaceGB GB of space." -Level Info
+        
+        if ($errors.Count -gt 0) {
+            Write-Log "Cleanup completed with $($errors.Count) non-critical errors" -Level Warning
+        }
+        else {
+            Write-Log "Cleanup completed successfully with no errors" -Level Info
+        }
+
+        return @{
+            BytesFreed = $totalBytesFreed
+            Errors = $errors
+        }
+    }
+    catch {
+        Write-Log "Critical error during cleanup: $($_.Exception.Message)" -Level Error
+        throw
+    }
+}
+
 # --------------------------------------------------
 # Main Script Execution (after elevation if needed)
 # --------------------------------------------------
@@ -658,3 +799,24 @@ if ($finalDrive -and $initialDrive) {
 Write-Log "===== System Storage Cleanup Completed =====" -Level Info
 Write-Host "`n===== System Storage Cleanup Completed =====" -ForegroundColor Green
 Write-Host "Log file: $script:LogFile" -ForegroundColor Cyan
+
+# Update the main script block to use the optimized cleanup
+try {
+    $result = Clear-SystemStorageOptimized
+    
+    if ($result.BytesFreed -gt 0) {
+        $freedGB = [math]::Round($result.BytesFreed / 1GB, 2)
+        Write-Host "Successfully freed $freedGB GB of system storage" -ForegroundColor Green
+        
+        if ($result.Errors.Count -gt 0) {
+            Write-Host "Completed with $($result.Errors.Count) non-critical errors. See log for details." -ForegroundColor Yellow
+        }
+    }
+    else {
+        Write-Host "No significant space was freed. System may already be clean." -ForegroundColor Cyan
+    }
+}
+catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
