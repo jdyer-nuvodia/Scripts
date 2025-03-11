@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 15:28:00 UTC
+# Last Updated: 2025-03-12 15:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.2
-# Additional Info: Fixed invalid variable references and removed unused timeout variable
+# Version: 4.1.3
+# Additional Info: Fixed unused timeout variable by replacing with processTimeout
 # =============================================================================
 
 <#
@@ -247,7 +247,7 @@ catch {
         Write-Host "Task running as SYSTEM. Monitoring cleanup progress..." -ForegroundColor Cyan
         
         $statusFile = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName.status"
-        $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
+        $processTimeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
         $lastStatus = ""
         
