@@ -302,9 +302,6 @@ function Remove-WindowsLogs {
     catch {
         Write-StatusMessage "Error accessing event logs: $_" -Color Yellow
     }
-    catch {
-        Write-StatusMessage "Error accessing event logs: $_" -Color Yellow
-    }
 }
 
 # Main execution
