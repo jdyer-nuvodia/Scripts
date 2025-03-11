@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 20:14:00 UTC
+# Last Updated: 2025-03-11 20:21:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.2.1
-# Additional Info: Enhanced silent cleanup configuration to prevent UI popups
+# Version: 5.0.0
+# Additional Info: Replaced cleanmgr.exe with native PowerShell implementation
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 4.1.1" -Level Info
+Write-Log "Script version: 5.0.0" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -798,3 +798,218 @@ catch {
     Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
+
+# ----- Function: Invoke-SystemCleanup -----
+function Invoke-SystemCleanup {
+    [CmdletBinding()]
+    param()
+    
+    Write-Log "Starting native PowerShell system cleanup..." -Level Info
+    $cleanupStats = @{
+        TotalBytesRemoved = 0
+        ItemsRemoved = 0
+        Errors = @()
+    }
+
+    # Define cleanup paths with descriptions
+    $cleanupPaths = @{
+        "Windows Temp" = @{
+            Path = "$env:SystemRoot\Temp"
+            Pattern = "*"
+            Recursive = $true
+        }
+        "User Temp" = @{
+            Path = [System.IO.Path]::GetTempPath()
+            Pattern = "*"
+            Recursive = $true
+        }
+        "Windows SoftwareDistribution" = @{
+            Path = "$env:SystemRoot\SoftwareDistribution\Download"
+            Pattern = "*"
+            Recursive = $true
+        }
+        "Delivery Optimization" = @{
+            Path = "$env:SystemRoot\DeliveryOptimization"
+            Pattern = "*"
+            Recursive = $true
+        }
+        "Windows Error Reports" = @{
+            Path = "$env:ProgramData\Microsoft\Windows\WER"
+            Pattern = "*"
+            Recursive = $true
+        }
+        "Chrome Cache" = @{
+            Path = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache"
+            Pattern = "*"
+            Recursive = $true
+        }
+        "Edge Cache" = @{
+            Path = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache"
+            Pattern = "*"
+            Recursive = $true
+        }
+        "Firefox Cache" = @{
+            Path = "$env:LOCALAPPDATA\Mozilla\Firefox\Profiles\*.default*\cache2"
+            Pattern = "*"
+            Recursive = $true
+        }
+    }
+
+    # Function to safely remove files
+    function Remove-PathContents {
+        param (
+            [string]$Path,
+            [string]$Pattern,
+            [bool]$Recursive,
+            [string]$Description
+        )
+
+        if (![System.IO.Directory]::Exists($Path)) {
+            Write-Log "Path not found: $Path" -Level Debug
+            return
+        }
+
+        Write-Host "`nCleaning $Description..." -ForegroundColor Cyan
+        Write-Log "Processing cleanup location: $Description ($Path)" -Level Info
+
+        try {
+            # Get all files first
+            $files = [System.IO.Directory]::GetFiles($Path, $Pattern, 
+                $(if ($Recursive) {[System.IO.SearchOption]::AllDirectories} else {[System.IO.SearchOption]::TopDirectoryOnly}))
+            
+            $totalFiles = $files.Count
+            $processed = 0
+            $bytesRemoved = 0
+
+            foreach ($file in $files) {
+                try {
+                    $fileInfo = [System.IO.FileInfo]::new($file)
+                    $size = $fileInfo.Length
+                    
+                    # Skip if file is in use
+                    if ((Test-IsFileInUse -Path $file)) {
+                        continue
+                    }
+
+                    [System.IO.File]::Delete($file)
+                    $bytesRemoved += $size
+                    $processed++
+
+                    # Update progress
+                    $percentComplete = [math]::Round(($processed / $totalFiles) * 100)
+                    Write-Progress -Activity "Cleaning $Description" -Status "$percentComplete% Complete" `
+                        -PercentComplete $percentComplete
+                }
+                catch {
+                    $script:cleanupStats.Errors += "$Description - $($_.Exception.Message)"
+                    continue
+                }
+            }
+
+            # Clean empty directories if recursive
+            if ($Recursive) {
+                $dirs = [System.IO.Directory]::GetDirectories($Path, "*", [System.IO.SearchOption]::AllDirectories)
+                [Array]::Reverse($dirs) # Process deepest dirs first
+                
+                foreach ($dir in $dirs) {
+                    try {
+                        if ([System.IO.Directory]::GetFileSystemEntries($dir).Count -eq 0) {
+                            [System.IO.Directory]::Delete($dir, $false)
+                        }
+                    }
+                    catch {
+                        $script:cleanupStats.Errors += "Directory: $dir - $($_.Exception.Message)"
+                    }
+                }
+            }
+
+            $script:cleanupStats.TotalBytesRemoved += $bytesRemoved
+            $script:cleanupStats.ItemsRemoved += $processed
+
+            Write-Progress -Activity "Cleaning $Description" -Completed
+            Write-Host "Removed $([math]::Round($bytesRemoved/1MB, 2)) MB from $Description" -ForegroundColor Green
+            Write-Log "Completed cleanup of $Description. Removed $([math]::Round($bytesRemoved/1MB, 2)) MB" -Level Info
+        }
+        catch {
+            Write-Log "Error processing $Description : $($_.Exception.Message)" -Level Error
+            $script:cleanupStats.Errors += "$Description - $($_.Exception.Message)"
+        }
+    }
+
+    # Function to check if file is in use
+    function Test-IsFileInUse {
+        param([string]$Path)
+        try {
+            $fileStream = [System.IO.File]::Open($Path, 'Open', 'Read', 'None')
+            $fileStream.Close()
+            $fileStream.Dispose()
+            return $false
+        }
+        catch {
+            return $true
+        }
+    }
+
+    # Clean Windows Component Store (WinSxS)
+    Write-Host "`nCleaning Windows Component Store..." -ForegroundColor Cyan
+    try {
+        $result = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /StartComponentCleanup" `
+            -NoNewWindow -Wait -PassThru
+        if ($result.ExitCode -eq 0) {
+            Write-Host "Successfully cleaned Windows Component Store" -ForegroundColor Green
+        }
+    }
+    catch {
+        Write-Log "Error cleaning Component Store: $($_.Exception.Message)" -Level Error
+        $cleanupStats.Errors += "Component Store - $($_.Exception.Message)"
+    }
+
+    # Process each cleanup path
+    foreach ($cleanup in $cleanupPaths.GetEnumerator()) {
+        Remove-PathContents -Path $cleanup.Value.Path -Pattern $cleanup.Value.Pattern `
+            -Recursive $cleanup.Value.Recursive -Description $cleanup.Name
+    }
+
+    # Empty Recycle Bin
+    Write-Host "`nEmptying Recycle Bin..." -ForegroundColor Cyan
+    try {
+        $shell = New-Object -ComObject Shell.Application
+        $shell.Namespace(0x0A).Items() | ForEach-Object {
+            $cleanupStats.TotalBytesRemoved += $_.Size
+            $cleanupStats.ItemsRemoved++
+        }
+        Clear-RecycleBin -Force -ErrorAction Stop
+        Write-Host "Successfully emptied Recycle Bin" -ForegroundColor Green
+        Write-Log "Recycle Bin emptied successfully" -Level Info
+    }
+    catch {
+        Write-Log "Error emptying Recycle Bin: $($_.Exception.Message)" -Level Error
+        $cleanupStats.Errors += "Recycle Bin - $($_.Exception.Message)"
+    }
+
+    # Return cleanup statistics
+    return $cleanupStats
+}
+
+# Replace the old cleanup section with the new implementation
+Write-Host "`n===== Starting System Storage Cleanup =====" -ForegroundColor Cyan
+$initialDrive = Get-SystemDiskSpace
+Show-DriveInfo -Volume $initialDrive -Label "Initial Drive State"
+
+$cleanupResults = Invoke-SystemCleanup
+$freedSpace = [math]::Round($cleanupResults.TotalBytesRemoved / 1GB, 2)
+
+Write-Host "`nCleanup Summary:" -ForegroundColor Cyan
+Write-Host "------------------------" -ForegroundColor Cyan
+Write-Host "Total Space Freed: $freedSpace GB" -ForegroundColor Green
+Write-Host "Items Removed: $($cleanupResults.ItemsRemoved)" -ForegroundColor Green
+
+if ($cleanupResults.Errors.Count -gt 0) {
+    Write-Host "`nWarnings/Errors:" -ForegroundColor Yellow
+    $cleanupResults.Errors | ForEach-Object {
+        Write-Host "- $_" -ForegroundColor Yellow
+    }
+}
+
+$finalDrive = Get-SystemDiskSpace
+Show-DriveInfo -Volume $finalDrive -Label "Final Drive State"
