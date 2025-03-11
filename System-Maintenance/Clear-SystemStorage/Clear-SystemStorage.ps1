@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:02:00 UTC
+# Last Updated: 2025-03-11 21:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added 180-day threshold for Downloads cleanup and multi-user support
+# Version: 1.3.0
+# Additional Info: Added comprehensive logging and automated execution
 # =============================================================================
 
 <#
@@ -23,31 +23,56 @@
     Uses .NET methods where available for improved performance.
 .PARAMETER Force
     Bypasses confirmation prompts for cleanup operations
+.PARAMETER NoRestore
+    Skips the creation of a system restore point
 .EXAMPLE
     .\Clear-SystemStorage.ps1
     Performs cleanup with confirmation prompts
 .EXAMPLE
     .\Clear-SystemStorage.ps1 -Force
     Performs cleanup without confirmation prompts
+.EXAMPLE
+    .\Clear-SystemStorage.ps1 -NoRestore
+    Performs cleanup without creating a system restore point
 #>
 
 [CmdletBinding()]
 param (
-    [switch]$Force
+    [switch]$Force,
+    [switch]$NoRestore
 )
 
-# Import required modules
-Import-Module -Name ComputerManagement
+# Initialize logging
+$scriptPath = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
+$logFile = [System.IO.Path]::Combine($scriptPath, "Clear-SystemStorage_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
+$script:logStream = [System.IO.StreamWriter]::new($logFile, $true, [System.Text.Encoding]::UTF8)
 
-# Set error action preference
-$ErrorActionPreference = 'Stop'
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Color = 'White',
+        [switch]$NoConsole
+    )
+    
+    $timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')
+    $logMessage = "[$timestamp] $Message"
+    
+    # Write to log file
+    $script:logStream.WriteLine($logMessage)
+    $script:logStream.Flush()
+    
+    # Write to console if not suppressed
+    if (-not $NoConsole) {
+        Write-Host $Message -ForegroundColor $Color
+    }
+}
 
 function Write-StatusMessage {
     param(
         [string]$Message,
         [string]$Color = 'White'
     )
-    Write-Host $Message -ForegroundColor $Color
+    Write-Log -Message $Message -Color $Color
 }
 
 function Test-AdminPrivileges {
@@ -77,21 +102,29 @@ function Remove-TempFiles {
         "$env:SystemRoot\Prefetch"
     )
 
+    $filesRemoved = 0
+    $errorCount = 0
+
     # Clean standard temp folders
     foreach ($folder in $tempFolders) {
         try {
+            Write-Log "Processing folder: $folder" -Color DarkGray
             [System.IO.Directory]::GetFiles($folder, "*.*", [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
                 try {
                     [System.IO.File]::Delete($_)
+                    $filesRemoved++
+                    Write-Log "Deleted: $_" -Color DarkGray -NoConsole
                 }
                 catch {
-                    Write-StatusMessage "Could not delete file $_" -Color Yellow
+                    $errorCount++
+                    Write-Log "Could not delete file $_: $($_.Exception.Message)" -Color Yellow
                 }
             }
-            Write-StatusMessage "Cleaned $folder successfully" -Color Green
+            Write-StatusMessage "Cleaned $folder successfully ($filesRemoved files removed)" -Color Green
         }
         catch {
-            Write-StatusMessage "Error accessing folder $folder" -Color Yellow
+            Write-StatusMessage "Error accessing folder $folder: $($_.Exception.Message)" -Color Yellow
+            $errorCount++
         }
     }
 
@@ -104,40 +137,40 @@ function Remove-TempFiles {
             $downloadPath = [System.IO.Path]::Combine($_, "Downloads")
             
             if ([System.IO.Directory]::Exists($downloadPath)) {
-                Write-StatusMessage "Checking Downloads folder for $([System.IO.Path]::GetFileName($_))..." -Color Cyan
-                
-                if (-not $Force) {
-                    $downloadConfirm = Read-Host "Do you want to clean Downloads older than 180 days in $([System.IO.Path]::GetFileName($_))? (y/n)"
-                    if ($downloadConfirm -ne 'y') {
-                        Write-StatusMessage "Skipping Downloads cleanup for this user." -Color Yellow
-                        return
-                    }
-                }
+                Write-StatusMessage "Processing Downloads folder for $([System.IO.Path]::GetFileName($_))..." -Color Cyan
                 
                 try {
+                    $oldFilesCount = 0
                     [System.IO.Directory]::GetFiles($downloadPath, "*.*", [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
                         try {
                             $fileInfo = [System.IO.FileInfo]::new($_)
                             if ($fileInfo.LastWriteTime -lt $cutoffDate) {
                                 [System.IO.File]::Delete($_)
-                                Write-StatusMessage "Deleted old file: $([System.IO.Path]::GetFileName($_))" -Color DarkGray
+                                $oldFilesCount++
+                                $filesRemoved++
+                                Write-Log "Deleted old file: $_" -Color DarkGray -NoConsole
                             }
                         }
                         catch {
-                            Write-StatusMessage "Could not delete file $_" -Color Yellow
+                            $errorCount++
+                            Write-Log "Could not delete file $_: $($_.Exception.Message)" -Color Yellow
                         }
                     }
-                    Write-StatusMessage "Cleaned old files from $downloadPath successfully" -Color Green
+                    Write-StatusMessage "Cleaned $oldFilesCount old files from $downloadPath" -Color Green
                 }
                 catch {
-                    Write-StatusMessage "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_))" -Color Yellow
+                    Write-StatusMessage "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
+                    $errorCount++
                 }
             }
         }
     }
     catch {
-        Write-StatusMessage "Error accessing Users directory: $_" -Color Yellow
+        Write-StatusMessage "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
+        $errorCount++
     }
+
+    Write-StatusMessage "Temp file cleanup completed. Total files removed: $filesRemoved, Errors: $errorCount" -Color Cyan
 }
 
 function Clear-RecycleBin {
@@ -205,32 +238,42 @@ function Remove-WindowsLogs {
 }
 
 # Main execution
-if (-not (Test-AdminPrivileges)) {
-    Write-StatusMessage "This script requires administrative privileges. Please run as administrator." -Color Red
-    exit 1
-}
-
-if (-not $Force) {
-    $confirmation = Read-Host "This will clean up system storage and create a restore point. Continue? (y/n)"
-    if ($confirmation -ne 'y') {
-        Write-StatusMessage "Operation cancelled by user." -Color Yellow
-        exit 0
-    }
-}
-
-if (-not (New-SystemRestorePoint)) {
-    if (-not $Force) {
-        Write-StatusMessage "Cleanup cancelled due to restore point creation failure." -Color Red
+try {
+    if (-not (Test-AdminPrivileges)) {
+        Write-Log "This script requires administrative privileges. Please run as administrator." -Color Red
         exit 1
     }
-    Write-StatusMessage "Proceeding without restore point due to Force parameter." -Color Yellow
+
+    if (-not $NoRestore) {
+        if (-not (New-SystemRestorePoint)) {
+            if (-not $Force) {
+                Write-Log "Cleanup cancelled due to restore point creation failure." -Color Red
+                exit 1
+            }
+            Write-Log "Proceeding without restore point due to Force parameter." -Color Yellow
+        }
+    }
+    else {
+        Write-Log "Skipping restore point creation as requested." -Color Yellow
+    }
+
+    # Perform cleanup operations
+    Remove-TempFiles
+    Clear-RecycleBin
+    Remove-WindowsErrorReports
+    Clear-BrowserCaches
+    Remove-WindowsLogs
+
+    Write-Log "System storage cleanup completed successfully. See log file for details: $logFile" -Color Green
 }
-
-# Perform cleanup operations
-Remove-TempFiles
-Clear-RecycleBin
-Remove-WindowsErrorReports
-Clear-BrowserCaches
-Remove-WindowsLogs
-
-Write-StatusMessage "System storage cleanup completed successfully." -Color Green
+catch {
+    Write-Log "Critical error during execution: $($_.Exception.Message)" -Color Red
+    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Color Red
+    exit 1
+}
+finally {
+    if ($null -ne $script:logStream) {
+        $script:logStream.Close()
+        $script:logStream.Dispose()
+    }
+}
