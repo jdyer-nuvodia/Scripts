@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:50:00 UTC
+# Last Updated: 2025-03-11 21:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.4
-# Additional Info: Enhanced error reporting with detailed diagnostics for browser cache clearing
+# Version: 1.4.5
+# Additional Info: Enhanced browser cache clearing to handle all user profiles
 # =============================================================================
 
 <#
@@ -270,60 +270,66 @@ function Remove-WindowsErrorReports {
 
 function Clear-BrowserCaches {
     Write-StatusMessage "Clearing browser caches..." -Color Cyan
-    $browserPaths = @{
-        'Chrome' = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache"
-        'Firefox' = "$env:APPDATA\Mozilla\Firefox\Profiles"
-        'Edge' = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache"
-    }
-
-    foreach ($browser in $browserPaths.Keys) {
-        $path = $browserPaths[$browser]
-        Write-Log "Processing $browser cache at: $path" -Color DarkGray
+    
+    # Get all user profile folders
+    $userFolders = [System.IO.Directory]::GetDirectories("C:\Users")
+    
+    foreach ($userFolder in $userFolders) {
+        $userName = [System.IO.Path]::GetFileName($userFolder)
+        Write-Log "Processing browser caches for user: $userName" -Color DarkGray
         
-        if (-not [System.IO.Directory]::Exists($path)) {
-            Write-Log "Cache directory for $browser not found at: $path" -Color Yellow
-            continue
+        # Define browser cache paths for this user
+        $browserPaths = @{
+            'Chrome' = [System.IO.Path]::Combine($userFolder, "AppData\Local\Google\Chrome\User Data\Default\Cache")
+            'Firefox' = [System.IO.Path]::Combine($userFolder, "AppData\Local\Mozilla\Firefox\Profiles")
+            'Edge' = [System.IO.Path]::Combine($userFolder, "AppData\Local\Microsoft\Edge\User Data\Default\Cache")
         }
 
-        try {
-            if ($browser -eq 'Firefox') {
-                # Firefox has multiple profile directories
-                [System.IO.Directory]::GetDirectories($path) | ForEach-Object {
-                    $profilePath = [System.IO.Path]::Combine($_, "cache2")
-                    if ([System.IO.Directory]::Exists($profilePath)) {
-                        try {
-                            [System.IO.Directory]::Delete($profilePath, $true)
-                            Write-StatusMessage "Cleared Firefox cache in profile: $([System.IO.Path]::GetFileName($_))" -Color Green
-                        }
-                        catch {
-                            Write-Log "Error clearing Firefox profile cache at ${profilePath}: $($_.Exception.Message)" -Color Yellow
-                            Write-Log "Stack Trace: $($_.Exception.StackTrace)" -Color Magenta -NoConsole
+        foreach ($browser in $browserPaths.Keys) {
+            $cachePath = $browserPaths[$browser]
+            
+            if (-not [System.IO.Directory]::Exists($cachePath)) {
+                Write-Log "$browser cache not found for user $userName" -Color DarkGray -NoConsole
+                continue
+            }
+
+            try {
+                if ($browser -eq 'Firefox') {
+                    # Firefox has multiple profile directories
+                    [System.IO.Directory]::GetDirectories($cachePath) | ForEach-Object {
+                        $profilePath = [System.IO.Path]::Combine($_, "cache2")
+                        if ([System.IO.Directory]::Exists($profilePath)) {
+                            try {
+                                [System.IO.Directory]::Delete($profilePath, $true)
+                                Write-StatusMessage "Cleared Firefox cache for profile in $userName" -Color Green
+                            }
+                            catch {
+                                $errorMsg = $_.Exception.Message
+                                Write-Log "Error clearing Firefox cache for $userName`: $errorMsg" -Color Yellow
+                                
+                                if ($_.Exception -is [System.UnauthorizedAccessException]) {
+                                    Write-Log "Access denied. Browser may be running for user $userName." -Color Yellow
+                                }
+                            }
                         }
                     }
                 }
+                else {
+                    # Chrome and Edge cache structure
+                    [System.IO.Directory]::Delete($cachePath, $true)
+                    Write-StatusMessage "Cleared $browser cache for user $userName" -Color Green
+                }
             }
-            else {
-                # Chrome and Edge have similar cache structure
-                [System.IO.Directory]::Delete($path, $true)
-                Write-StatusMessage "Cleared $browser cache successfully" -Color Green
-            }
-        }
-        catch {
-            $errorDetail = $_.Exception.Message
-            $errorType = $_.Exception.GetType().Name
-            Write-Log "Failed to clear $browser cache: $errorDetail" -Color Yellow
-            Write-Log "Error Type: $errorType" -Color Yellow
-            Write-Log "Stack Trace: $($_.Exception.StackTrace)" -Color Magenta -NoConsole
-            
-            # Check for specific error conditions
-            if ($_.Exception -is [System.UnauthorizedAccessException]) {
-                Write-Log "Access denied. Browser may be running or files are locked." -Color Yellow
-            }
-            elseif ($_.Exception -is [System.IO.DirectoryNotFoundException]) {
-                Write-Log "Cache directory structure is different than expected." -Color Yellow
-            }
-            elseif ($_.Exception -is [System.IO.IOException]) {
-                Write-Log "Files are in use. Try closing the browser first." -Color Yellow
+            catch {
+                $errorMsg = $_.Exception.Message
+                Write-Log "Failed to clear $browser cache for $userName`: $errorMsg" -Color Yellow
+                
+                if ($_.Exception -is [System.UnauthorizedAccessException]) {
+                    Write-Log "Access denied for $browser cache. Browser may be running for user $userName." -Color Yellow
+                }
+                elseif ($_.Exception -is [System.IO.IOException]) {
+                    Write-Log "Cache files are in use for user $userName. Try closing the browser first." -Color Yellow
+                }
             }
         }
     }
