@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:52:00 UTC
+# Last Updated: 2025-03-12 15:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.5
-# Additional Info: Enhanced browser cache clearing to handle all user profiles
+# Version: 1.4.6
+# Additional Info: Excluded Internet Explorer logs from cleanup
 # =============================================================================
 
 <#
@@ -338,7 +338,7 @@ function Clear-BrowserCaches {
 function Remove-WindowsLogs {
     Write-StatusMessage "Clearing Windows logs..." -Color Cyan
     try {
-        [System.Diagnostics.EventLog]::GetEventLogs() | ForEach-Object {
+        [System.Diagnostics.EventLog]::GetEventLogs() | Where-Object { $_.Log -notmatch 'Internet Explorer' } | ForEach-Object {
             try {
                 # Skip if log name is empty or null
                 if ([string]::IsNullOrWhiteSpace($_.Log)) {
