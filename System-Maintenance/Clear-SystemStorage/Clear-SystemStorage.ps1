@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:10:00 UTC
+# Last Updated: 2025-03-11 21:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Added retry mechanism for locked files and improved error handling
+# Version: 1.3.2
+# Additional Info: Improved locked file handling with size tracking and reduced noise
 # =============================================================================
 
 <#
@@ -96,36 +96,44 @@ function New-SystemRestorePoint {
 }
 
 function Remove-TempFiles {
-    Write-StatusMessage "Removing temporary files..." -Color Cyan
-    $tempFolders = @(
-        "$env:TEMP",
+    $lockedFiles = @{
+        Count = 0
+        TotalSize = 0
+    }
+    $removedFiles = @{
+        Count = 0
+        TotalSize = 0
+    }
+
+    $standardTempFolders = @(
+        [System.IO.Path]::GetTempPath(),
         "$env:SystemRoot\Temp",
         "$env:SystemRoot\Prefetch"
     )
 
-    $filesRemoved = 0
-    $errorCount = 0
-
     # Clean standard temp folders
-    foreach ($folder in $tempFolders) {
+    foreach ($folder in $standardTempFolders) {
+        Write-Log "Processing folder: $folder" -Color Cyan
         try {
-            Write-Log "Processing folder: $folder" -Color DarkGray
-            [System.IO.Directory]::GetFiles($folder, "*.*", [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
-                try {
-                    [System.IO.File]::Delete($_)
-                    $filesRemoved++
-                    Write-Log "Deleted: $_" -Color DarkGray -NoConsole
+            if ([System.IO.Directory]::Exists($folder)) {
+                Get-ChildItem -Path $folder -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                    try {
+                        $fileSize = $_.Length
+                        [System.IO.File]::Delete($_.FullName)
+                        $removedFiles.Count++
+                        $removedFiles.TotalSize += $fileSize
+                        Write-Log "Deleted: $_" -Color DarkGray -NoConsole
+                    }
+                    catch {
+                        $lockedFiles.Count++
+                        $lockedFiles.TotalSize += $fileSize
+                    }
                 }
-                catch {
-                    $errorCount++
-                    Write-Log "Could not delete file ${_}: $($_.Exception.Message)" -Color Yellow
-                }
+                Write-StatusMessage "Processed $folder" -Color Green
             }
-            Write-StatusMessage "Cleaned $folder successfully ($filesRemoved files removed)" -Color Green
         }
         catch {
-            Write-StatusMessage "Error accessing folder ${folder}: $($_.Exception.Message)" -Color Yellow
-            $errorCount++
+            Write-Log "Error accessing folder ${folder}: $($_.Exception.Message)" -Color Yellow
         }
     }
 
@@ -138,40 +146,45 @@ function Remove-TempFiles {
             $downloadPath = [System.IO.Path]::Combine($_, "Downloads")
             
             if ([System.IO.Directory]::Exists($downloadPath)) {
-                Write-StatusMessage "Processing Downloads folder for $([System.IO.Path]::GetFileName($_))..." -Color Cyan
+                Write-Log "Processing Downloads folder for $([System.IO.Path]::GetFileName($_))..." -Color Cyan
                 
                 try {
-                    $oldFilesCount = 0
-                    [System.IO.Directory]::GetFiles($downloadPath, "*.*", [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
-                        try {
-                            $fileInfo = [System.IO.FileInfo]::new($_)
-                            if ($fileInfo.LastWriteTime -lt $cutoffDate) {
-                                [System.IO.File]::Delete($_)
-                                $oldFilesCount++
-                                $filesRemoved++
+                    Get-ChildItem -Path $downloadPath -File -Force -ErrorAction SilentlyContinue | 
+                        Where-Object { $_.LastWriteTime -lt $cutoffDate } | 
+                        ForEach-Object {
+                            try {
+                                $fileSize = $_.Length
+                                [System.IO.File]::Delete($_.FullName)
+                                $removedFiles.Count++
+                                $removedFiles.TotalSize += $fileSize
                                 Write-Log "Deleted old file: $_" -Color DarkGray -NoConsole
                             }
-                        }
-                        catch {
-                            $errorCount++
-                            Write-Log "Could not delete file ${_}: $($_.Exception.Message)" -Color Yellow
-                        }
+                            catch {
+                                $lockedFiles.Count++
+                                $lockedFiles.TotalSize += $fileSize
+                            }
                     }
-                    Write-StatusMessage "Cleaned $oldFilesCount old files from $downloadPath" -Color Green
+                    Write-StatusMessage "Processed $downloadPath" -Color Green
                 }
                 catch {
-                    Write-StatusMessage "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
-                    $errorCount++
+                    Write-Log "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
                 }
             }
         }
     }
     catch {
-        Write-StatusMessage "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
-        $errorCount++
+        Write-Log "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
     }
 
-    Write-StatusMessage "Temp file cleanup completed. Total files removed: $filesRemoved, Errors: $errorCount" -Color Cyan
+    # Format sizes for display
+    $removedSizeGB = [math]::Round($removedFiles.TotalSize / 1GB, 2)
+    $lockedSizeGB = [math]::Round($lockedFiles.TotalSize / 1GB, 2)
+
+    Write-StatusMessage "Temp file cleanup completed:" -Color Cyan
+    Write-Log "- Files removed: $($removedFiles.Count) ($($removedSizeGB) GB)" -Color Green
+    Write-Log "- Files locked: $($lockedFiles.Count) ($($lockedSizeGB) GB)" -Color Yellow
+
+    return $removedFiles.Count
 }
 
 function Clear-RecycleBin {
