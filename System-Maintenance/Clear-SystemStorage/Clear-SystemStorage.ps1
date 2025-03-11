@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 20:21:00 UTC
+# Last Updated: 2025-03-11 24:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.0.0
-# Additional Info: Replaced cleanmgr.exe with native PowerShell implementation
+# Version: 5.1.0
+# Additional Info: Added age-filtered downloads cleanup (180 days)
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 5.0.0" -Level Info
+Write-Log "Script version: 5.1.0" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -853,15 +853,22 @@ function Invoke-SystemCleanup {
             Pattern = "*"
             Recursive = $true
         }
+        "Old Downloads" = @{
+            Path = [Environment]::GetFolderPath('UserProfile') + '\Downloads'
+            Pattern = "*"
+            Recursive = $true
+            AgeFilter = 180 # Days
+        }
     }
 
-    # Function to safely remove files
+    # Function to safely remove files with age filter
     function Remove-PathContents {
         param (
             [string]$Path,
             [string]$Pattern,
             [bool]$Recursive,
-            [string]$Description
+            [string]$Description,
+            [int]$AgeFilter = 0
         )
 
         if (![System.IO.Directory]::Exists($Path)) {
@@ -871,17 +878,29 @@ function Invoke-SystemCleanup {
 
         Write-Host "`nCleaning $Description..." -ForegroundColor Cyan
         Write-Log "Processing cleanup location: $Description ($Path)" -Level Info
+        
+        if ($AgeFilter -gt 0) {
+            Write-Host "Age filter: Removing files older than $AgeFilter days" -ForegroundColor DarkGray
+        }
 
         try {
-            # Get all files first
+            # Get all files
             $files = [System.IO.Directory]::GetFiles($Path, $Pattern, 
                 $(if ($Recursive) {[System.IO.SearchOption]::AllDirectories} else {[System.IO.SearchOption]::TopDirectoryOnly}))
             
-            $totalFiles = $files.Count
+            $filteredFiles = $files | Where-Object {
+                $fileInfo = [System.IO.FileInfo]::new($_)
+                if ($AgeFilter -gt 0) {
+                    return ($fileInfo.LastWriteTime -lt (Get-Date).AddDays(-$AgeFilter))
+                }
+                return $true
+            }
+            
+            $totalFiles = $filteredFiles.Count
             $processed = 0
             $bytesRemoved = 0
 
-            foreach ($file in $files) {
+            foreach ($file in $filteredFiles) {
                 try {
                     $fileInfo = [System.IO.FileInfo]::new($file)
                     $size = $fileInfo.Length
@@ -967,7 +986,8 @@ function Invoke-SystemCleanup {
     # Process each cleanup path
     foreach ($cleanup in $cleanupPaths.GetEnumerator()) {
         Remove-PathContents -Path $cleanup.Value.Path -Pattern $cleanup.Value.Pattern `
-            -Recursive $cleanup.Value.Recursive -Description $cleanup.Name
+            -Recursive $cleanup.Value.Recursive -Description $cleanup.Name `
+            -AgeFilter $($cleanup.Value.AgeFilter ?? 0)
     }
 
     # Empty Recycle Bin
