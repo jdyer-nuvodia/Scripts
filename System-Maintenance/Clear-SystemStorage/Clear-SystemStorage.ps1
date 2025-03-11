@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 20:11:00 UTC
+# Last Updated: 2025-03-11 20:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.2.0
-# Additional Info: Added silent cleanup configuration for cleanmgr.exe
+# Version: 4.2.1
+# Additional Info: Enhanced silent cleanup configuration to prevent UI popups
 # =============================================================================
 
 <#
@@ -608,89 +608,96 @@ if ($totalShadowCopiesInitial -gt 0) {
 }
 
 # ----- Run Disk Cleanup Silently -----
-Write-Log "Starting Disk Cleanup..." -Level Info
-Write-Host "`nExecuting Windows Disk Cleanup utility..." -ForegroundColor Cyan
+Write-Log "Starting Disk Cleanup configuration..." -Level Info
+Write-Host "`nConfiguring Windows Disk Cleanup utility..." -ForegroundColor Cyan
 
-# Define StateFlags for silent cleanup (all standard cleanup options)
-$cleanupFlags = @(
-    "Active Setup Temp Folders",
-    "BranchCache",
-    "Downloaded Program Files",
-    "Internet Cache Files",
-    "Memory Dump Files",
-    "Offline Pages Files",
-    "Old ChkDsk Files",
-    "Previous Installations",
-    "Recycle Bin",
-    "Service Pack Cleanup",
-    "Setup Log Files",
-    "System error memory dump files",
-    "System error minidump files",
-    "Temporary Files",
-    "Temporary Setup Files",
-    "Temporary Sync Files",
-    "Thumbnail Cache",
-    "Update Cleanup",
-    "Upgrade Discarded Files",
-    "Windows Defender",
-    "Windows Error Reporting Files",
-    "Windows ESD installation files",
-    "Windows Upgrade Log Files"
-)
+# Configure cleanup options silently through registry
+$cleanupFlags = @{
+    "Active Setup Temp Folders"            = 2
+    "BranchCache"                         = 2
+    "Downloaded Program Files"            = 2
+    "Internet Cache Files"                = 2
+    "Memory Dump Files"                   = 2
+    "Offline Pages Files"                 = 2
+    "Old ChkDsk Files"                    = 2
+    "Previous Installations"              = 2
+    "Recycle Bin"                        = 2
+    "Service Pack Cleanup"                = 2
+    "Setup Log Files"                     = 2
+    "System error memory dump files"      = 2
+    "System error minidump files"         = 2
+    "Temporary Files"                     = 2
+    "Temporary Setup Files"               = 2
+    "Temporary Sync Files"                = 2
+    "Thumbnail Cache"                     = 2
+    "Update Cleanup"                      = 2
+    "Upgrade Discarded Files"             = 2
+    "Windows Defender"                    = 2
+    "Windows Error Reporting Files"       = 2
+    "Windows ESD installation files"      = 2
+    "Windows Upgrade Log Files"           = 2
+}
 
-Write-Log "Configuring cleanup settings..." -Level Info
-Write-Host "Configuring cleanup settings..." -ForegroundColor Cyan
-
-# Set registry values for silent cleanup
 $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
-foreach ($flag in $cleanupFlags) {
+Write-Host "Setting up cleanup configuration..." -ForegroundColor Cyan
+foreach ($flag in $cleanupFlags.Keys) {
     $flagPath = Join-Path $regPath $flag
     if (Test-Path $flagPath) {
-        Set-ItemProperty -Path $flagPath -Name "StateFlags0001" -Value 2 -Type DWord
+        Write-Host "  Enabling cleanup for: $flag" -ForegroundColor DarkGray
+        Set-ItemProperty -Path $flagPath -Name "StateFlags0001" -Value $cleanupFlags[$flag] -Type DWord
         Write-Log "Enabled cleanup for: $flag" -Level Debug
     }
 }
 
-# Start the cleanup process
-$cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
+Write-Host "`nStarting cleanup process..." -ForegroundColor Cyan
+Write-Log "Initiating silent cleanup..." -Level Info
+
+# Run cleanup silently with progress monitoring
+$cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -WindowStyle Hidden
 $processId = $cleanmgrProcess.Id
-Write-Log "Disk Cleanup process started with PID: $processId" -Level Debug
-
 $startTime = Get-Date
-$cleanupTimedOut = $false
+$lastMemory = 0
+$activityCount = 0
+$spinner = "|/-\"
+$cleanupTimeout = [TimeSpan]::FromMinutes(20)
 
+Write-Host "`nCleanup Progress:" -ForegroundColor Cyan
 while (!$cleanmgrProcess.HasExited) {
     try {
-        # Get current process information
-        $processInfo = Get-Process -Id $processId -ErrorAction Stop
-        $currentMemory = [math]::Round($processInfo.WorkingSet64 / 1MB, 2)
+        $process = Get-Process -Id $processId -ErrorAction Stop
+        $currentMemory = [math]::Round($process.WorkingSet64 / 1MB, 2)
+        $runtime = (Get-Date) - $startTime
+        $spinChar = $spinner[$activityCount % 4]
         
-        # Display process status
-        $status = "Runtime: $((Get-Date - $startTime).ToString('mm\:ss')) | Memory: ${currentMemory}MB"
+        # Show progress with spinner and memory usage
         Write-Host "`r$(' ' * 80)" -NoNewline
-        Write-Host "`r$status" -NoNewline -ForegroundColor Cyan
+        Write-Host "`r$spinChar Running: $($runtime.ToString('mm\:ss')) | Memory: ${currentMemory}MB" -NoNewline -ForegroundColor Cyan
         
-        if ((Get-Date) - $startTime -gt $cleanupTimeout) {
-            Write-Log "Disk Cleanup timeout reached after 20 minutes" -Level Warning
-            Write-Host "`rDisk Cleanup timed out after 20 minutes." -ForegroundColor Yellow
-            $cleanupTimedOut = $true
-            Stop-Process -Id $processId -Force -ErrorAction Stop
+        # Memory change indicates activity
+        if ([Math]::Abs($currentMemory - $lastMemory) -gt 0.1) {
+            $lastMemory = $currentMemory
+        }
+        
+        if ($runtime -gt $cleanupTimeout) {
+            Write-Log "Cleanup timeout reached after 20 minutes" -Level Warning
+            Write-Host "`nCleanup timeout reached." -ForegroundColor Yellow
+            Stop-Process -Id $processId -Force
             break
         }
+        
+        $activityCount++
+        Start-Sleep -Milliseconds 250
     }
     catch {
-        Write-Log "Error monitoring cleanup process: $($_.Exception.Message)" -Level Warning
+        Write-Log "Error monitoring cleanup: $($_.Exception.Message)" -Level Error
         break
     }
-    
-    Start-Sleep -Seconds 1
 }
 
+Write-Host "`r$(' ' * 80)" -NoNewline
+Write-Host "`rCleanup process completed." -ForegroundColor Green
 $duration = (Get-Date) - $startTime
-if (!$cleanupTimedOut) {
-    Write-Host "`rDisk Cleanup completed in $($duration.ToString('mm\:ss')) minutes:seconds" -ForegroundColor Green
-    Write-Log "Disk Cleanup complete. Duration: $($duration.ToString('mm\:ss'))" -Level Info
-}
+Write-Log "Disk Cleanup completed. Duration: $($duration.ToString('mm\:ss'))" -Level Info
 
 # Always proceed with Shadow Copy Management regardless of cleanup status
 Write-Log "===== Starting Shadow Copy Management =====" -Level Info
