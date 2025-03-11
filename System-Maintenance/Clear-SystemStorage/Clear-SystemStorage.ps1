@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 17:28:00 UTC
+# Last Updated: 2025-03-11 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.6
-# Additional Info: Fixed null reference in status monitoring by adding proper initialization
+# Version: 4.1.7
+# Additional Info: Fixed null reference errors and removed unused variables
 # =============================================================================
 
 <#
@@ -646,7 +646,6 @@ Write-Log "Disk Cleanup process started with PID: $processId" -Level Debug
 
 $startTime = Get-Date
 $cleanupTimedOut = $false
-$lastStatus = ""
 
 while (!$cleanmgrProcess.HasExited) {
     try {
