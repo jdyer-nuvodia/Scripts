@@ -59,7 +59,8 @@ Example header update:
    - .txt extension for log files is STRICTLY PROHIBITED
 
 4. POWERSHELL CODING STANDARDS:
-   - .NET methods MUST be used when available
+   - .NET methods MUST be used when available.
+   - If functionality can be done in Powershell with modules, use PowerShell instead of calling other programs.
    - Native PowerShell alternatives are ONLY acceptable when .NET methods are unavailable
    - Example: Use [System.IO.File]::ReadAllText() instead of Get-Content
    - Example: Use [System.IO.Directory]::GetFiles() instead of Get-ChildItem
