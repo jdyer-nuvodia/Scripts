@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 15:32:00 UTC
+# Last Updated: 2025-03-12 19:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.3
-# Additional Info: Fixed unused timeout variable by replacing with processTimeout
+# Version: 4.1.4
+# Additional Info: Reduced monitoring timeout and improved file cleanup handling
 # =============================================================================
 
 <#
@@ -302,6 +302,7 @@ catch {
                 $completed = $false
                 $lastStatus = ""
                 $statusCheckInterval = 500 # milliseconds
+                $maxMonitoringTime = 300 # 5 minutes
 
                 while ((Get-Date) -lt $processTimeout -and -not $completed) {
                     if ([System.IO.File]::Exists($statusFile)) {
@@ -336,6 +337,11 @@ catch {
                             if ($sr) { $sr.Dispose() }
                             if ($fs) { $fs.Dispose() }
                         }
+                    }
+                    
+                    if ((Get-Date) -gt $startTime.AddSeconds($maxMonitoringTime)) {
+                        Write-Log "Monitoring timeout reached after $maxMonitoringTime seconds" -Level Warning
+                        break
                     }
                     
                     Start-Sleep -Milliseconds $statusCheckInterval
