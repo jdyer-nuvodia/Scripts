@@ -253,7 +253,6 @@ catch {
         $retryDelay = 2
         $maxMonitoringTime = 300 # 5 minutes
         $statusCheckInterval = 500 # milliseconds
-        $startTime = Get-Date
         $completed = $false
         $iterationCount = 0
 
@@ -262,7 +261,6 @@ catch {
         [System.IO.File]::WriteAllText($statusFile, "Initializing cleanup process...")
 
         try {
-            $startTime = Get-Date
             $completed = $false
             $iterationCount = 0
 
