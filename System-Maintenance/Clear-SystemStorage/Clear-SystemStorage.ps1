@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 19:35:00 UTC
+# Last Updated: 2025-03-11 20:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.9
-# Additional Info: Fixed cleanup iterations by adding proper status file initialization and error tracing
+# Version: 4.2.0
+# Additional Info: Added silent cleanup configuration for cleanmgr.exe
 # =============================================================================
 
 <#
