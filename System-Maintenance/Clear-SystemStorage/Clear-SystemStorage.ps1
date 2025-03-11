@@ -288,7 +288,7 @@ catch {
                         }
                         catch [System.IO.IOException] {
                             $lockReleaseAttempts++
-                            Write-Log "Attempt $lockReleaseAttempts: Waiting for file lock to clear..." -Level Warning
+                            Write-Log ("Attempt " + $lockReleaseAttempts + ": Waiting for file lock to clear...") -Level Warning
                             Start-Sleep -Seconds 2
                         }
                         finally {
@@ -389,7 +389,7 @@ catch {
                 }
                 catch {
                     $retryCount++
-                    Write-Log "Cleanup retry $retryCount for $file: $($_.Exception.Message)" -Level Warning
+                    Write-Log "Cleanup retry $retryCount for ${file}: $($_.Exception.Message)" -Level Warning
                     Start-Sleep -Seconds 2
                 }
                 finally {
