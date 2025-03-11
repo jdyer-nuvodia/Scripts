@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 20:27:00 UTC
+# Last Updated: 2025-03-11 20:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.1.1
-# Additional Info: Removed lingering cleanmgr.exe code for consistency
+# Version: 5.1.3
+# Additional Info: Removed all remaining cleanmgr references and associated monitoring code
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 5.1.1" -Level Info
+Write-Log "Script version: 5.1.3" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -91,7 +91,7 @@ function Test-RunningAsSystem {
 function Start-SystemContext {
     param(
         [string]$ScriptPath = $MyInvocation.PSCommandPath,
-        [int]$TimeoutSeconds = 900  # Decreased to 15 minutes to ensure timely completion
+        [int]$TimeoutSeconds = 900
     )
     
     if (Test-RunningAsSystem) {
@@ -100,7 +100,7 @@ function Start-SystemContext {
     }
     
     Write-Log "Elevating to SYSTEM context..." -Level Info
-    Write-Host "`nNOTE: Script will continue execution as SYSTEM. Watch for shadow copy details below." -ForegroundColor Cyan
+    Write-Host "`nNOTE: Script will continue execution as SYSTEM." -ForegroundColor Cyan
     
     try {
         $jobName = "SystemContextJob_$([Guid]::NewGuid())"
@@ -111,14 +111,16 @@ function Start-SystemContext {
         $scriptFileName = Split-Path -Leaf $ScriptPath
         $systemAccessibleScriptPath = [System.IO.Path]::Combine($systemAccessibleTemp, $scriptFileName)
         
-        # Ensure cleanup of any existing files
-        $filesToClean = @(
-            $systemAccessibleScriptPath,
-            "$markerFile.status",
-            $executorScript,
-            $logFile
-        )
-        
+        # Initialize monitoring variables
+        $maxRetries = 3
+        $retryDelay = 2
+        $maxMonitoringTime = 300 # 5 minutes
+        $statusCheckInterval = 500 # milliseconds
+        $completed = $false
+        $iterationCount = 0
+
+        # Ensure cleanup of existing files
+        $filesToClean = @($systemAccessibleScriptPath, $executorScript, $logFile)
         foreach ($file in $filesToClean) {
             if ([System.IO.File]::Exists($file)) {
                 try {
@@ -130,214 +132,50 @@ function Start-SystemContext {
                 }
             }
         }
-        
-        Write-Log "Copying script to system-accessible location: $systemAccessibleScriptPath" -Level Verbose
-        
-        # Use Copy-Item instead of Get-Content/Set-Content to preserve encoding
+
+        # Copy script to system-accessible location
         Copy-Item -Path $ScriptPath -Destination $systemAccessibleScriptPath -Force
-        
-        # Verify script integrity after copying
-        if (Test-Path $systemAccessibleScriptPath) {
-            $fileSize = (Get-Item $systemAccessibleScriptPath).Length
-            Write-Log "Script copied successfully. File size: $fileSize bytes" -Level Verbose
-        } else {
-            Write-Log "Failed to copy script to system location!" -Level Warning
-            
-            # Fallback to Get-Content/Set-Content with explicit encoding
-            try {
-                Get-Content -Path $ScriptPath -Raw -Encoding UTF8 | 
-                    Set-Content -Path $systemAccessibleScriptPath -Encoding UTF8 -Force
-                if (Test-Path $systemAccessibleScriptPath) {
-                    Write-Log "Script copied via content method." -Level Info
-                }
-            }
-            catch {
-                Write-Log "All copy attempts failed: $($_.Exception.Message)" -Level Error
-                return $false
-            }
+        if (-not [System.IO.File]::Exists($systemAccessibleScriptPath)) {
+            Write-Log "Failed to copy script to system location!" -Level Error
+            return $false
         }
-        
-        # Create an executor script that will run our main script as SYSTEM.
+
+        # Create simple executor script
         $executorScript = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName-executor.ps1"
         $logFile = Join-Path $systemAccessibleTemp "$jobName.log"
-        $markerFile = Join-Path $systemAccessibleTemp "$jobName.marker"
-        
-        Write-Log "Creating executor with logfile: $logFile and marker: $markerFile" -Level Debug
-        
+
         $executorContent = @"
-# Executor script for Clear-SystemStorage running as SYSTEM
+# System context executor for Clear-SystemStorage
 `$ErrorActionPreference = 'Stop'
-`$DebugPreference = 'Continue'
 `$VerbosePreference = 'Continue'
 Start-Transcript -Path '$logFile' -Force
 
-function Write-StatusFile {
-    param([string]`$Status)
-    Set-Content -Path '$markerFile.status' -Value `$Status -Force
-}
-
 try {
-    Write-StatusFile "Starting system cleanup process..."
-    # Continue with main script
-    & '$systemAccessibleScriptPath' -Debug -Verbose *>> '$logFile'
-    Write-StatusFile "Complete"
+    & '$systemAccessibleScriptPath' -Verbose *>> '$logFile'
 }
 catch {
-    Write-StatusFile "Error: `$(`$_.Exception.Message)"
+    Write-Error "`$(`$_.Exception.Message)"
     exit 1
 }
 "@
-        Write-Log "Creating executor script at $executorScript" -Level Verbose
         Set-Content -Path $executorScript -Value $executorContent -Encoding UTF8 -Force
-        
+
+        # Schedule and start the task
         $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$executorScript`""
         $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
         $task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings
         
-        Write-Log "Registering scheduled task $jobName" -Level Verbose
         Register-ScheduledTask -TaskName $jobName -InputObject $task | Out-Null
         Start-ScheduledTask -TaskName $jobName
-        Write-Log "Started scheduled task as SYSTEM" -Level Debug
-        
-        Write-Log "Waiting for system cleanup to complete..." -Level Info
-        Write-Host "`n===== System Cleanup Progress =====" -ForegroundColor Cyan
-        Write-Host "Task running as SYSTEM. Monitoring cleanup progress..." -ForegroundColor Cyan
-        
-        $statusFile = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName.status"
-        $completed = $false
 
-        # Initialize monitoring variables
-        $maxRetries = 3
-        $retryDelay = 2
-        $maxMonitoringTime = 300 # 5 minutes
-        $statusCheckInterval = 500 # milliseconds
-        $completed = $false
-        $iterationCount = 0
+        Write-Log "Started scheduled task as SYSTEM" -Level Info
+        Write-Host "Task running as SYSTEM. Monitoring progress..." -ForegroundColor Cyan
 
-        # Create and initialize status file before monitoring
-        $statusFile = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName.status"
-        [System.IO.File]::WriteAllText($statusFile, "Initializing cleanup process...")
-
-        try {
-            $completed = $false
-            $iterationCount = 0
-
-            while ($iterationCount -lt $maxRetries -and -not $completed) {
-                try {
-                    Write-Log "Starting cleanup iteration $($iterationCount + 1)..." -Level Info
-                    
-                    # Update status file for current iteration
-                    [System.IO.File]::WriteAllText($statusFile, "Running cleanup iteration $($iterationCount + 1)...")
-                    
-                    # Run cleanup utilities
-                    Write-Log "Executing disk cleanup utilities..." -Level Info
-                    $sagesetProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sageset:1" -Wait -PassThru
-                    
-                    if ($sagesetProcess.ExitCode -eq 0) {
-                        Write-Log "Configuration completed successfully. Starting cleanup..." -Level Info
-                        [System.IO.File]::WriteAllText($statusFile, "Running disk cleanup...")
-                        
-                        $cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
-                        $processStartTime = Get-Date
-                        
-                        # Monitor cleanup process
-                        while (!$cleanmgrProcess.HasExited) {
-                            if ((Get-Date) -gt $processStartTime.AddSeconds($maxMonitoringTime)) {
-                                Write-Log "Cleanup process timeout reached" -Level Warning
-                                [System.IO.File]::WriteAllText($statusFile, "Error: Cleanup process timed out")
-                                Stop-Process -Id $cleanmgrProcess.Id -Force -ErrorAction SilentlyContinue
-                                break
-                            }
-                            
-                            $status = [System.IO.File]::ReadAllText($statusFile)
-                            Write-Host "`r$(' ' * 80)" -NoNewline
-                            Write-Host "`r$status" -NoNewline -ForegroundColor Cyan
-                            Start-Sleep -Milliseconds $statusCheckInterval
-                        }
-                        
-                        if ($cleanmgrProcess.ExitCode -eq 0) {
-                            Write-Log "Cleanup completed successfully" -Level Info
-                            [System.IO.File]::WriteAllText($statusFile, "Complete")
-                            $completed = $true
-                            break
-                        }
-                    } else {
-                        Write-Log "Cleanup configuration failed with exit code: $($sagesetProcess.ExitCode)" -Level Error
-                        [System.IO.File]::WriteAllText($statusFile, "Error: Configuration failed")
-                    }
-                }
-                catch {
-                    $errorMsg = "Error in iteration $($iterationCount + 1): $($_.Exception.Message)"
-                    Write-Log $errorMsg -Level Error
-                    [System.IO.File]::WriteAllText($statusFile, "Error: $errorMsg")
-                    
-                    $iterationCount++
-                    if ($iterationCount -lt $maxRetries) {
-                        Write-Log "Retrying cleanup..." -Level Warning
-                        Start-Sleep -Seconds $retryDelay
-                    }
-                }
-            }
-        }
-        catch {
-            Write-Log "Critical error in cleanup process: $($_.Exception.Message)" -Level Error
-            [System.IO.File]::WriteAllText($statusFile, "Error: Critical failure in cleanup process")
-            throw
-        }
-        finally {
-            # Ensure status file is properly closed and removed
-            if ([System.IO.File]::Exists($statusFile)) {
-                try {
-                    [System.IO.File]::Delete($statusFile)
-                }
-                catch {
-                    Write-Log "Warning: Could not remove status file: $($_.Exception.Message)" -Level Warning
-                }
-            }
-        }
-
-        # Enhanced final cleanup
-        Write-Log "Performing final cleanup..." -Level Info
-        
-        $filesToClean = @($executorScript, $systemAccessibleScriptPath, $markerFile, "$markerFile.status", $logFile)
-        foreach ($file in $filesToClean) {
-            $retryCount = 0
-            while ($retryCount -lt $maxRetries -and [System.IO.File]::Exists($file)) {
-                try {
-                    # Force garbage collection before attempting deletion
-                    [System.GC]::Collect()
-                    [System.GC]::WaitForPendingFinalizers()
-                    
-                    # Try to acquire exclusive access
-                    $fs = [System.IO.FileStream]::new(
-                        $file,
-                        [System.IO.FileMode]::Open,
-                        [System.IO.FileAccess]::ReadWrite,
-                        [System.IO.FileShare]::None
-                    )
-                    $fs.Close()
-                    $fs.Dispose()
-                    
-                    [System.IO.File]::Delete($file)
-                    Write-Log "Successfully removed: $file" -Level Debug
-                    break
-                }
-                catch {
-                    $retryCount++
-                    Write-Log "Cleanup retry $retryCount for ${file}: $($_.Exception.Message)" -Level Warning
-                    Start-Sleep -Seconds 2
-                }
-                finally {
-                    if ($fs) { $fs.Dispose() }
-                }
-            }
-        }
-
-        return $completed
+        return $true
     }
     catch {
-        Write-Log "Critical error during system context operation: $($_.Exception.Message)" -Level Error
+        Write-Log "Error during system context elevation: $($_.Exception.Message)" -Level Error
         return $false
     }
 }
@@ -566,198 +404,6 @@ if ($totalShadowCopiesInitial -gt 0) {
     }
 }
 
-# ----- Run Disk Cleanup Silently -----
-Write-Log "Starting Disk Cleanup configuration..." -Level Info
-Write-Host "`nConfiguring Windows Disk Cleanup utility..." -ForegroundColor Cyan
-
-# Configure cleanup options silently through registry
-$cleanupFlags = @{
-    "Active Setup Temp Folders"            = 2
-    "BranchCache"                         = 2
-    "Downloaded Program Files"            = 2
-    "Internet Cache Files"                = 2
-    "Memory Dump Files"                   = 2
-    "Offline Pages Files"                 = 2
-    "Old ChkDsk Files"                    = 2
-    "Previous Installations"              = 2
-    "Recycle Bin"                        = 2
-    "Service Pack Cleanup"                = 2
-    "Setup Log Files"                     = 2
-    "System error memory dump files"      = 2
-    "System error minidump files"         = 2
-    "Temporary Files"                     = 2
-    "Temporary Setup Files"               = 2
-    "Temporary Sync Files"                = 2
-    "Thumbnail Cache"                     = 2
-    "Update Cleanup"                      = 2
-    "Upgrade Discarded Files"             = 2
-    "Windows Defender"                    = 2
-    "Windows Error Reporting Files"       = 2
-    "Windows ESD installation files"      = 2
-    "Windows Upgrade Log Files"           = 2
-}
-
-$regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
-Write-Host "Setting up cleanup configuration..." -ForegroundColor Cyan
-foreach ($flag in $cleanupFlags.Keys) {
-    $flagPath = Join-Path $regPath $flag
-    if (Test-Path $flagPath) {
-        Write-Host "  Enabling cleanup for: $flag" -ForegroundColor DarkGray
-        Set-ItemProperty -Path $flagPath -Name "StateFlags0001" -Value $cleanupFlags[$flag] -Type DWord
-        Write-Log "Enabled cleanup for: $flag" -Level Debug
-    }
-}
-
-Write-Host "`nStarting cleanup process..." -ForegroundColor Cyan
-Write-Log "Initiating silent cleanup..." -Level Info
-
-# Run cleanup silently with progress monitoring
-$cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -WindowStyle Hidden
-$processId = $cleanmgrProcess.Id
-$startTime = Get-Date
-$lastMemory = 0
-$activityCount = 0
-$spinner = "|/-\"
-$cleanupTimeout = [TimeSpan]::FromMinutes(20)
-
-Write-Host "`nCleanup Progress:" -ForegroundColor Cyan
-while (!$cleanmgrProcess.HasExited) {
-    try {
-        $process = Get-Process -Id $processId -ErrorAction Stop
-        $currentMemory = [math]::Round($process.WorkingSet64 / 1MB, 2)
-        $runtime = (Get-Date) - $startTime
-        $spinChar = $spinner[$activityCount % 4]
-        
-        # Show progress with spinner and memory usage
-        Write-Host "`r$(' ' * 80)" -NoNewline
-        Write-Host "`r$spinChar Running: $($runtime.ToString('mm\:ss')) | Memory: ${currentMemory}MB" -NoNewline -ForegroundColor Cyan
-        
-        # Memory change indicates activity
-        if ([Math]::Abs($currentMemory - $lastMemory) -gt 0.1) {
-            $lastMemory = $currentMemory
-        }
-        
-        if ($runtime -gt $cleanupTimeout) {
-            Write-Log "Cleanup timeout reached after 20 minutes" -Level Warning
-            Write-Host "`nCleanup timeout reached." -ForegroundColor Yellow
-            Stop-Process -Id $processId -Force
-            break
-        }
-        
-        $activityCount++
-        Start-Sleep -Milliseconds 250
-    }
-    catch {
-        Write-Log "Error monitoring cleanup: $($_.Exception.Message)" -Level Error
-        break
-    }
-}
-
-Write-Host "`r$(' ' * 80)" -NoNewline
-Write-Host "`rCleanup process completed." -ForegroundColor Green
-$duration = (Get-Date) - $startTime
-Write-Log "Disk Cleanup completed. Duration: $($duration.ToString('mm\:ss'))" -Level Info
-
-# Always proceed with Shadow Copy Management regardless of cleanup status
-Write-Log "===== Starting Shadow Copy Management =====" -Level Info
-Write-Host "`n===== Shadow Copy Management =====" -ForegroundColor Cyan
-
-$shadowOutput = vssadmin list shadows 2>&1
-$totalShadowCopies = ($shadowOutput | Select-String "Shadow Copy ID").Count
-Write-Log ("Shadow Copies Found: $totalShadowCopies") -Level Info
-Write-Host "Shadow Copies Found: ${totalShadowCopies}" -ForegroundColor Yellow
-
-if ($totalShadowCopies -gt 1) {
-    $shadowIDs = $shadowOutput | Select-String "Shadow Copy ID:" | ForEach-Object {
-        if ($_ -match "Shadow Copy ID:\s+({[^}]+})") { $matches[1] }
-    }
-    
-    # Display all shadow copies before removal
-    Write-Host "`nShadow Copies to be managed:" -ForegroundColor Cyan
-    for ($i = 0; $i -lt $shadowIDs.Count; $i++) {
-        $id = $shadowIDs[$i]
-        $keepStatus = if ($i -eq $shadowIDs.Count - 1) { "KEEP" } else { "REMOVE" }
-        Write-Host "  [$keepStatus] Shadow Copy ID: $id" -ForegroundColor $(if ($keepStatus -eq "KEEP") { "Green" } else { "Yellow" })
-    }
-    
-    $removedCount = $shadowIDs.Count - 1
-    Write-Host "`nRemoving $removedCount shadow copies..." -ForegroundColor Yellow
-    
-    # Remove all but the most recent shadow copy
-    for ($i = 0; $i -lt $shadowIDs.Count - 1; $i++) {
-        $id = $shadowIDs[$i]
-        Write-Log ("Removing shadow copy: $id") -Level Info
-        Write-Host "  Removing shadow copy: $id" -ForegroundColor Yellow
-        $result = vssadmin delete shadows /shadow=$id /quiet 2>&1
-        Write-Log "Result: $result" -Level Debug
-    }
-    $remainingCount = 1
-    Write-Host "Keeping 1 most recent shadow copy" -ForegroundColor Green
-} else {
-    $removedCount = 0
-    $remainingCount = $totalShadowCopies
-    if ($totalShadowCopies -eq 1) {
-        Write-Host "Only one shadow copy exists. Keeping it." -ForegroundColor Green
-    } else {
-        Write-Host "No shadow copies found." -ForegroundColor Cyan
-    }
-}
-
-Write-Log ("Shadow Copy cleanup summary: Found=$totalShadowCopies, Removed=$removedCount, Remaining=$remainingCount") -Level Info
-Write-Host "`nShadow Copy cleanup summary:" -ForegroundColor Cyan
-Write-Host "  - Initial count: $totalShadowCopiesInitial" -ForegroundColor Cyan
-Write-Host "  - Removed count: $removedCount" -ForegroundColor Yellow
-Write-Host "  - Remaining count: $remainingCount" -ForegroundColor Green
-
-# ----- Display Ending Drive Information -----
-Write-Log "Collecting final system drive information" -Level Info
-$finalDrive = Get-SystemDiskSpace
-if ($finalDrive -and $initialDrive) {
-    # Calculate space reclaimed
-    $spaceReclaimed = $finalDrive.SizeRemaining - $initialDrive.SizeRemaining
-    $freeSpaceBefore = [math]::Round($initialDrive.SizeRemaining/1GB, 2)
-    $freeSpaceAfter = [math]::Round($finalDrive.SizeRemaining/1GB, 2)
-    $spaceReclaimedGB = [math]::Round($spaceReclaimed/1GB, 2)
-    
-    Show-DriveInfo -Volume $finalDrive -Label "FINAL Drive Volume Details"
-    
-    Write-Host "`nCleanup Results:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Free Space Before: $freeSpaceBefore GB" -ForegroundColor Yellow
-    Write-Host "Free Space After:  $freeSpaceAfter GB" -ForegroundColor Green
-    Write-Host "Space Reclaimed:   $spaceReclaimedGB GB" -ForegroundColor $(if ($spaceReclaimedGB -gt 0) {"Green"} else {"Yellow"})
-    
-    Write-Log "Cleanup complete. Space reclaimed: $spaceReclaimedGB GB" -Level Info
-} else {
-    Write-Log "Failed to get final drive information" -Level Warning
-    Write-Host "Failed to get final drive information" -ForegroundColor Red
-}
-
-Write-Log "===== System Storage Cleanup Completed =====" -Level Info
-Write-Host "`n===== System Storage Cleanup Completed =====" -ForegroundColor Green
-Write-Host "Log file: $script:LogFile" -ForegroundColor Cyan
-
-# Update the main script block to use the optimized cleanup
-try {
-    $result = Clear-SystemStorageOptimized
-    
-    if ($result.BytesFreed -gt 0) {
-        $freedGB = [math]::Round($result.BytesFreed / 1GB, 2)
-        Write-Host "Successfully freed $freedGB GB of system storage" -ForegroundColor Green
-        
-        if ($result.Errors.Count -gt 0) {
-            Write-Host "Completed with $($result.Errors.Count) non-critical errors. See log for details." -ForegroundColor Yellow
-        }
-    }
-    else {
-        Write-Host "No significant space was freed. System may already be clean." -ForegroundColor Cyan
-    }
-}
-catch {
-    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
-}
-
 # ----- Function: Invoke-SystemCleanup -----
 function Invoke-SystemCleanup {
     [CmdletBinding()]
@@ -928,14 +574,11 @@ function Invoke-SystemCleanup {
         }
     }
 
-    # Clean Windows Component Store (WinSxS)
+    # Clean Windows Component Store using DISM PowerShell module
     Write-Host "`nCleaning Windows Component Store..." -ForegroundColor Cyan
     try {
-        $result = Start-Process -FilePath "dism.exe" -ArgumentList "/Online /Cleanup-Image /StartComponentCleanup" `
-            -NoNewWindow -Wait -PassThru
-        if ($result.ExitCode -eq 0) {
-            Write-Host "Successfully cleaned Windows Component Store" -ForegroundColor Green
-        }
+        $null = Repair-WindowsImage -Online -StartComponentCleanup -NoRestart
+        Write-Host "Successfully cleaned Windows Component Store" -ForegroundColor Green
     }
     catch {
         Write-Log "Error cleaning Component Store: $($_.Exception.Message)" -Level Error
