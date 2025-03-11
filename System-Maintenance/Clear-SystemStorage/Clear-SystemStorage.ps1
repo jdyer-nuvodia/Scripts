@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 20:32:00 UTC
+# Last Updated: 2025-03-11 20:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.1.3
-# Additional Info: Removed all remaining cleanmgr references and associated monitoring code
+# Version: 5.2.0
+# Additional Info: Replaced scheduled task elevation with native PowerShell SYSTEM context
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 5.1.3" -Level Info
+Write-Log "Script version: 5.2.0" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -89,9 +89,9 @@ function Test-RunningAsSystem {
 
 # ----- Function: Start-SystemContext -----
 function Start-SystemContext {
+    [CmdletBinding()]
     param(
-        [string]$ScriptPath = $MyInvocation.PSCommandPath,
-        [int]$TimeoutSeconds = 900
+        [string]$ScriptPath = $MyInvocation.PSCommandPath
     )
     
     if (Test-RunningAsSystem) {
@@ -103,76 +103,43 @@ function Start-SystemContext {
     Write-Host "`nNOTE: Script will continue execution as SYSTEM." -ForegroundColor Cyan
     
     try {
-        $jobName = "SystemContextJob_$([Guid]::NewGuid())"
-        Write-Log "Created job with name: $jobName" -Level Debug
+        # Create a temporary service to run as SYSTEM
+        $serviceName = "SystemCleanup_$([Guid]::NewGuid().ToString('N'))"
+        $binaryPath = "$PSHOME\powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
         
-        # Use more reliable temp path creation
-        $systemAccessibleTemp = [System.IO.Path]::Combine($env:SystemRoot, "Temp")
-        $scriptFileName = Split-Path -Leaf $ScriptPath
-        $systemAccessibleScriptPath = [System.IO.Path]::Combine($systemAccessibleTemp, $scriptFileName)
+        Write-Log "Creating temporary service: $serviceName" -Level Debug
         
-        # Initialize monitoring variables
-        $maxRetries = 3
-        $retryDelay = 2
-        $maxMonitoringTime = 300 # 5 minutes
-        $statusCheckInterval = 500 # milliseconds
-        $completed = $false
-        $iterationCount = 0
-
-        # Ensure cleanup of existing files
-        $filesToClean = @($systemAccessibleScriptPath, $executorScript, $logFile)
-        foreach ($file in $filesToClean) {
-            if ([System.IO.File]::Exists($file)) {
-                try {
-                    [System.IO.File]::Delete($file)
-                    Write-Log "Cleaned up existing file: $file" -Level Debug
-                }
-                catch {
-                    Write-Log "Warning: Could not delete existing file $file : $($_.Exception.Message)" -Level Warning
-                }
+        # Create service using native .NET
+        $serviceManager = New-Object -ComObject 'Microsoft.PowerShell.Commands.ServiceController'
+        $service = [System.ServiceProcess.ServiceController]::CreateService(
+            $serviceName,                  # Service Name
+            "System Storage Cleanup",      # Display Name
+            [System.ServiceProcess.ServiceStartMode]::Manual,
+            $binaryPath,                  # Binary Path
+            $null,                        # Dependencies
+            [System.ServiceProcess.ServiceAccount]::LocalSystem # Run as SYSTEM
+        )
+        
+        try {
+            # Start the service
+            Write-Log "Starting service to execute as SYSTEM..." -Level Info
+            $service.Start()
+            $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
+            
+            # Wait for completion
+            Start-Sleep -Seconds 2
+            $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(300))
+            
+            Write-Log "Service execution completed" -Level Info
+            return $true
+        }
+        finally {
+            # Cleanup service
+            Write-Log "Removing temporary service..." -Level Debug
+            if ($service) {
+                $service.Delete()
             }
         }
-
-        # Copy script to system-accessible location
-        Copy-Item -Path $ScriptPath -Destination $systemAccessibleScriptPath -Force
-        if (-not [System.IO.File]::Exists($systemAccessibleScriptPath)) {
-            Write-Log "Failed to copy script to system location!" -Level Error
-            return $false
-        }
-
-        # Create simple executor script
-        $executorScript = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName-executor.ps1"
-        $logFile = Join-Path $systemAccessibleTemp "$jobName.log"
-
-        $executorContent = @"
-# System context executor for Clear-SystemStorage
-`$ErrorActionPreference = 'Stop'
-`$VerbosePreference = 'Continue'
-Start-Transcript -Path '$logFile' -Force
-
-try {
-    & '$systemAccessibleScriptPath' -Verbose *>> '$logFile'
-}
-catch {
-    Write-Error "`$(`$_.Exception.Message)"
-    exit 1
-}
-"@
-        Set-Content -Path $executorScript -Value $executorContent -Encoding UTF8 -Force
-
-        # Schedule and start the task
-        $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$executorScript`""
-        $principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        $task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings
-        
-        Register-ScheduledTask -TaskName $jobName -InputObject $task | Out-Null
-        Start-ScheduledTask -TaskName $jobName
-
-        Write-Log "Started scheduled task as SYSTEM" -Level Info
-        Write-Host "Task running as SYSTEM. Monitoring progress..." -ForegroundColor Cyan
-
-        return $true
     }
     catch {
         Write-Log "Error during system context elevation: $($_.Exception.Message)" -Level Error
