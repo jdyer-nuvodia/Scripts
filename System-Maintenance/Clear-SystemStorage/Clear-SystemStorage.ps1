@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:30:00 UTC
+# Last Updated: 2025-03-11 21:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Fixed Windows Event Log clearing to handle empty log names
+# Version: 1.4.2
+# Additional Info: Modified Windows Event Log clearing to only clear logs older than 30 days
 # =============================================================================
 
 <#
@@ -291,11 +291,19 @@ function Remove-WindowsLogs {
                     return
                 }
                 
-                $_.Clear()
-                Write-StatusMessage "Cleared $($_.Log) log" -Color Green
+                # Only clear logs older than 30 days
+                $cutoffDate = (Get-Date).AddDays(-30)
+                $oldEntries = $_.Entries | Where-Object { $_.TimeGenerated -lt $cutoffDate }
+                
+                if ($oldEntries.Count -gt 0) {
+                    $_.Clear()
+                    Write-StatusMessage "Cleared old entries from $($_.Log) log" -Color Green
+                } else {
+                    Write-StatusMessage "No entries older than 30 days in $($_.Log) log" -Color DarkGray
+                }
             }
             catch {
-                Write-StatusMessage "Could not clear $($_.Log) log" -Color Yellow
+                Write-StatusMessage "Could not process $($_.Log) log: $_" -Color Yellow
             }
         }
     }
@@ -312,26 +320,26 @@ try {
     }
 
     if (-not $NoRestore) {
-        if (-not (New-SystemRestorePoint)) {
-            if (-not $Force) {
-                Write-Log "Cleanup cancelled due to restore point creation failure." -Color Red
-                exit 1
+            if (-not (New-SystemRestorePoint)) {
+                if (-not $Force) {
+                    Write-Log "Cleanup cancelled due to restore point creation failure." -Color Red
+                    exit 1
+                }
+                Write-Log "Proceeding without restore point due to Force parameter." -Color Yellow
             }
-            Write-Log "Proceeding without restore point due to Force parameter." -Color Yellow
         }
-    }
-    else {
-        Write-Log "Skipping restore point creation as requested." -Color Yellow
-    }
-
-    # Perform cleanup operations
-    Remove-TempFiles
-    Clear-RecycleBin
-    Clear-ShadowCopies
-    Remove-WindowsErrorReports
-    Clear-BrowserCaches
-    Remove-WindowsLogs
-
+        else {
+            Write-Log "Skipping restore point creation as requested." -Color Yellow
+        }
+    
+        # Perform cleanup operations
+        Remove-TempFiles
+        Clear-RecycleBin
+        Clear-ShadowCopies
+        Remove-WindowsErrorReports
+        Clear-BrowserCaches
+        Remove-WindowsLogs
+    
     Write-Log "System storage cleanup completed successfully. See log file for details: $logFile" -Color Green
 }
 catch {
