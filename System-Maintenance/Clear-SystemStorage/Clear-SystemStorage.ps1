@@ -186,7 +186,6 @@ try {
     
     `$cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
     `$processId = `$cleanmgrProcess.Id
-    `$startTime = Get-Date
     
     while (!`$cleanmgrProcess.HasExited) {
         try {
