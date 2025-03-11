@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:42:00 UTC
+# Last Updated: 2025-03-11 21:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.3
-# Additional Info: Fixed Recycle Bin clearing using Shell.Application COM object
+# Version: 1.4.4
+# Additional Info: Enhanced error reporting with detailed diagnostics for browser cache clearing
 # =============================================================================
 
 <#
@@ -270,20 +270,60 @@ function Remove-WindowsErrorReports {
 
 function Clear-BrowserCaches {
     Write-StatusMessage "Clearing browser caches..." -Color Cyan
-    $chromePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache"
-    $firefoxPath = "$env:APPDATA\Mozilla\Firefox\Profiles"
-    $edgePath = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache"
+    $browserPaths = @{
+        'Chrome' = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache"
+        'Firefox' = "$env:APPDATA\Mozilla\Firefox\Profiles"
+        'Edge' = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache"
+    }
 
-    $browserPaths = @($chromePath, $firefoxPath, $edgePath)
+    foreach ($browser in $browserPaths.Keys) {
+        $path = $browserPaths[$browser]
+        Write-Log "Processing $browser cache at: $path" -Color DarkGray
+        
+        if (-not [System.IO.Directory]::Exists($path)) {
+            Write-Log "Cache directory for $browser not found at: $path" -Color Yellow
+            continue
+        }
 
-    foreach ($path in $browserPaths) {
-        if ([System.IO.Directory]::Exists($path)) {
-            try {
-                [System.IO.Directory]::Delete($path, $true)
-                Write-StatusMessage "Cleared cache in $path" -Color Green
+        try {
+            if ($browser -eq 'Firefox') {
+                # Firefox has multiple profile directories
+                [System.IO.Directory]::GetDirectories($path) | ForEach-Object {
+                    $profilePath = [System.IO.Path]::Combine($_, "cache2")
+                    if ([System.IO.Directory]::Exists($profilePath)) {
+                        try {
+                            [System.IO.Directory]::Delete($profilePath, $true)
+                            Write-StatusMessage "Cleared Firefox cache in profile: $([System.IO.Path]::GetFileName($_))" -Color Green
+                        }
+                        catch {
+                            Write-Log "Error clearing Firefox profile cache at ${profilePath}: $($_.Exception.Message)" -Color Yellow
+                            Write-Log "Stack Trace: $($_.Exception.StackTrace)" -Color Magenta -NoConsole
+                        }
+                    }
+                }
             }
-            catch {
-                Write-StatusMessage "Could not clear cache in $path" -Color Yellow
+            else {
+                # Chrome and Edge have similar cache structure
+                [System.IO.Directory]::Delete($path, $true)
+                Write-StatusMessage "Cleared $browser cache successfully" -Color Green
+            }
+        }
+        catch {
+            $errorDetail = $_.Exception.Message
+            $errorType = $_.Exception.GetType().Name
+            Write-Log "Failed to clear $browser cache: $errorDetail" -Color Yellow
+            Write-Log "Error Type: $errorType" -Color Yellow
+            Write-Log "Stack Trace: $($_.Exception.StackTrace)" -Color Magenta -NoConsole
+            
+            # Check for specific error conditions
+            if ($_.Exception -is [System.UnauthorizedAccessException]) {
+                Write-Log "Access denied. Browser may be running or files are locked." -Color Yellow
+            }
+            elseif ($_.Exception -is [System.IO.DirectoryNotFoundException]) {
+                Write-Log "Cache directory structure is different than expected." -Color Yellow
+            }
+            elseif ($_.Exception -is [System.IO.IOException]) {
+                Write-Log "Files are in use. Try closing the browser first." -Color Yellow
             }
         }
     }
@@ -297,7 +337,7 @@ function Remove-WindowsLogs {
                 # Skip if log name is empty or null
                 if ([string]::IsNullOrWhiteSpace($_.Log)) {
                     Write-Log "Skipped empty log name" -Color Yellow -NoConsole
-                    return
+                    continue
                 }
                 
                 # Only clear logs older than 30 days
