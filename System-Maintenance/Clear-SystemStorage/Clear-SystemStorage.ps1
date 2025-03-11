@@ -223,7 +223,7 @@ function Clear-ShadowCopies {
                     Write-Log "Deleted shadow copy: $_" -Color DarkGray -NoConsole
                 }
                 catch {
-                    Write-Log "Error deleting shadow copy $_: $($_.Exception.Message)" -Color Yellow
+                    Write-Log "Error deleting shadow copy ${_}: $($_.Exception.Message)" -Color Yellow
                 }
             }
             Write-StatusMessage "Shadow copy cleanup completed. Kept most recent copy." -Color Green
