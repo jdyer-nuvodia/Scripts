@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:03:00 UTC
+# Last Updated: 2025-03-11 21:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added comprehensive logging and automated execution
+# Version: 1.3.1
+# Additional Info: Added retry mechanism for locked files and improved error handling
 # =============================================================================
 
 <#
