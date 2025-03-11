@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:13:00 UTC
+# Last Updated: 2025-03-11 20:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.2
-# Additional Info: Improved locked file handling with size tracking and reduced noise
+# Version: 1.4.0
+# Additional Info: Added Volume Shadow Copy management functionality
 # =============================================================================
 
 <#
@@ -198,6 +198,45 @@ function Clear-RecycleBin {
     }
 }
 
+function Clear-ShadowCopies {
+    Write-StatusMessage "Managing Volume Shadow Copies..." -Color Cyan
+    try {
+        # Get current shadow copies using vssadmin
+        $shadowOutput = [System.Text.StringBuilder]::new()
+        $process = Start-Process -FilePath "vssadmin" -ArgumentList "list shadows" -NoNewWindow -Wait -RedirectStandardOutput ([System.IO.Path]::GetTempFileName())
+        $shadowList = [System.IO.File]::ReadAllText($process.StandardOutput.Path)
+        
+        # Parse shadow copies
+        $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: {(.*?)}" -AllMatches | 
+            ForEach-Object { $_.Matches.Groups[1].Value })
+            
+        $totalCopies = $shadowCopies.Count
+        
+        if ($totalCopies -gt 1) {
+            Write-StatusMessage "Found $totalCopies shadow copies. Keeping most recent only." -Color Yellow
+            
+            # Keep the last one (most recent), delete the rest
+            $shadowCopies | Select-Object -SkipLast 1 | ForEach-Object {
+                try {
+                    $deleteOutput = [System.Text.StringBuilder]::new()
+                    $process = Start-Process -FilePath "vssadmin" -ArgumentList "delete shadows /Shadow={$_} /Quiet" -NoNewWindow -Wait
+                    Write-Log "Deleted shadow copy: $_" -Color DarkGray -NoConsole
+                }
+                catch {
+                    Write-Log "Error deleting shadow copy $_: $($_.Exception.Message)" -Color Yellow
+                }
+            }
+            Write-StatusMessage "Shadow copy cleanup completed. Kept most recent copy." -Color Green
+        }
+        else {
+            Write-StatusMessage "No excess shadow copies found (Current count: $totalCopies)." -Color Green
+        }
+    }
+    catch {
+        Write-StatusMessage "Error managing shadow copies: $($_.Exception.Message)" -Color Yellow
+    }
+}
+
 function Remove-WindowsErrorReports {
     Write-StatusMessage "Removing Windows Error Reports..." -Color Cyan
     $wer = "$env:ProgramData\Microsoft\Windows\WER"
@@ -274,6 +313,7 @@ try {
     # Perform cleanup operations
     Remove-TempFiles
     Clear-RecycleBin
+    Clear-ShadowCopies
     Remove-WindowsErrorReports
     Clear-BrowserCaches
     Remove-WindowsLogs
