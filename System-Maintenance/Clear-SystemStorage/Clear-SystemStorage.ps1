@@ -202,9 +202,13 @@ function Clear-ShadowCopies {
     Write-StatusMessage "Managing Volume Shadow Copies..." -Color Cyan
     try {
         # Get current shadow copies using vssadmin
-        $shadowOutput = [System.Text.StringBuilder]::new()
-        $process = Start-Process -FilePath "vssadmin" -ArgumentList "list shadows" -NoNewWindow -Wait -RedirectStandardOutput ([System.IO.Path]::GetTempFileName())
-        $shadowList = [System.IO.File]::ReadAllText($process.StandardOutput.Path)
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        $process = Start-Process -FilePath "vssadmin" -ArgumentList "list shadows" -NoNewWindow -Wait -RedirectStandardOutput $tempFile -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "vssadmin failed with exit code $($process.ExitCode)"
+        }
+        $shadowList = [System.IO.File]::ReadAllText($tempFile)
+        [System.IO.File]::Delete($tempFile)
         
         # Parse shadow copies
         $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: {(.*?)}" -AllMatches | 
@@ -218,7 +222,6 @@ function Clear-ShadowCopies {
             # Keep the last one (most recent), delete the rest
             $shadowCopies | Select-Object -SkipLast 1 | ForEach-Object {
                 try {
-                    $deleteOutput = [System.Text.StringBuilder]::new()
                     $process = Start-Process -FilePath "vssadmin" -ArgumentList "delete shadows /Shadow={$_} /Quiet" -NoNewWindow -Wait
                     Write-Log "Deleted shadow copy: $_" -Color DarkGray -NoConsole
                 }
