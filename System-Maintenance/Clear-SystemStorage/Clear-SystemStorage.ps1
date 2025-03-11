@@ -44,7 +44,8 @@ param (
 
 # Initialize logging
 $scriptPath = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
-$logFile = [System.IO.Path]::Combine($scriptPath, "Clear-SystemStorage_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
+$systemName = [System.Environment]::MachineName
+$logFile = [System.IO.Path]::Combine($scriptPath, "Clear-SystemStorage_${systemName}_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
 $script:logStream = [System.IO.StreamWriter]::new($logFile, $true, [System.Text.Encoding]::UTF8)
 
 function Write-Log {
