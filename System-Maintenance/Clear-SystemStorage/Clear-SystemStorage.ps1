@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 17:25:00 UTC
+# Last Updated: 2025-03-11 17:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.5
-# Additional Info: Fixed null reference error in status monitoring loop
+# Version: 4.1.6
+# Additional Info: Fixed null reference in status monitoring by adding proper initialization
 # =============================================================================
 
 <#
@@ -257,66 +257,54 @@ catch {
         $retryDelay = 2
 
         # Enhanced status monitoring with null checks
-        while ($iterationCount -lt $maxRetries) {
+        # Initialize required variables before monitoring loop
+        $maxRetries = 3
+        $retryDelay = 2
+        $statusCheckInterval = 500 # milliseconds
+        $maxMonitoringTime = 300 # 5 minutes
+        $startTime = Get-Date
+        $completed = $false
+        $lastStatus = ""
+
+        while ($iterationCount -lt $maxRetries -and -not $completed) {
             try {
                 $currentStatus = "Starting iteration $($iterationCount + 1)..."
                 Write-Log $currentStatus -Level Info
                 Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Cyan
 
+                # Wait for status file to be created
+                $waitStart = Get-Date
+                while (-not [System.IO.File]::Exists($statusFile)) {
+                    if ((Get-Date) -gt $waitStart.AddSeconds(30)) {
+                        Write-Log "Timeout waiting for status file creation" -Level Warning
+                        break
+                    }
+                    Start-Sleep -Milliseconds 100
+                }
+
                 if ([System.IO.File]::Exists($statusFile)) {
                     try {
-                        $fs = $null
-                        $sr = $null
+                        $fileContent = [System.IO.File]::ReadAllText($statusFile)
                         
-                        try {
-                            $fs = [System.IO.FileStream]::new(
-                                $statusFile,
-                                [System.IO.FileMode]::Open,
-                                [System.IO.FileAccess]::Read,
-                                [System.IO.FileShare]::ReadWrite
+                        if (-not [string]::IsNullOrEmpty($fileContent)) {
+                            Write-Host "`r$(' ' * 80)" -NoNewline
+                            Write-Host "`r$fileContent" -NoNewline -ForegroundColor $(
+                                if ($fileContent.StartsWith("Error:")) { "Red" }
+                                elseif ($fileContent -eq "Complete") { "Green" }
+                                else { "Cyan" }
                             )
                             
-                            if ($null -ne $fs) {
-                                $sr = [System.IO.StreamReader]::new($fs)
-                                if ($null -ne $sr) {
-                                    $currentStatus = $sr.ReadToEnd()
-                                    
-                                    if (-not [string]::IsNullOrEmpty($currentStatus)) {
-                                        Write-Host "`r$(' ' * 80)" -NoNewline
-                                        Write-Host "`r$currentStatus" -NoNewline -ForegroundColor $(
-                                            if ($currentStatus.StartsWith("Error:")) { "Red" }
-                                            elseif ($currentStatus -eq "Complete") { "Green" }
-                                            else { "Cyan" }
-                                        )
-                                        
-                                        $lastStatus = $currentStatus
-                                        
-                                        if ($currentStatus -eq "Complete" -or $currentStatus.StartsWith("Error:")) {
-                                            $completed = $true
-                                            Write-Host "`n"
-                                            break
-                                        }
-                                    }
-                                }
+                            $lastStatus = $fileContent
+                            
+                            if ($fileContent -eq "Complete" -or $fileContent.StartsWith("Error:")) {
+                                $completed = $true
+                                Write-Host "`n"
+                                break
                             }
                         }
-                        finally {
-                            if ($null -ne $sr) { 
-                                $sr.Close()
-                                $sr.Dispose() 
-                            }
-                            if ($null -ne $fs) { 
-                                $fs.Close()
-                                $fs.Dispose() 
-                            }
-                        }
-                    }
-                    catch [System.IO.IOException] {
-                        Write-Log "Status file access error: $($_.Exception.Message)" -Level Warning
                     }
                     catch {
-                        Write-Log "Unexpected error reading status: $($_.Exception.Message)" -Level Error
-                        throw
+                        Write-Log "Status file read error: $($_.Exception.Message)" -Level Warning
                     }
                 }
                 
@@ -326,6 +314,7 @@ catch {
                 }
                 
                 Start-Sleep -Milliseconds $statusCheckInterval
+                $iterationCount++
             }
             catch {
                 Write-Log "Error in iteration $($iterationCount + 1): $($_.Exception.Message)" -Level Error
