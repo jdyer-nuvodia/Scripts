@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 20:57:00 UTC
+# Last Updated: 2025-03-11 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial script creation for system storage cleanup
+# Version: 1.1.0
+# Additional Info: Added Downloads folder cleanup functionality
 # =============================================================================
 
 <#
@@ -74,11 +74,23 @@ function Remove-TempFiles {
     $tempFolders = @(
         "$env:TEMP",
         "$env:SystemRoot\Temp",
-        "$env:SystemRoot\Prefetch"
+        "$env:SystemRoot\Prefetch",
+        [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile) + "\Downloads"
     )
 
     foreach ($folder in $tempFolders) {
         try {
+            if ($folder.EndsWith("Downloads")) {
+                Write-StatusMessage "Cleaning Downloads folder..." -Color Cyan
+                if (-not $Force) {
+                    $downloadConfirm = Read-Host "Do you want to clean the Downloads folder? (y/n)"
+                    if ($downloadConfirm -ne 'y') {
+                        Write-StatusMessage "Skipping Downloads folder cleanup." -Color Yellow
+                        continue
+                    }
+                }
+            }
+            
             [System.IO.Directory]::GetFiles($folder, "*.*", [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
                 try {
                     [System.IO.File]::Delete($_)
@@ -87,6 +99,7 @@ function Remove-TempFiles {
                     Write-StatusMessage "Could not delete file $_" -Color Yellow
                 }
             }
+            Write-StatusMessage "Cleaned $folder successfully" -Color Green
         }
         catch {
             Write-StatusMessage "Error accessing folder $folder" -Color Yellow
