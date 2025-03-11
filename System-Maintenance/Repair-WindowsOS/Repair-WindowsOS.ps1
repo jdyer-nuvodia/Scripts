@@ -2,10 +2,10 @@
 # Script: Repair-WindowsOS.ps1
 # Created: 2025-02-06 00:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-26 23:42:00 UTC
+# Last Updated: 2025-03-11 23:51:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Added standardized header and security information
+# Version: 1.1.1
+# Additional Info: Added computer name to log file naming convention
 # =============================================================================
 
 <#
@@ -44,7 +44,7 @@
 
 # Script Variables
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$logFile = Join-Path $scriptPath "WindowsRepair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$logFile = Join-Path $scriptPath "$env:COMPUTERNAME`_WindowsRepair_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $global:repairsMade = $false
 $global:restartNeeded = $false
 
