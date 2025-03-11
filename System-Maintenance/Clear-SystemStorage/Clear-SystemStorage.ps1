@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:01:00 UTC
+# Last Updated: 2025-03-11 21:02:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Added Downloads folder cleanup functionality
+# Version: 1.2.0
+# Additional Info: Added 180-day threshold for Downloads cleanup and multi-user support
 # =============================================================================
 
 <#
@@ -74,23 +74,12 @@ function Remove-TempFiles {
     $tempFolders = @(
         "$env:TEMP",
         "$env:SystemRoot\Temp",
-        "$env:SystemRoot\Prefetch",
-        [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile) + "\Downloads"
+        "$env:SystemRoot\Prefetch"
     )
 
+    # Clean standard temp folders
     foreach ($folder in $tempFolders) {
         try {
-            if ($folder.EndsWith("Downloads")) {
-                Write-StatusMessage "Cleaning Downloads folder..." -Color Cyan
-                if (-not $Force) {
-                    $downloadConfirm = Read-Host "Do you want to clean the Downloads folder? (y/n)"
-                    if ($downloadConfirm -ne 'y') {
-                        Write-StatusMessage "Skipping Downloads folder cleanup." -Color Yellow
-                        continue
-                    }
-                }
-            }
-            
             [System.IO.Directory]::GetFiles($folder, "*.*", [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
                 try {
                     [System.IO.File]::Delete($_)
@@ -104,6 +93,50 @@ function Remove-TempFiles {
         catch {
             Write-StatusMessage "Error accessing folder $folder" -Color Yellow
         }
+    }
+
+    # Clean Downloads folders for all users
+    try {
+        $usersPath = [System.IO.Path]::Combine($env:SystemDrive, "Users")
+        $cutoffDate = (Get-Date).AddDays(-180)
+        
+        [System.IO.Directory]::GetDirectories($usersPath) | ForEach-Object {
+            $downloadPath = [System.IO.Path]::Combine($_, "Downloads")
+            
+            if ([System.IO.Directory]::Exists($downloadPath)) {
+                Write-StatusMessage "Checking Downloads folder for $([System.IO.Path]::GetFileName($_))..." -Color Cyan
+                
+                if (-not $Force) {
+                    $downloadConfirm = Read-Host "Do you want to clean Downloads older than 180 days in $([System.IO.Path]::GetFileName($_))? (y/n)"
+                    if ($downloadConfirm -ne 'y') {
+                        Write-StatusMessage "Skipping Downloads cleanup for this user." -Color Yellow
+                        return
+                    }
+                }
+                
+                try {
+                    [System.IO.Directory]::GetFiles($downloadPath, "*.*", [System.IO.SearchOption]::AllDirectories) | ForEach-Object {
+                        try {
+                            $fileInfo = [System.IO.FileInfo]::new($_)
+                            if ($fileInfo.LastWriteTime -lt $cutoffDate) {
+                                [System.IO.File]::Delete($_)
+                                Write-StatusMessage "Deleted old file: $([System.IO.Path]::GetFileName($_))" -Color DarkGray
+                            }
+                        }
+                        catch {
+                            Write-StatusMessage "Could not delete file $_" -Color Yellow
+                        }
+                    }
+                    Write-StatusMessage "Cleaned old files from $downloadPath successfully" -Color Green
+                }
+                catch {
+                    Write-StatusMessage "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_))" -Color Yellow
+                }
+            }
+        }
+    }
+    catch {
+        Write-StatusMessage "Error accessing Users directory: $_" -Color Yellow
     }
 }
 
