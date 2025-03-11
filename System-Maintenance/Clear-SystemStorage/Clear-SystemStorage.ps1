@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 19:32:00 UTC
+# Last Updated: 2025-03-11 19:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.8
-# Additional Info: Removed unused variables processTimeout and lastStatus, simplified monitoring logic
+# Version: 4.1.9
+# Additional Info: Fixed cleanup iterations by adding proper status file initialization and error tracing
 # =============================================================================
 
 <#
@@ -258,47 +258,85 @@ catch {
         $completed = $false
         $iterationCount = 0
 
-        while ($iterationCount -lt $maxRetries -and -not $completed) {
-            try {
-                Write-Log "Starting cleanup iteration $($iterationCount + 1)..." -Level Info
-                
-                if ([System.IO.File]::Exists($statusFile)) {
-                    try {
-                        $statusContent = [System.IO.File]::ReadAllText($statusFile)
-                        if (-not [string]::IsNullOrEmpty($statusContent)) {
-                            Write-Host "`r$(' ' * 80)" -NoNewline
-                            Write-Host "`r$statusContent" -NoNewline -ForegroundColor $(
-                                if ($statusContent.StartsWith("Error:")) { "Red" }
-                                elseif ($statusContent -eq "Complete") { "Green" }
-                                else { "Cyan" }
-                            )
-                            
-                            if ($statusContent -eq "Complete" -or $statusContent.StartsWith("Error:")) {
-                                $completed = $true
-                                Write-Host "`n"
+        # Create and initialize status file before monitoring
+        $statusFile = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName.status"
+        [System.IO.File]::WriteAllText($statusFile, "Initializing cleanup process...")
+
+        try {
+            $startTime = Get-Date
+            $completed = $false
+            $iterationCount = 0
+
+            while ($iterationCount -lt $maxRetries -and -not $completed) {
+                try {
+                    Write-Log "Starting cleanup iteration $($iterationCount + 1)..." -Level Info
+                    
+                    # Update status file for current iteration
+                    [System.IO.File]::WriteAllText($statusFile, "Running cleanup iteration $($iterationCount + 1)...")
+                    
+                    # Run cleanup utilities
+                    Write-Log "Executing disk cleanup utilities..." -Level Info
+                    $sagesetProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sageset:1" -Wait -PassThru
+                    
+                    if ($sagesetProcess.ExitCode -eq 0) {
+                        Write-Log "Configuration completed successfully. Starting cleanup..." -Level Info
+                        [System.IO.File]::WriteAllText($statusFile, "Running disk cleanup...")
+                        
+                        $cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
+                        $processStartTime = Get-Date
+                        
+                        # Monitor cleanup process
+                        while (!$cleanmgrProcess.HasExited) {
+                            if ((Get-Date) -gt $processStartTime.AddSeconds($maxMonitoringTime)) {
+                                Write-Log "Cleanup process timeout reached" -Level Warning
+                                [System.IO.File]::WriteAllText($statusFile, "Error: Cleanup process timed out")
+                                Stop-Process -Id $cleanmgrProcess.Id -Force -ErrorAction SilentlyContinue
                                 break
                             }
+                            
+                            $status = [System.IO.File]::ReadAllText($statusFile)
+                            Write-Host "`r$(' ' * 80)" -NoNewline
+                            Write-Host "`r$status" -NoNewline -ForegroundColor Cyan
+                            Start-Sleep -Milliseconds $statusCheckInterval
                         }
-                    }
-                    catch {
-                        Write-Log "Status file read error: $($_.Exception.Message)" -Level Warning
+                        
+                        if ($cleanmgrProcess.ExitCode -eq 0) {
+                            Write-Log "Cleanup completed successfully" -Level Info
+                            [System.IO.File]::WriteAllText($statusFile, "Complete")
+                            $completed = $true
+                            break
+                        }
+                    } else {
+                        Write-Log "Cleanup configuration failed with exit code: $($sagesetProcess.ExitCode)" -Level Error
+                        [System.IO.File]::WriteAllText($statusFile, "Error: Configuration failed")
                     }
                 }
-                
-                if ((Get-Date) -gt $startTime.AddSeconds($maxMonitoringTime)) {
-                    Write-Log "Monitoring timeout reached after $maxMonitoringTime seconds" -Level Warning
-                    break
+                catch {
+                    $errorMsg = "Error in iteration $($iterationCount + 1): $($_.Exception.Message)"
+                    Write-Log $errorMsg -Level Error
+                    [System.IO.File]::WriteAllText($statusFile, "Error: $errorMsg")
+                    
+                    $iterationCount++
+                    if ($iterationCount -lt $maxRetries) {
+                        Write-Log "Retrying cleanup..." -Level Warning
+                        Start-Sleep -Seconds $retryDelay
+                    }
                 }
-                
-                Start-Sleep -Milliseconds $statusCheckInterval
-                $iterationCount++
             }
-            catch {
-                Write-Log "Error in iteration $($iterationCount + 1): $($_.Exception.Message)" -Level Error
-                $iterationCount++
-                if ($iterationCount -lt $maxRetries) {
-                    Write-Log "Retrying after error..." -Level Warning
-                    Start-Sleep -Seconds $retryDelay
+        }
+        catch {
+            Write-Log "Critical error in cleanup process: $($_.Exception.Message)" -Level Error
+            [System.IO.File]::WriteAllText($statusFile, "Error: Critical failure in cleanup process")
+            throw
+        }
+        finally {
+            # Ensure status file is properly closed and removed
+            if ([System.IO.File]::Exists($statusFile)) {
+                try {
+                    [System.IO.File]::Delete($statusFile)
+                }
+                catch {
+                    Write-Log "Warning: Could not remove status file: $($_.Exception.Message)" -Level Warning
                 }
             }
         }
