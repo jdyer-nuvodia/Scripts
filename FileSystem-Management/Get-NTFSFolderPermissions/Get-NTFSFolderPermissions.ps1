@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 18:45:00 UTC
+# Last Updated: 2025-03-11 18:39:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.16
-# Additional Info: Fixed duplicate output and removed redundant batch processing
+# Version: 1.11.17
+# Additional Info: Fixed comment syntax and updated header formatting to standards
 # =============================================================================
 
 <#
