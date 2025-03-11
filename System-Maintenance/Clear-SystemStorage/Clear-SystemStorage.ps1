@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 17:30:00 UTC
+# Last Updated: 2025-03-11 19:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 4.1.7
-# Additional Info: Fixed null reference errors and removed unused variables
+# Version: 4.1.8
+# Additional Info: Removed unused variables processTimeout and lastStatus, simplified monitoring logic
 # =============================================================================
 
 <#
@@ -247,56 +247,33 @@ catch {
         Write-Host "Task running as SYSTEM. Monitoring cleanup progress..." -ForegroundColor Cyan
         
         $statusFile = Join-Path -Path $systemAccessibleTemp -ChildPath "$jobName.status"
-        $processTimeout = (Get-Date).AddSeconds($TimeoutSeconds)
         $completed = $false
-        $lastStatus = ""
-        
-        # Enhanced process monitoring
-        $iterationCount = 0
-        $maxRetries = 3
-        $retryDelay = 2
 
-        # Enhanced status monitoring with null checks
-        # Initialize required variables before monitoring loop
+        # Initialize monitoring variables
         $maxRetries = 3
         $retryDelay = 2
-        $statusCheckInterval = 500 # milliseconds
         $maxMonitoringTime = 300 # 5 minutes
+        $statusCheckInterval = 500 # milliseconds
         $startTime = Get-Date
         $completed = $false
-        $lastStatus = ""
+        $iterationCount = 0
 
         while ($iterationCount -lt $maxRetries -and -not $completed) {
             try {
-                $currentStatus = "Starting iteration $($iterationCount + 1)..."
-                Write-Log $currentStatus -Level Info
-                Write-Host "`r$currentStatus" -NoNewline -ForegroundColor Cyan
-
-                # Wait for status file to be created
-                $waitStart = Get-Date
-                while (-not [System.IO.File]::Exists($statusFile)) {
-                    if ((Get-Date) -gt $waitStart.AddSeconds(30)) {
-                        Write-Log "Timeout waiting for status file creation" -Level Warning
-                        break
-                    }
-                    Start-Sleep -Milliseconds 100
-                }
-
+                Write-Log "Starting cleanup iteration $($iterationCount + 1)..." -Level Info
+                
                 if ([System.IO.File]::Exists($statusFile)) {
                     try {
-                        $fileContent = [System.IO.File]::ReadAllText($statusFile)
-                        
-                        if (-not [string]::IsNullOrEmpty($fileContent)) {
+                        $statusContent = [System.IO.File]::ReadAllText($statusFile)
+                        if (-not [string]::IsNullOrEmpty($statusContent)) {
                             Write-Host "`r$(' ' * 80)" -NoNewline
-                            Write-Host "`r$fileContent" -NoNewline -ForegroundColor $(
-                                if ($fileContent.StartsWith("Error:")) { "Red" }
-                                elseif ($fileContent -eq "Complete") { "Green" }
+                            Write-Host "`r$statusContent" -NoNewline -ForegroundColor $(
+                                if ($statusContent.StartsWith("Error:")) { "Red" }
+                                elseif ($statusContent -eq "Complete") { "Green" }
                                 else { "Cyan" }
                             )
                             
-                            $lastStatus = $fileContent
-                            
-                            if ($fileContent -eq "Complete" -or $fileContent.StartsWith("Error:")) {
+                            if ($statusContent -eq "Complete" -or $statusContent.StartsWith("Error:")) {
                                 $completed = $true
                                 Write-Host "`n"
                                 break
