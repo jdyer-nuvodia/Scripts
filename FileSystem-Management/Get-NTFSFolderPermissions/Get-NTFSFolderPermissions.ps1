@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 23:44:00 UTC
+# Last Updated: 2025-03-11 23:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.19
-# Additional Info: Fixed Write-File-Safe function parameter handling
+# Version: 1.11.20
+# Additional Info: Reordered output messages for better readability
 # =============================================================================
 
 <#
@@ -983,13 +983,12 @@ try {
     # Save the output to text file
     try {
         Write-SafeOutput "Writing report to file..." -Color DarkGray
-        # Fix the Write-File-Safe function call
-        Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8"
-        Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
+        [void](Write-File-Safe -Content $OutputText.ToString() -FilePath $OutputLog -Encoding "UTF8")
 
         $TotalTime = ([DateTime]::Now) - $StartTime
         Write-SafeOutput "`nTotal execution time: $($TotalTime.TotalSeconds.ToString('0.00')) seconds" -Color Green
         Write-SafeOutput "Processed $TotalFolders folders ($([int]($TotalTime.TotalSeconds / $TotalFolders * 1000)) ms per folder)" -Color Green
+        Write-SafeOutput "`nPermissions report exported to: $OutputLog" -Color Green
     }
     catch {
         Write-SafeOutput "An error occurred during log writing or performance summary: $($_.Exception.Message)" -Color Red
