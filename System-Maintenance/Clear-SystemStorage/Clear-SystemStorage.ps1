@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-02-27 18:55:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 24:15:00 UTC
+# Last Updated: 2025-03-11 20:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.1.0
-# Additional Info: Added age-filtered downloads cleanup (180 days)
+# Version: 5.1.1
+# Additional Info: Removed lingering cleanmgr.exe code for consistency
 # =============================================================================
 
 <#
@@ -74,7 +74,7 @@ function Write-Log {
 
 # Log script start with header
 Write-Log "===== SCRIPT EXECUTION STARTED =====" -Level Info
-Write-Log "Script version: 5.1.0" -Level Info
+Write-Log "Script version: 5.1.1" -Level Info
 Write-Log "Computer Name: $computerName" -Level Info
 Write-Log "Log file: $script:LogFile" -Level Info
 Write-Log "Running as user: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" -Level Info
@@ -178,47 +178,6 @@ function Write-StatusFile {
 
 try {
     Write-StatusFile "Starting system cleanup process..."
-    
-    # Run cleanup with detailed output
-    Write-StatusFile "Configuring cleanup settings..."
-    `$sagesetProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sageset:1" -Wait -PassThru
-    Write-StatusFile "Configuration completed. Starting cleanup..."
-    
-    `$cleanmgrProcess = Start-Process -FilePath "cleanmgr.exe" -ArgumentList "/sagerun:1" -PassThru -NoNewWindow
-    `$processId = `$cleanmgrProcess.Id
-    
-    while (!`$cleanmgrProcess.HasExited) {
-        try {
-            `$process = Get-Process -Id `$processId -ErrorAction Stop
-            `$wmi = Get-WmiObject -Class Win32_Process -Filter "ProcessId = `$processId"
-            
-            if (`$wmi) {
-                `$cpuCounter = Get-Counter -Counter "\Process(cleanmgr)\% Processor Time" -ErrorAction SilentlyContinue
-                `$cpuUsage = if (`$cpuCounter) {
-                    [math]::Round(`$cpuCounter.CounterSamples[0].CookedValue, 1)
-                } else { 0 }
-                
-                `$memoryMB = [math]::Round(`$process.WorkingSet64 / 1MB, 2)
-                `$runtime = (Get-Date) - `$startTime
-                
-                `$status = @{
-                    Runtime = `$runtime.ToString('mm\:ss')
-                    CPU = `$cpuUsage
-                    Memory = `$memoryMB
-                    Path = `$wmi.CommandLine
-                } | ConvertTo-Json
-                
-                Write-StatusFile `$status
-            }
-            
-            Start-Sleep -Seconds 1
-        }
-        catch {
-            Write-StatusFile "Error: `$(`$_.Exception.Message)"
-            break
-        }
-    }
-    
     # Continue with main script
     & '$systemAccessibleScriptPath' -Debug -Verbose *>> '$logFile'
     Write-StatusFile "Complete"
