@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 23:45:00 UTC
+# Last Updated: 2025-03-11 23:49:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.20
-# Additional Info: Reordered output messages for better readability
+# Version: 1.11.21
+# Additional Info: Fixed SID resolution logic to properly utilize fallback methods
 # =============================================================================
 
 <#
