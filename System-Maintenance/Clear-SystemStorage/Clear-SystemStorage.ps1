@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 21:37:00 UTC
+# Last Updated: 2025-03-11 21:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.2
-# Additional Info: Modified Windows Event Log clearing to only clear logs older than 30 days
+# Version: 1.4.3
+# Additional Info: Fixed Recycle Bin clearing using Shell.Application COM object
 # =============================================================================
 
 <#
@@ -190,11 +190,20 @@ function Remove-TempFiles {
 function Clear-RecycleBin {
     Write-StatusMessage "Clearing Recycle Bin..." -Color Cyan
     try {
-        [System.Runtime.InteropServices.Marshal]::RunDll32("shell32.dll,SHEmptyRecycleBin")
+        $shell = New-Object -ComObject Shell.Application
+        $recycleBin = $shell.NameSpace(0xa)
+        $recycleBin.Items() | ForEach-Object { 
+            Remove-Item $_.Path -Force -Recurse
+        }
         Write-StatusMessage "Recycle Bin cleared successfully." -Color Green
     }
     catch {
         Write-StatusMessage "Error clearing Recycle Bin: $_" -Color Yellow
+    }
+    finally {
+        if ($null -ne $shell) {
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+        }
     }
 }
 
