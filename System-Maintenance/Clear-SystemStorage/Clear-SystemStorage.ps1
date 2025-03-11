@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 20:17:00 UTC
+# Last Updated: 2025-03-11 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added Volume Shadow Copy management functionality
+# Version: 1.4.1
+# Additional Info: Fixed Windows Event Log clearing to handle empty log names
 # =============================================================================
 
 <#
@@ -222,8 +222,13 @@ function Clear-ShadowCopies {
             # Keep the last one (most recent), delete the rest
             $shadowCopies | Select-Object -SkipLast 1 | ForEach-Object {
                 try {
-                    $process = Start-Process -FilePath "vssadmin" -ArgumentList "delete shadows /Shadow={$_} /Quiet" -NoNewWindow -Wait
-                    Write-Log "Deleted shadow copy: $_" -Color DarkGray -NoConsole
+                    $process = Start-Process -FilePath "vssadmin" -ArgumentList "delete shadows /Shadow={$_} /Quiet" -NoNewWindow -Wait -PassThru
+                    if ($process.ExitCode -eq 0) {
+                        Write-Log "Deleted shadow copy: $_" -Color DarkGray -NoConsole
+                    }
+                    else {
+                        Write-Log "Failed to delete shadow copy $_. Exit code: $($process.ExitCode)" -Color Yellow
+                    }
                 }
                 catch {
                     Write-Log "Error deleting shadow copy ${_}: $($_.Exception.Message)" -Color Yellow
@@ -280,6 +285,12 @@ function Remove-WindowsLogs {
     try {
         [System.Diagnostics.EventLog]::GetEventLogs() | ForEach-Object {
             try {
+                # Skip if log name is empty or null
+                if ([string]::IsNullOrWhiteSpace($_.Log)) {
+                    Write-Log "Skipped empty log name" -Color Yellow -NoConsole
+                    return
+                }
+                
                 $_.Clear()
                 Write-StatusMessage "Cleared $($_.Log) log" -Color Green
             }
@@ -287,6 +298,9 @@ function Remove-WindowsLogs {
                 Write-StatusMessage "Could not clear $($_.Log) log" -Color Yellow
             }
         }
+    }
+    catch {
+        Write-StatusMessage "Error accessing event logs: $_" -Color Yellow
     }
     catch {
         Write-StatusMessage "Error accessing event logs: $_" -Color Yellow
