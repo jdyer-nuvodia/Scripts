@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 21:58:00 UTC
+# Last Updated: 2025-03-12 22:09:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.10
-# Additional Info: Fixed Write-Log parameter binding and empty string handling.
+# Version: 1.16.0
+# Additional Info: Added strict error handling and stop on any error
 # =============================================================================
 
 <#
@@ -98,6 +98,47 @@ param (
     [string]$ViewMode = "Hierarchy"
 )
 
+# Enable strict mode and error handling
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$VerbosePreference = 'Continue'
+
+# Add error handling stream
+$PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
+
+# Function to handle errors consistently
+function Write-ErrorAndExit {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ErrorMessage,
+        [string]$ErrorSource = "Unknown"
+    )
+    
+    Write-Log "CRITICAL ERROR in $ErrorSource" -Color "Red"
+    Write-Log $ErrorMessage -Color "Red"
+    Write-Log "Stack Trace:" -Color "Red"
+    Write-Log $Error[0].ScriptStackTrace -Color "Red"
+    
+    # Ensure the error is written to the log file
+    if ($null -ne $OutputText) {
+        [void]$OutputText.AppendLine("CRITICAL ERROR in $ErrorSource")
+        [void]$OutputText.AppendLine($ErrorMessage)
+        [void]$OutputText.AppendLine("Stack Trace:")
+        [void]$OutputText.AppendLine($Error[0].ScriptStackTrace)
+        
+        # Try to save the log before exiting
+        try {
+            [System.IO.File]::WriteAllText($OutputLog, $OutputText.ToString(), [System.Text.Encoding]::UTF8)
+        }
+        catch {
+            Write-Host "Failed to save error log: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+    
+    # Exit with error
+    exit 1
+}
+
 $StartTime = [DateTime]::Now
 
 # EXTREME RESTRICTED MODE COMPATIBILITY
@@ -166,17 +207,7 @@ function Write-File-Safe {
         return $true
     }
     catch {
-        try {
-            # Try alternate method
-            $stream = New-Object System.IO.StreamWriter($FilePath, $false, [System.Text.Encoding]::UTF8)
-            $stream.Write($Content)
-            $stream.Close()
-            return $true
-        }
-        catch {
-            # If even direct .NET methods fail, we cannot write to file
-            return $false
-        }
+        Write-ErrorAndExit -ErrorMessage "Failed to write to file $FilePath : $($_.Exception.Message)" -ErrorSource "Write-File-Safe"
     }
 }
 
@@ -1268,21 +1299,7 @@ function Get-FolderPermissions {
         }
     }
     catch {
-        # Return an error object
-        return @{
-            Success = $false
-            FolderPath = $FolderPath
-            Error = $_.Exception.Message
-            Permissions = @([PSCustomObject]@{
-                IdentityReference = "ACCESS ERROR"
-                FileSystemRights = "Error: $($_.Exception.Message)"
-                AccessControlType = "N/A"
-                IsInherited = $true
-                InheritanceFlags = "N/A"
-                PropagationFlags = "N/A"
-            })
-            Hash = -1
-        }
+        Write-ErrorAndExit -ErrorMessage "Failed to process folder $FolderPath : $($_.Exception.Message)" -ErrorSource "Get-FolderPermissions"
     }
 }
 
@@ -1518,10 +1535,7 @@ try {
     }
 }
 catch {
-    $errorMsg = "Critical error: $($_.Exception.Message)`n$($_.InvocationInfo.PositionMessage)"
-    Write-Log -Message $errorMsg -Color "Red"
-    Write-Output-Safe $errorMsg
-    exit 1
+    Write-ErrorAndExit -ErrorMessage $_.Exception.Message -ErrorSource "Main Script"
 }
 finally {
     # Clean up any remaining runspaces
