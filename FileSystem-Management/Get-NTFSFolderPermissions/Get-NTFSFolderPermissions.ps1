@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:22:00 UTC
+# Last Updated: 2025-03-12 23:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.17.1
-# Additional Info: Fixed unused variable and optimized permission grouping logic
+# Version: 1.18.0
+# Additional Info: Added comprehensive logging and improved console output readability
 # =============================================================================
 
 <#
@@ -141,14 +141,26 @@ $script:SIDCache = @{}
 $script:ADResolutionErrors = @{}
 $script:PermissionGroups = @{}
 $script:InheritanceStatus = @{}
+$script:LogFile = Join-Path ([System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) "NTFSPermissions_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
 # Function to write log messages
 function Write-Log {
     param (
         [string]$Message,
-        [string]$Color = "White"
+        [string]$Color = "White",
+        [switch]$NoConsole
     )
-    Write-Host $Message -ForegroundColor $Color
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] $Message"
+    
+    # Always write to log file
+    [System.IO.File]::AppendAllText($script:LogFile, "$logMessage`n")
+    
+    # Write to console if not suppressed
+    if (-not $NoConsole) {
+        Write-Host $Message -ForegroundColor $Color
+    }
 }
 
 # Function to display progress bar
@@ -255,8 +267,8 @@ function Invoke-FolderProcessing {
             $script:FolderPermissions[$Path] = $permissionData
 
             # Process the $permissionData object
-            Write-Log -Message "Folder: $($permissionData.Folder)" -Color "White"
-            Write-Log -Message "Owner: $($permissionData.Owner)" -Color "White"
+            Write-Log -Message "Analyzing: $Path" -NoConsole
+            Write-Log -Message "Owner: $($permissionData.Owner)" -NoConsole
 
             # Iterate through the access rules
             foreach ($accessRule in $permissionData.Access) {
@@ -264,9 +276,9 @@ function Invoke-FolderProcessing {
                 if ($identity -match '^S-1-') {
                     $identity = Resolve-SIDToName -SID $identity
                 }
-                Write-Log -Message "  Identity: $identity" -Color "White"
-                Write-Log -Message "  Rights: $($accessRule.FileSystemRights)" -Color "White"
-                Write-Log -Message "  Type: $($accessRule.AccessControlType)" -Color "White"
+                Write-Log -Message "  Identity: $identity" -NoConsole
+                Write-Log -Message "  Rights: $($accessRule.FileSystemRights)" -NoConsole
+                Write-Log -Message "  Type: $($accessRule.AccessControlType)" -NoConsole
             }
 
             # Update unique permissions count
@@ -287,7 +299,7 @@ function Invoke-FolderProcessing {
         Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red"
     }
     finally {
-        Write-ProgressBar -Current $CurrentCount -Total $TotalCount -Activity "Processing Folders" -Status "Current Progress"
+        Write-Progress -Activity "Analyzing Folder Permissions" -Status "Processing: $Path" -PercentComplete (($CurrentCount / $TotalCount) * 100)
     }
 }
 
@@ -312,7 +324,8 @@ function Invoke-FolderRecursively {
 
 # Main script execution
 try {
-    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Green"
+    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
+    Write-Log -Message "Detailed analysis will be written to: $script:LogFile" -Color "Yellow"
 
     # Process folders
     Invoke-FolderRecursively -Path $FolderPath
@@ -379,5 +392,6 @@ catch {
     Write-Log -Message "An error occurred: $($_.Exception.Message)" -Color "Red"
 }
 finally {
-    Write-Log -Message "`nScript execution completed." -Color "Green"
+    Write-Progress -Activity "Analyzing Folder Permissions" -Completed
+    Write-Log -Message "`nScript execution completed. See $script:LogFile for full details." -Color "Green"
 }
