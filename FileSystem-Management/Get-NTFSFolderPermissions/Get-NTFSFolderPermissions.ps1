@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 20:03:17 UTC
+# Last Updated: 2025-03-18 20:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.0
-# Additional Info: Added ViewMode parameter and fixed syntax errors in hierarchical view implementation
+# Version: 1.15.1
+# Additional Info: Fixed syntax errors in control structures and string terminators
 # =============================================================================
 
 <#
@@ -1286,7 +1286,7 @@ try {
             # Increment counter
             $setCounter++
         }
-    }
+    } 
     else {
         # New hierarchical view - Show folders in a tree structure with their permissions
         $successfullyProcessed = ($allResults | Where-Object { $_.Success }).Count
@@ -1336,8 +1336,8 @@ try {
             
             # Display permissions with extra indent
             DisplayFolderPermissions -Permissions $folderResult.Permissions -IndentLevel $indentLevel
-        }
-    }
+        } # End foreach
+    } # End else block
     
     if ($failedProcessed -gt 0) {
         Write-Log ""
@@ -1362,11 +1362,11 @@ try {
     # Ensure output is written to file
     try {
         [System.IO.File]::WriteAllText($OutputLog, $OutputText.ToString(), [System.Text.Encoding]::UTF8)
-    }
+    } 
     catch {
         Write-Log "Error saving report: $($_.Exception.Message)" -Color "Red"
     }
-}
+} # End main try block
 catch {
     $errorMsg = "Critical error: $($_.Exception.Message)`n$($_.InvocationInfo.PositionMessage)"
     Write-Log $errorMsg -Color "Red"
@@ -1379,4 +1379,4 @@ finally {
         $runspacePool.Close()
         $runspacePool.Dispose()
     }
-}
+} # End try-catch-finally block
