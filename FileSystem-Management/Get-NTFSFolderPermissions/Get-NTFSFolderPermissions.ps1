@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 17:24:35 UTC
+# Last Updated: 2025-03-12 17:31:42 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.14.1
-# Additional Info: Fixed nested Add-Type compilation error in SID resolution
+# Additional Info: Fixed nested Add-Type issue and corrected code flow to ensure script continues execution
 # =============================================================================
 
 <#
@@ -717,6 +717,7 @@ function Resolve-ADAccountFromSID {
     }
 }
 
+# Fix for nested Add-Type statement
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -743,72 +744,81 @@ public class AccountUtils {
 }
 "@ -ErrorAction SilentlyContinue
 
-try {
-    if ($EnableDiagnostics) { Write-Log "Attempting Win32 API resolution..." -Color "Magenta" }
+# Continue with the SID resolution method implementation
+function Resolve-Win32SID {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$SID,
+        [switch]$EnableDiagnostics
+    )
     
-    $sidPtr = [IntPtr]::Zero
-    $success = [AccountUtils]::ConvertStringSidToSid($SID, [ref]$sidPtr)
-    
-    if ($success) {
-        $nameLen = 0
-        $domainLen = 0
-        $accountType = 0
+    try {
+        if ($EnableDiagnostics) { Write-Log "Attempting Win32 API resolution..." -Color "Magenta" }
         
-        # First call to get buffer sizes
-        [void][AccountUtils]::LookupAccountSid($null, $sidPtr, $null, [ref]$nameLen, $null, [ref]$domainLen, [ref]$accountType)
+        $sidPtr = [IntPtr]::Zero
+        $success = [AccountUtils]::ConvertStringSidToSid($SID, [ref]$sidPtr)
         
-        $name = New-Object System.Text.StringBuilder($nameLen)
-        $domain = New-Object System.Text.StringBuilder($domainLen)
+        if ($success) {
+            $nameLen = 0
+            $domainLen = 0
+            $accountType = 0
+            
+            # First call to get buffer sizes
+            [void][AccountUtils]::LookupAccountSid($null, $sidPtr, $null, [ref]$nameLen, $null, [ref]$domainLen, [ref]$accountType)
+            
+            $name = New-Object System.Text.StringBuilder($nameLen)
+            $domain = New-Object System.Text.StringBuilder($domainLen)
+            
+            # Second call to get actual values
+            $result = [AccountUtils]::LookupAccountSid($null, $sidPtr, $name, [ref]$nameLen, $domain, [ref]$domainLen, [ref]$accountType)
+            
+            if ($result) {
+                $resolvedAccount = if ($domain.Length -gt 0) { "$($domain)\$($name)" } else { "$($name)" }
+                if ($EnableDiagnostics) { Write-Log "Resolved via Win32 API: $resolvedAccount" -Color "Green" }
+                $Global:SIDCache[$SID] = $resolvedAccount
+                return $resolvedAccount
+            }
+        }
         
-        # Second call to get actual values
-        $result = [AccountUtils]::LookupAccountSid($null, $sidPtr, $name, [ref]$nameLen, $domain, [ref]$domainLen, [ref]$accountType)
-        
-        if ($result) {
-            $resolvedAccount = if ($domain.Length -gt 0) { "$($domain)\\$($name)" } else { "$($name)" }
-            if ($EnableDiagnostics) { Write-Log "Resolved via Win32 API: $resolvedAccount" -Color "Green" }
-            $Global:SIDCache[$SID] = $resolvedAccount
-            return $resolvedAccount
+        # Cleanup
+        if ($sidPtr -ne [IntPtr]::Zero) {
+            [void][AccountUtils]::LocalFree($sidPtr)
         }
     }
-    
-    # Cleanup
-    if ($sidPtr -ne [IntPtr]::Zero) {
-        [void][AccountUtils]::LocalFree($sidPtr)
+    catch {
+        if ($EnableDiagnostics) { Write-Log "Win32 API method failed: $($_.Exception.Message)" -Color "Yellow" }
     }
-}
-catch {
-    if ($EnableDiagnostics) { Write-Log "Win32 API method failed: $($_.Exception.Message)" -Color "Yellow" }
-}
-
-# Method 6: Network connectivity test and retry
-try {
-    if ($EnableDiagnostics) { Write-Log "Testing network connectivity before final retry..." -Color "Magenta" }
     
-    # Check if we can ping the domain controller
-    $domainName = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
-    if (Test-Connection -ComputerName $domainName -Count 1 -Quiet) {
-        if ($EnableDiagnostics) { Write-Log "Network is available, final retry with full SID..." -Color "Green" }
+    # Method 6: Network connectivity test and retry
+    try {
+        if ($EnableDiagnostics) { Write-Log "Testing network connectivity before final retry..." -Color "Magenta" }
         
-        # One last desperate attempt with full SID object creation
-        $sidBytes = New-Object byte[] 28
-        $sidObj = New-Object Security.Principal.SecurityIdentifier($SID)
-        $sidObj.GetBinaryForm($sidBytes, 0)
-        $ntAccount = New-Object Security.Principal.SecurityIdentifier($sidBytes, 0).Translate([Security.Principal.NTAccount])
-        
-        if ($ntAccount) {
-            if ($EnableDiagnostics) { Write-Log "Resolved via binary SID method: $($ntAccount.Value)" -Color "Green" }
-            $Global:SIDCache[$SID] = $ntAccount.Value
-            return $ntAccount.Value
+        # Check if we can ping the domain controller
+        $domainName = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
+        if (Test-Connection -ComputerName $domainName -Count 1 -Quiet) {
+            if ($EnableDiagnostics) { Write-Log "Network is available, final retry with full SID..." -Color "Green" }
+            
+            # One last desperate attempt with full SID object creation
+            $sidBytes = New-Object byte[] 28
+            $sidObj = New-Object Security.Principal.SecurityIdentifier($SID)
+            $sidObj.GetBinaryForm($sidBytes, 0)
+            $ntAccount = New-Object Security.Principal.SecurityIdentifier($sidBytes, 0).Translate([Security.Principal.NTAccount])
+            
+            if ($ntAccount) {
+                if ($EnableDiagnostics) { Write-Log "Resolved via binary SID method: $($ntAccount.Value)" -Color "Green" }
+                $Global:SIDCache[$SID] = $ntAccount.Value
+                return $ntAccount.Value
+            }
         }
     }
+    catch {
+        if ($EnableDiagnostics) { Write-Log "Network test/final method failed: $($_.Exception.Message)" -Color "Red" }
+    }
+    
+    # If all resolution methods fail, return the original SID
+    if ($EnableDiagnostics) { Write-Log "All resolution methods failed, returning original SID" -Color "Yellow" }
+    return "Unknown Account ($SID)"
 }
-catch {
-    if ($EnableDiagnostics) { Write-Log "Network test/final method failed: $($_.Exception.Message)" -Color "Red" }
-}
-
-# If all resolution methods fail, return the original SID
-if ($EnableDiagnostics) { Write-Log "All resolution methods failed, returning original SID" -Color "Yellow" }
-return $SID
 
 # Get the permissions for a folder
 function Get-FolderPermissions {
