@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 5-03-06 21:06:43 UTC
+# Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 21:00:00 UTC
+# Last Updated: 2025-03-12 21:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.6
-# Additional Info: Fixed DirectorySecurity access method using correct .NET calls
+# Version: 1.15.7
+# Additional Info: Fixed Write-Log function placement and documentation
 # =============================================================================
 
 <#
@@ -229,6 +229,22 @@ function global:Write-SafeOutput {
     }
 }
 
+# Define Write-Log function before any usage
+function Write-Log {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+    
+    # Append to both console and output text
+    Write-Host $Message -ForegroundColor $Color
+    [void]$script:OutputText.AppendLine($Message)
+}
+
 # Create an output log file using pure .NET methods
 try {
     $fileStream = [System.IO.FileStream]::new($OutputLog, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
@@ -352,32 +368,6 @@ function Get-AllDirectoriesModuleRecursive {
         catch { }
     }
     return $results
-}
-
-# Define Write-Log function first so it's available to other functions
-function Write-Log {
-    param(
-        [string]$Message,
-        [string]$Color = "White",
-        [switch]$NoNewline
-    )
-    
-    # Always append to log file
-    [void]$OutputText.AppendLine($Message)
-    
-    # Check if we're in verbose mode
-    $isVerboseMode = $VerbosePreference -eq 'Continue' -or $DebugPreference -eq 'Continue'
-    
-    # Only write debug/progress messages to console in verbose mode
-    if ($Message -match '^\[DEBUG\]' -or $Message -match 'Successfully processed') {
-        if ($isVerboseMode) {
-            Write-Host $Message -ForegroundColor $Color -NoNewline:$NoNewline
-        }
-        return
-    }
-    
-    # Write non-debug messages normally
-    Write-Host $Message -ForegroundColor $Color -NoNewline:$NoNewline
 }
 
 function Write-ProgressBar {
