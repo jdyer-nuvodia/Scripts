@@ -1364,20 +1364,39 @@ function Get-DirectorySecurity {
     )
     
     try {
-        # Use static method from Directory class instead of instance method
-        # This is more reliable across different PowerShell and .NET versions
+        # First attempt - using Directory static method
         $security = [System.IO.Directory]::GetAccessControl($Path)
         
         if ($null -ne $security) {
             return $security
         }
         else {
-            throw "Failed to get security descriptor"
+            throw "Failed to get security descriptor using Directory class"
         }
     }
     catch {
-        Write-Log -Message "[DEBUG] DirectorySecurity method failed: $($_.Exception.Message)" -Color "Magenta"
-        return $null
+        # Log the first failure
+        Write-Log -Message "[DEBUG] Directory.GetAccessControl failed: $($_.Exception.Message)" -Color "Magenta"
+        
+        # Second attempt - using DirectoryInfo instance method
+        try {
+            $dirInfo = [System.IO.DirectoryInfo]::new($Path)
+            $security = $dirInfo.GetAccessControl()
+            return $security
+        }
+        catch {
+            # Log the second failure
+            Write-Log -Message "[DEBUG] DirectoryInfo.GetAccessControl failed: $($_.Exception.Message)" -Color "Magenta"
+            
+            # Final fallback to PowerShell cmdlet
+            try {
+                return Get-Acl -Path $Path
+            }
+            catch {
+                Write-Log -Message "[DEBUG] Get-Acl fallback also failed for $Path: $($_.Exception.Message)" -Color "Red"
+                return $null
+            }
+        }
     }
 }
 
