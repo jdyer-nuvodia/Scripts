@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 19:52:33 UTC
+# Last Updated: 2025-03-18 20:03:17 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.15.0
-# Additional Info: Added ViewMode parameter with Group and Hierarchy options for displaying folder permissions
+# Additional Info: Added ViewMode parameter and fixed syntax errors in hierarchical view implementation
 # =============================================================================
 
 <#
@@ -606,7 +606,7 @@ if ($EnableSIDDiagnostics) {
                 $domainName = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
                 $dcTest = Test-Connection -ComputerName $domainName -Count 1 -Quiet
                 
-                # Replace ternary operators with proper PowerShell conditionals
+                # Fix the ternary operators - PowerShell doesn't support them
                 $statusText = if ($dcTest) { 'SUCCESS' } else { 'FAILED' }
                 $colorValue = if ($dcTest) { 'Green' } else { 'Red' }
                 Write-Log "Domain connectivity test: $statusText" -Color $colorValue
