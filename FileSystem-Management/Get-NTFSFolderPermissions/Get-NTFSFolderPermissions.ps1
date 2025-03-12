@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 17:51:45 UTC
+# Last Updated: 2025-03-12 18:23:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.5
-# Additional Info: Fixed syntax error with invalid ternary operators in SID resolution test function
+# Version: 1.15.0
+# Additional Info: Added domain controller detection and display at script startup
 # =============================================================================
 
 <#
@@ -256,6 +256,52 @@ catch {
     # If console output fails, continue silently
     # In restricted environments, console methods might not be available
 }
+
+# Function to display domain controller information
+function Get-DomainControllerInfo {
+    Write-Log "======== DOMAIN CONTROLLER INFORMATION ========" -Color "Cyan"
+    
+    try {
+        # Try to get domain information
+        $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+        $domainName = $domain.Name
+        Write-Log "Domain Name: $domainName" -Color "White"
+        
+        # Get the primary domain controller
+        $pdcInfo = $domain.PdcRoleOwner
+        $pdcName = $pdcInfo.Name
+        Write-Log "Primary Domain Controller: $pdcName" -Color "White"
+        
+        # Get the IP address of the PDC
+        try {
+            $pdcIP = [System.Net.Dns]::GetHostAddresses($pdcName) | 
+                     Where-Object { $_.AddressFamily -eq 'InterNetwork' } | 
+                     Select-Object -ExpandProperty IPAddressToString -First 1
+            
+            Write-Log "PDC IP Address: $pdcIP" -Color "White"
+            
+            # Test connectivity to the domain controller
+            $pingResult = Test-Connection -ComputerName $pdcName -Count 1 -Quiet
+            $pingStatus = if ($pingResult) { "SUCCESS" } else { "FAILED" }
+            $pingColor = if ($pingResult) { "Green" } else { "Red" }
+            Write-Log "Connectivity Test: $pingStatus" -Color $pingColor
+        }
+        catch {
+            Write-Log "Could not resolve IP address for $pdcName : $($_.Exception.Message)" -Color "Yellow"
+        }
+    }
+    catch {
+        Write-Log "Not connected to a domain or cannot retrieve domain information" -Color "Yellow"
+        Write-Log "Error: $($_.Exception.Message)" -Color "Yellow"
+        Write-Log "SID resolution will use local system methods only" -Color "Yellow"
+    }
+    
+    Write-Log "=============================================" -Color "Cyan"
+    Write-Log "" # Empty line for spacing
+}
+
+# Display domain controller information before starting processing
+Get-DomainControllerInfo
 
 # New helper functions for modularization
 
