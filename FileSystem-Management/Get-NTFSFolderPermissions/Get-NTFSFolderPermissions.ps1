@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-03-12 23:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.23
-# Additional Info: Platform-compatible directory security access for PowerShell Core and .NET environments
+# Version: 1.15.24
+# Additional Info: Add assembly loading for SID resolution in Get-NTFSFolderPermissions
 # =============================================================================
 
 <#
@@ -99,6 +99,19 @@ param (
     [ValidateSet("Hierarchy", "Group")]
     [string]$ViewMode = "Hierarchy"
 )
+
+# Load required assemblies for SID resolution
+try {
+    [void][System.Reflection.Assembly]::LoadWithPartialName("System.Security.AccessControl")
+} catch {
+    Write-Log -Message "Failed to load System.Security.AccessControl assembly: $($_.Exception.Message)" -Color "Red"
+}
+
+try {
+    [void][System.Reflection.Assembly]::LoadWithPartialName("System.IO.FileSystem.AccessControl")
+} catch {
+    Write-Log -Message "Failed to load System.IO.FileSystem.AccessControl assembly: $($_.Exception.Message)" -Color "Red"
+}
 
 # Enable strict mode and error handling
 Set-StrictMode -Version Latest
