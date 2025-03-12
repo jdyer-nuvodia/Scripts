@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:09:00 UTC
+# Last Updated: 2025-03-12 22:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.16.0
-# Additional Info: Added strict error handling and stop on any error
+# Version: 1.15.11
+# Additional Info: Fixed Write-Log parameter handling for empty strings
 # =============================================================================
 
 <#
@@ -264,16 +264,17 @@ function global:Write-SafeOutput {
 function global:Write-Log {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true, Position = 0)]
-        [string]$Message,
+        [Parameter(Mandatory = $false, Position = 0)]
+        [AllowEmptyString()]
+        [string]$Message = " ",
         
         [Parameter(Mandatory = $false)]
         [string]$Color = "White"
     )
     
-    # Handle empty string messages
+    # Convert empty or null message to a single space to avoid parameter binding errors
     if ([string]::IsNullOrEmpty($Message)) {
-        return
+        $Message = " "
     }
     
     # Append to both console and output text
