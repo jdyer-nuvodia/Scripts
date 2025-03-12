@@ -1565,23 +1565,16 @@ function Get-DirectorySecurity {
         # Load required assembly
         Add-Type -AssemblyName System.Security.AccessControl
         
-        # Create DirectoryInfo object and get security descriptor
+        # Create DirectoryInfo object and get security descriptor directly
         $dirInfo = [System.IO.DirectoryInfo]::new($Path)
-        $security = [System.Security.AccessControl.DirectorySecurity]::new()
-        $security.SetAccessRuleProtection($false, $true)
-        
-        # Get current ACL using .NET
-        $acl = Get-Acl -Path $Path -ErrorAction Stop
-        
-        # Copy existing rules
-        foreach ($rule in $acl.Access) {
-            $security.AddAccessRule($rule)
-        }
+        $security = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
         
         if ($null -ne $security) {
             return $security
         }
-        throw "Failed to get security descriptor"
+        else {
+            throw "Failed to get security descriptor"
+        }
     }
     catch {
         Write-Log -Message "[DEBUG] DirectorySecurity method failed: $($_.Exception.Message)" -Color "Magenta"
@@ -1593,28 +1586,6 @@ function Get-DirectorySecurity {
         catch {
             Write-Log -Message "[DEBUG] Get-Acl fallback failed: $($_.Exception.Message)" -Color "Red"
             throw
-        }
-    }
-}
-
-# Process folder permissions
-foreach ($folder in $folders) {
-    try {
-        $acl = Get-DirectorySecurity -Path $folder.FullName
-        if ($null -eq $acl) {
-            throw "Unable to retrieve access control list"
-        }
-        
-        # ...existing code...
-    }
-    catch {
-        $errorMsg = "Failed to process folder $($folder.FullName): $($_.Exception.Message)"
-        Write-Log -Message $errorMsg -Color "Red"
-        $allResults += [PSCustomObject]@{
-            FolderPath = $folder.FullName
-            Permissions = $null
-            Success = $false
-            Error = $_.Exception.Message
         }
     }
 }
