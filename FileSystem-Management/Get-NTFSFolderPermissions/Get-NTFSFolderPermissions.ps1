@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 2025-03-06 21:06:43 UTC
+# Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 17:39:47 UTC
+# Last Updated: 2025-03-12 17:42:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.3
-# Additional Info: Fixed empty permission set display in summary report
+# Version: 1.14.4
+# Additional Info: Fixed ACL extraction failure by implementing robust multi-method permission retrieval
 # =============================================================================
 
 <#
@@ -827,92 +827,208 @@ function Get-FolderPermissions {
     )
     
     try {
-        # Use cross-platform compatible approach to get ACLs
-        $acl = $null
+        $permissions = @()
+        $aclRetrievalSuccess = $false
+        $aclRetrievalError = $null
         
-        # Method 1: Try to use Get-Acl cmdlet which works in both PowerShell versions
+        # Try multiple approaches to get folder permissions, starting with the most reliable ones
+        
+        # Method 1: Direct .NET approach with explicit FileSystemSecurity
         try {
-            $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
+            $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
+            $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+            $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+            
+            # Test if we can access the rules
+            if ($null -ne $acl -and ($null -ne $acl.GetAccessRules($true, $true, [System.Security.Principal.NTAccount]))) {
+                Write-Log "[DEBUG] ACL retrieved using DirectorySecurity method for $FolderPath" -Color "Magenta"
+                $aclRetrievalSuccess = $true
+            }
+            else {
+                throw "ACL retrieved but access rules are null"
+            }
         }
         catch {
-            Write-Log "Get-Acl failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+            $aclRetrievalError = "DirectorySecurity method failed: $($_.Exception.Message)"
+            Write-Log "[DEBUG] $aclRetrievalError" -Color "Yellow"
             
-            # Method 2: Try alternate .NET approach for PowerShell Core
+            # Method 2: Using Get-Acl cmdlet with error handling
             try {
-                $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-                if ($PSVersionTable.PSVersion.Major -ge 6) {
-                    # PowerShell Core approach
-                    $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl($dirInfo)
+                $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
+                
+                # Verify we got a valid ACL object with rules
+                if ($null -ne $acl -and $null -ne $acl.Access -and $acl.Access.Count -gt 0) {
+                    Write-Log "[DEBUG] ACL retrieved using Get-Acl cmdlet for $FolderPath" -Color "Magenta"
+                    $aclRetrievalSuccess = $true
                 }
                 else {
-                    # Windows PowerShell 5.1 approach
-                    $acl = [System.Security.AccessControl.DirectorySecurity]::new()
-                    $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+                    throw "Get-Acl returned empty or null Access collection"
                 }
             }
             catch {
-                Write-Log "Both ACL retrieval methods failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
-                throw
+                $aclRetrievalError += "; Get-Acl method failed: $($_.Exception.Message)"
+                Write-Log "[DEBUG] Get-Acl method failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+                
+                # Method 3: Attempt with FileSystemAccessRule via different approach
+                try {
+                    $path = [System.IO.Path]::GetFullPath($FolderPath)
+                    $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl([System.IO.DirectoryInfo]::new($path))
+                    
+                    if ($null -ne $acl) {
+                        Write-Log "[DEBUG] ACL retrieved using FileSystemAclExtensions for $FolderPath" -Color "Magenta"
+                        $aclRetrievalSuccess = $true
+                    }
+                    else {
+                        throw "FileSystemAclExtensions returned null"
+                    }
+                }
+                catch {
+                    $aclRetrievalError += "; FileSystemAclExtensions method failed: $($_.Exception.Message)" 
+                    Write-Log "[DEBUG] FileSystemAclExtensions failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+                    
+                    # Method 4: Last resort - use icacls command line tool
+                    try {
+                        $icaclsOutput = & icacls.exe $FolderPath
+                        
+                        if ($LASTEXITCODE -eq 0 -and $icaclsOutput.Count -gt 0) {
+                            # Parse icacls output to create permission objects
+                            foreach ($line in $icaclsOutput | Where-Object { $_ -match ':' }) {
+                                if ($line -match '^\s*(.+?):\((.*?)\)') {
+                                    $identity = $matches[1].Trim()
+                                    $rights = $matches[2]
+                                    
+                                    $permissions += [PSCustomObject]@{
+                                        IdentityReference = $identity
+                                        FileSystemRights = $rights.Replace('(', '').Replace(')', '')
+                                        AccessControlType = if ($rights -match 'DENY') { "Deny" } else { "Allow" }
+                                        IsInherited = $rights -match '\(I\)'
+                                        InheritanceFlags = if ($rights -match '(OI)|(CI)') { "Container inherit, Object inherit" } else { "None" }
+                                        PropagationFlags = "None"
+                                    }
+                                }
+                            }
+                            
+                            if ($permissions.Count -gt 0) {
+                                Write-Log "[DEBUG] Permissions retrieved using icacls for $FolderPath" -Color "Magenta"
+                                $aclRetrievalSuccess = $true
+                                
+                                # Generate a hash of the permissions for comparison (since we're not using $acl)
+                                $sortedPermissions = $permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType
+                                $permissionStrings = $sortedPermissions | ForEach-Object {
+                                    "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)"
+                                }
+                                $permissionHash = ($permissionStrings -join ';').GetHashCode()
+                                
+                                return @{
+                                    Success = $true
+                                    FolderPath = $FolderPath
+                                    Permissions = $permissions
+                                    Hash = $permissionHash
+                                }
+                            }
+                            else {
+                                throw "icacls returned output but no permissions could be parsed"
+                            }
+                        }
+                        else {
+                            throw "icacls command failed with exit code $LASTEXITCODE"
+                        }
+                    }
+                    catch {
+                        $aclRetrievalError += "; icacls method failed: $($_.Exception.Message)"
+                        Write-Log "[DEBUG] All permission retrieval methods failed for $FolderPath" -Color "Red"
+                        # We'll continue to the placeholder since all methods failed
+                    }
+                }
             }
         }
         
-        if ($null -eq $acl) {
-            throw "Could not retrieve ACL for $FolderPath"
-        }
-        
-        # Helper function for converting inheritance flags to string descriptions
-        function Convert-InheritanceToDescription {
-            param (
-                $InheritanceFlags,
-                $PropagationFlags
-            )
-            
-            # Start with an empty string
-            $description = @()
-            
-            # Check the inheritance flags
-            if ($InheritanceFlags -band [InheritanceFlags]::ContainerInherit) {
-                $description += "Container inherit"
-            }
-            if ($InheritanceFlags -band [InheritanceFlags]::ObjectInherit) {
-                $description += "Object inherit"
-            }
-            if ($InheritanceFlags -eq [InheritanceFlags]::None) {
-                $description += "None"
-            }
-            
-            # Check propagation flags
-            if ($PropagationFlags -band [PropagationFlags]::NoPropagateInherit) {
-                $description += "Do not propagate"
-            }
-            if ($PropagationFlags -band [PropagationFlags]::InheritOnly) {
-                $description += "Inherit only"
-            }
-            
-            # Return description
-            return $description -join ", "
-        }
-        
-        # Get all access rules
-        $permissions = @()
-        foreach ($rule in $acl.GetAccessRules($true, $false, [System.Security.Principal.SecurityIdentifier])) {
-            # Resolve SIDs to friendly names if possible
-            $identity = $rule.IdentityReference.Value
-            
-            # Only try to resolve if it looks like a SID and resolution isn't disabled
-            if (-not $SkipADResolution -and $identity -match '^S-\d-') {
-                $resolved = Resolve-ADAccountFromSID -SID $identity -EnableDiagnostics:$EnableSIDDiagnostics
-                $identity = "$resolved ($identity)"
+        # If we successfully got the ACL, process the permissions
+        if ($aclRetrievalSuccess -and $null -ne $acl) {
+            # Helper function for converting inheritance flags to string descriptions
+            function Convert-InheritanceToDescription {
+                param (
+                    $InheritanceFlags,
+                    $PropagationFlags
+                )
+                
+                # Start with an empty string
+                $description = @()
+                
+                # Check the inheritance flags
+                if ($InheritanceFlags -band [InheritanceFlags]::ContainerInherit) {
+                    $description += "Container inherit"
+                }
+                if ($InheritanceFlags -band [InheritanceFlags]::ObjectInherit) {
+                    $description += "Object inherit"
+                }
+                if ($InheritanceFlags -eq [InheritanceFlags]::None) {
+                    $description += "None"
+                }
+                
+                # Check propagation flags
+                if ($PropagationFlags -band [PropagationFlags]::NoPropagateInherit) {
+                    $description += "Do not propagate"
+                }
+                if ($PropagationFlags -band [PropagationFlags]::InheritOnly) {
+                    $description += "Inherit only"
+                }
+                
+                # Return description
+                return $description -join ", "
             }
             
-            # Create a permission object
-            $permissions += [PSCustomObject]@{
-                IdentityReference = $identity
-                FileSystemRights = $rule.FileSystemRights.ToString()
-                AccessControlType = $rule.AccessControlType.ToString()
-                IsInherited = $rule.IsInherited
-                InheritanceFlags = Convert-InheritanceToDescription -InheritanceFlags $rule.InheritanceFlags -PropagationFlags $rule.PropagationFlags
-                PropagationFlags = $rule.PropagationFlags.ToString()
+            # Get all access rules - handle different ACL object types
+            try {
+                if ($null -ne $acl.Access) {
+                    # For Get-Acl result
+                    foreach ($rule in $acl.Access) {
+                        # Only try to resolve if it looks like a SID and resolution isn't disabled
+                        $identity = $rule.IdentityReference.Value
+                        
+                        if (-not $SkipADResolution -and $identity -match '^S-\d-') {
+                            $resolved = Resolve-ADAccountFromSID -SID $identity -EnableDiagnostics:$EnableSIDDiagnostics
+                            $identity = "$resolved ($identity)"
+                        }
+                        
+                        # Create a permission object
+                        $permissions += [PSCustomObject]@{
+                            IdentityReference = $identity
+                            FileSystemRights = $rule.FileSystemRights.ToString()
+                            AccessControlType = $rule.AccessControlType.ToString()
+                            IsInherited = $rule.IsInherited
+                            InheritanceFlags = Convert-InheritanceToDescription -InheritanceFlags $rule.InheritanceFlags -PropagationFlags $rule.PropagationFlags
+                            PropagationFlags = $rule.PropagationFlags.ToString()
+                        }
+                    }
+                }
+                else {
+                    # For DirectorySecurity or FileSystemAclExtensions result
+                    foreach ($rule in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+                        # Resolve SIDs to friendly names if possible
+                        $identity = $rule.IdentityReference.Value
+                        
+                        # Only try to resolve if it looks like a SID and resolution isn't disabled
+                        if (-not $SkipADResolution -and $identity -match '^S-\d-') {
+                            $resolved = Resolve-ADAccountFromSID -SID $identity -EnableDiagnostics:$EnableSIDDiagnostics
+                            $identity = "$resolved ($identity)"
+                        }
+                        
+                        # Create a permission object
+                        $permissions += [PSCustomObject]@{
+                            IdentityReference = $identity
+                            FileSystemRights = $rule.FileSystemRights.ToString()
+                            AccessControlType = $rule.AccessControlType.ToString()
+                            IsInherited = $rule.IsInherited
+                            InheritanceFlags = Convert-InheritanceToDescription -InheritanceFlags $rule.InheritanceFlags -PropagationFlags $rule.PropagationFlags
+                            PropagationFlags = $rule.PropagationFlags.ToString()
+                        }
+                    }
+                }
+            }
+            catch {
+                Write-Log "Error processing ACL rules for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+                # Continue to use whatever permissions we've gathered so far
             }
         }
         
