@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 21:44:00 UTC
+# Last Updated: 2025-03-12 21:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.8
-# Additional Info: Fixed scoping issue with Write-Log function
+# Version: 1.15.9
+# Additional Info: Fixed Write-Log parameter binding, Resolve-ADAccountFromSID not recognized, GetAccessControl method invocation failure, and positional parameter errors.
 # =============================================================================
 
 <#
@@ -240,8 +240,13 @@ function global:Write-Log {
         [string]$Color = "White"
     )
     
+    # Handle empty string messages
+    if ([string]::IsNullOrEmpty($Message)) {
+        return
+    }
+    
     # Append to both console and output text
-    Write-Host $Message -ForegroundColor $Color
+    Write-Host -Message $Message -ForegroundColor $Color
     [void]$script:OutputText.AppendLine($Message)
 }
 
@@ -574,6 +579,157 @@ if (-not $Global:ADModuleAvailable -and -not $SkipADResolution) {
 
 # Test SID resolution capabilities at startup when diagnostics are enabled
 if ($EnableSIDDiagnostics) {
+    # Enhanced Resolve-ADAccountFromSID function with diagnostic capabilities
+    function global:Resolve-ADAccountFromSID {
+        param(
+            [Parameter(Mandatory=$true)]
+            [string]$SID,
+            [switch]$EnableDiagnostics
+        )
+        
+        try {
+            # Skip if not a valid SID format
+            if (-not ($SID -match '^S-\d-\d+(-\d+)+$')) {
+                if ($EnableDiagnostics) { Write-Log -Message "Not a valid SID format: $SID" -Color "Yellow" }
+                return $SID
+            }
+
+            # Check cache first for performance
+            if ($Global:SIDCache.ContainsKey($SID)) {
+                if ($EnableDiagnostics) { Write-Log -Message "Retrieved from cache: $($Global:SIDCache[$SID])" -Color "Green" }
+                return $Global:SIDCache[$SID]
+            }
+            
+            if ($EnableDiagnostics) {
+                Write-Log -Message "Attempting to resolve SID: $SID" -Color "Magenta"
+            }
+
+            # Well-known SIDs mapping
+            $wellKnownSIDs = @{
+                'S-1-0'='Null Authority'
+                'S-1-0-0'='Nobody'
+                'S-1-1'='World Authority'
+                'S-1-1-0'='Everyone'
+                'S-1-2'='Local Authority'
+                'S-1-2-0'='Local'
+                'S-1-2-1'='Console Logon'
+                'S-1-3'='Creator Authority'
+                'S-1-3-0'='Creator Owner'
+                'S-1-3-1'='Creator Group'
+                'S-1-3-2'='Creator Owner Server'
+                'S-1-3-3'='Creator Group Server'
+                'S-1-3-4'='Owner Rights'
+                'S-1-5-1'='Dialup'
+                'S-1-5-2'='Network'
+                'S-1-5-3'='Batch'
+                'S-1-5-4'='Interactive'
+                'S-1-5-6'='Service'
+                'S-1-5-7'='Anonymous'
+                'S-1-5-8'='Proxy'
+                'S-1-5-9'='Enterprise Domain Controllers'
+                'S-1-5-10'='Principal Self'
+                'S-1-5-11'='Authenticated Users'
+                'S-1-5-12'='Restricted Code'
+                'S-1-5-13'='Terminal Server Users'
+                'S-1-5-14'='Remote Interactive Logon'
+                'S-1-5-15'='This Organization'
+                'S-1-5-17'='IUSR'
+                'S-1-5-18'='Local System'
+                'S-1-5-19'='NT Authority\Local Service'
+                'S-1-5-20'='NT Authority\Network Service'
+                'S-1-5-32-544'='BUILTIN\Administrators'
+                'S-1-5-32-545'='BUILTIN\Users'
+                'S-1-5-32-546'='BUILTIN\Guests'
+                'S-1-5-32-547'='BUILTIN\Power Users'
+                'S-1-5-32-548'='BUILTIN\Account Operators'
+                'S-1-5-32-549'='BUILTIN\Server Operators'
+                'S-1-5-32-550'='BUILTIN\Print Operators'
+                'S-1-5-32-551'='BUILTIN\Backup Operators'
+                'S-1-5-32-552'='BUILTIN\Replicators'
+                'S-1-5-32-554'='BUILTIN\Pre-Windows 2000 Compatible Access'
+                'S-1-5-32-555'='BUILTIN\Remote Desktop Users'
+                'S-1-5-32-556'='BUILTIN\Network Configuration Operators'
+                'S-1-5-32-557'='BUILTIN\Incoming Forest Trust Builders'
+                'S-1-5-32-558'='BUILTIN\Performance Monitor Users'
+                'S-1-5-32-559'='BUILTIN\Performance Log Users'
+                'S-1-5-32-560'='BUILTIN\Windows Authorization Access Group'
+                'S-1-5-32-561'='BUILTIN\Terminal Server License Servers'
+                'S-1-5-32-562'='BUILTIN\Distributed COM Users'
+                'S-1-5-32-568'='BUILTIN\IIS_IUSRS'
+                'S-1-5-32-569'='BUILTIN\Cryptographic Operators'
+                'S-1-5-32-573'='BUILTIN\Event Log Readers'
+                'S-1-5-32-574'='BUILTIN\Certificate Service DCOM Access'
+                'S-1-5-80-0'='NT SERVICE\ALL SERVICES'
+            }
+
+            # Check well-known SIDs first
+            if ($wellKnownSIDs.ContainsKey($SID)) {
+                if ($EnableDiagnostics) { Write-Log -Message "Resolved from well-known SIDs: $($wellKnownSIDs[$SID])" -Color "Green" }
+                $Global:SIDCache[$SID] = $wellKnownSIDs[$SID]
+                return $wellKnownSIDs[$SID]
+            }
+
+            # Method 1: Try .NET translation - most common approach
+            try {
+                $sidObj = [System.Security.Principal.SecurityIdentifier]::new($SID)
+                $ntAccount = $sidObj.Translate([System.Security.Principal.NTAccount])
+                if ($EnableDiagnostics) { Write-Log -Message "Resolved via .NET primary method: $($ntAccount.Value)" -Color "Green" }
+                $Global:SIDCache[$SID] = $ntAccount.Value
+                return $ntAccount.Value
+            }
+            catch {
+                if ($EnableDiagnostics) { Write-Log -Message "Primary .NET translation failed: $($_.Exception.Message)" -Color "Yellow" }
+                
+                # Method 2: Try alternate constructor approach
+                try {
+                    $accountName = [System.Security.Principal.NTAccount]::new($SID).Translate([System.Security.Principal.NTAccount]).Value
+                    if ($EnableDiagnostics) { Write-Log -Message "Resolved via alternate constructor: $accountName" -Color "Green" }
+                    $Global:SIDCache[$SID] = $accountName
+                    return $accountName
+                }
+                catch {
+                    if ($EnableDiagnostics) { Write-Log -Message "Alternate constructor failed: $($_.Exception.Message)" -Color "Yellow" }
+                    
+                    # Method 3: Try using DirectoryServices
+                    try {
+                        $objSID = New-Object System.Security.Principal.SecurityIdentifier($SID)
+                        $objUser = $objSID.Translate([System.Security.Principal.NTAccount])
+                        if ($EnableDiagnostics) { Write-Log -Message "Resolved via DirectoryServices: $($objUser.Value)" -Color "Green" }
+                        $Global:SIDCache[$SID] = $objUser.Value
+                        return $objUser.Value
+                    }
+                    catch {
+                        if ($EnableDiagnostics) { Write-Log -Message "DirectoryServices method failed: $($_.Exception.Message)" -Color "Yellow" }
+                        
+                        # Method 4: Try using WMI/CIM as last resort
+                        try {
+                            $query = "SELECT * FROM Win32_Account WHERE SID='$SID'"
+                            $account = Get-CimInstance -Query $query -ErrorAction SilentlyContinue
+                            
+                            if ($account -and $account.Caption) {
+                                if ($EnableDiagnostics) { Write-Log -Message "Resolved via WMI: $($account.Caption)" -Color "Green" }
+                                $Global:SIDCache[$SID] = $account.Caption
+                                return $account.Caption
+                            }
+                        }
+                        catch {
+                            if ($EnableDiagnostics) { Write-Log -Message "WMI method failed: $($_.Exception.Message)" -Color "Yellow" }
+                        }
+
+                        # If all methods fail, cache the failure and return original SID to avoid repeated lookup attempts
+                        if ($EnableDiagnostics) { Write-Log -Message "All SID resolution methods failed for $SID" -Color "Red" }
+                        $Global:SIDCache[$SID] = "Unknown Account ($SID)"
+                        return "Unknown Account ($SID)"
+                    }
+                }
+            }
+        }
+        catch {
+            if ($EnableDiagnostics) { Write-Log -Message "Critical error in SID resolution: $($_.Exception.Message)" -Color "Red" }
+            return $SID
+        }
+    }
+    
     function Test-SIDResolution {
         # Common SIDs to test
         $testSIDs = @(
@@ -583,19 +739,19 @@ if ($EnableSIDDiagnostics) {
             'S-1-5-11'            # Authenticated Users
         )
         
-        Write-Log "========== SID RESOLUTION DIAGNOSTIC TEST ==========" -Color Cyan
-        Write-Log "Testing SID resolution capabilities..." -Color Cyan
+        Write-Log -Message "========== SID RESOLUTION DIAGNOSTIC TEST ==========" -Color Cyan
+        Write-Log -Message "Testing SID resolution capabilities..." -Color Cyan
         
         foreach ($sid in $testSIDs) {
             $resolved = Resolve-ADAccountFromSID -SID $sid -EnableDiagnostics
             $status = if ($resolved -eq $sid) { "FAILED" } else { "SUCCESS" }
             $color = if ($resolved -eq $sid) { "Red" } else { "Green" }
-            Write-Log "Test SID: $sid -> $resolved ($status)" -Color $color
+            Write-Log -Message "Test SID: $sid -> $resolved ($status)" -Color $color
         }
         
         # Test network connectivity to domain if SIDs failed
         if ($testSIDs | ForEach-Object { Resolve-ADAccountFromSID -SID $_ } | Where-Object { $_ -match '^S-1-' }) {
-            Write-Log "WARNING: Some SIDs failed to resolve. Testing network connectivity..." -Color Yellow
+            Write-Log -Message "WARNING: Some SIDs failed to resolve. Testing network connectivity..." -Color Yellow
             
             try {
                 $domainName = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
@@ -604,15 +760,15 @@ if ($EnableSIDDiagnostics) {
                 # Fix the ternary operators - PowerShell doesn't support them
                 $statusText = if ($dcTest) { 'SUCCESS' } else { 'FAILED' }
                 $colorValue = if ($dcTest) { 'Green' } else { 'Red' }
-                Write-Log "Domain connectivity test: $statusText" -Color $colorValue
+                Write-Log -Message "Domain connectivity test: $statusText" -Color $colorValue
             }
             catch {
-                Write-Log "Could not determine current domain. Machine may not be domain-joined." -Color Yellow
+                Write-Log -Message "Could not determine current domain. Machine may not be domain-joined." -Color Yellow
             }
         }
         
-        Write-Log "============== END DIAGNOSTIC TEST ==============" -Color Cyan
-        Write-Log "" # Empty line for spacing
+        Write-Log -Message "============== END DIAGNOSTIC TEST ==============" -Color Cyan
+        Write-Log -Message "" # Empty line for spacing
     }
     
     Test-SIDResolution
@@ -1168,7 +1324,7 @@ try {
     $startFolder = [System.IO.DirectoryInfo]::new($FolderPath)
     $folders = @($startFolder) + (Get-AllDirectoriesModule -Path $FolderPath -MaxDepth $MaxDepth)
     
-    Write-Log "Found $($folders.Count) folders to process" -Color "Cyan"
+    Write-Log -Message "Found $($folders.Count) folders to process" -Color "Cyan"
     
     # Initialize results collection
     $allResults = @()
@@ -1383,18 +1539,18 @@ function Get-DirectorySecurity {
     
     try {
         # Use correct .NET method for getting directory security
-        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
+        #$dirInfo = [System.IO.DirectoryInfo]::new($Path)
         return [System.Security.AccessControl.DirectorySecurity]::new($Path, [System.Security.AccessControl.AccessControlSections]::Access)
     }
     catch {
-        Write-Log "[DEBUG] DirectorySecurity .NET method failed: $($_.Exception.Message)" -Color "Magenta"
+        Write-Log -Message "[DEBUG] DirectorySecurity .NET method failed: $($_.Exception.Message)" -Color "Magenta"
         try {
             # Fallback to PowerShell cmdlet
-            Write-Log "[DEBUG] Attempting to retrieve ACL using Get-Acl cmdlet for $Path" -Color "Magenta"
+            Write-Log -Message "[DEBUG] Attempting to retrieve ACL using Get-Acl cmdlet for $Path" -Color "Magenta"
             return Get-Acl -Path $Path -ErrorAction Stop
         }
         catch {
-            Write-Log "[DEBUG] Get-Acl fallback failed: $($_.Exception.Message)" -Color "Red"
+            Write-Log -Message "[DEBUG] Get-Acl fallback failed: $($_.Exception.Message)" -Color "Red"
             return $null
         }
     }
