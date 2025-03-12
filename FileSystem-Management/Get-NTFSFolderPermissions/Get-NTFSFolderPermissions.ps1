@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 20:50:00 UTC
+# Last Updated: 2025-03-12 20:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.3
-# Additional Info: Changed EnableSIDDiagnostics default value to True for better troubleshooting
+# Version: 1.15.4
+# Additional Info: Changed EnableSIDDiagnostics to boolean parameter while maintaining default enabled state
 # =============================================================================
 
 <#
@@ -42,6 +42,7 @@
     Default: False
 .PARAMETER EnableSIDDiagnostics
     Enable detailed diagnostic logging for SID resolution attempts.
+    Type: Boolean
     Default: True
 .PARAMETER ViewMode
     Specifies how to display the permissions in the output.
@@ -90,7 +91,7 @@ param (
     [switch]$SkipADResolution,
     
     [Parameter(Mandatory = $false)]
-    [switch]$EnableSIDDiagnostics = $true,
+    [bool]$EnableSIDDiagnostics = $true,
     
     [Parameter(Mandatory = $false)]
     [ValidateSet("Group", "Hierarchy", ErrorMessage = "ViewMode must be either 'Group' or 'Hierarchy'")]
