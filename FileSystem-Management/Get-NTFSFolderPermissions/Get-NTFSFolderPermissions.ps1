@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:16:00 UTC
+# Last Updated: 2025-03-12 22:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.12
-# Additional Info: Fixed Write-Log parameter binding and PSDefaultParameterValues issue
+# Version: 1.15.13
+# Additional Info: Fixed Write-Log parameter binding issues and call sites
 # =============================================================================
 
 <#
@@ -114,10 +114,10 @@ function Write-ErrorAndExit {
         [string]$ErrorSource = "Unknown"
     )
     
-    Write-Log "CRITICAL ERROR in $ErrorSource" -Color "Red"
-    Write-Log $ErrorMessage -Color "Red"
-    Write-Log "Stack Trace:" -Color "Red"
-    Write-Log $Error[0].ScriptStackTrace -Color "Red"
+    Write-Log -Message "CRITICAL ERROR in $ErrorSource" -Color "Red"
+    Write-Log -Message $ErrorMessage -Color "Red"
+    Write-Log -Message "Stack Trace:" -Color "Red"
+    Write-Log -Message $Error[0].ScriptStackTrace -Color "Red"
     
     # Ensure the error is written to the log file
     if ($null -ne $OutputText) {
@@ -333,18 +333,18 @@ catch {
 
 # Function to display domain controller information
 function Get-DomainControllerInfo {
-    Write-Log "======== DOMAIN CONTROLLER INFORMATION ========" -Color "Cyan"
+    Write-Log -Message "======== DOMAIN CONTROLLER INFORMATION ========" -Color "Cyan"
     
     try {
         # Try to get domain information
         $domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
         $domainName = $domain.Name
-        Write-Log "Domain Name: $domainName" -Color "White"
+        Write-Log -Message "Domain Name: $domainName" -Color "White"
         
         # Get the primary domain controller
         $pdcInfo = $domain.PdcRoleOwner
         $pdcName = $pdcInfo.Name
-        Write-Log "Primary Domain Controller: $pdcName" -Color "White"
+        Write-Log -Message "Primary Domain Controller: $pdcName" -Color "White"
         
         # Get the IP address of the PDC
         try {
@@ -352,26 +352,26 @@ function Get-DomainControllerInfo {
                      Where-Object { $_.AddressFamily -eq 'InterNetwork' } | 
                      Select-Object -ExpandProperty IPAddressToString -First 1
             
-            Write-Log "PDC IP Address: $pdcIP" -Color "White"
+            Write-Log -Message "PDC IP Address: $pdcIP" -Color "White"
             
             # Test connectivity to the domain controller
             $pingResult = Test-Connection -ComputerName $pdcName -Count 1 -Quiet
             $pingStatus = if ($pingResult) { "SUCCESS" } else { "FAILED" }
             $pingColor = if ($pingResult) { "Green" } else { "Red" }
-            Write-Log "Connectivity Test: $pingStatus" -Color $pingColor
+            Write-Log -Message "Connectivity Test: $pingStatus" -Color $pingColor
         }
         catch {
-            Write-Log "Could not resolve IP address for $pdcName : $($_.Exception.Message)" -Color "Yellow"
+            Write-Log -Message "Could not resolve IP address for $pdcName : $($_.Exception.Message)" -Color "Yellow"
         }
     }
     catch {
-        Write-Log "Not connected to a domain or cannot retrieve domain information" -Color "Yellow"
-        Write-Log "Error: $($_.Exception.Message)" -Color "Yellow"
-        Write-Log "SID resolution will use local system methods only" -Color "Yellow"
+        Write-Log -Message "Not connected to a domain or cannot retrieve domain information" -Color "Yellow"
+        Write-Log -Message "Error: $($_.Exception.Message)" -Color "Yellow"
+        Write-Log -Message "SID resolution will use local system methods only" -Color "Yellow"
     }
     
-    Write-Log "=============================================" -Color "Cyan"
-    Write-Log "" # Empty line for spacing
+    Write-Log -Message "=============================================" -Color "Cyan"
+    Write-Log -Message "" # Empty line for spacing
 }
 
 # Display domain controller information before starting processing
@@ -451,12 +451,12 @@ function Invoke-FolderProcessing {
         Write-ProgressBar -Current $CurrentCount -Total $TotalCount -Status "Processing: $Path"
         
         # Log success in debug mode
-        Write-Log "[DEBUG] Successfully processed folder: $Path" -Color "Magenta"
+        Write-Log -Message "[DEBUG] Successfully processed folder: $Path" -Color "Magenta"
         
         return $permissions
     }
     catch {
-        Write-Log "Error processing folder: $Path - $($_.Exception.Message)" -Color "Red"
+        Write-Log -Message "Error processing folder: $Path - $($_.Exception.Message)" -Color "Red"
         return $null
     }
 }
@@ -548,7 +548,7 @@ function Get-FolderPermissionsModule {
         }
         
         if ($permissions.Count -eq 0) {
-            Write-Log "No permissions found for $FolderPath" "Yellow"
+            Write-Log -Message "No permissions found for $FolderPath" -Color "Yellow"
             $permissions = @([PSCustomObject]@{
                 IdentityReference = "NO ACCESS"
                 FileSystemRights = "N/A"
@@ -571,7 +571,7 @@ function Get-FolderPermissionsModule {
         }
     }
     catch {
-        Write-Log "Error accessing permissions for $FolderPath : $($_.Exception.Message)" "Yellow"
+        Write-Log -Message "Error accessing permissions for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
         return @{
             Success = $false
             FolderPath = $FolderPath
@@ -592,7 +592,7 @@ function Get-FolderPermissionsModule {
 # Function must be defined before first usage
 function Initialize-ADModule {
     # Skip AD module initialization and go straight to fallback mode
-    Write-Log "AD module not available - using built-in SID resolution" "Yellow"
+    Write-Log -Message "AD module not available - using built-in SID resolution" -Color "Yellow"
     Set-Variable -Name UseFallbackSIDResolution -Value $true -Scope Global
     return $false
 }
@@ -607,15 +607,15 @@ while (-not $Global:ADModuleAvailable -and $retryCount -lt $maxRetries) {
     if (-not $Global:ADModuleAvailable) {
         $retryCount++
         if ($retryCount -lt $maxRetries) {
-            Write-Log ("Retry $retryCount of $maxRetries : Attempting to load AD module again...") "Yellow"
+            Write-Log -Message ("Retry $retryCount of $maxRetries : Attempting to load AD module again...") -Color "Yellow"
             Start-Sleep -Seconds 2
         }
     }
 }
 
 if (-not $Global:ADModuleAvailable -and -not $SkipADResolution) {
-    Write-Log "Warning: Active Directory module could not be loaded after $maxRetries attempts. SID resolution may be limited." -Color "Yellow"
-    Write-Log "Use -SkipADResolution to suppress this warning." -Color "Yellow"
+    Write-Log -Message "Warning: Active Directory module could not be loaded after $maxRetries attempts. SID resolution may be limited." -Color "Yellow"
+    Write-Log -Message "Use -SkipADResolution to suppress this warning." -Color "Yellow"
 }
 
 # Test SID resolution capabilities at startup when diagnostics are enabled
@@ -826,18 +826,18 @@ function Resolve-ADAccountFromSID {
     try {
         # Skip if not a valid SID format
         if (-not ($SID -match '^S-\d-\d+(-\d+)+$')) {
-            if ($EnableDiagnostics) { Write-Log "Not a valid SID format: $SID" -Color "Yellow" }
+            if ($EnableDiagnostics) { Write-Log -Message "Not a valid SID format: $SID" -Color "Yellow" }
             return $SID
         }
 
         # Check cache first for performance
         if ($Global:SIDCache.ContainsKey($SID)) {
-            if ($EnableDiagnostics) { Write-Log "Retrieved from cache: $($Global:SIDCache[$SID])" -Color "Green" }
+            if ($EnableDiagnostics) { Write-Log -Message "Retrieved from cache: $($Global:SIDCache[$SID])" -Color "Green" }
             return $Global:SIDCache[$SID]
         }
         
         if ($EnableDiagnostics) {
-            Write-Log "Attempting to resolve SID: $SID" -Color "Magenta"
+            Write-Log -Message "Attempting to resolve SID: $SID" -Color "Magenta"
         }
 
         # Well-known SIDs mapping
@@ -900,7 +900,7 @@ function Resolve-ADAccountFromSID {
 
         # Check well-known SIDs first
         if ($wellKnownSIDs.ContainsKey($SID)) {
-            if ($EnableDiagnostics) { Write-Log "Resolved from well-known SIDs: $($wellKnownSIDs[$SID])" -Color "Green" }
+            if ($EnableDiagnostics) { Write-Log -Message "Resolved from well-known SIDs: $($wellKnownSIDs[$SID])" -Color "Green" }
             $Global:SIDCache[$SID] = $wellKnownSIDs[$SID]
             return $wellKnownSIDs[$SID]
         }
@@ -909,33 +909,33 @@ function Resolve-ADAccountFromSID {
         try {
             $sidObj = [System.Security.Principal.SecurityIdentifier]::new($SID)
             $ntAccount = $sidObj.Translate([System.Security.Principal.NTAccount])
-            if ($EnableDiagnostics) { Write-Log "Resolved via .NET primary method: $($ntAccount.Value)" -Color "Green" }
+            if ($EnableDiagnostics) { Write-Log -Message "Resolved via .NET primary method: $($ntAccount.Value)" -Color "Green" }
             $Global:SIDCache[$SID] = $ntAccount.Value
             return $ntAccount.Value
         }
         catch {
-            if ($EnableDiagnostics) { Write-Log "Primary .NET translation failed: $($_.Exception.Message)" -Color "Yellow" }
+            if ($EnableDiagnostics) { Write-Log -Message "Primary .NET translation failed: $($_.Exception.Message)" -Color "Yellow" }
             
             # Method 2: Try alternate constructor approach
             try {
                 $accountName = [System.Security.Principal.NTAccount]::new($SID).Translate([System.Security.Principal.NTAccount]).Value
-                if ($EnableDiagnostics) { Write-Log "Resolved via alternate constructor: $accountName" -Color "Green" }
+                if ($EnableDiagnostics) { Write-Log -Message "Resolved via alternate constructor: $accountName" -Color "Green" }
                 $Global:SIDCache[$SID] = $accountName
                 return $accountName
             }
             catch {
-                if ($EnableDiagnostics) { Write-Log "Alternate constructor failed: $($_.Exception.Message)" -Color "Yellow" }
+                if ($EnableDiagnostics) { Write-Log -Message "Alternate constructor failed: $($_.Exception.Message)" -Color "Yellow" }
                 
                 # Method 3: Try using DirectoryServices
                 try {
                     $objSID = New-Object System.Security.Principal.SecurityIdentifier($SID)
                     $objUser = $objSID.Translate([System.Security.Principal.NTAccount])
-                    if ($EnableDiagnostics) { Write-Log "Resolved via DirectoryServices: $($objUser.Value)" -Color "Green" }
+                    if ($EnableDiagnostics) { Write-Log -Message "Resolved via DirectoryServices: $($objUser.Value)" -Color "Green" }
                     $Global:SIDCache[$SID] = $objUser.Value
                     return $objUser.Value
                 }
                 catch {
-                    if ($EnableDiagnostics) { Write-Log "DirectoryServices method failed: $($_.Exception.Message)" -Color "Yellow" }
+                    if ($EnableDiagnostics) { Write-Log -Message "DirectoryServices method failed: $($_.Exception.Message)" -Color "Yellow" }
                     
                     # Method 4: Try using WMI/CIM as last resort
                     try {
@@ -943,17 +943,17 @@ function Resolve-ADAccountFromSID {
                         $account = Get-CimInstance -Query $query -ErrorAction SilentlyContinue
                         
                         if ($account -and $account.Caption) {
-                            if ($EnableDiagnostics) { Write-Log "Resolved via WMI: $($account.Caption)" -Color "Green" }
+                            if ($EnableDiagnostics) { Write-Log -Message "Resolved via WMI: $($account.Caption)" -Color "Green" }
                             $Global:SIDCache[$SID] = $account.Caption
                             return $account.Caption
                         }
                     }
                     catch {
-                        if ($EnableDiagnostics) { Write-Log "WMI method failed: $($_.Exception.Message)" -Color "Yellow" }
+                        if ($EnableDiagnostics) { Write-Log -Message "WMI method failed: $($_.Exception.Message)" -Color "Yellow" }
                     }
 
                     # If all methods fail, cache the failure and return original SID to avoid repeated lookup attempts
-                    if ($EnableDiagnostics) { Write-Log "All SID resolution methods failed for $SID" -Color "Red" }
+                    if ($EnableDiagnostics) { Write-Log -Message "All SID resolution methods failed for $SID" -Color "Red" }
                     $Global:SIDCache[$SID] = "Unknown Account ($SID)"
                     return "Unknown Account ($SID)"
                 }
@@ -961,7 +961,7 @@ function Resolve-ADAccountFromSID {
         }
     }
     catch {
-        if ($EnableDiagnostics) { Write-Log "Critical error in SID resolution: $($_.Exception.Message)" -Color "Red" }
+        if ($EnableDiagnostics) { Write-Log -Message "Critical error in SID resolution: $($_.Exception.Message)" -Color "Red" }
         return $SID
     }
 }
@@ -1002,7 +1002,7 @@ function Resolve-Win32SID {
     )
     
     try {
-        if ($EnableDiagnostics) { Write-Log "Attempting Win32 API resolution..." -Color "Magenta" }
+        if ($EnableDiagnostics) { Write-Log -Message "Attempting Win32 API resolution..." -Color "Magenta" }
         
         $sidPtr = [IntPtr]::Zero
         $success = [AccountUtils]::ConvertStringSidToSid($SID, [ref]$sidPtr)
@@ -1023,7 +1023,7 @@ function Resolve-Win32SID {
             
             if ($result) {
                 $resolvedAccount = if ($domain.Length -gt 0) { "$($domain)\$($name)" } else { "$($name)" }
-                if ($EnableDiagnostics) { Write-Log "Resolved via Win32 API: $resolvedAccount" -Color "Green" }
+                if ($EnableDiagnostics) { Write-Log -Message "Resolved via Win32 API: $resolvedAccount" -Color "Green" }
                 $Global:SIDCache[$SID] = $resolvedAccount
                 return $resolvedAccount
             }
@@ -1035,17 +1035,17 @@ function Resolve-Win32SID {
         }
     }
     catch {
-        if ($EnableDiagnostics) { Write-Log "Win32 API method failed: $($_.Exception.Message)" -Color "Yellow" }
+        if ($EnableDiagnostics) { Write-Log -Message "Win32 API method failed: $($_.Exception.Message)" -Color "Yellow" }
     }
     
     # Method 6: Network connectivity test and retry
     try {
-        if ($EnableDiagnostics) { Write-Log "Testing network connectivity before final retry..." -Color "Magenta" }
+        if ($EnableDiagnostics) { Write-Log -Message "Testing network connectivity before final retry..." -Color "Magenta" }
         
         # Check if we can ping the domain controller
         $domainName = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
         if (Test-Connection -ComputerName $domainName -Count 1 -Quiet) {
-            if ($EnableDiagnostics) { Write-Log "Network is available, final retry with full SID..." -Color "Green" }
+            if ($EnableDiagnostics) { Write-Log -Message "Network is available, final retry with full SID..." -Color "Green" }
             
             # One last desperate attempt with full SID object creation
             $sidBytes = New-Object byte[] 28
@@ -1054,18 +1054,18 @@ function Resolve-Win32SID {
             $ntAccount = New-Object Security.Principal.SecurityIdentifier($sidBytes, 0).Translate([Security.Principal.NTAccount])
             
             if ($ntAccount) {
-                if ($EnableDiagnostics) { Write-Log "Resolved via binary SID method: $($ntAccount.Value)" -Color "Green" }
+                if ($EnableDiagnostics) { Write-Log -Message "Resolved via binary SID method: $($ntAccount.Value)" -Color "Green" }
                 $Global:SIDCache[$SID] = $ntAccount.Value
                 return $ntAccount.Value
             }
         }
     }
     catch {
-        if ($EnableDiagnostics) { Write-Log "Network test/final method failed: $($_.Exception.Message)" -Color "Red" }
+        if ($EnableDiagnostics) { Write-Log -Message "Network test/final method failed: $($_.Exception.Message)" -Color "Red" }
     }
     
     # If all resolution methods fail, return the original SID
-    if ($EnableDiagnostics) { Write-Log "All resolution methods failed, returning original SID" -Color "Yellow" }
+    if ($EnableDiagnostics) { Write-Log -Message "All resolution methods failed, returning original SID" -Color "Yellow" }
     return "Unknown Account ($SID)"
 }
 
@@ -1090,7 +1090,7 @@ function Get-FolderPermissions {
             
             # Test if we can access the rules
             if ($null -ne $acl -and ($null -ne $acl.GetAccessRules($true, $true, [System.Security.Principal.NTAccount]))) {
-                Write-Log "[DEBUG] ACL retrieved using DirectorySecurity method for $FolderPath" -Color "Magenta"
+                Write-Log -Message "[DEBUG] ACL retrieved using DirectorySecurity method for $FolderPath" -Color "Magenta"
                 $aclRetrievalSuccess = $true
             }
             else {
@@ -1099,7 +1099,7 @@ function Get-FolderPermissions {
         }
         catch {
             $aclRetrievalError = "DirectorySecurity method failed: $($_.Exception.Message)"
-            Write-Log "[DEBUG] $aclRetrievalError" -Color "Yellow"
+            Write-Log -Message "[DEBUG] $aclRetrievalError" -Color "Yellow"
             
             # Method 2: Using Get-Acl cmdlet with error handling
             try {
@@ -1107,7 +1107,7 @@ function Get-FolderPermissions {
                 
                 # Verify we got a valid ACL object with rules
                 if ($null -ne $acl -and $null -ne $acl.Access -and $acl.Access.Count -gt 0) {
-                    Write-Log "[DEBUG] ACL retrieved using Get-Acl cmdlet for $FolderPath" -Color "Magenta"
+                    Write-Log -Message "[DEBUG] ACL retrieved using Get-Acl cmdlet for $FolderPath" -Color "Magenta"
                     $aclRetrievalSuccess = $true
                 }
                 else {
@@ -1116,7 +1116,7 @@ function Get-FolderPermissions {
             }
             catch {
                 $aclRetrievalError += "; Get-Acl method failed: $($_.Exception.Message)"
-                Write-Log "[DEBUG] Get-Acl method failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+                Write-Log -Message "[DEBUG] Get-Acl method failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
                 
                 # Method 3: Attempt with FileSystemAccessRule via different approach
                 try {
@@ -1124,7 +1124,7 @@ function Get-FolderPermissions {
                     $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl([System.IO.DirectoryInfo]::new($path))
                     
                     if ($null -ne $acl) {
-                        Write-Log "[DEBUG] ACL retrieved using FileSystemAclExtensions for $FolderPath" -Color "Magenta"
+                        Write-Log -Message "[DEBUG] ACL retrieved using FileSystemAclExtensions for $FolderPath" -Color "Magenta"
                         $aclRetrievalSuccess = $true
                     }
                     else {
@@ -1133,7 +1133,7 @@ function Get-FolderPermissions {
                 }
                 catch {
                     $aclRetrievalError += "; FileSystemAclExtensions method failed: $($_.Exception.Message)" 
-                    Write-Log "[DEBUG] FileSystemAclExtensions failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+                    Write-Log -Message "[DEBUG] FileSystemAclExtensions failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
                     
                     # Method 4: Last resort - use icacls command line tool
                     try {
@@ -1158,7 +1158,7 @@ function Get-FolderPermissions {
                             }
                             
                             if ($permissions.Count -gt 0) {
-                                Write-Log "[DEBUG] Permissions retrieved using icacls for $FolderPath" -Color "Magenta"
+                                Write-Log -Message "[DEBUG] Permissions retrieved using icacls for $FolderPath" -Color "Magenta"
                                 $aclRetrievalSuccess = $true
                                 
                                 # Generate a hash of the permissions for comparison (since we're not using $acl)
@@ -1185,7 +1185,7 @@ function Get-FolderPermissions {
                     }
                     catch {
                         $aclRetrievalError += "; icacls method failed: $($_.Exception.Message)"
-                        Write-Log "[DEBUG] All permission retrieval methods failed for $FolderPath" -Color "Red"
+                        Write-Log -Message "[DEBUG] All permission retrieval methods failed for $FolderPath" -Color "Red"
                         # We'll continue to the placeholder since all methods failed
                     }
                 }
@@ -1276,7 +1276,7 @@ function Get-FolderPermissions {
                 }
             }
             catch {
-                Write-Log "Error processing ACL rules for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+                Write-Log -Message "Error processing ACL rules for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
                 # Continue to use whatever permissions we've gathered so far
             }
         }
@@ -1291,7 +1291,7 @@ function Get-FolderPermissions {
                 InheritanceFlags = "None"
                 PropagationFlags = "None"
             }
-            Write-Log "Warning: No permissions extracted for $FolderPath - using placeholder" -Color "Yellow"
+            Write-Log -Message "Warning: No permissions extracted for $FolderPath - using placeholder" -Color "Yellow"
         }
         
         # Generate a hash of the permissions for comparison
@@ -1322,7 +1322,7 @@ function DisplayFolderPermissions {
     
     if ($null -eq $Permissions -or $Permissions.Count -eq 0) {
         $indent = " " * ($IndentLevel * 2)
-        Write-Log "$indent No permissions found or error retrieving permissions" -Color "Yellow"
+        Write-Log -Message "$indent No permissions found or error retrieving permissions" -Color "Yellow"
         return
     }
     
@@ -1341,7 +1341,7 @@ function DisplayFolderPermissions {
         
         $indent = " " * ($IndentLevel * 2)
         $permissionLine = "$indent$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo"
-        Write-Log $permissionLine -Color $color
+        Write-Log -Message $permissionLine -Color $color
     }
 }
 
@@ -1389,12 +1389,12 @@ try {
         $successfullyProcessed = ($allResults | Where-Object { $_.Success }).Count
         $failedProcessed = ($allResults | Where-Object { -not $_.Success }).Count
         
-        Write-Log ""
-        Write-Log "====== SUMMARY REPORT (GROUPED BY PERMISSIONS) ======" -Color "Cyan"
-        Write-Log "Folders processed: $successfullyProcessed" -Color "Green"
-        Write-Log "Failed to process: $failedProcessed" -Color "Yellow"
-        Write-Log "Unique permission sets found: $uniquePermissionCount" -Color "Cyan"
-        Write-Log ""
+        Write-Log -Message ""
+        Write-Log -Message "====== SUMMARY REPORT (GROUPED BY PERMISSIONS) ======" -Color "Cyan"
+        Write-Log -Message "Folders processed: $successfullyProcessed" -Color "Green"
+        Write-Log -Message "Failed to process: $failedProcessed" -Color "Yellow"
+        Write-Log -Message "Unique permission sets found: $uniquePermissionCount" -Color "Cyan"
+        Write-Log -Message ""
         
         # Display and log unique permission sets
         $setCounter = 1
@@ -1413,30 +1413,30 @@ try {
                 "$firstFolder (and $($folderCount - 1) other folder$(if ($folderCount -gt 2) {'s'}))"
             }
             
-            Write-Log ""
-            Write-Log "Permission Set #$setCounter - Applied to $folderCount folder$(if($folderCount -ne 1){'s'})" -Color "Cyan"
-            Write-Log "Example: $folderDisplay" -Color "Cyan"
-            Write-Log "-------------------------" -Color "Cyan"
+            Write-Log -Message ""
+            Write-Log -Message "Permission Set #$setCounter - Applied to $folderCount folder$(if($folderCount -ne 1){'s'})" -Color "Cyan"
+            Write-Log -Message "Example: $folderDisplay" -Color "Cyan"
+            Write-Log -Message "-------------------------" -Color "Cyan"
             
             # Display paths of all folders with this permission set (up to a reasonable limit)
             if ($folderCount -gt 1) {
                 $maxFoldersToShow = 10  # Limit the number of examples to avoid overwhelming output
                 $foldersToShow = [Math]::Min($folderCount, $maxFoldersToShow)
                 
-                Write-Log "Folders with this permission set:" -Color "White"
+                Write-Log -Message "Folders with this permission set:" -Color "White"
                 for ($i = 0; $i -lt $foldersToShow; $i++) {
-                    Write-Log "  - $($group.Group[$i].FolderPath)" -Color "White"
+                    Write-Log -Message "  - $($group.Group[$i].FolderPath)" -Color "White"
                 }
                 
                 if ($folderCount -gt $maxFoldersToShow) {
-                    Write-Log "  ... and $($folderCount - $maxFoldersToShow) more" -Color "DarkGray"
+                    Write-Log -Message "  ... and $($folderCount - $maxFoldersToShow) more" -Color "DarkGray"
                 }
-                Write-Log "" # Empty line
+                Write-Log -Message "" # Empty line
             }
             
             # Display permissions - ensure we have permissions to display
             if ($null -eq $permissions -or $permissions.Count -eq 0) {
-                Write-Log "No permissions found or error retrieving permissions" -Color "Yellow"
+                Write-Log -Message "No permissions found or error retrieving permissions" -Color "Yellow"
             } else {
                 # Ensure we're processing the permissions collection properly
                 foreach ($perm in $permissions | Sort-Object IdentityReference, FileSystemRights) {
@@ -1456,7 +1456,7 @@ try {
                     
                     # Ensure we have a complete and properly formatted output line
                     $permissionLine = "$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo"
-                    Write-Log $permissionLine -Color $color
+                    Write-Log -Message $permissionLine -Color $color
                 }
             }
             
@@ -1469,11 +1469,11 @@ try {
         $successfullyProcessed = ($allResults | Where-Object { $_.Success }).Count
         $failedProcessed = ($allResults | Where-Object { -not $_.Success }).Count
         
-        Write-Log ""
-        Write-Log "====== FOLDER HIERARCHY PERMISSION REPORT ======" -Color "Cyan"
-        Write-Log "Folders processed: $successfullyProcessed" -Color "Green"
-        Write-Log "Failed to process: $failedProcessed" -Color "Yellow"
-        Write-Log ""
+        Write-Log -Message ""
+        Write-Log -Message "====== FOLDER HIERARCHY PERMISSION REPORT ======" -Color "Cyan"
+        Write-Log -Message "Folders processed: $successfullyProcessed" -Color "Green"
+        Write-Log -Message "Failed to process: $failedProcessed" -Color "Yellow"
+        Write-Log -Message ""
         
         # Sort the folders by path to ensure proper hierarchical display
         $sortedFolders = $allResults | Sort-Object { $_.FolderPath.Length }, { $_.FolderPath }
@@ -1485,13 +1485,13 @@ try {
         }
         
         # Display the folder hierarchy with permissions
-        Write-Log "Root: $basePath" -Color "Cyan"
-        Write-Log "--------------------------------------------" -Color "Cyan"
+        Write-Log -Message "Root: $basePath" -Color "Cyan"
+        Write-Log -Message "--------------------------------------------" -Color "Cyan"
         
         # First display the root folder permissions
         $rootFolder = $allResults | Where-Object { $_.FolderPath -eq $basePath } | Select-Object -First 1
         if ($rootFolder) {
-            Write-Log "(Root)" -Color "White"
+            Write-Log -Message "(Root)" -Color "White"
             DisplayFolderPermissions -Permissions $rootFolder.Permissions -IndentLevel 1
         }
         
@@ -1508,8 +1508,8 @@ try {
             
             # Display folder name and permissions
             $indent = " " * (($indentLevel - 1) * 2)
-            Write-Log ""
-            Write-Log "$indent└─ $folderName" -Color "Cyan"
+            Write-Log -Message ""
+            Write-Log -Message "$indent└─ $folderName" -Color "Cyan"
             
             # Display permissions with extra indent
             DisplayFolderPermissions -Permissions $folderResult.Permissions -IndentLevel $indentLevel
@@ -1517,10 +1517,10 @@ try {
     } # End else block
     
     if ($failedProcessed -gt 0) {
-        Write-Log ""
-        Write-Log "====== FOLDERS WITH ERRORS ======" -Color "Yellow"
+        Write-Log -Message ""
+        Write-Log -Message "====== FOLDERS WITH ERRORS ======" -Color "Yellow"
         foreach ($failedItem in $allResults | Where-Object { -not $_.Success }) {
-            Write-Log "Failed: $($failedItem.FolderPath) - $($failedItem.Error)" -Color "Red"
+            Write-Log -Message "Failed: $($failedItem.FolderPath) - $($failedItem.Error)" -Color "Red"
         }
     }
     
@@ -1529,19 +1529,19 @@ try {
     $duration = $endTime - $StartTime
     $formattedDuration = "{0:D2}:{1:D2}:{2:D2}.{3:D3}" -f $duration.Hours, $duration.Minutes, $duration.Seconds, $duration.Milliseconds
     
-    Write-Log ""
-    Write-Log "==============================" -Color "Cyan"
-    Write-Log "Report generated: $(Get-Date)" -Color "Cyan"
-    Write-Log "Total execution time: $formattedDuration" -Color "Cyan"
-    Write-Log "Full report saved to: $OutputLog" -Color "Cyan"
-    Write-Log "==============================" -Color "Cyan"
+    Write-Log -Message ""
+    Write-Log -Message "==============================" -Color "Cyan"
+    Write-Log -Message "Report generated: $(Get-Date)" -Color "Cyan"
+    Write-Log -Message "Total execution time: $formattedDuration" -Color "Cyan"
+    Write-Log -Message "Full report saved to: $OutputLog" -Color "Cyan"
+    Write-Log -Message "==============================" -Color "Cyan"
     
     # Ensure output is written to file
     try {
         [System.IO.File]::WriteAllText($OutputLog, $OutputText.ToString(), [System.Text.Encoding]::UTF8)
     } 
     catch {
-        Write-Log "Error saving report: $($_.Exception.Message)" -Color "Red"
+        Write-Log -Message "Error saving report: $($_.Exception.Message)" -Color "Red"
     }
 }
 catch {
@@ -1592,7 +1592,7 @@ foreach ($folder in $folders) {
     }
     catch {
         $errorMsg = "Failed to process folder $($folder.FullName): $($_.Exception.Message)"
-        Write-Log $errorMsg -Color "Red"
+        Write-Log -Message $errorMsg -Color "Red"
         $allResults += [PSCustomObject]@{
             FolderPath = $folder.FullName
             Permissions = $null
