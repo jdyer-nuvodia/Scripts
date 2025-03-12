@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 21:55:00 UTC
+# Last Updated: 2025-03-12 21:58:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.9
-# Additional Info: Fixed Write-Log parameter binding, Resolve-ADAccountFromSID not recognized, GetAccessControl method invocation failure, and positional parameter errors.
+# Version: 1.15.10
+# Additional Info: Fixed Write-Log parameter binding and empty string handling.
 # =============================================================================
 
 <#
@@ -1519,7 +1519,7 @@ try {
 }
 catch {
     $errorMsg = "Critical error: $($_.Exception.Message)`n$($_.InvocationInfo.PositionMessage)"
-    Write-Log $errorMsg -Color "Red"
+    Write-Log -Message $errorMsg -Color "Red"
     Write-Output-Safe $errorMsg
     exit 1
 }
