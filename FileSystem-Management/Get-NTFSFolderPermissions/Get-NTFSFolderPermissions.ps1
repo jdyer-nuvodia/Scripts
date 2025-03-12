@@ -161,7 +161,7 @@ function Get-FolderPermissions {
         return $permissionData
     }
     catch {
-        Write-Log -Message "Error getting permissions for $Folder: $($_.Exception.Message)" -Color "Red"
+        Write-Log -Message "Error getting permissions for ${Folder}: $($_.Exception.Message)" -Color "Red"
         return $null
     }
 }
@@ -237,7 +237,7 @@ function Invoke-FolderProcessing {
         }
     }
     catch {
-        Write-Log -Message "Error processing folder $Path: $($_.Exception.Message)" -Color "Red"
+        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red"
     }
     finally {
         Write-ProgressBar -Current $CurrentCount -Total $TotalCount -Activity "Processing Folders" -Status "Current Progress"
@@ -245,7 +245,7 @@ function Invoke-FolderProcessing {
 }
 
 # Function to process folders recursively
-function Process-FoldersRecursively {
+function Invoke-FolderRecursively {
     param (
         [string]$Path,
         [int]$CurrentDepth = 0
@@ -258,7 +258,7 @@ function Process-FoldersRecursively {
 
     if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
         Get-ChildItem -Path $Path -Directory | ForEach-Object {
-            Process-FoldersRecursively -Path $_.FullName -CurrentDepth ($CurrentDepth + 1)
+            Invoke-FolderRecursively -Path $_.FullName -CurrentDepth ($CurrentDepth + 1)
         }
     }
 }
@@ -268,7 +268,7 @@ try {
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Green"
 
     # Process folders
-    Process-FoldersRecursively -Path $FolderPath
+    Invoke-FolderRecursively -Path $FolderPath
 
     # Calculate elapsed time
     $script:EndTime = Get-Date
