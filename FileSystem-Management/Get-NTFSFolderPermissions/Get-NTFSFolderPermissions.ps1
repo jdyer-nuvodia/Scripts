@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:11:00 UTC
+# Last Updated: 2025-03-12 22:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.11
-# Additional Info: Fixed Write-Log parameter handling for empty strings
+# Version: 1.15.12
+# Additional Info: Fixed Write-Log parameter binding and PSDefaultParameterValues issue
 # =============================================================================
 
 <#
@@ -260,6 +260,9 @@ function global:Write-SafeOutput {
     }
 }
 
+# Clear any existing default parameter values
+$PSDefaultParameterValues.Clear()
+
 # Define Write-Log function before any usage
 function global:Write-Log {
     [CmdletBinding()]
@@ -269,6 +272,7 @@ function global:Write-Log {
         [string]$Message = " ",
         
         [Parameter(Mandatory = $false)]
+        [ValidateSet('White', 'Cyan', 'Green', 'Yellow', 'Red', 'Magenta', 'DarkGray')]
         [string]$Color = "White"
     )
     
@@ -277,8 +281,13 @@ function global:Write-Log {
         $Message = " "
     }
     
-    # Append to both console and output text
-    Write-Host -Message $Message -ForegroundColor $Color
+    # Use splatting for Write-Host parameters to avoid binding issues
+    $writeHostParams = @{
+        Object = $Message
+        ForegroundColor = $Color
+    }
+    
+    Write-Host @writeHostParams
     [void]$script:OutputText.AppendLine($Message)
 }
 
