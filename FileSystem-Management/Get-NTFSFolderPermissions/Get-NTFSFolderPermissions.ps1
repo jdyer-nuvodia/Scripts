@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:40:00 UTC
+# Last Updated: 2025-03-12 22:43:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.18
-# Additional Info: Fixed Count property access and RunspacePool initialization
+# Version: 1.15.19
+# Additional Info: Fixed Count property access and added null collection checks
 # =============================================================================
 
 <#
@@ -1320,13 +1320,23 @@ function DisplayFolderPermissions {
         [int]$IndentLevel = 0
     )
     
-    if ($null -eq $Permissions -or $Permissions.Count -eq 0) {
+    # Add explicit null check and type conversion for permissions
+    if ($null -eq $Permissions) {
         $indent = " " * ($IndentLevel * 2)
-        Write-Log -Message "$indent No permissions found or error retrieving permissions" -Color "Yellow"
+        Write-Log -Message "$indent No permissions found - null permissions object" -Color "Yellow"
         return
     }
-    
-    foreach ($perm in $Permissions | Sort-Object IdentityReference, FileSystemRights) {
+
+    # Convert to array if needed and check count
+    $permArray = @($Permissions)
+    if ($permArray.Length -eq 0) {
+        $indent = " " * ($IndentLevel * 2)
+        Write-Log -Message "$indent No permissions found - empty permissions collection" -Color "Yellow"
+        return
+    }
+
+    # Process permissions using array Length property instead of Count
+    foreach ($perm in $permArray | Sort-Object IdentityReference, FileSystemRights) {
         $color = switch ($perm.AccessControlType) {
             "Allow" { "White" }
             "Deny" { "Red" }
@@ -1384,16 +1394,19 @@ try {
     # Process the results
     Write-Progress -Activity "Processing Results" -Status "Creating summary report..." -PercentComplete 100
     
+    # Add null checks and proper array handling for results
+    $validResults = @($allResults | Where-Object { $null -ne $_ })
+
     # Display the permissions based on the selected view mode
     if ($ViewMode -eq "Group") {
-        # Original grouped view - Group folders by permission hash to identify identical sets
-        $permissionGroups = $allResults | Group-Object { $_.Hash }
+        # Group folders by permission hash to identify identical sets
+        $permissionGroups = @($validResults | Group-Object { $_.Hash })
         
-        # Log total folders with unique permissions
-        $uniquePermissionCount = $permissionGroups.Count
-        $successfullyProcessed = ($allResults | Where-Object { $_.Success }).Count
-        $failedProcessed = ($allResults | Where-Object { -not $_.Success }).Count
-        
+        # Log total folders with unique permissions using Length property
+        $uniquePermissionCount = $permissionGroups.Length
+        $successfullyProcessed = @($validResults | Where-Object { $_.Success }).Length
+        $failedProcessed = @($validResults | Where-Object { -not $_.Success }).Length
+
         Write-Log -Message ""
         Write-Log -Message "====== SUMMARY REPORT (GROUPED BY PERMISSIONS) ======" -Color "Cyan"
         Write-Log -Message "Folders processed: $successfullyProcessed" -Color "Green"
@@ -1403,8 +1416,8 @@ try {
         
         # Display and log unique permission sets
         $setCounter = 1
-        foreach ($group in $permissionGroups | Sort-Object { $_.Group.Count } -Descending) {
-            $folderCount = $group.Group.Count
+        foreach ($group in $permissionGroups | Sort-Object { @($_.Group).Length } -Descending) {
+            $folderCount = @($group.Group).Length
             $firstFolder = $group.Group[0].FolderPath
             $permissions = $group.Group[0].Permissions
             
@@ -1470,9 +1483,9 @@ try {
         }
     } 
     else {
-        # New hierarchical view - Show folders in a tree structure with their permissions
-        $successfullyProcessed = ($allResults | Where-Object { $_.Success }).Count
-        $failedProcessed = ($allResults | Where-Object { -not $_.Success }).Count
+        # Safe array handling for processed counts
+        $successfullyProcessed = @($validResults | Where-Object { $_.Success }).Length
+        $failedProcessed = @($validResults | Where-Object { -not $_.Success }).Length
         
         Write-Log -Message ""
         Write-Log -Message "====== FOLDER HIERARCHY PERMISSION REPORT ======" -Color "Cyan"
@@ -1481,7 +1494,7 @@ try {
         Write-Log -Message ""
         
         # Sort the folders by path to ensure proper hierarchical display
-        $sortedFolders = $allResults | Sort-Object { $_.FolderPath.Length }, { $_.FolderPath }
+        $sortedFolders = $validResults | Sort-Object { $_.FolderPath.Length }, { $_.FolderPath }
         
         # Get the base path to use for relative path calculations
         $basePath = $FolderPath
@@ -1494,7 +1507,7 @@ try {
         Write-Log -Message "--------------------------------------------" -Color "Cyan"
         
         # First display the root folder permissions
-        $rootFolder = $allResults | Where-Object { $_.FolderPath -eq $basePath } | Select-Object -First 1
+        $rootFolder = $validResults | Where-Object { $_.FolderPath -eq $basePath } | Select-Object -First 1
         if ($rootFolder) {
             Write-Log -Message "(Root)" -Color "White"
             DisplayFolderPermissions -Permissions $rootFolder.Permissions -IndentLevel 1
@@ -1524,7 +1537,8 @@ try {
     if ($failedProcessed -gt 0) {
         Write-Log -Message ""
         Write-Log -Message "====== FOLDERS WITH ERRORS ======" -Color "Yellow"
-        foreach ($failedItem in $allResults | Where-Object { -not $_.Success }) {
+        $failedItems = @($validResults | Where-Object { -not $_.Success })
+        foreach ($failedItem in $failedItems) {
             Write-Log -Message "Failed: $($failedItem.FolderPath) - $($failedItem.Error)" -Color "Red"
         }
     }
