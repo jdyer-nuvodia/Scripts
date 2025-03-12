@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:46:00 UTC
+# Last Updated: 2025-03-12 22:49:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.20
-# Additional Info: Fixed GetAccessControl method availability by adding proper assembly reference
+# Version: 1.15.21
+# Additional Info: Fixed CmdletBinding attribute placement and namespace declarations
 # =============================================================================
 
 <#
@@ -68,12 +68,12 @@
     Processes permissions with detailed SID resolution logging for troubleshooting
 #>
 
+# First all using statements
 using namespace System.Security.AccessControl
 using namespace System.IO
 using namespace System.Security.Principal
-Add-Type -AssemblyName System.Security.Principal.Windows
-Add-Type -AssemblyName System.Security.AccessControl
 
+# Then CmdletBinding
 [CmdletBinding()]
 param (
     [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
