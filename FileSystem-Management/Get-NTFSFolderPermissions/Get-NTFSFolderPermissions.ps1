@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:00:00 UTC
+# Last Updated: 2025-03-12 23:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.22
-# Additional Info: Fixed parser error with variable delimiter in log message
+# Version: 1.15.23
+# Additional Info: Platform-compatible directory security access for PowerShell Core and .NET environments
 # =============================================================================
 
 <#
@@ -1364,40 +1364,49 @@ function Get-DirectorySecurity {
     )
     
     try {
-        # First attempt - using Directory static method
-        $security = [System.IO.Directory]::GetAccessControl($Path)
-        
-        if ($null -ne $security) {
-            return $security
+        # First attempt - using static Directory method which has better platform compatibility
+        try {
+            # The static method tends to be more widely available across PowerShell versions
+            $security = [System.IO.Directory]::GetAccessControl($Path)
+            
+            if ($null -ne $security) {
+                return $security
+            }
         }
-        else {
-            throw "Failed to get security descriptor using Directory class"
+        catch {
+            Write-Log -Message "[DEBUG] Directory.GetAccessControl failed: $($_.Exception.Message)" -Color "Magenta"
+        }
+        
+        # Second attempt - load the AccessControl assembly explicitly first
+        try {
+            # Explicitly load AccessControl assembly which may help in some PowerShell environments
+            Add-Type -AssemblyName System.IO.FileSystem.AccessControl -ErrorAction SilentlyContinue
+            
+            # Try using DirectoryInfo with explicit LoadAccessControl approach
+            $dirInfo = New-Object System.IO.DirectoryInfo -ArgumentList $Path
+            $security = [System.IO.FileSystem.AccessControl.DirectorySecurity]::new()
+            $security = [System.Security.AccessControl.DirectorySecurity]$dirInfo.GetAccessControl()
+            
+            if ($null -ne $security) {
+                return $security
+            }
+        }
+        catch {
+            Write-Log -Message "[DEBUG] AccessControl assembly method failed: $($_.Exception.Message)" -Color "Magenta"
+        }
+            
+        # Final fallback to PowerShell cmdlet which works in most environments
+        try {
+            return Get-Acl -Path $Path -ErrorAction Stop
+        }
+        catch {
+            Write-Log -Message "[DEBUG] Get-Acl fallback also failed for ${Path}: $($_.Exception.Message)" -Color "Red"
+            return $null
         }
     }
     catch {
-        # Log the first failure
-        Write-Log -Message "[DEBUG] Directory.GetAccessControl failed: $($_.Exception.Message)" -Color "Magenta"
-        
-        # Second attempt - using DirectoryInfo instance method
-        try {
-            $dirInfo = [System.IO.DirectoryInfo]::new($Path)
-            $security = $dirInfo.GetAccessControl()
-            return $security
-        }
-        catch {
-            # Log the second failure
-            Write-Log -Message "[DEBUG] DirectoryInfo.GetAccessControl failed: $($_.Exception.Message)" -Color "Magenta"
-            
-            # Final fallback to PowerShell cmdlet
-            try {
-                return Get-Acl -Path $Path
-            }
-            catch {
-                # Fixed: Added curly braces around variable name to properly delimit it before the colon
-                Write-Log -Message "[DEBUG] Get-Acl fallback also failed for ${Path}: $($_.Exception.Message)" -Color "Red"
-                return $null
-            }
-        }
+        Write-Log -Message "[DEBUG] Critical security retrieval error: $($_.Exception.Message)" -Color "Red"
+        return $null
     }
 }
 
