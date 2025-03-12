@@ -2,27 +2,28 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:15:00 UTC
+# Last Updated: 2025-03-12 23:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.16.0
-# Additional Info: Enhanced documentation and parameter descriptions for clarity
+# Version: 1.17.0
+# Additional Info: Added permission inheritance tracking and directory grouping
 # =============================================================================
 
 <#
 .SYNOPSIS
-    Advanced NTFS permission analyzer for folders with parallel processing capabilities.
+    Advanced NTFS permission analyzer with directory grouping and inheritance tracking.
 
 .DESCRIPTION
     Comprehensive NTFS permission analysis tool that provides detailed access control information
-    for specified folders and their subfolders. The script utilizes parallel processing and
-    caching mechanisms for optimal performance.
+    for specified folders and their subfolders, with intelligent grouping of directories that
+    share identical permissions and inheritance states.
 
     Key Features:
+    - Groups directories with identical permissions
+    - Tracks and displays permission inheritance status
     - Parallel folder processing with configurable thread limits
     - Hierarchical or grouped permission display modes
     - SID to name resolution with caching
     - Active Directory integration for accurate identity resolution
-    - Detailed progress tracking and statistics
     - Performance optimizations for large directory structures
 
     Dependencies:
@@ -138,6 +139,8 @@ $script:PermissionGroups = @{}
 $script:ADObjectCache = @{}
 $script:SIDCache = @{}
 $script:ADResolutionErrors = @{}
+$script:PermissionGroups = @{}
+$script:InheritanceStatus = @{}
 
 # Function to write log messages
 function Write-Log {
@@ -170,11 +173,18 @@ function Get-FolderPermissions {
         $acl = Get-Acl -Path $Folder
         $owner = $acl.Owner
         $access = $acl.Access
+        $isInherited = $acl.AreAccessRulesProtected -eq $false
+
+        $permissionHash = ($acl.Access | ForEach-Object { 
+            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" 
+        }) -join ';'
 
         $permissionData = [PSCustomObject]@{
             Folder = $Folder
             Owner  = $owner
             Access = $access
+            PermissionHash = $permissionHash
+            IsInherited = $isInherited
         }
 
         return $permissionData
@@ -223,6 +233,19 @@ function Invoke-FolderProcessing {
         $permissionData = Get-FolderPermissions -Folder $Path
 
         if ($permissionData) {
+            $parentPath = Split-Path -Path $Path -Parent
+
+            if (-not $script:PermissionGroups.ContainsKey($permissionData.PermissionHash)) {
+                $script:PermissionGroups[$permissionData.PermissionHash] = @{
+                    Folders = @()
+                    Permissions = $permissionData.Access
+                    IsInherited = $permissionData.IsInherited
+                }
+            }
+
+            $script:PermissionGroups[$permissionData.PermissionHash].Folders += $Path
+            $script:FolderPermissions[$Path] = $permissionData
+
             # Process the $permissionData object
             Write-Log -Message "Folder: $($permissionData.Folder)" -Color "White"
             Write-Log -Message "Owner: $($permissionData.Owner)" -Color "White"
@@ -237,9 +260,6 @@ function Invoke-FolderProcessing {
                 Write-Log -Message "  Rights: $($accessRule.FileSystemRights)" -Color "White"
                 Write-Log -Message "  Type: $($accessRule.AccessControlType)" -Color "White"
             }
-
-            # Store the permissions data
-            $script:FolderPermissions[$Path] = $permissionData
 
             # Update unique permissions count
             if (-not $SkipUniquenessCounting) {
@@ -301,10 +321,27 @@ try {
 
     # Display results based on view mode
     if ($ViewMode -eq "Hierarchy") {
-        Write-Log -Message "`nFolder Hierarchy:" -Color "Yellow"
-        $script:FolderPermissions.GetEnumerator() | Sort-Object Key | ForEach-Object {
-            Write-Log -Message "$($_.Key)" -Color "White"
-            $_.Value.Access | ForEach-Object {
+        Write-Log -Message "`nFolder Hierarchy with Inheritance:" -Color "Yellow"
+        $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
+
+        foreach ($folder in $sortedFolders) {
+            $data = $script:FolderPermissions[$folder]
+            $inheritanceStatus = if ($data.IsInherited) { "(Inherited)" } else { "(Explicit)" }
+
+            Write-Log -Message "$folder $inheritanceStatus" -Color "White"
+
+            # Find child folders with identical permissions
+            $childFolders = $script:PermissionGroups[$data.PermissionHash].Folders | 
+                Where-Object { $_ -ne $folder -and (Split-Path -Parent $_) -eq $folder }
+
+            if ($childFolders) {
+                Write-Log -Message "  └─ Subfolders with identical permissions:" -Color "DarkGray"
+                foreach ($child in ($childFolders | Sort-Object)) {
+                    Write-Log -Message "     └─ $(Split-Path -Leaf $child)" -Color "DarkGray"
+                }
+            }
+
+            $data.Access | ForEach-Object {
                 Write-Log -Message "  $($_.IdentityReference) : $($_.FileSystemRights) ($($_.AccessControlType))" -Color "Gray"
             }
         }
