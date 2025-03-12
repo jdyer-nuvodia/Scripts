@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 17:42:12 UTC
+# Last Updated: 2025-03-12 17:51:45 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.4
-# Additional Info: Fixed ACL extraction failure by implementing robust multi-method permission retrieval
+# Version: 1.14.5
+# Additional Info: Fixed syntax error with invalid ternary operators in SID resolution test function
 # =============================================================================
 
 <#
@@ -552,7 +552,11 @@ if ($EnableSIDDiagnostics) {
             try {
                 $domainName = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
                 $dcTest = Test-Connection -ComputerName $domainName -Count 1 -Quiet
-                Write-Log "Domain connectivity test: $($dcTest ? 'SUCCESS' : 'FAILED')" -Color ($dcTest ? 'Green' : 'Red')
+                
+                # Replace ternary operators with proper PowerShell conditionals
+                $statusText = if ($dcTest) { 'SUCCESS' } else { 'FAILED' }
+                $colorValue = if ($dcTest) { 'Green' } else { 'Red' }
+                Write-Log "Domain connectivity test: $statusText" -Color $colorValue
             }
             catch {
                 Write-Log "Could not determine current domain. Machine may not be domain-joined." -Color Yellow
