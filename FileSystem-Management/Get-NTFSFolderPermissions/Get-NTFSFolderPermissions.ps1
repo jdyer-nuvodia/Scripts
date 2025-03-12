@@ -2,70 +2,89 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:03:00 UTC
+# Last Updated: 2025-03-12 23:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.24
-# Additional Info: Add assembly loading for SID resolution in Get-NTFSFolderPermissions
+# Version: 1.16.0
+# Additional Info: Enhanced documentation and parameter descriptions for clarity
 # =============================================================================
 
 <#
 .SYNOPSIS
-    Extracts and reports NTFS permissions for specified folders with optimized performance.
+    Advanced NTFS permission analyzer for folders with parallel processing capabilities.
+
 .DESCRIPTION
-    This script retrieves NTFS permissions for a specified folder path and all its subfolders.
-    Key features:
-    - Uses optimized directory traversal methods for improved performance
-    - Processes folders in parallel with configurable thread limits
-    - Forces Active Directory module loading for SID resolution
-    - Supports SID resolution on non-domain controller systems
-    - Groups folders with identical permissions to reduce output clutter
-    - Exports results to a formatted log file
-    
+    Comprehensive NTFS permission analysis tool that provides detailed access control information
+    for specified folders and their subfolders. The script utilizes parallel processing and
+    caching mechanisms for optimal performance.
+
+    Key Features:
+    - Parallel folder processing with configurable thread limits
+    - Hierarchical or grouped permission display modes
+    - SID to name resolution with caching
+    - Active Directory integration for accurate identity resolution
+    - Detailed progress tracking and statistics
+    - Performance optimizations for large directory structures
+
     Dependencies:
     - Windows PowerShell 5.1 or later
-    - RSAT AD PowerShell module (auto-installed if missing)
+    - Active Directory PowerShell module (auto-loaded if available)
     - Read access to target folders
+    - .NET Framework 4.5 or later
+
 .PARAMETER FolderPath
-    The path to the folder for which permissions will be extracted.
-    Example: "C:\Important\Data" or "\\server\share\folder"
+    The root folder path to analyze for NTFS permissions.
+    Type: String
+    Required: True
+    Example: "C:\Data" or "\\server\share"
+
 .PARAMETER MaxThreads
-    Maximum number of parallel threads to use for processing.
+    Maximum number of concurrent processing threads.
+    Type: Integer
     Default: 10
+    Required: False
+
 .PARAMETER MaxDepth
-    Maximum folder depth to traverse. Set to 0 for unlimited depth.
+    Maximum subfolder depth to traverse (0 = unlimited).
+    Type: Integer
     Default: 0
+    Required: False
+
 .PARAMETER SkipUniquenessCounting
-    Skip counting unique permissions for large directories to improve performance.
+    Bypasses permission uniqueness analysis for performance optimization.
+    Type: Switch
     Default: False
+    Required: False
+
 .PARAMETER SkipADResolution
-    Skip Active Directory SID resolution to avoid AD module dependency.
+    Disables Active Directory SID resolution.
+    Type: Switch
     Default: False
+    Required: False
+
 .PARAMETER EnableSIDDiagnostics
-    Enable detailed diagnostic logging for SID resolution attempts.
+    Enables detailed logging of SID resolution attempts.
     Type: Boolean
     Default: True
+    Required: False
+
 .PARAMETER ViewMode
-    Switch between hierarchical and grouped view modes for displaying permissions.
-    Valid values: "Hierarchy", "Group"
-    - Hierarchy: Display permissions in a folder tree structure (default)
-    - Group: Display permissions grouped by identical permission sets
+    Determines how permissions are displayed in the output.
+    Type: String
+    Valid Values: "Hierarchy", "Group"
     Default: "Hierarchy"
-    Example: -ViewMode "Group"
+    Required: False
+
 .EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Important\Data"
-    Retrieves NTFS permissions for C:\Important\Data and all subfolders
+    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Data"
+    Analyzes permissions for C:\Data and all subfolders using default settings.
+
 .EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "\\server\share\folder" -MaxThreads 20
-    Uses 20 parallel threads to process folders on a network share
+    .\Get-NTFSFolderPermissions.ps1 -FolderPath "\\server\share" -MaxThreads 20 -ViewMode "Group"
+    Analyzes a network share using 20 threads and groups identical permissions.
+
 .EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\VeryLargeFolder" -MaxDepth 3
-    Processes only folders up to 3 levels deep from the root
-.EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Data" -SkipADResolution
-    Processes permissions without attempting to resolve SIDs through Active Directory
-.EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Data" -EnableSIDDiagnostics
-    Processes permissions with detailed SID resolution logging for troubleshooting
+    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Users" -MaxDepth 2 -SkipADResolution
+    Analyzes permissions up to 2 levels deep without AD resolution.
 #>
 
 # First all using statements
