@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:23:00 UTC
+# Last Updated: 2025-03-12 22:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.13
-# Additional Info: Fixed Write-Log parameter binding issues and call sites
+# Version: 1.15.14
+# Additional Info: Fixed DirectorySecurity method call and error handling
 # =============================================================================
 
 <#
@@ -1563,8 +1563,8 @@ function Get-DirectorySecurity {
     
     try {
         # Use correct .NET method for getting directory security
-        #$dirInfo = [System.IO.DirectoryInfo]::new($Path)
-        return [System.Security.AccessControl.DirectorySecurity]::new($Path, [System.Security.AccessControl.AccessControlSections]::Access)
+        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
+        return [System.Security.AccessControl.DirectorySecurity]::new($dirInfo.FullName, [System.Security.AccessControl.AccessControlSections]::Access)
     }
     catch {
         Write-Log -Message "[DEBUG] DirectorySecurity .NET method failed: $($_.Exception.Message)" -Color "Magenta"
