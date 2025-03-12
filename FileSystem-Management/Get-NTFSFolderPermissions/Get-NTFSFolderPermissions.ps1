@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 21:32:00 UTC
+# Last Updated: 2025-03-12 21:44:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.7
-# Additional Info: Fixed Write-Log function placement and documentation
+# Version: 1.15.8
+# Additional Info: Fixed scoping issue with Write-Log function
 # =============================================================================
 
 <#
@@ -230,7 +230,7 @@ function global:Write-SafeOutput {
 }
 
 # Define Write-Log function before any usage
-function Write-Log {
+function global:Write-Log {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, Position = 0)]
