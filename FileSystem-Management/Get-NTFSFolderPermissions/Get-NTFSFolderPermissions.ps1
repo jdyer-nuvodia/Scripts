@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:20:00 UTC
+# Last Updated: 2025-03-12 23:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.17.0
-# Additional Info: Added permission inheritance tracking and directory grouping
+# Version: 1.17.1
+# Additional Info: Fixed unused variable and optimized permission grouping logic
 # =============================================================================
 
 <#
@@ -233,14 +233,22 @@ function Invoke-FolderProcessing {
         $permissionData = Get-FolderPermissions -Folder $Path
 
         if ($permissionData) {
-            $parentPath = Split-Path -Path $Path -Parent
-
             if (-not $script:PermissionGroups.ContainsKey($permissionData.PermissionHash)) {
                 $script:PermissionGroups[$permissionData.PermissionHash] = @{
                     Folders = @()
                     Permissions = $permissionData.Access
                     IsInherited = $permissionData.IsInherited
+                    ParentPaths = @{}
                 }
+            }
+
+            # Group by parent path for better organization
+            $currentParent = Split-Path -Path $Path -Parent
+            if (-not [string]::IsNullOrEmpty($currentParent)) {
+                if (-not $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths.ContainsKey($currentParent)) {
+                    $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths[$currentParent] = @()
+                }
+                $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths[$currentParent] += $Path
             }
 
             $script:PermissionGroups[$permissionData.PermissionHash].Folders += $Path
