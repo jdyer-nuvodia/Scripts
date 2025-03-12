@@ -1357,6 +1357,32 @@ function DisplayFolderPermissions {
     }
 }
 
+function Get-DirectorySecurity {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Path
+    )
+    
+    try {
+        # Create DirectoryInfo instance with proper namespace
+        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
+        
+        # Call GetAccessControl as an instance method
+        $security = $dirInfo.GetAccessControl()
+        
+        if ($null -ne $security) {
+            return $security
+        }
+        else {
+            throw "Failed to get security descriptor"
+        }
+    }
+    catch {
+        Write-Log -Message "[DEBUG] DirectorySecurity method failed: $($_.Exception.Message)" -Color "Magenta"
+        # The script appears to have a fallback mechanism using Get-Acl after this function call
+    }
+}
+
 # Main script execution
 try {
     # Build a list of all folders to process
@@ -1576,28 +1602,3 @@ finally {
     }
 } # End try-catch-finally block
 
-function Get-DirectorySecurity {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Path
-    )
-    
-    try {
-        # Create DirectoryInfo instance with proper namespace
-        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
-        
-        # Call GetAccessControl as an instance method
-        $security = $dirInfo.GetAccessControl()
-        
-        if ($null -ne $security) {
-            return $security
-        }
-        else {
-            throw "Failed to get security descriptor"
-        }
-    }
-    catch {
-        Write-Log -Message "[DEBUG] DirectorySecurity method failed: $($_.Exception.Message)" -Color "Magenta"
-        # The script appears to have a fallback mechanism using Get-Acl after this function call
-    }
-}
