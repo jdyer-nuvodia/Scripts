@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 17:31:42 UTC
+# Last Updated: 2025-03-12 17:36:15 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.1
-# Additional Info: Fixed nested Add-Type issue and corrected code flow to ensure script continues execution
+# Version: 1.14.2
+# Additional Info: Fixed GetAccessControl method compatibility for PowerShell Core environments
 # =============================================================================
 
 <#
@@ -827,10 +827,38 @@ function Get-FolderPermissions {
     )
     
     try {
-        # First try to get the ACL through .NET directly
-        $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
-        $acl = [System.Security.AccessControl.DirectorySecurity]::new()
-        $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        # Use cross-platform compatible approach to get ACLs
+        $acl = $null
+        
+        # Method 1: Try to use Get-Acl cmdlet which works in both PowerShell versions
+        try {
+            $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
+        }
+        catch {
+            Write-Log "Get-Acl failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+            
+            # Method 2: Try alternate .NET approach for PowerShell Core
+            try {
+                $dirInfo = [System.IO.DirectoryInfo]::new($FolderPath)
+                if ($PSVersionTable.PSVersion.Major -ge 6) {
+                    # PowerShell Core approach
+                    $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl($dirInfo)
+                }
+                else {
+                    # Windows PowerShell 5.1 approach
+                    $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+                    $acl = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+                }
+            }
+            catch {
+                Write-Log "Both ACL retrieval methods failed for $FolderPath : $($_.Exception.Message)" -Color "Yellow"
+                throw
+            }
+        }
+        
+        if ($null -eq $acl) {
+            throw "Could not retrieve ACL for $FolderPath"
+        }
         
         # Helper function for converting inheritance flags to string descriptions
         function Convert-InheritanceToDescription {
