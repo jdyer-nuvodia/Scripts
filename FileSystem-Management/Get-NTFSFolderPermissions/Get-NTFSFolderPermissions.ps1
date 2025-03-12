@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:32:00 UTC
+# Last Updated: 2025-03-12 23:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.19.1
-# Additional Info: Added system name and folder path to log filename
+# Version: 1.20.0
+# Additional Info: Improved output formatting and permission readability
 # =============================================================================
 
 <#
@@ -357,6 +357,22 @@ function Invoke-FolderRecursively {
     }
 }
 
+# Add function to translate permissions to human-readable format
+function Get-HumanReadablePermissions {
+    param (
+        [System.Security.AccessControl.FileSystemRights]$Rights
+    )
+    
+    switch ($Rights) {
+        { $_ -band [System.Security.AccessControl.FileSystemRights]::FullControl } { return "Full Control" }
+        { $_ -band [System.Security.AccessControl.FileSystemRights]::Modify } { return "Modify" }
+        { $_ -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute } { return "Read & Execute" }
+        { $_ -band [System.Security.AccessControl.FileSystemRights]::Read } { return "Read Only" }
+        { $_ -band [System.Security.AccessControl.FileSystemRights]::Write } { return "Write Only" }
+        default { return $Rights.ToString() }
+    }
+}
+
 # Main script execution
 try {
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
@@ -377,7 +393,7 @@ try {
 
     # Display results based on view mode
     if ($ViewMode -eq "Hierarchy") {
-        Write-Log -Message "`nFolder Hierarchy with Inheritance:" -Color "Yellow"
+        Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow"
         $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
 
         foreach ($folder in $sortedFolders) {
@@ -388,24 +404,33 @@ try {
                 continue
             }
 
-            $inheritanceStatus = if ($data.IsInherited) { "(Inherited)" } else { "(Explicit)" }
+            $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
+            Write-Log -Message "`nFolder: $folder" -Color "White"
+            Write-Log -Message "Status: $inheritanceStatus" -Color "Cyan"
 
-            Write-Log -Message "$folder $inheritanceStatus" -Color "White"
+            # Find all descendants with identical permissions
+            $identicalDescendants = $script:PermissionGroups[$data.PermissionHash].Folders | 
+                Where-Object { 
+                    $_ -ne $folder -and 
+                    $_.StartsWith($folder) -and 
+                    $script:FolderPermissions[$_].MatchesParent 
+                }
 
-            # Find child folders with identical permissions
-            $childFolders = $script:PermissionGroups[$data.PermissionHash].Folders | 
-                Where-Object { $_ -ne $folder -and (Split-Path -Parent $_) -eq $folder }
-
-            if ($childFolders) {
-                Write-Log -Message "  └─ Subfolders with identical permissions:" -Color "DarkGray"
-                foreach ($child in ($childFolders | Sort-Object)) {
-                    Write-Log -Message "     └─ $(Split-Path -Leaf $child)" -Color "DarkGray"
+            if ($identicalDescendants) {
+                Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
+                foreach ($descendant in ($identicalDescendants | Sort-Object)) {
+                    $relativePath = $descendant.Substring($folder.Length + 1)
+                    Write-Log -Message "  • $relativePath" -Color "DarkGray"
                 }
             }
 
+            Write-Log -Message "Access Rights:" -Color "White"
             $data.Access | ForEach-Object {
-                Write-Log -Message "  $($_.IdentityReference) : $($_.FileSystemRights) ($($_.AccessControlType))" -Color "Gray"
+                $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
+                $accessType = if ($_.AccessControlType -eq 'Allow') { '✓' } else { '✗' }
+                Write-Log -Message "  $accessType $($_.IdentityReference) - $permission" -Color "Gray"
             }
+            Write-Log -Message "-" * 80 -Color "DarkGray"
         }
     }
     elseif ($ViewMode -eq "Group") {
