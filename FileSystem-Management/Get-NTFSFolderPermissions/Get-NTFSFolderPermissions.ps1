@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 23:49:00 UTC
+# Last Updated: 2025-03-12 16:05:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.21
-# Additional Info: Fixed SID resolution logic to properly utilize fallback methods
+# Version: 1.12.1
+# Additional Info: Fixed PSScriptAnalyzer warning for UseFallbackSIDResolution variable scope
 # =============================================================================
 
 <#
@@ -100,6 +100,9 @@ $scriptDirectory = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Pa
 $systemName = [System.Environment]::MachineName
 $outputLogPath = [System.IO.Path]::Combine($scriptDirectory, "NTFSPermissions_${systemName}_$formattedDateTime.log")
 $OutputLog = $outputLogPath # Ensure OutputLog is set to the proper path
+
+# Initialize the global variable at script start
+$Global:UseFallbackSIDResolution = $false
 
 # Safe direct output function that works with no PowerShell cmdlets
 function Write-Output-Safe {
@@ -483,65 +486,84 @@ function Get-FolderPermissionsModule {
 # Function must be defined before first usage
 function Initialize-ADModule {
     if ($SkipADResolution) {
-        $Global:UseFallbackSIDResolution = $true
+        Set-Variable -Name UseFallbackSIDResolution -Value $true -Scope Global
         return $false
     }
 
     try {
-        # Try to load module directly first
-        if (!(Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue)) {
-            if (Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction SilentlyContinue) {
-                Import-Module ActiveDirectory -ErrorAction Stop
-                Write-Log "Successfully loaded ActiveDirectory module" "Green"
-            } else {
-                # Module not available, try to install it
-                Write-Log "ActiveDirectory module not found. Attempting installation..." "Yellow"
-                
-                # Try installing via Windows Optional Feature
-                try {
-                    $feature = Get-WindowsOptionalFeature -Online -FeatureName "Rsat.ActiveDirectory.DS-LDS.Tools" -ErrorAction Stop
-                    if ($feature) {
-                        if ($feature.State -ne "Enabled") {
-                            Write-Log "Installing RSAT AD tools..." "Cyan"
-                            Enable-WindowsOptionalFeature -Online -FeatureName "Rsat.ActiveDirectory.DS-LDS.Tools" -NoRestart -ErrorAction Stop
-                            Write-Log "RSAT AD tools installation completed. Importing module..." "Green"
-                            Import-Module ActiveDirectory -ErrorAction Stop
-                        }
-                    } else {
-                        # Try alternative installation method for Windows 10/11
-                        Write-Log "Attempting alternate RSAT installation method..." "Yellow"
-                        Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0" -ErrorAction Stop
-                        Import-Module ActiveDirectory -ErrorAction Stop
-                    }
-                } catch {
-                    Write-Log "Could not install RSAT tools: $($_.Exception.Message)" "Yellow"
-                    $Global:UseFallbackSIDResolution = $true
-                    return $false
-                }
-            }
+        # Check if module is already available
+        if (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue) {
+            Write-Log "ActiveDirectory module is already loaded" "Green"
+            return $true
         }
 
-        # Verify module loaded successfully
-        if (Get-Module -Name ActiveDirectory) {
-            # Test AD functionality
-            try {
-                $null = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-                Write-Log "Successfully verified AD domain connectivity" "Green"
-                $Global:UseFallbackSIDResolution = $false
-                return $true
-            } catch {
-                Write-Log "Not domain-joined - using alternate SID resolution" "Yellow"
-                $Global:UseFallbackSIDResolution = $true
-                return $false
-            }
-        } else {
-            Write-Log "Failed to load ActiveDirectory module" "Yellow"
+        Write-Log "Checking for ActiveDirectory module..." "Cyan"
+        
+        # Check if module exists but isn't loaded
+        if (Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction SilentlyContinue) {
+            Write-Log "Found ActiveDirectory module, attempting to import..." "Cyan"
+            Import-Module ActiveDirectory -ErrorAction Stop
+            Write-Log "Successfully loaded ActiveDirectory module" "Green"
+            return $true
+        }
+
+        # Module not found, attempt installation
+        Write-Log "ActiveDirectory module not found. Checking prerequisites..." "Yellow"
+        
+        # Check Windows edition
+        $windowsEdition = (Get-WmiObject Win32_OperatingSystem).Caption
+        Write-Log "Windows Edition: $windowsEdition" "DarkGray"
+        
+        if ($windowsEdition -match "Home") {
+            Write-Log "Windows Home edition detected. RSAT tools cannot be installed on Home editions." "Red"
+            Write-Log "Please use Windows Pro, Enterprise, or Education edition." "Red"
             $Global:UseFallbackSIDResolution = $true
             return $false
         }
-    } catch {
-        Write-Log "AD module initialization error: $($_.Exception.Message)" "Yellow"
-        $Global:UseFallbackSIDResolution = $true
+
+        Write-Log "Attempting RSAT installation via Windows Optional Features..." "Cyan"
+        try {
+            # Try Windows Optional Features method first
+            $feature = Get-WindowsOptionalFeature -Online -FeatureName "Rsat.ActiveDirectory.DS-LDS.Tools" -ErrorAction Stop
+            if ($feature) {
+                if ($feature.State -ne "Enabled") {
+                    Write-Log "Installing RSAT AD tools via Windows Optional Features..." "Cyan"
+                    Enable-WindowsOptionalFeature -Online -FeatureName "Rsat.ActiveDirectory.DS-LDS.Tools" -NoRestart -ErrorAction Stop
+                    Write-Log "RSAT AD tools installation completed. Importing module..." "Green"
+                    Import-Module ActiveDirectory -ErrorAction Stop
+                    return $true
+                }
+            }
+        }
+        catch {
+            Write-Log "Windows Optional Features method failed: $($_.Exception.Message)" "Yellow"
+        }
+
+        Write-Log "Attempting RSAT installation via Windows Capability..." "Cyan"
+        try {
+            # Try Windows Capability method (Windows 10/11)
+            Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0" -ErrorAction Stop
+            Start-Sleep -Seconds 2  # Give system time to register the module
+            Import-Module ActiveDirectory -ErrorAction Stop
+            Write-Log "Successfully installed and loaded ActiveDirectory module" "Green"
+            return $true
+        }
+        catch {
+            Write-Log "Windows Capability installation failed: $($_.Exception.Message)" "Yellow"
+            Write-Log "Manual installation steps:" "Yellow"
+            Write-Log "1. Open Settings > Apps & Features > Optional Features" "Yellow"
+            Write-Log "2. Click 'Add a feature'" "Yellow"
+            Write-Log "3. Search for 'RSAT: Active Directory Domain Services'" "Yellow"
+            Write-Log "4. Install the feature and restart if required" "Yellow"
+            Write-Log "5. Run this script again after installation" "Yellow"
+            $Global:UseFallbackSIDResolution = $true
+            return $false
+        }
+    }
+    catch {
+        Write-Log "AD module initialization error: $($_.Exception.Message)" "Red"
+        Write-Log "Stack Trace: $($_.ScriptStackTrace)" "DarkGray"
+        Set-Variable -Name UseFallbackSIDResolution -Value $true -Scope Global
         return $false
     }
 }
@@ -612,7 +634,7 @@ function Resolve-ADAccountFromSID {
         }
 
         # If in fallback mode or AD module not available, only use .NET translation
-        if ($Global:UseFallbackSIDResolution -or !(Get-Module ActiveDirectory)) {
+        if ((Get-Variable -Name UseFallbackSIDResolution -Scope Global).Value -or !(Get-Module ActiveDirectory)) {
             try {
                 $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
                 return $ntAccount.Value
