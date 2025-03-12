@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 20:52:00 UTC
+# Last Updated: 2025-03-19 20:58:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.4
-# Additional Info: Changed EnableSIDDiagnostics to boolean parameter while maintaining default enabled state
+# Version: 1.15.5
+# Additional Info: Changed ViewMode default to Hierarchy and made parameter optional
 # =============================================================================
 
 <#
@@ -45,12 +45,12 @@
     Type: Boolean
     Default: True
 .PARAMETER ViewMode
-    Specifies how to display the permissions in the output.
-    Valid values: "Group", "Hierarchy"
-    - Group: Display permissions grouped by identical permission sets (default)
-    - Hierarchy: Display permissions in a folder tree structure
-    Default: "Group"
-    Example: -ViewMode "Hierarchy"
+    Switch between hierarchical and grouped view modes for displaying permissions.
+    Valid values: "Hierarchy", "Group"
+    - Hierarchy: Display permissions in a folder tree structure (default)
+    - Group: Display permissions grouped by identical permission sets
+    Default: "Hierarchy"
+    Example: -ViewMode "Group"
 .EXAMPLE
     .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Important\Data"
     Retrieves NTFS permissions for C:\Important\Data and all subfolders
@@ -94,8 +94,8 @@ param (
     [bool]$EnableSIDDiagnostics = $true,
     
     [Parameter(Mandatory = $false)]
-    [ValidateSet("Group", "Hierarchy", ErrorMessage = "ViewMode must be either 'Group' or 'Hierarchy'")]
-    [string]$ViewMode = "Group"
+    [ValidateSet("Hierarchy", "Group")]
+    [string]$ViewMode = "Hierarchy"
 )
 
 $StartTime = [DateTime]::Now
