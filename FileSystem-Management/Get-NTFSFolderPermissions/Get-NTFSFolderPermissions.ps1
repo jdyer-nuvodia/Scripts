@@ -1364,11 +1364,9 @@ function Get-DirectorySecurity {
     )
     
     try {
-        # Create DirectoryInfo instance with proper namespace
-        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
-        
-        # Call GetAccessControl as an instance method
-        $security = $dirInfo.GetAccessControl()
+        # Use static method from Directory class instead of instance method
+        # This is more reliable across different PowerShell and .NET versions
+        $security = [System.IO.Directory]::GetAccessControl($Path)
         
         if ($null -ne $security) {
             return $security
@@ -1379,7 +1377,7 @@ function Get-DirectorySecurity {
     }
     catch {
         Write-Log -Message "[DEBUG] DirectorySecurity method failed: $($_.Exception.Message)" -Color "Magenta"
-        # The script appears to have a fallback mechanism using Get-Acl after this function call
+        return $null
     }
 }
 
