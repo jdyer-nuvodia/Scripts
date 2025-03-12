@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:31:00 UTC
+# Last Updated: 2025-03-12 23:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.19.0
-# Additional Info: Added permission inheritance deduplication to prevent duplicate entries
+# Version: 1.19.1
+# Additional Info: Added system name and folder path to log filename
 # =============================================================================
 
 <#
@@ -141,8 +141,31 @@ $script:SIDCache = @{}
 $script:ADResolutionErrors = @{}
 $script:PermissionGroups = @{}
 $script:InheritanceStatus = @{}
-$script:LogFile = Join-Path ([System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) "NTFSPermissions_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $script:ParentPermissions = @{}  # Add new script-level variables for tracking parent permissions
+
+# Add function for sanitizing path for filename
+function Get-SafeFilename {
+    param([string]$Path)
+    
+    # Replace invalid filename characters and common separators
+    $safe = $Path -replace '[\\\/\:\*\?\"\<\>\|]', '_'
+    # Replace multiple underscores with single underscore
+    $safe = $safe -replace '_{2,}', '_'
+    # Trim underscores from ends
+    $safe = $safe.Trim('_')
+    # Limit length to prevent extremely long filenames
+    if ($safe.Length -gt 50) {
+        $safe = $safe.Substring(0, 47) + '...'
+    }
+    return $safe
+}
+
+# Modify log file path creation
+$systemName = [System.Environment]::MachineName
+$safeFolderPath = Get-SafeFilename -Path $FolderPath
+$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+$script:LogFile = Join-Path ([System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) `
+    "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}.log"
 
 # Function to write log messages
 function Write-Log {
