@@ -37,10 +37,10 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$Password,
     
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory=$false)]
     [string]$FullName,
     
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory=$false)]
     [string]$Description
 )
 
