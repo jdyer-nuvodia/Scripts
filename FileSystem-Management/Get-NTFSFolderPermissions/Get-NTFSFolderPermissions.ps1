@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 5-03-06 21:06:43 UTC
+# Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 19:32:42 UTC
+# Last Updated: 2025-03-18 19:52:33 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.15.0
-# Additional Info: Added hierarchical folder view to display permissions by folder structure
+# Additional Info: Added ViewMode parameter with Group and Hierarchy options for displaying folder permissions
 # =============================================================================
 
 <#
@@ -1170,6 +1170,38 @@ try {
     # Process the results
     Write-Progress -Activity "Processing Results" -Status "Creating summary report..." -PercentComplete 100
     
+    # Define a function to display permissions with indentation
+    function DisplayFolderPermissions {
+        param(
+            $Permissions,
+            [int]$IndentLevel = 0
+        )
+        
+        if ($null -eq $Permissions -or $Permissions.Count -eq 0) {
+            $indent = " " * ($IndentLevel * 2)
+            Write-Log "$indent No permissions found or error retrieving permissions" -Color "Yellow"
+            return
+        }
+        
+        foreach ($perm in $Permissions | Sort-Object IdentityReference, FileSystemRights) {
+            $color = switch ($perm.AccessControlType) {
+                "Allow" { "White" }
+                "Deny" { "Red" }
+                default { "Yellow" }
+            }
+            
+            $inheritedText = if ($perm.IsInherited) { " (Inherited)" } else { "" }
+            $inheritanceInfo = ""
+            if ($perm.InheritanceFlags -and $perm.InheritanceFlags -ne "None") {
+                $inheritanceInfo = " [$($perm.InheritanceFlags)]"
+            }
+            
+            $indent = " " * ($IndentLevel * 2)
+            $permissionLine = "$indent$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo"
+            Write-Log $permissionLine -Color $color
+        }
+    }
+    
     # Display the permissions based on the selected view mode
     if ($ViewMode -eq "Group") {
         # Original grouped view - Group folders by permission hash to identify identical sets
@@ -1285,42 +1317,6 @@ try {
             Write-Log "(Root)" -Color "White"
             DisplayFolderPermissions -Permissions $rootFolder.Permissions -IndentLevel 1
         }
-        
-        # Define a function to display permissions with indentation
-        function DisplayFolderPermissions {
-            param(
-                $Permissions,
-                [int]$IndentLevel = 0
-            )
-            
-            if ($null -eq $Permissions -or $Permissions.Count -eq 0) {
-                $indent = " " * ($IndentLevel * 2)
-                Write-Log "$indent No permissions found or error retrieving permissions" -Color "Yellow"
-                return
-            }
-            
-            foreach ($perm in $Permissions | Sort-Object IdentityReference, FileSystemRights) {
-                $color = switch ($perm.AccessControlType) {
-                    "Allow" { "White" }
-                    "Deny" { "Red" }
-                    default { "Yellow" }
-                }
-                
-                $inheritedText = if ($perm.IsInherited) { " (Inherited)" } else { "" }
-                $inheritanceInfo = ""
-                if ($perm.InheritanceFlags -and $perm.InheritanceFlags -ne "None") {
-                    $inheritanceInfo = " [$($perm.InheritanceFlags)]"
-                }
-                
-                $indent = " " * ($IndentLevel * 2)
-                $permissionLine = "$indent$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo"
-                Write-Log $permissionLine -Color $color
-            }
-        }
-        
-        # Create a hierarchical structure
-        $currentLevel = 0
-        $processedPaths = @($basePath)
         
         # Process each folder except the root (already displayed)
         foreach ($folderResult in $sortedFolders | Where-Object { $_.FolderPath -ne $basePath }) {
