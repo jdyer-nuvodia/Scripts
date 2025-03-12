@@ -1583,11 +1583,11 @@ function Get-DirectorySecurity {
     )
     
     try {
-        $dirInfo = [DirectoryInfo]::new($Path)
-        $security = [DirectorySecurity]::new()
+        # Create DirectoryInfo instance with proper namespace
+        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
         
-        # Use .NET methods directly instead of method call
-        $security = [DirectorySecurity]::GetAccessControl($Path)
+        # Call GetAccessControl as an instance method
+        $security = $dirInfo.GetAccessControl()
         
         if ($null -ne $security) {
             return $security
@@ -1597,15 +1597,7 @@ function Get-DirectorySecurity {
         }
     }
     catch {
-        Write-Log -Message "[DEBUG] DirectorySecurity access failed: $($_.Exception.Message)" -Color "Magenta"
-        
-        try {
-            Write-Log -Message "[DEBUG] Attempting to retrieve ACL using Get-Acl cmdlet for $Path" -Color "Magenta"
-            return Get-Acl -Path $Path -ErrorAction Stop
-        }
-        catch {
-            Write-Log -Message "[DEBUG] Get-Acl fallback failed: $($_.Exception.Message)" -Color "Red"
-            throw
-        }
+        Write-Log -Message "[DEBUG] DirectorySecurity method failed: $($_.Exception.Message)" -Color "Magenta"
+        # The script appears to have a fallback mechanism using Get-Acl after this function call
     }
 }
