@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 16:05:00 UTC
+# Last Updated: 2025-03-12 16:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.12.1
-# Additional Info: Fixed PSScriptAnalyzer warning for UseFallbackSIDResolution variable scope
+# Version: 1.13.0
+# Additional Info: Enhanced SID resolution to work without AD module dependency
 # =============================================================================
 
 <#
@@ -103,6 +103,9 @@ $OutputLog = $outputLogPath # Ensure OutputLog is set to the proper path
 
 # Initialize the global variable at script start
 $Global:UseFallbackSIDResolution = $false
+
+# Enhanced SID cache for performance
+$Global:SIDCache = @{}
 
 # Safe direct output function that works with no PowerShell cmdlets
 function Write-Output-Safe {
@@ -485,87 +488,10 @@ function Get-FolderPermissionsModule {
 
 # Function must be defined before first usage
 function Initialize-ADModule {
-    if ($SkipADResolution) {
-        Set-Variable -Name UseFallbackSIDResolution -Value $true -Scope Global
-        return $false
-    }
-
-    try {
-        # Check if module is already available
-        if (Get-Module -Name ActiveDirectory -ErrorAction SilentlyContinue) {
-            Write-Log "ActiveDirectory module is already loaded" "Green"
-            return $true
-        }
-
-        Write-Log "Checking for ActiveDirectory module..." "Cyan"
-        
-        # Check if module exists but isn't loaded
-        if (Get-Module -ListAvailable -Name ActiveDirectory -ErrorAction SilentlyContinue) {
-            Write-Log "Found ActiveDirectory module, attempting to import..." "Cyan"
-            Import-Module ActiveDirectory -ErrorAction Stop
-            Write-Log "Successfully loaded ActiveDirectory module" "Green"
-            return $true
-        }
-
-        # Module not found, attempt installation
-        Write-Log "ActiveDirectory module not found. Checking prerequisites..." "Yellow"
-        
-        # Check Windows edition
-        $windowsEdition = (Get-WmiObject Win32_OperatingSystem).Caption
-        Write-Log "Windows Edition: $windowsEdition" "DarkGray"
-        
-        if ($windowsEdition -match "Home") {
-            Write-Log "Windows Home edition detected. RSAT tools cannot be installed on Home editions." "Red"
-            Write-Log "Please use Windows Pro, Enterprise, or Education edition." "Red"
-            $Global:UseFallbackSIDResolution = $true
-            return $false
-        }
-
-        Write-Log "Attempting RSAT installation via Windows Optional Features..." "Cyan"
-        try {
-            # Try Windows Optional Features method first
-            $feature = Get-WindowsOptionalFeature -Online -FeatureName "Rsat.ActiveDirectory.DS-LDS.Tools" -ErrorAction Stop
-            if ($feature) {
-                if ($feature.State -ne "Enabled") {
-                    Write-Log "Installing RSAT AD tools via Windows Optional Features..." "Cyan"
-                    Enable-WindowsOptionalFeature -Online -FeatureName "Rsat.ActiveDirectory.DS-LDS.Tools" -NoRestart -ErrorAction Stop
-                    Write-Log "RSAT AD tools installation completed. Importing module..." "Green"
-                    Import-Module ActiveDirectory -ErrorAction Stop
-                    return $true
-                }
-            }
-        }
-        catch {
-            Write-Log "Windows Optional Features method failed: $($_.Exception.Message)" "Yellow"
-        }
-
-        Write-Log "Attempting RSAT installation via Windows Capability..." "Cyan"
-        try {
-            # Try Windows Capability method (Windows 10/11)
-            Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0" -ErrorAction Stop
-            Start-Sleep -Seconds 2  # Give system time to register the module
-            Import-Module ActiveDirectory -ErrorAction Stop
-            Write-Log "Successfully installed and loaded ActiveDirectory module" "Green"
-            return $true
-        }
-        catch {
-            Write-Log "Windows Capability installation failed: $($_.Exception.Message)" "Yellow"
-            Write-Log "Manual installation steps:" "Yellow"
-            Write-Log "1. Open Settings > Apps & Features > Optional Features" "Yellow"
-            Write-Log "2. Click 'Add a feature'" "Yellow"
-            Write-Log "3. Search for 'RSAT: Active Directory Domain Services'" "Yellow"
-            Write-Log "4. Install the feature and restart if required" "Yellow"
-            Write-Log "5. Run this script again after installation" "Yellow"
-            $Global:UseFallbackSIDResolution = $true
-            return $false
-        }
-    }
-    catch {
-        Write-Log "AD module initialization error: $($_.Exception.Message)" "Red"
-        Write-Log "Stack Trace: $($_.ScriptStackTrace)" "DarkGray"
-        Set-Variable -Name UseFallbackSIDResolution -Value $true -Scope Global
-        return $false
-    }
+    # Skip AD module initialization and go straight to fallback mode
+    Write-Log "AD module not available - using built-in SID resolution" "Yellow"
+    Set-Variable -Name UseFallbackSIDResolution -Value $true -Scope Global
+    return $false
 }
 
 # Initialize AD module at startup with retry logic
@@ -598,17 +524,17 @@ function Resolve-ADAccountFromSID {
     )
     
     try {
-        # Skip if SID resolution is disabled
-        if ($SkipADResolution) {
-            return $SID
-        }
-
         # Skip if not a valid SID format
         if (-not ($SID -match '^S-\d-\d+(-\d+)+$')) {
             return $SID
         }
 
-        # Check for static/well-known SIDs first
+        # Check cache first
+        if ($Global:SIDCache.ContainsKey($SID)) {
+            return $Global:SIDCache[$SID]
+        }
+
+        # Well-known SIDs mapping
         $wellKnownSIDs = @{
             'S-1-0'='Null Authority'
             'S-1-0-0'='Nobody'
@@ -620,6 +546,24 @@ function Resolve-ADAccountFromSID {
             'S-1-3'='Creator Authority'
             'S-1-3-0'='Creator Owner'
             'S-1-3-1'='Creator Group'
+            'S-1-3-2'='Creator Owner Server'
+            'S-1-3-3'='Creator Group Server'
+            'S-1-3-4'='Owner Rights'
+            'S-1-5-1'='Dialup'
+            'S-1-5-2'='Network'
+            'S-1-5-3'='Batch'
+            'S-1-5-4'='Interactive'
+            'S-1-5-6'='Service'
+            'S-1-5-7'='Anonymous'
+            'S-1-5-8'='Proxy'
+            'S-1-5-9'='Enterprise Domain Controllers'
+            'S-1-5-10'='Principal Self'
+            'S-1-5-11'='Authenticated Users'
+            'S-1-5-12'='Restricted Code'
+            'S-1-5-13'='Terminal Server Users'
+            'S-1-5-14'='Remote Interactive Logon'
+            'S-1-5-15'='This Organization'
+            'S-1-5-17'='IUSR'
             'S-1-5-18'='Local System'
             'S-1-5-19'='NT Authority\Local Service'
             'S-1-5-20'='NT Authority\Network Service'
@@ -627,54 +571,53 @@ function Resolve-ADAccountFromSID {
             'S-1-5-32-545'='BUILTIN\Users'
             'S-1-5-32-546'='BUILTIN\Guests'
             'S-1-5-32-547'='BUILTIN\Power Users'
+            'S-1-5-32-548'='BUILTIN\Account Operators'
+            'S-1-5-32-549'='BUILTIN\Server Operators'
+            'S-1-5-32-550'='BUILTIN\Print Operators'
+            'S-1-5-32-551'='BUILTIN\Backup Operators'
+            'S-1-5-32-552'='BUILTIN\Replicators'
+            'S-1-5-32-554'='BUILTIN\Pre-Windows 2000 Compatible Access'
+            'S-1-5-32-555'='BUILTIN\Remote Desktop Users'
+            'S-1-5-32-556'='BUILTIN\Network Configuration Operators'
+            'S-1-5-32-557'='BUILTIN\Incoming Forest Trust Builders'
+            'S-1-5-32-558'='BUILTIN\Performance Monitor Users'
+            'S-1-5-32-559'='BUILTIN\Performance Log Users'
+            'S-1-5-32-560'='BUILTIN\Windows Authorization Access Group'
+            'S-1-5-32-561'='BUILTIN\Terminal Server License Servers'
+            'S-1-5-32-562'='BUILTIN\Distributed COM Users'
+            'S-1-5-32-568'='BUILTIN\IIS_IUSRS'
+            'S-1-5-32-569'='BUILTIN\Cryptographic Operators'
+            'S-1-5-32-573'='BUILTIN\Event Log Readers'
+            'S-1-5-32-574'='BUILTIN\Certificate Service DCOM Access'
+            'S-1-5-80-0'='NT SERVICE\ALL SERVICES'
         }
 
         if ($wellKnownSIDs.ContainsKey($SID)) {
+            $Global:SIDCache[$SID] = $wellKnownSIDs[$SID]
             return $wellKnownSIDs[$SID]
         }
 
-        # If in fallback mode or AD module not available, only use .NET translation
-        if ((Get-Variable -Name UseFallbackSIDResolution -Scope Global).Value -or !(Get-Module ActiveDirectory)) {
-            try {
-                $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
-                return $ntAccount.Value
-            }
-            catch {
-                return $SID
-            }
-        }
-
-        # Not in fallback mode, try AD module
+        # Try .NET translation
         try {
-            $params = @{
-                Filter = "ObjectSID -eq '$SID'"
-                Properties = 'Name', 'SamAccountName'
-                ErrorAction = 'Stop'
-            }
-
-            if ($DomainController) {
-                $params['Server'] = $DomainController
-            }
-
-            $result = Get-ADObject @params
-            if ($result.SamAccountName) {
-                return $result.SamAccountName
-            }
-            return $result.Name
+            $sidObj = [System.Security.Principal.SecurityIdentifier]::new($SID)
+            $ntAccount = $sidObj.Translate([System.Security.Principal.NTAccount])
+            $Global:SIDCache[$SID] = $ntAccount.Value
+            return $ntAccount.Value
         }
         catch {
-            # AD module failed, try .NET translation as fallback
+            # If translation fails, try PInvoke as last resort
             try {
-                $ntAccount = [System.Security.Principal.SecurityIdentifier]::new($SID).Translate([System.Security.Principal.NTAccount])
-                return $ntAccount.Value
+                $accountName = [System.Security.Principal.NTAccount]::new($SID).Translate([System.Security.Principal.NTAccount]).Value
+                $Global:SIDCache[$SID] = $accountName
+                return $accountName
             }
             catch {
+                $Global:SIDCache[$SID] = $SID
                 return $SID
             }
         }
     }
     catch {
-        # Return original SID if resolution fails
         return $SID
     }
 }
