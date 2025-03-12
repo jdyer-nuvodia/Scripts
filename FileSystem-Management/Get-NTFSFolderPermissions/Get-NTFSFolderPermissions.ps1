@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 20:58:00 UTC
+# Last Updated: 2025-03-12 21:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.5
-# Additional Info: Changed ViewMode default to Hierarchy and made parameter optional
+# Version: 1.15.6
+# Additional Info: Fixed DirectorySecurity access method using correct .NET calls
 # =============================================================================
 
 <#
@@ -1384,3 +1384,50 @@ finally {
         $runspacePool.Dispose()
     }
 } # End try-catch-finally block
+
+function Get-DirectorySecurity {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    
+    try {
+        # Use correct .NET method for getting directory security
+        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
+        return [System.Security.AccessControl.DirectorySecurity]::new($Path, [System.Security.AccessControl.AccessControlSections]::Access)
+    }
+    catch {
+        Write-Log "[DEBUG] DirectorySecurity .NET method failed: $($_.Exception.Message)" -Color "Magenta"
+        try {
+            # Fallback to PowerShell cmdlet
+            Write-Log "[DEBUG] Attempting to retrieve ACL using Get-Acl cmdlet for $Path" -Color "Magenta"
+            return Get-Acl -Path $Path -ErrorAction Stop
+        }
+        catch {
+            Write-Log "[DEBUG] Get-Acl fallback failed: $($_.Exception.Message)" -Color "Red"
+            return $null
+        }
+    }
+}
+
+# Process folder permissions
+foreach ($folder in $folders) {
+    try {
+        $acl = Get-DirectorySecurity -Path $folder.FullName
+        if ($null -eq $acl) {
+            throw "Unable to retrieve access control list"
+        }
+        
+        # ...existing code...
+    }
+    catch {
+        $errorMsg = "Failed to process folder $($folder.FullName): $($_.Exception.Message)"
+        Write-Log $errorMsg -Color "Red"
+        $allResults += [PSCustomObject]@{
+            FolderPath = $folder.FullName
+            Permissions = $null
+            Success = $false
+            Error = $_.Exception.Message
+        }
+    }
+}
