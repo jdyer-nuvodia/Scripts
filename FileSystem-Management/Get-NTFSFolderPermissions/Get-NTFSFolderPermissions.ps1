@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 17:36:15 UTC
+# Last Updated: 2025-03-12 17:39:47 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.2
-# Additional Info: Fixed GetAccessControl method compatibility for PowerShell Core environments
+# Version: 1.14.3
+# Additional Info: Fixed empty permission set display in summary report
 # =============================================================================
 
 <#
@@ -916,6 +916,19 @@ function Get-FolderPermissions {
             }
         }
         
+        # Validation - ensure we have permissions, or add a placeholder
+        if ($permissions.Count -eq 0) {
+            $permissions += [PSCustomObject]@{
+                IdentityReference = "DEFAULT"
+                FileSystemRights = "Unknown - Possible Access Issue"
+                AccessControlType = "N/A"
+                IsInherited = $true
+                InheritanceFlags = "None"
+                PropagationFlags = "None"
+            }
+            Write-Log "Warning: No permissions extracted for $FolderPath - using placeholder" -Color "Yellow"
+        }
+        
         # Generate a hash of the permissions for comparison
         $sortedPermissions = $permissions | Sort-Object IdentityReference, FileSystemRights, AccessControlType
         $permissionStrings = $sortedPermissions | ForEach-Object {
@@ -1021,18 +1034,30 @@ try {
         Write-Log "Example: $folderDisplay" -Color "Cyan"
         Write-Log "-------------------------" -Color "Cyan"
         
-        # Display permissions
-        foreach ($perm in $permissions | Sort-Object IdentityReference, FileSystemRights) {
-            $color = switch ($perm.AccessControlType) {
-                "Allow" { "White" }
-                "Deny" { "Red" }
-                default { "Yellow" }
+        # Display permissions - ensure we have permissions to display
+        if ($null -eq $permissions -or $permissions.Count -eq 0) {
+            Write-Log "No permissions found or error retrieving permissions" -Color "Yellow"
+        } else {
+            # Ensure we're processing the permissions collection properly
+            foreach ($perm in $permissions | Sort-Object IdentityReference, FileSystemRights) {
+                $color = switch ($perm.AccessControlType) {
+                    "Allow" { "White" }
+                    "Deny" { "Red" }
+                    default { "Yellow" }
+                }
+                
+                $inheritedText = if ($perm.IsInherited) { " (Inherited)" } else { "" }
+                
+                # Handle null or empty inheritance flags
+                $inheritanceInfo = ""
+                if ($perm.InheritanceFlags -and $perm.InheritanceFlags -ne "None") {
+                    $inheritanceInfo = " [$($perm.InheritanceFlags)]"
+                }
+                
+                # Ensure we have a complete and properly formatted output line
+                $permissionLine = "$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo"
+                Write-Log $permissionLine -Color $color
             }
-            
-            $inheritedText = if ($perm.IsInherited) { " (Inherited)" } else { "" }
-            $inheritanceInfo = if ($perm.InheritanceFlags -ne "None") { " [$($perm.InheritanceFlags)]" } else { "" }
-            
-            Write-Log "$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo" -Color $color
         }
         
         # Increment counter
