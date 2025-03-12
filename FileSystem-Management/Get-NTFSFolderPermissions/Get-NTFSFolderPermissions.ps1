@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 2025-03-06 21:06:43 UTC
+# Created: 5-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 20:38:00 UTC
+# Last Updated: 2025-03-11 20:44:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.15.1
-# Additional Info: Fixed syntax errors in control structures and string terminators
+# Additional Info: Fixed syntax errors in DisplayFolderPermissions function placement and code block structure
 # =============================================================================
 
 <#
@@ -1135,8 +1135,39 @@ function Get-FolderPermissions {
     }
 }
 
-# Main script execution
+# Define function before its usage
+function DisplayFolderPermissions {
+    param(
+        $Permissions,
+        [int]$IndentLevel = 0
+    )
+    
+    if ($null -eq $Permissions -or $Permissions.Count -eq 0) {
+        $indent = " " * ($IndentLevel * 2)
+        Write-Log "$indent No permissions found or error retrieving permissions" -Color "Yellow"
+        return
+    }
+    
+    foreach ($perm in $Permissions | Sort-Object IdentityReference, FileSystemRights) {
+        $color = switch ($perm.AccessControlType) {
+            "Allow" { "White" }
+            "Deny" { "Red" }
+            default { "Yellow" }
+        }
+        
+        $inheritedText = if ($perm.IsInherited) { " (Inherited)" } else { "" }
+        $inheritanceInfo = ""
+        if ($perm.InheritanceFlags -and $perm.InheritanceFlags -ne "None") {
+            $inheritanceInfo = " [$($perm.InheritanceFlags)]"
+        }
+        
+        $indent = " " * ($IndentLevel * 2)
+        $permissionLine = "$indent$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo"
+        Write-Log $permissionLine -Color $color
+    }
+}
 
+# Main script execution
 try {
     # Build a list of all folders to process
     $startFolder = [System.IO.DirectoryInfo]::new($FolderPath)
@@ -1169,38 +1200,6 @@ try {
     
     # Process the results
     Write-Progress -Activity "Processing Results" -Status "Creating summary report..." -PercentComplete 100
-    
-    # Define a function to display permissions with indentation
-    function DisplayFolderPermissions {
-        param(
-            $Permissions,
-            [int]$IndentLevel = 0
-        )
-        
-        if ($null -eq $Permissions -or $Permissions.Count -eq 0) {
-            $indent = " " * ($IndentLevel * 2)
-            Write-Log "$indent No permissions found or error retrieving permissions" -Color "Yellow"
-            return
-        }
-        
-        foreach ($perm in $Permissions | Sort-Object IdentityReference, FileSystemRights) {
-            $color = switch ($perm.AccessControlType) {
-                "Allow" { "White" }
-                "Deny" { "Red" }
-                default { "Yellow" }
-            }
-            
-            $inheritedText = if ($perm.IsInherited) { " (Inherited)" } else { "" }
-            $inheritanceInfo = ""
-            if ($perm.InheritanceFlags -and $perm.InheritanceFlags -ne "None") {
-                $inheritanceInfo = " [$($perm.InheritanceFlags)]"
-            }
-            
-            $indent = " " * ($IndentLevel * 2)
-            $permissionLine = "$indent$($perm.IdentityReference): $($perm.FileSystemRights) - $($perm.AccessControlType)$inheritedText$inheritanceInfo"
-            Write-Log $permissionLine -Color $color
-        }
-    }
     
     # Display the permissions based on the selected view mode
     if ($ViewMode -eq "Group") {
@@ -1366,7 +1365,7 @@ try {
     catch {
         Write-Log "Error saving report: $($_.Exception.Message)" -Color "Red"
     }
-} # End main try block
+}
 catch {
     $errorMsg = "Critical error: $($_.Exception.Message)`n$($_.InvocationInfo.PositionMessage)"
     Write-Log $errorMsg -Color "Red"
