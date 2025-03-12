@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:49:00 UTC
+# Last Updated: 2025-03-12 23:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.21
-# Additional Info: Fixed CmdletBinding attribute placement and namespace declarations
+# Version: 1.15.22
+# Additional Info: Fixed parser error with variable delimiter in log message
 # =============================================================================
 
 <#
@@ -1393,7 +1393,8 @@ function Get-DirectorySecurity {
                 return Get-Acl -Path $Path
             }
             catch {
-                Write-Log -Message "[DEBUG] Get-Acl fallback also failed for $Path: $($_.Exception.Message)" -Color "Red"
+                # Fixed: Added curly braces around variable name to properly delimit it before the colon
+                Write-Log -Message "[DEBUG] Get-Acl fallback also failed for ${Path}: $($_.Exception.Message)" -Color "Red"
                 return $null
             }
         }
