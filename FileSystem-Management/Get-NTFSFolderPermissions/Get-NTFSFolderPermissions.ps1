@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:27:00 UTC
+# Last Updated: 2025-03-12 23:31:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.18.0
-# Additional Info: Added comprehensive logging and improved console output readability
+# Version: 1.19.0
+# Additional Info: Added permission inheritance deduplication to prevent duplicate entries
 # =============================================================================
 
 <#
@@ -142,6 +142,7 @@ $script:ADResolutionErrors = @{}
 $script:PermissionGroups = @{}
 $script:InheritanceStatus = @{}
 $script:LogFile = Join-Path ([System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) "NTFSPermissions_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$script:ParentPermissions = @{}  # Add new script-level variables for tracking parent permissions
 
 # Function to write log messages
 function Write-Log {
@@ -175,7 +176,7 @@ function Write-ProgressBar {
     Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
 }
 
-# Function to get folder permissions
+# Modify Get-FolderPermissions to check parent permissions
 function Get-FolderPermissions {
     param (
         [string]$Folder
@@ -187,9 +188,16 @@ function Get-FolderPermissions {
         $access = $acl.Access
         $isInherited = $acl.AreAccessRulesProtected -eq $false
 
+        $parentPath = Split-Path -Path $Folder -Parent
         $permissionHash = ($acl.Access | ForEach-Object { 
             "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" 
         }) -join ';'
+
+        # Check if permissions match parent
+        $matchesParent = $false
+        if ($parentPath -and $script:ParentPermissions.ContainsKey($parentPath)) {
+            $matchesParent = $script:ParentPermissions[$parentPath] -eq $permissionHash
+        }
 
         $permissionData = [PSCustomObject]@{
             Folder = $Folder
@@ -197,7 +205,11 @@ function Get-FolderPermissions {
             Access = $access
             PermissionHash = $permissionHash
             IsInherited = $isInherited
+            MatchesParent = $matchesParent
         }
+
+        # Store current folder's permissions for child comparison
+        $script:ParentPermissions[$Folder] = $permissionHash
 
         return $permissionData
     }
@@ -347,6 +359,12 @@ try {
 
         foreach ($folder in $sortedFolders) {
             $data = $script:FolderPermissions[$folder]
+
+            # Skip folders with identical permissions as parent
+            if ($data.MatchesParent) {
+                continue
+            }
+
             $inheritanceStatus = if ($data.IsInherited) { "(Inherited)" } else { "(Explicit)" }
 
             Write-Log -Message "$folder $inheritanceStatus" -Color "White"
