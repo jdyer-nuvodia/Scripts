@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:25:00 UTC
+# Last Updated: 2025-03-12 22:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.14
-# Additional Info: Fixed DirectorySecurity method call and error handling
+# Version: 1.15.15
+# Additional Info: Fixed directory security access method using FileSystemAclExtensions
 # =============================================================================
 
 <#
@@ -1562,19 +1562,19 @@ function Get-DirectorySecurity {
     )
     
     try {
-        # Use correct .NET method for getting directory security
+        # Use FileSystemAclExtensions for getting directory security
         $dirInfo = [System.IO.DirectoryInfo]::new($Path)
-        return [System.Security.AccessControl.DirectorySecurity]::new($dirInfo.FullName, [System.Security.AccessControl.AccessControlSections]::Access)
+        return [System.IO.FileSystem.AccessControl.FileSystemAclExtensions]::GetAccessControl($dirInfo)
     }
     catch {
-        Write-Log -Message "[DEBUG] DirectorySecurity .NET method failed: $($_.Exception.Message)" -Color "Magenta"
+        Write-Log -Message "[DEBUG] FileSystemAclExtensions method failed: $($_.Exception.Message)" -Color Magenta
         try {
             # Fallback to PowerShell cmdlet
-            Write-Log -Message "[DEBUG] Attempting to retrieve ACL using Get-Acl cmdlet for $Path" -Color "Magenta"
+            Write-Log -Message "[DEBUG] Attempting to retrieve ACL using Get-Acl cmdlet for $Path" -Color Magenta
             return Get-Acl -Path $Path -ErrorAction Stop
         }
         catch {
-            Write-Log -Message "[DEBUG] Get-Acl fallback failed: $($_.Exception.Message)" -Color "Red"
+            Write-Log -Message "[DEBUG] Get-Acl fallback failed: $($_.Exception.Message)" -Color Red
             return $null
         }
     }
