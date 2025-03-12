@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:43:00 UTC
+# Last Updated: 2025-03-12 22:46:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.19
-# Additional Info: Fixed Count property access and added null collection checks
+# Version: 1.15.20
+# Additional Info: Fixed GetAccessControl method availability by adding proper assembly reference
 # =============================================================================
 
 <#
@@ -71,6 +71,8 @@
 using namespace System.Security.AccessControl
 using namespace System.IO
 using namespace System.Security.Principal
+Add-Type -AssemblyName System.Security.Principal.Windows
+Add-Type -AssemblyName System.Security.AccessControl
 
 [CmdletBinding()]
 param (
@@ -1581,12 +1583,11 @@ function Get-DirectorySecurity {
     )
     
     try {
-        # Load required assembly
-        Add-Type -AssemblyName System.Security.AccessControl
+        $dirInfo = [DirectoryInfo]::new($Path)
+        $security = [DirectorySecurity]::new()
         
-        # Create DirectoryInfo object and get security descriptor directly
-        $dirInfo = [System.IO.DirectoryInfo]::new($Path)
-        $security = $dirInfo.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        # Use .NET methods directly instead of method call
+        $security = [DirectorySecurity]::GetAccessControl($Path)
         
         if ($null -ne $security) {
             return $security
@@ -1596,7 +1597,7 @@ function Get-DirectorySecurity {
         }
     }
     catch {
-        Write-Log -Message "[DEBUG] DirectorySecurity method failed: $($_.Exception.Message)" -Color "Magenta"
+        Write-Log -Message "[DEBUG] DirectorySecurity access failed: $($_.Exception.Message)" -Color "Magenta"
         
         try {
             Write-Log -Message "[DEBUG] Attempting to retrieve ACL using Get-Acl cmdlet for $Path" -Color "Magenta"
