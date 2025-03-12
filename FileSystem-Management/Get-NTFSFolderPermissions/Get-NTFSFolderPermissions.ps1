@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 22:34:00 UTC
+# Last Updated: 2025-03-12 22:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.17
-# Additional Info: Fixed DirectorySecurity GetAccessControl with proper assembly loading and SecurityAccessRule usage
+# Version: 1.15.18
+# Additional Info: Fixed Count property access and RunspacePool initialization
 # =============================================================================
 
 <#
@@ -1361,6 +1361,11 @@ try {
     $batchSize = [Math]::Min($MaxThreads, $folders.Count)
     $queue = [System.Collections.Queue]::new($folders)
     
+    # Initialize result collection and runspace pool
+    $Global:Results = [System.Collections.ArrayList]::new()
+    $Global:RunspacePool = [runspacefactory]::CreateRunspacePool(1, [Environment]::ProcessorCount)
+    $Global:RunspacePool.Open()
+    
     while ($queue.Count -gt 0) {
         $batch = @()
         for ($i = 0; $i -lt $batchSize -and $queue.Count -gt 0; $i++) {
@@ -1549,9 +1554,9 @@ catch {
 }
 finally {
     # Clean up any remaining runspaces
-    if ($runspacePool) {
-        $runspacePool.Close()
-        $runspacePool.Dispose()
+    if ($Global:RunspacePool) {
+        $Global:RunspacePool.Close()
+        $Global:RunspacePool.Dispose()
     }
 } # End try-catch-finally block
 
