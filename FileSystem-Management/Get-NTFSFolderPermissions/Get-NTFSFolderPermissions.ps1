@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:43:00 UTC
+# Last Updated: 2025-03-13 20:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.2
-# Additional Info: Fixed verbose vs console output separation
+# Version: 1.3.3
+# Additional Info: Fixed console log variable reference
 # =============================================================================
 
 # First all using statements
@@ -524,7 +524,7 @@ try {
     }
 
     # Output to console and save to file
-    $consoleOutput | Out-File -FilePath $consoleLog
+    $consoleOutput | Out-File -FilePath $script:ConsoleLogFile
     $consoleOutput | ForEach-Object { Write-Host $_ }
 
     Stop-Transcript
