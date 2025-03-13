@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:06:00 UTC
+# Last Updated: 2025-03-13 20:09:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added separate console logging and owner display
+# Version: 1.2.3
+# Additional Info: Fixed error handling and log file creation
 # =============================================================================
 
 <#
@@ -145,6 +145,8 @@ $transcriptLog = "${logBase}_transcript.log"
 $consoleLog = "${logBase}_console.log"
 
 Start-Transcript -Path $transcriptLog
+$consoleOutput = [System.Collections.ArrayList]@()
+[void]$consoleOutput.Add("Starting folder permission analysis for $FolderPath")
 Write-Host "Starting folder permission analysis for $FolderPath"
 Write-Host "Detailed analysis will be written to: $transcriptLog"
 Write-Host "Console output will be written to: $consoleLog"
@@ -544,7 +546,7 @@ try {
 
     # Output to console and save to file
     $consoleOutput | Out-File -FilePath $consoleLog
-    $consoleOutput | Write-Host
+    $consoleOutput | ForEach-Object { Write-Host $_ }
 
     Stop-Transcript
 }
