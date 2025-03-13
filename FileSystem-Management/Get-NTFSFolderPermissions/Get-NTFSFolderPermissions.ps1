@@ -148,8 +148,8 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
     
-    # Always write to log file
-    [System.IO.File]::AppendAllText($script:LogFile, "$logMessage`n")
+    # Always write to log file with UTF-8 encoding
+    [System.IO.File]::AppendAllText($script:LogFile, "$logMessage`n", [System.Text.Encoding]::UTF8)
     
     # Write to console if not suppressed
     if (-not $NoConsole) {
