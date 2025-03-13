@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 01:25:00 UTC
+# Last Updated: 2025-03-13 01:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.5
-# Additional Info: Added SID message suppression for specific SIDs
+# Version: 1.1.0
+# Additional Info: Implemented simplified SID translation using Get-ADUser and removed DC connection requirements
 # =============================================================================
 
 <#
@@ -281,90 +281,6 @@ function Convert-SidToName {
         return $script:SidCache[$Sid]
     }
     
-    try {
-        Write-Host "Translating SID: $Sid" -ForegroundColor DarkGray
-        
-        if (-not $script:DomainController) {
-            if (-not (Initialize-ADConnection)) {
-                throw "No domain controller available"
-            }
-        }
-        
-        $obj = Get-ADObject -Server $script:DomainController -Filter {ObjectSID -eq $Sid} `
-                           -Properties SamAccountName, Name -ErrorAction Stop
-        
-        if ($obj) {
-            $name = if ($obj.SamAccountName) { $obj.SamAccountName } else { $obj.Name }
-            $script:SidCache[$Sid] = $name
-            Write-Host "Translated $Sid to $name" -ForegroundColor Green
-            return $name
-        }
-        
-        Write-Host "Could not translate SID: $Sid" -ForegroundColor Yellow
-        return $Sid
-    }
-    catch {
-        Write-Host "Failed to translate SID: $Sid - $_" -ForegroundColor Red
-        return $Sid
-    }
-}
-
-# Add required module check and import
-function Initialize-ADConnection {
-    try {
-        Write-Host "Checking for Active Directory module..." -ForegroundColor Cyan
-        if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
-            Write-Host "Active Directory module not found. Installing..." -ForegroundColor Yellow
-            Install-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop
-        }
-        Import-Module ActiveDirectory -ErrorAction Stop
-        
-        # Get domain controller with retry logic
-        $maxRetries = 3
-        $retryCount = 0
-        $dc = $null
-        
-        while ($retryCount -lt $maxRetries -and -not $dc) {
-            try {
-                $dc = Get-ADDomainController -Discover -Service PrimaryDC -ErrorAction Stop
-                if ($dc) {
-                    $script:DomainController = $dc.HostName[0]
-                    Write-Host "Connected to domain controller: $($script:DomainController)" -ForegroundColor Green
-                    return $true
-                }
-            }
-            catch {
-                $retryCount++
-                Write-Host "Attempt $retryCount of $maxRetries failed - $_" -ForegroundColor Yellow
-                if ($retryCount -lt $maxRetries) {
-                    Start-Sleep -Seconds 2
-                }
-            }
-        }
-        
-        if (-not $dc) {
-            Write-Host "Failed to connect to domain controller after $maxRetries attempts" -ForegroundColor Red
-            return $false
-        }
-    }
-    catch {
-        Write-Host "Failed to initialize AD connection: $_" -ForegroundColor Red
-        return $false
-    }
-}
-
-function Convert-SidToName {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Sid
-    )
-    
-    # Check cache first
-    if ($script:SidCache.ContainsKey($Sid)) {
-        Write-Host "Using cached value for SID: $Sid -> $($script:SidCache[$Sid])" -ForegroundColor DarkGray
-        return $script:SidCache[$Sid]
-    }
-    
     # Check failed SIDs - suppress output for specific SIDs
     if ($script:FailedSids.Contains($Sid)) {
         if (-not ($script:SuppressedSids -contains $Sid)) {
@@ -373,54 +289,23 @@ function Convert-SidToName {
         return $Sid
     }
     
-    if (-not $script:DomainController) {
-        if (-not (Initialize-ADConnection)) {
-            $script:FailedSids.Add($Sid)
-            return $Sid
+    try {
+        # Try to get user by SID
+        $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
+        if ($user) {
+            $name = $user.SamAccountName
+            $script:SidCache[$Sid] = $name
+            return $name
         }
     }
-    
-    $maxRetries = 3
-    $retryCount = 0
-    
-    while ($retryCount -lt $maxRetries) {
-        try {
-            Write-Host "Attempting SID translation (attempt $($retryCount + 1)/$maxRetries): $Sid" -ForegroundColor DarkGray
-            
-            $obj = Get-ADObject -Server $script:DomainController `
-                               -Filter "ObjectSID -eq '$Sid'" `
-                               -Properties ObjectSID, SamAccountName, Name `
-                               -ErrorAction Stop
-            
-            if ($obj) {
-                $name = if ($obj.SamAccountName) { $obj.SamAccountName } else { $obj.Name }
-                $script:SidCache[$Sid] = $name
-                Write-Host "Translated $Sid to $name" -ForegroundColor Green
-                return $name
-            }
-            
-            $retryCount++
-            if ($retryCount -lt $maxRetries) {
-                Write-Host "SID not found, attempt $retryCount of $maxRetries" -ForegroundColor Yellow
-                Start-Sleep -Seconds 2
-            }
-        }
-        catch {
-            $retryCount++
-            Write-Host "Error in attempt ${retryCount}/${maxRetries}: ${_}" -ForegroundColor Yellow
-            if ($retryCount -lt $maxRetries) {
-                Start-Sleep -Seconds 2
-            }
-        }
+    catch {
+        # Add to failed SIDs cache and return original SID
+        $script:FailedSids.Add($Sid)
+        return $Sid
     }
-    
-    Write-Host "Failed to translate SID after $maxRetries attempts: $Sid" -ForegroundColor Red
-    $script:FailedSids.Add($Sid)
-    return $Sid
 }
 
 # Initialize variables
-$script:DomainController = $null
 $script:SidCache = @{}
 $script:FailedSids = New-Object System.Collections.Generic.HashSet[string]
 $script:SuppressedSids = @(
