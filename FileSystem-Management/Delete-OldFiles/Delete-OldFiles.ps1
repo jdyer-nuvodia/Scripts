@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-22 15:43:00 UTC
+# Last Updated: 2025-03-13 17:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2
-# Additional Info: Added drive space comparison before and after deletion
+# Version: 1.3.0
+# Additional Info: Added recursive directory handling and empty folder cleanup
 # =============================================================================
 
 <#
@@ -15,8 +15,8 @@
     This script performs the following actions:
     - Takes a specified folder path and number of days as input
     - Calculates cutoff date based on current date minus specified days
-    - Finds all files older than cutoff date
-    - Deletes found files and displays volume information
+    - Recursively finds all files older than cutoff date
+    - Deletes found files and empty directories
     - Shows drive space comparison before and after deletion
     - Silent operation with error suppression
 .PARAMETER folderPath
@@ -73,15 +73,24 @@ try {
     # Calculate the cutoff date
     $cutoffDate = $currentDate.AddDays(-$daysOld)
 
-    # Get all files in the folder older than the cutoff date
-    $oldFiles = Get-ChildItem -Path $folderPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+    Write-Host "`nDeleting files and directories older than $daysOld days..." -ForegroundColor Cyan
 
-    # Display deletion information
-    Write-Host "`nDeleting $($oldFiles.Count) files older than $daysOld days..." -ForegroundColor Cyan
-
-    # Delete the old files silently
+    # Delete old files recursively
+    $oldFiles = Get-ChildItem -Path $folderPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
     foreach ($file in $oldFiles) {
         Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
+    }
+
+    # Delete empty directories that are older than cutoff date
+    $oldDirs = Get-ChildItem -Path $folderPath -Directory -Recurse | 
+               Where-Object { $_.LastWriteTime -lt $cutoffDate } |
+               Sort-Object FullName -Descending # Process deepest directories first
+
+    foreach ($dir in $oldDirs) {
+        if (!(Get-ChildItem -Path $dir.FullName -Force)) {
+            Remove-Item $dir.FullName -Force -ErrorAction SilentlyContinue
+            Write-Host "Removed empty directory: $($dir.FullName)" -ForegroundColor DarkGray
+        }
     }
 
     # Get volume information after deletion
