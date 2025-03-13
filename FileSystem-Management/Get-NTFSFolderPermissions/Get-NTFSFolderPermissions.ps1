@@ -303,7 +303,7 @@ function Convert-SidToName {
         if ($user) {
             $name = $user.SamAccountName
             $script:SidCache[$Sid] = $name
-            Write-Log -Message "Successfully resolved SID on attempt $attempt: $Sid -> $name" -Color "Green" -NoConsole
+            Write-Log -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole
             return $name
         }
     }
