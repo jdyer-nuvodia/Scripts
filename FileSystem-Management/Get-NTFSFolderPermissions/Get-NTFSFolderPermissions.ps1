@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 00:59:00 UTC
+# Last Updated: 2025-03-13 01:02:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.2
-# Additional Info: Improved retry message formatting and error handling clarity
+# Version: 1.0.3
+# Additional Info: enhance error message formatting in retry logic
 # =============================================================================
 
 <#
@@ -405,7 +405,7 @@ function Convert-SidToName {
         }
         catch {
             $retryCount++
-            Write-Host "Error in attempt $retryCount/$maxRetries: $_" -ForegroundColor Yellow
+            Write-Host "Error in attempt $retryCount/$maxRetries: ${_}" -ForegroundColor Yellow
             if ($retryCount -lt $maxRetries) {
                 Start-Sleep -Seconds 2
             }
