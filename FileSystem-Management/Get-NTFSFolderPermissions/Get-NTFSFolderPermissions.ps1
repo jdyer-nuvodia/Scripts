@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:25:12 UTC
+# Last Updated: 2025-03-13 20:28:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.6
-# Additional Info: Fixed log file reference issue
+# Version: 1.2.7
+# Additional Info: Fixed Owner property access in permission groups
 # =============================================================================
 
 # First all using statements
@@ -302,6 +302,7 @@ function Invoke-FolderProcessing {
                 $script:PermissionGroups[$permissionData.PermissionHash] = @{
                     Folders = @()
                     Permissions = $permissionData.Access
+                    Owner = $permissionData.Owner
                     IsInherited = $permissionData.IsInherited
                     ParentPaths = @{}
                 }
@@ -483,7 +484,9 @@ try {
         $firstFolder = $group.Value.Folders[0]
         $inherits = (Get-Acl $firstFolder).AreAccessRulesProtected -eq $false
         $consoleOutput += "$firstFolder $(if ($inherits) {'(Inherits parent permissions)'})"
-        $consoleOutput += "Owner: $($group.Value.Owner)" # Added owner to console summary
+        if ($group.Value.Owner) {
+            $consoleOutput += "Owner: $($group.Value.Owner)"
+        }
         
         if ($group.Value.Folders.Count -gt 1) {
             $consoleOutput += "Subfolders with same permissions:"
