@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:46:00 UTC
+# Last Updated: 2025-03-13 20:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.4
+# Version: 1.3.5
 # Additional Info: Added transcript status check
 # =============================================================================
 
@@ -88,8 +88,9 @@ $systemName = $env:COMPUTERNAME
 $safeFolderPath = Get-SafeFilename -Path $FolderPath
 
 # Define log files with enhanced detailed logging
-$script:DetailedLogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_detailed.log"
-$script:ConsoleLogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_console.log"
+$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
+$script:ConsoleLogFile = "${logBase}_detailed.log"
+$script:DetailedLogFile = "${logBase}_console.log"
 
 # Start transcript to capture everything in the detailed log
 Start-Transcript -Path $script:DetailedLogFile -Force
