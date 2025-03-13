@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 00:03:00 UTC
+# Last Updated: 2025-03-13 00:48:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.21.1
-# Additional Info: Removed local SID translation fallback - DC only
+# Version: 1.22.0
+# Additional Info: Added domain controller connectivity for SID translation
 # =============================================================================
 
 <#
@@ -143,6 +143,7 @@ $script:PermissionGroups = @{}
 $script:InheritanceStatus = @{}
 $script:ParentPermissions = @{}  # Add new script-level variables for tracking parent permissions
 $script:SidCache = @{}  # Add SID translation cache
+$script:DomainController = $null
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
@@ -283,23 +284,53 @@ function Convert-SidToName {
     try {
         Write-Host "Translating SID: $Sid" -ForegroundColor DarkGray
         
-        # Only use AD translation
-        $obj = Get-ADObject -Filter {ObjectSID -eq $Sid} -Properties SamAccountName, Name -ErrorAction Stop
+        if (-not $script:DomainController) {
+            if (-not (Initialize-ADConnection)) {
+                throw "No domain controller available"
+            }
+        }
+        
+        $obj = Get-ADObject -Server $script:DomainController -Filter {ObjectSID -eq $Sid} `
+                           -Properties SamAccountName, Name -ErrorAction Stop
         
         if ($obj) {
             $name = if ($obj.SamAccountName) { $obj.SamAccountName } else { $obj.Name }
-            # Cache the result
             $script:SidCache[$Sid] = $name
             Write-Host "Translated $Sid to $name" -ForegroundColor Green
             return $name
-        } else {
-            Write-Host "Could not translate SID: $Sid" -ForegroundColor Yellow
-            return $Sid
         }
+        
+        Write-Host "Could not translate SID: $Sid" -ForegroundColor Yellow
+        return $Sid
     }
     catch {
         Write-Host "Failed to translate SID: $Sid - $_" -ForegroundColor Red
         return $Sid
+    }
+}
+
+# Add required module check and import
+function Initialize-ADConnection {
+    try {
+        Write-Host "Checking for Active Directory module..." -ForegroundColor Cyan
+        if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+            Write-Host "Active Directory module not found. Installing..." -ForegroundColor Yellow
+            Install-WindowsFeature -Name RSAT-AD-PowerShell -ErrorAction Stop
+        }
+        Import-Module ActiveDirectory -ErrorAction Stop
+        
+        # Get domain controller
+        $dc = Get-ADDomainController -Discover -ErrorAction Stop
+        if (-not $dc) {
+            throw "No domain controller found"
+        }
+        $script:DomainController = $dc.HostName[0]
+        Write-Host "Connected to domain controller: $($script:DomainController)" -ForegroundColor Green
+        return $true
+    }
+    catch {
+        Write-Host "Failed to initialize AD connection: $_" -ForegroundColor Red
+        return $false
     }
 }
 
