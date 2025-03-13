@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:39:00 UTC
+# Last Updated: 2025-03-13 20:43:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Enhanced detailed logging with full verbose output
+# Version: 1.3.2
+# Additional Info: Fixed verbose vs console output separation
 # =============================================================================
 
 # First all using statements
@@ -103,7 +103,7 @@ Write-Host "Starting folder permission analysis for $FolderPath" -ForegroundColo
 Write-Host "Detailed analysis will be written to: $script:DetailedLogFile" -ForegroundColor Yellow
 Write-Host "Console summary will be written to: $script:ConsoleLogFile" -ForegroundColor Yellow
 
-# Enhanced Write-Log function with separate detailed and console logging
+# Updated Write-Log function with proper output separation
 function Write-Log {
     param (
         [string]$Message,
@@ -112,32 +112,34 @@ function Write-Log {
         [switch]$DetailedOnly
     )
     
+    # Always create detailed log entry
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
     $callingFunction = (Get-PSCallStack)[1].FunctionName
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    # Get additional context for detailed logging
-    $memoryUsage = [System.GC]::GetTotalMemory($false)
-    $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
-    
-    # Detailed log entry with extensive information
+    # Detailed diagnostic information
     $detailedEntry = @"
 [TIMESTAMP: $timestamp UTC]
 [FUNCTION: $callingFunction]
-[THREAD_ID: $threadId]
-[MEMORY_USAGE: $memoryUsage bytes]
+[THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
+[MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
 [ACTION: $Message]
 [VARIABLES: $(Get-Variable -Scope 1 | Where-Object { $_.Name -notlike "*Preference" } | ForEach-Object { "$($_.Name)=$($_.Value)" } | Join-String -Separator "; ")]
 [CALL_STACK: $(Get-PSCallStack | Select-Object -Skip 1 | ForEach-Object { $_.Command } | Join-String -Separator " -> ")]
 ----------------------------------------
 "@
-
-    # Write to transcript (detailed log)
-    Write-Verbose $detailedEntry -Verbose
     
-    # Write to console and console collection if not suppressed
-    if (-not $NoConsole -and -not $DetailedOnly) {
-        Write-Host $Message -ForegroundColor $Color
+    # Write to transcript (detailed log) using Write-Verbose
+    Write-Verbose $detailedEntry
+    
+    # Handle console and console log output
+    if (-not $DetailedOnly) {
+        if (-not $NoConsole) {
+            # Write to console with color
+            Write-Host $Message -ForegroundColor $Color
+        }
+        
+        # Add to console collection (for console log)
         if ($Message.Trim() -ne "") {
             [void]$script:ConsoleOutputCollection.Add($Message)
         }
