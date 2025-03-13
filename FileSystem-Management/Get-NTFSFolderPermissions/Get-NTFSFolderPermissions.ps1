@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 2025-03-06 21:06:43 UTC
+# Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:09:00 UTC
+# Last Updated: 2025-03-13 20:14:41 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.3
-# Additional Info: Fixed error handling and log file creation
+# Version: 1.2.4
+# Additional Info: Fixed log creation and error handling
 # =============================================================================
 
 <#
@@ -131,12 +131,17 @@ function Get-SafeFilename {
     return $safe
 }
 
-# Modify log file path creation
-$systemName = [System.Environment]::MachineName
-$safeFolderPath = Get-SafeFilename -Path $FolderPath
-$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$script:LogFile = Join-Path ([System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) `
-    "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}.log"
+# Fix log file creation
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$systemName = $env:COMPUTERNAME
+$safeFolderPath = ($FolderPath -replace '[\\\/\:\*\?\"\<\>\|]', '_').Trim('_')
+
+$script:LogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}.log"
+$script:TranscriptFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_transcript.log"
+$script:ConsoleFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_console.log"
+
+# Start console logging
+Start-Transcript -Path $script:ConsoleFile -Force
 
 # Initialize logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -550,17 +555,9 @@ try {
 
     Stop-Transcript
 }
-catch {
-    Write-Log -Message "An error occurred during execution: $($_.Exception.Message)" -Color "Red"
-    Write-Log -Message "Error details: $($_.Exception)" -Color "Red"
-    Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Color "Red"
-}
-finally {
-    Write-Progress -Activity "Analyzing Folder Permissions" -Completed
-    Write-Log -Message "`nScript execution completed. See $script:LogFile for full details." -Color "Green"
-}
-catch {
-    Write-Log -Message "An error occurred: $($_.Exception.Message)" -Color "Red"
+catch [System.Exception] {
+    Write-Error "An error occurred: $_"
+    Write-Error $_.ScriptStackTrace
 }
 finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
