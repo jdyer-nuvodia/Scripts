@@ -534,6 +534,15 @@ try {
     }
 }
 catch {
+    Write-Log -Message "An error occurred during execution: $($_.Exception.Message)" -Color "Red"
+    Write-Log -Message "Error details: $($_.Exception)" -Color "Red"
+    Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Color "Red"
+}
+finally {
+    Write-Progress -Activity "Analyzing Folder Permissions" -Completed
+    Write-Log -Message "`nScript execution completed. See $script:LogFile for full details." -Color "Green"
+}
+catch {
     Write-Log -Message "An error occurred: $($_.Exception.Message)" -Color "Red"
 }
 finally {
