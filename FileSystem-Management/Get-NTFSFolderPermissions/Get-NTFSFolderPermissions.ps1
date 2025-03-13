@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:20:12 UTC
+# Last Updated: 2025-03-13 20:25:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.5
-# Additional Info: Consolidated logging to just two files for clarity
+# Version: 1.2.6
+# Additional Info: Fixed log file reference issue
 # =============================================================================
 
 # First all using statements
@@ -394,7 +394,7 @@ function Get-HumanReadablePermissions {
 # Main script execution
 try {
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
-    Write-Log -Message "Detailed analysis will be written to: $script:LogFile" -Color "Yellow"
+    Write-Log -Message "Detailed analysis will be written to: $script:DetailedLogFile" -Color "Yellow"
 
     # Process folders
     Invoke-FolderRecursively -Path $FolderPath
