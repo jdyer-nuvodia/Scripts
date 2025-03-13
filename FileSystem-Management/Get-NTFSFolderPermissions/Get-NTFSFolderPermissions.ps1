@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 01:17:00 UTC
+# Last Updated: 2025-03-13 01:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.4
-# Additional Info: correct variable reference in error message string interpolation
+# Version: 1.0.5
+# Additional Info: Added SID message suppression for specific SIDs
 # =============================================================================
 
 <#
@@ -365,9 +365,11 @@ function Convert-SidToName {
         return $script:SidCache[$Sid]
     }
     
-    # Check failed SIDs
+    # Check failed SIDs - suppress output for specific SIDs
     if ($script:FailedSids.Contains($Sid)) {
-        Write-Host "Skipping previously failed SID: $Sid" -ForegroundColor DarkGray
+        if (-not ($script:SuppressedSids -contains $Sid)) {
+            Write-Host "Skipping previously failed SID: $Sid" -ForegroundColor DarkGray
+        }
         return $Sid
     }
     
@@ -421,6 +423,12 @@ function Convert-SidToName {
 $script:DomainController = $null
 $script:SidCache = @{}
 $script:FailedSids = New-Object System.Collections.Generic.HashSet[string]
+$script:SuppressedSids = @(
+    'S-1-5-21-3715258189-2875184700-594828381-500',
+    'S-1-5-21-1787995930-3758959370-1315816792-13767',
+    'S-1-5-21-1787995930-3758959370-1315816792-13821',
+    'S-1-5-21-1787995930-3758959370-1315816792-17638'
+)
 
 # Function to process each folder
 function Invoke-FolderProcessing {
