@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 00:48:00 UTC
+# Last Updated: 2025-03-13 00:53:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.22.0
+# Version: 1.22.1
 # Additional Info: Added domain controller connectivity for SID translation
 # =============================================================================
 
@@ -319,20 +319,111 @@ function Initialize-ADConnection {
         }
         Import-Module ActiveDirectory -ErrorAction Stop
         
-        # Get domain controller
-        $dc = Get-ADDomainController -Discover -ErrorAction Stop
-        if (-not $dc) {
-            throw "No domain controller found"
+        # Get domain controller with retry logic
+        $maxRetries = 3
+        $retryCount = 0
+        $dc = $null
+        
+        while ($retryCount -lt $maxRetries -and -not $dc) {
+            try {
+                $dc = Get-ADDomainController -Discover -Service PrimaryDC -ErrorAction Stop
+                if ($dc) {
+                    $script:DomainController = $dc.HostName[0]
+                    Write-Host "Connected to domain controller: $($script:DomainController)" -ForegroundColor Green
+                    return $true
+                }
+            }
+            catch {
+                $retryCount++
+                if ($retryCount -lt $maxRetries) {
+                    Write-Host "Retry $retryCount of $maxRetries: Failed to connect to DC - $_" -ForegroundColor Yellow
+                    Start-Sleep -Seconds 2
+                }
+            }
         }
-        $script:DomainController = $dc.HostName[0]
-        Write-Host "Connected to domain controller: $($script:DomainController)" -ForegroundColor Green
-        return $true
+        
+        if (-not $dc) {
+            throw "Failed to connect to any domain controller after $maxRetries attempts"
+        }
     }
     catch {
         Write-Host "Failed to initialize AD connection: $_" -ForegroundColor Red
         return $false
     }
 }
+
+function Convert-SidToName {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Sid
+    )
+    
+    # Check cache first
+    if ($script:SidCache.ContainsKey($Sid)) {
+        Write-Host "Using cached value for SID: $Sid -> $($script:SidCache[$Sid])" -ForegroundColor DarkGray
+        return $script:SidCache[$Sid]
+    }
+    
+    # Check if we've already tried and failed to translate this SID
+    if ($script:FailedSids.Contains($Sid)) {
+        Write-Host "Skipping previously failed SID translation: $Sid" -ForegroundColor DarkGray
+        return $Sid
+    }
+    
+    # Initialize DC connection if needed
+    if (-not $script:DomainController) {
+        if (-not (Initialize-ADConnection)) {
+            $script:FailedSids.Add($Sid)
+            return $Sid
+        }
+    }
+    
+    # Attempt translation with retries
+    $maxRetries = 3
+    $retryCount = 0
+    
+    while ($retryCount -lt $maxRetries) {
+        try {
+            Write-Host "Attempting SID translation ($($retryCount + 1) of $maxRetries): $Sid" -ForegroundColor DarkGray
+            
+            $obj = Get-ADObject -Server $script:DomainController `
+                               -Filter "ObjectSID -eq '$Sid'" `
+                               -Properties ObjectSID, SamAccountName, Name `
+                               -ErrorAction Stop
+            
+            if ($obj) {
+                $name = if ($obj.SamAccountName) { $obj.SamAccountName } else { $obj.Name }
+                $script:SidCache[$Sid] = $name
+                Write-Host "Successfully translated $Sid to $name" -ForegroundColor Green
+                return $name
+            }
+            
+            # If we get here, the object wasn't found
+            $retryCount++
+            if ($retryCount -lt $maxRetries) {
+                Write-Host "SID not found, retrying... ($retryCount of $maxRetries)" -ForegroundColor Yellow
+                Start-Sleep -Seconds 2
+            }
+        }
+        catch {
+            $retryCount++
+            if ($retryCount -lt $maxRetries) {
+                Write-Host "Error translating SID, retrying... ($retryCount of $maxRetries): $_" -ForegroundColor Yellow
+                Start-Sleep -Seconds 2
+            }
+        }
+    }
+    
+    # If we get here, all retries failed
+    Write-Host "Failed to translate SID after $maxRetries attempts: $Sid" -ForegroundColor Red
+    $script:FailedSids.Add($Sid)
+    return $Sid
+}
+
+# Initialize variables
+$script:DomainController = $null
+$script:SidCache = @{}
+$script:FailedSids = New-Object System.Collections.Generic.HashSet[string]
 
 # Function to process each folder
 function Invoke-FolderProcessing {
