@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:52:00 UTC
+# Last Updated: 2025-03-13 20:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.5
+# Version: 1.3.6
 # Additional Info: Added transcript status check
 # =============================================================================
 
@@ -513,15 +513,15 @@ try {
         if ($group.Value.Folders.Count -gt 1) {
             $consoleOutput += "Subfolders with same permissions:"
             $group.Value.Folders | Select-Object -Skip 1 | ForEach-Object {
-                $consoleOutput += "  • $_"
+                $consoleOutput += "  - $_"
             }
         }
         
         $consoleOutput += "Access Rights:"
         $group.Value.Permissions | ForEach-Object {
-            $consoleOutput += "  ✓ $($_.IdentityReference) - $($_.FileSystemRights)"
+            $consoleOutput += "  + $($_.IdentityReference) - $($_.FileSystemRights)"
         }
-        $consoleOutput += "-"
+        $consoleOutput += "-" * 80
     }
 
     # Output to console and save to file
@@ -544,8 +544,10 @@ finally {
     
     # Only stop transcript if it's running
     if (Get-Command Get-PSHostProcessInfo -ErrorAction SilentlyContinue) {
-        $transcribing = Get-PSHostProcessInfo | Where-Object { $_.MainWindowTitle -eq $Host.UI.RawUI.WindowTitle } | 
-                       Select-Object -ExpandProperty Processes | Where-Object { $_.Transcribing }
+        $transcribing = Get-PSHostProcessInfo | 
+            Where-Object { $_.MainWindowTitle -eq $Host.UI.RawUI.WindowTitle } | 
+            Select-Object -ExpandProperty Processes | 
+            Where-Object { $_.Transcribing }
         if ($transcribing) {
             Stop-Transcript
         }
