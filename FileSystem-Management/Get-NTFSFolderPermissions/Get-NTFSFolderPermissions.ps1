@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:45:00 UTC
+# Last Updated: 2025-03-13 20:46:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.3
-# Additional Info: Fixed console log variable reference
+# Version: 1.3.4
+# Additional Info: Added transcript status check
 # =============================================================================
 
 # First all using statements
@@ -541,6 +541,12 @@ finally {
     # Save collected console output to the console log file
     $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Encoding utf8
     
-    # Stop transcript
-    Stop-Transcript
+    # Only stop transcript if it's running
+    if (Get-Command Get-PSHostProcessInfo -ErrorAction SilentlyContinue) {
+        $transcribing = Get-PSHostProcessInfo | Where-Object { $_.MainWindowTitle -eq $Host.UI.RawUI.WindowTitle } | 
+                       Select-Object -ExpandProperty Processes | Where-Object { $_.Transcribing }
+        if ($transcribing) {
+            Stop-Transcript
+        }
+    }
 }
