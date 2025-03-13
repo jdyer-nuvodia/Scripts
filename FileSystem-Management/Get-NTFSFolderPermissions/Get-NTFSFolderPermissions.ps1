@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:00:00 UTC
+# Last Updated: 2025-03-13 20:06:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.2
-# Additional Info: Added complete function documentation
+# Version: 1.3.0
+# Additional Info: Added separate console logging and owner display
 # =============================================================================
 
 <#
@@ -137,6 +137,17 @@ $safeFolderPath = Get-SafeFilename -Path $FolderPath
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $script:LogFile = Join-Path ([System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) `
     "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}.log"
+
+# Initialize logging
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$logBase = Join-Path $PSScriptRoot "NTFSPermissions_$($env:COMPUTERNAME)_$($FolderPath.Replace(':\','_').Replace('\','_'))_${timestamp}"
+$transcriptLog = "${logBase}_transcript.log"
+$consoleLog = "${logBase}_console.log"
+
+Start-Transcript -Path $transcriptLog
+Write-Host "Starting folder permission analysis for $FolderPath"
+Write-Host "Detailed analysis will be written to: $transcriptLog"
+Write-Host "Console output will be written to: $consoleLog"
 
 # Function to write log messages
 function Write-Log {
@@ -501,6 +512,41 @@ try {
             Write-Log -Message "Error: $($_.Value)" -Color "Red"
         }
     }
+
+    # Generate console output and save to separate log
+    $consoleOutput = @()
+    $consoleOutput += "Analysis Complete"
+    $consoleOutput += "Total folders processed: $($script:ProcessedFolders)"
+    $consoleOutput += "Unique permission sets: $($script:UniquePermissions.Count)"
+    $consoleOutput += "Elapsed time: $($script:ElapsedTime.ToString())"
+    $consoleOutput += ""
+    $consoleOutput += "Folder Access Permissions:"
+
+    foreach ($group in $script:PermissionGroups.GetEnumerator()) {
+        $firstFolder = $group.Value.Folders[0]
+        $inherits = (Get-Acl $firstFolder).AreAccessRulesProtected -eq $false
+        $consoleOutput += "$firstFolder $(if ($inherits) {'(Inherits parent permissions)'})"
+        $consoleOutput += "Owner: $($group.Value.Owner)" # Added owner to console summary
+        
+        if ($group.Value.Folders.Count -gt 1) {
+            $consoleOutput += "Subfolders with same permissions:"
+            $group.Value.Folders | Select-Object -Skip 1 | ForEach-Object {
+                $consoleOutput += "  • $_"
+            }
+        }
+        
+        $consoleOutput += "Access Rights:"
+        $group.Value.Permissions | ForEach-Object {
+            $consoleOutput += "  ✓ $($_.IdentityReference) - $($_.FileSystemRights)"
+        }
+        $consoleOutput += "-"
+    }
+
+    # Output to console and save to file
+    $consoleOutput | Out-File -FilePath $consoleLog
+    $consoleOutput | Write-Host
+
+    Stop-Transcript
 }
 catch {
     Write-Log -Message "An error occurred during execution: $($_.Exception.Message)" -Color "Red"
