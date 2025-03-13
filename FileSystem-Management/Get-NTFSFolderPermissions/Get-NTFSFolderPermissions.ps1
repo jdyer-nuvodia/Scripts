@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 03:15:00 UTC
+# Last Updated: 2025-03-13 20:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Fixed corrupted code and improved error handling structure
+# Version: 1.2.2
+# Additional Info: Added complete function documentation
 # =============================================================================
 
 <#
@@ -26,66 +26,35 @@
     - Active Directory integration for accurate identity resolution
     - Performance optimizations for large directory structures
 
-    Dependencies:
-    - Windows PowerShell 5.1 or later
-    - Active Directory PowerShell module (auto-loaded if available)
-    - Read access to target folders
-    - .NET Framework 4.5 or later
+.PARAMETER Path
+    The root folder path to analyze permissions for. This parameter is mandatory.
 
-.PARAMETER FolderPath
-    The root folder path to analyze for NTFS permissions.
-    Type: String
-    Required: True
-    Example: "C:\Data" or "\\server\share"
+.PARAMETER Recurse
+    Optional switch to enable recursive analysis of subfolders. Default is $true.
+
+.PARAMETER ExcludeInherited
+    Optional switch to exclude inherited permissions from the analysis. Default is $false.
+
+.PARAMETER GroupSimilar
+    Optional switch to group folders with identical permissions. Default is $true.
 
 .PARAMETER MaxThreads
-    Maximum number of concurrent processing threads.
-    Type: Integer
-    Default: 10
-    Required: False
+    Optional integer specifying maximum number of parallel processing threads. Default is 5.
 
-.PARAMETER MaxDepth
-    Maximum subfolder depth to traverse (0 = unlimited).
-    Type: Integer
-    Default: 0
-    Required: False
-
-.PARAMETER SkipUniquenessCounting
-    Bypasses permission uniqueness analysis for performance optimization.
-    Type: Switch
-    Default: False
-    Required: False
-
-.PARAMETER SkipADResolution
-    Disables Active Directory SID resolution.
-    Type: Switch
-    Default: False
-    Required: False
-
-.PARAMETER EnableSIDDiagnostics
-    Enables detailed logging of SID resolution attempts.
-    Type: Boolean
-    Default: True
-    Required: False
-
-.PARAMETER ViewMode
-    Determines how permissions are displayed in the output.
-    Type: String
-    Valid Values: "Hierarchy", "Group"
-    Default: "Hierarchy"
-    Required: False
+.PARAMETER OutputPath
+    Optional path for saving the analysis report. If not specified, uses current directory.
 
 .EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Data"
-    Analyzes permissions for C:\Data and all subfolders using default settings.
+    .\Get-NTFSFolderPermissions.ps1 -Path "C:\Temp"
+    Analyzes permissions for C:\Temp folder and subfolders with default settings.
 
 .EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "\\server\share" -MaxThreads 20 -ViewMode "Group"
-    Analyzes a network share using 20 threads and groups identical permissions.
+    .\Get-NTFSFolderPermissions.ps1 -Path "D:\Data" -Recurse $false -ExcludeInherited $true
+    Analyzes only the specified folder without recursion, showing only explicit permissions.
 
 .EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Users" -MaxDepth 2 -SkipADResolution
-    Analyzes permissions up to 2 levels deep without AD resolution.
+    .\Get-NTFSFolderPermissions.ps1 -Path "E:\Shares" -MaxThreads 10 -OutputPath "C:\Reports"
+    Analyzes permissions using 10 parallel threads and saves report to specified location.
 #>
 
 # First all using statements
