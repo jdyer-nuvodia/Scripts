@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 01:02:00 UTC
+# Last Updated: 2025-03-13 01:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.3
-# Additional Info: enhance error message formatting in retry logic
+# Version: 1.0.4
+# Additional Info: correct variable reference in error message string interpolation
 # =============================================================================
 
 <#
