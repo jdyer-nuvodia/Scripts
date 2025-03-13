@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 17:34:00 UTC
+# Last Updated: 2025-03-13 17:43:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.2
-# Additional Info: Added documentation for -Recurse parameter
+# Version: 1.4.0
+# Additional Info: Added logging functionality with timestamped system-specific log files
 # =============================================================================
 
 <#
@@ -67,6 +67,11 @@ function Show-DriveInfo {
 }
 
 try {
+    # Setup logging
+    $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+    $logFile = Join-Path $PSScriptRoot "OldFilesDeleted_$($env:COMPUTERNAME)_$timestamp.log"
+    Start-Transcript -Path $logFile -Force
+
     # Get the drive letter from the folder path
     $driveLetter = $folderPath.Substring(0, 1)
     
@@ -125,4 +130,13 @@ try {
 }
 catch {
     Write-Error "Error performing operation. Error: $_"
+}
+finally {
+    # Stop logging
+    try {
+        Stop-Transcript
+    }
+    catch {
+        Write-Error "Failed to stop transcript: $_"
+    }
 }
