@@ -2,60 +2,11 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:14:41 UTC
+# Last Updated: 2025-03-13 20:20:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.4
-# Additional Info: Fixed log creation and error handling
+# Version: 1.2.5
+# Additional Info: Consolidated logging to just two files for clarity
 # =============================================================================
-
-<#
-.SYNOPSIS
-    Advanced NTFS permission analyzer with directory grouping and inheritance tracking.
-
-.DESCRIPTION
-    Comprehensive NTFS permission analysis tool that provides detailed access control information
-    for specified folders and their subfolders, with intelligent grouping of directories that
-    share identical permissions and inheritance states.
-
-    Key Features:
-    - Groups directories with identical permissions
-    - Tracks and displays permission inheritance status
-    - Parallel folder processing with configurable thread limits
-    - Hierarchical or grouped permission display modes
-    - SID to name resolution with caching
-    - Active Directory integration for accurate identity resolution
-    - Performance optimizations for large directory structures
-
-.PARAMETER Path
-    The root folder path to analyze permissions for. This parameter is mandatory.
-
-.PARAMETER Recurse
-    Optional switch to enable recursive analysis of subfolders. Default is $true.
-
-.PARAMETER ExcludeInherited
-    Optional switch to exclude inherited permissions from the analysis. Default is $false.
-
-.PARAMETER GroupSimilar
-    Optional switch to group folders with identical permissions. Default is $true.
-
-.PARAMETER MaxThreads
-    Optional integer specifying maximum number of parallel processing threads. Default is 5.
-
-.PARAMETER OutputPath
-    Optional path for saving the analysis report. If not specified, uses current directory.
-
-.EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -Path "C:\Temp"
-    Analyzes permissions for C:\Temp folder and subfolders with default settings.
-
-.EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -Path "D:\Data" -Recurse $false -ExcludeInherited $true
-    Analyzes only the specified folder without recursion, showing only explicit permissions.
-
-.EXAMPLE
-    .\Get-NTFSFolderPermissions.ps1 -Path "E:\Shares" -MaxThreads 10 -OutputPath "C:\Reports"
-    Analyzes permissions using 10 parallel threads and saves report to specified location.
-#>
 
 # First all using statements
 using namespace System.Security.AccessControl
@@ -131,47 +82,46 @@ function Get-SafeFilename {
     return $safe
 }
 
-# Fix log file creation
+# Simplified log file creation
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
-$safeFolderPath = ($FolderPath -replace '[\\\/\:\*\?\"\<\>\|]', '_').Trim('_')
+$safeFolderPath = Get-SafeFilename -Path $FolderPath
 
-$script:LogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}.log"
-$script:TranscriptFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_transcript.log"
-$script:ConsoleFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_console.log"
+# Define just two log files
+$script:DetailedLogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_detailed.log"
+$script:ConsoleLogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_console.log"
 
-# Start console logging
-Start-Transcript -Path $script:ConsoleFile -Force
+# Start transcript to capture everything in the detailed log
+Start-Transcript -Path $script:DetailedLogFile -Force
 
-# Initialize logging
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$logBase = Join-Path $PSScriptRoot "NTFSPermissions_$($env:COMPUTERNAME)_$($FolderPath.Replace(':\','_').Replace('\','_'))_${timestamp}"
-$transcriptLog = "${logBase}_transcript.log"
-$consoleLog = "${logBase}_console.log"
+# Initialize console output collection
+$script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
+[void]$script:ConsoleOutputCollection.Add("Starting folder permission analysis for $FolderPath")
 
-Start-Transcript -Path $transcriptLog
-$consoleOutput = [System.Collections.ArrayList]@()
-[void]$consoleOutput.Add("Starting folder permission analysis for $FolderPath")
-Write-Host "Starting folder permission analysis for $FolderPath"
-Write-Host "Detailed analysis will be written to: $transcriptLog"
-Write-Host "Console output will be written to: $consoleLog"
+# Output initial messages
+Write-Host "Starting folder permission analysis for $FolderPath" -ForegroundColor Cyan
+Write-Host "Detailed analysis will be written to: $script:DetailedLogFile" -ForegroundColor Yellow
+Write-Host "Console summary will be written to: $script:ConsoleLogFile" -ForegroundColor Yellow
 
-# Function to write log messages
+# Updated Write-Log function to handle both log files
 function Write-Log {
     param (
         [string]$Message,
         [string]$Color = "White",
         [switch]$NoConsole
     )
+    
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
     
-    # Always write to log file with UTF-8 encoding
-    [System.IO.File]::AppendAllText($script:LogFile, "$logMessage`n", [System.Text.Encoding]::UTF8)
+    # Always write to transcript log (handled automatically by Start-Transcript)
     
     # Write to console if not suppressed
     if (-not $NoConsole) {
         Write-Host $Message -ForegroundColor $Color
+        
+        # Also add to console output collection for later saving to console log
+        [void]$script:ConsoleOutputCollection.Add($Message)
     }
 }
 
@@ -559,7 +509,14 @@ catch [System.Exception] {
     Write-Error "An error occurred: $_"
     Write-Error $_.ScriptStackTrace
 }
+# In the finally block, update to:
 finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
-    Write-Log -Message "`nScript execution completed. See $script:LogFile for full details." -Color "Green"
+    Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
+    
+    # Save collected console output to the console log file
+    $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Encoding utf8
+    
+    # Stop transcript
+    Stop-Transcript
 }
