@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:31:00 UTC
+# Last Updated: 2025-03-13 20:39:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Enhanced logging functionality with separate detailed and console logs
+# Version: 1.3.1
+# Additional Info: Enhanced detailed logging with full verbose output
 # =============================================================================
 
 # First all using statements
@@ -103,7 +103,7 @@ Write-Host "Starting folder permission analysis for $FolderPath" -ForegroundColo
 Write-Host "Detailed analysis will be written to: $script:DetailedLogFile" -ForegroundColor Yellow
 Write-Host "Console summary will be written to: $script:ConsoleLogFile" -ForegroundColor Yellow
 
-# Enhanced Write-Log function
+# Enhanced Write-Log function with separate detailed and console logging
 function Write-Log {
     param (
         [string]$Message,
@@ -116,11 +116,24 @@ function Write-Log {
     $callingFunction = (Get-PSCallStack)[1].FunctionName
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    # Detailed log format with additional information
-    $detailedMessage = "[$timestamp] [$callingFunction] $Message"
+    # Get additional context for detailed logging
+    $memoryUsage = [System.GC]::GetTotalMemory($false)
+    $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
     
+    # Detailed log entry with extensive information
+    $detailedEntry = @"
+[TIMESTAMP: $timestamp UTC]
+[FUNCTION: $callingFunction]
+[THREAD_ID: $threadId]
+[MEMORY_USAGE: $memoryUsage bytes]
+[ACTION: $Message]
+[VARIABLES: $(Get-Variable -Scope 1 | Where-Object { $_.Name -notlike "*Preference" } | ForEach-Object { "$($_.Name)=$($_.Value)" } | Join-String -Separator "; ")]
+[CALL_STACK: $(Get-PSCallStack | Select-Object -Skip 1 | ForEach-Object { $_.Command } | Join-String -Separator " -> ")]
+----------------------------------------
+"@
+
     # Write to transcript (detailed log)
-    Write-Verbose $detailedMessage
+    Write-Verbose $detailedEntry -Verbose
     
     # Write to console and console collection if not suppressed
     if (-not $NoConsole -and -not $DetailedOnly) {
