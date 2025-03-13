@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:28:12 UTC
+# Last Updated: 2025-03-13 20:31:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.7
-# Additional Info: Fixed Owner property access in permission groups
+# Version: 1.3.0
+# Additional Info: Enhanced logging functionality with separate detailed and console logs
 # =============================================================================
 
 # First all using statements
@@ -87,7 +87,7 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
 $safeFolderPath = Get-SafeFilename -Path $FolderPath
 
-# Define just two log files
+# Define log files with enhanced detailed logging
 $script:DetailedLogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_detailed.log"
 $script:ConsoleLogFile = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}_console.log"
 
@@ -103,25 +103,31 @@ Write-Host "Starting folder permission analysis for $FolderPath" -ForegroundColo
 Write-Host "Detailed analysis will be written to: $script:DetailedLogFile" -ForegroundColor Yellow
 Write-Host "Console summary will be written to: $script:ConsoleLogFile" -ForegroundColor Yellow
 
-# Updated Write-Log function to handle both log files
+# Enhanced Write-Log function
 function Write-Log {
     param (
         [string]$Message,
         [string]$Color = "White",
-        [switch]$NoConsole
+        [switch]$NoConsole,
+        [switch]$DetailedOnly
     )
     
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] $Message"
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $callingFunction = (Get-PSCallStack)[1].FunctionName
+    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    # Always write to transcript log (handled automatically by Start-Transcript)
+    # Detailed log format with additional information
+    $detailedMessage = "[$timestamp] [$callingFunction] $Message"
     
-    # Write to console if not suppressed
-    if (-not $NoConsole) {
+    # Write to transcript (detailed log)
+    Write-Verbose $detailedMessage
+    
+    # Write to console and console collection if not suppressed
+    if (-not $NoConsole -and -not $DetailedOnly) {
         Write-Host $Message -ForegroundColor $Color
-        
-        # Also add to console output collection for later saving to console log
-        [void]$script:ConsoleOutputCollection.Add($Message)
+        if ($Message.Trim() -ne "") {
+            [void]$script:ConsoleOutputCollection.Add($Message)
+        }
     }
 }
 
