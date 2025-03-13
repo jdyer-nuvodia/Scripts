@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 01:47:00 UTC
+# Last Updated: 2025-03-13 03:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added retry logic and detailed error reporting for SID translation
+# Version: 1.2.1
+# Additional Info: Fixed corrupted code and improved error handling structure
 # =============================================================================
 
 <#
@@ -145,187 +145,178 @@ $script:ParentPermissions = @{}  # Add new script-level variables for tracking p
 $script:SidCache = @{}  # Add SID translation cache
 $script:DomainController = $null
 $script:SidTranslationAttempts = @{}  # Add script-level variables for tracking SID translation attempts
+
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
     param([string]$Path)
-    d function for sanitizing path for filename
     # Replace invalid filename characters and common separators
     $safe = $Path -replace '[\\\/\:\*\?\"\<\>\|]', '_'
     # Replace multiple underscores with single underscore
-    $safe = $safe -replace '_{2,}', '_'rs and common separators
-    # Trim underscores from ends/\:\*\?\"\<\>\|]', '_'
-    $safe = $safe.Trim('_')rscores with single underscore
+    $safe = $safe -replace '_{2,}', '_'
+    # Trim underscores from ends
+    $safe = $safe.Trim('_')
     # Limit length to prevent extremely long filenames
-    if ($safe.Length -gt 50) {ds
+    if ($safe.Length -gt 50) {
         $safe = $safe.Substring(0, 47) + '...'
-    } Limit length to prevent extremely long filenames
-    return $safength -gt 50) {
-}       $safe = $safe.Substring(0, 47) + '...'
     }
+    return $safe
+}
+
 # Modify log file path creation
 $systemName = [System.Environment]::MachineName
 $safeFolderPath = Get-SafeFilename -Path $FolderPath
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $script:LogFile = Join-Path ([System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) `
     "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}.log"
-$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-# Function to write log messagesstem.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)) `
-function Write-Log {_${systemName}_${safeFolderPath}_${timestamp}.log"
+
+# Function to write log messages
+function Write-Log {
     param (
-        [string]$Message,essages
+        [string]$Message,
         [string]$Color = "White",
         [switch]$NoConsole
-    )   [string]$Message,
-        [string]$Color = "White",
+    )
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
     
-    # Always write to log filemat "yyyy-MM-dd HH:mm:ss"
+    # Always write to log file
     [System.IO.File]::AppendAllText($script:LogFile, "$logMessage`n")
     
     # Write to console if not suppressed
-    if (-not $NoConsole) {ndAllText($script:LogFile, "$logMessage`n")
+    if (-not $NoConsole) {
         Write-Host $Message -ForegroundColor $Color
-    } Write to console if not suppressed
-}   if (-not $NoConsole) {
-        Write-Host $Message -ForegroundColor $Color
+    }
+}
+
 # Function to display progress bar
 function Write-ProgressBar {
     param (
-        [int]$Current,progress bar
-        [int]$Total,essBar {
+        [int]$Current,
+        [int]$Total,
         [string]$Activity,
         [string]$Status
-    )   [int]$Total,
+    )
     $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
     Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
-}   )
-    $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
-# Modify Get-FolderPermissions to check parent permissionsrcentComplete $percentComplete
+}
+
+# Modify Get-FolderPermissions to check parent permissions
 function Get-FolderPermissions {
     param (
-        [string]$Folderissions to check parent permissions
-    )ion Get-FolderPermissions {
-    param (
-    try {string]$Folder
+        [string]$Folder
+    )
+    try {
         $acl = Get-Acl -Path $Folder
         $owner = $acl.Owner
         $access = $acl.Access
         $isInherited = $acl.AreAccessRulesProtected -eq $false
-        $owner = $acl.Owner
         $parentPath = Split-Path -Path $Folder -Parent
-        $permissionHash = ($acl.Access | ForEach-Object { alse
-            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" 
-        }) -join ';'= Split-Path -Path $Folder -Parent
         $permissionHash = ($acl.Access | ForEach-Object { 
-        # Check if permissions match parentileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" 
+            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" 
+        }) -join ';'
+        
+        # Check if permissions match parent
         $matchesParent = $false
         if ($parentPath -and $script:ParentPermissions.ContainsKey($parentPath)) {
             $matchesParent = $script:ParentPermissions[$parentPath] -eq $permissionHash
-        }matchesParent = $false
-        if ($parentPath -and $script:ParentPermissions.ContainsKey($parentPath)) {
-        $permissionData = [PSCustomObject]@{ermissions[$parentPath] -eq $permissionHash
+        }
+
+        $permissionData = [PSCustomObject]@{
             Folder = $Folder
             Owner  = $owner
-            Access = $accessSCustomObject]@{
+            Access = $access
             PermissionHash = $permissionHash
             IsInherited = $isInherited
             MatchesParent = $matchesParent
-        }   PermissionHash = $permissionHash
-            IsInherited = $isInherited
+        }
+
         # Store current folder's permissions for child comparison
         $script:ParentPermissions[$Folder] = $permissionHash
 
-        return $permissionData's permissions for child comparison
-    }   $script:ParentPermissions[$Folder] = $permissionHash
+        return $permissionData
+    }
     catch {
         Write-Log -Message "Error getting permissions for ${Folder}: $($_.Exception.Message)" -Color "Red"
         return $null
-    }atch {
-}       Write-Log -Message "Error getting permissions for ${Folder}: $($_.Exception.Message)" -Color "Red"
-        return $null
+    }
+}
+
 # Function to resolve SID to name
 function Resolve-SIDToName {
     param (
-        [string]$SIDe SID to name
-    )ion Resolve-SIDToName {
-    param (
+        [string]$SID
+    )
     if ($script:SIDCache.ContainsKey($SID)) {
         return $script:SIDCache[$SID]
     }
-    if ($script:SIDCache.ContainsKey($SID)) {
-    try {eturn $script:SIDCache[$SID]
+    try {
         $objSID = New-Object System.Security.Principal.SecurityIdentifier($SID)
         $objName = $objSID.Translate([System.Security.Principal.NTAccount])
         $name = $objName.Value
-        $script:SIDCache[$SID] = $namecurity.Principal.SecurityIdentifier($SID)
-        return $nameobjSID.Translate([System.Security.Principal.NTAccount])
-    }   $name = $objName.Value
-    catch {ript:SIDCache[$SID] = $name
+        $script:SIDCache[$SID] = $name
+        return $name
+    }
+    catch {
         if ($EnableSIDDiagnostics) {
             $script:ADResolutionErrors[$SID] = $_.Exception.Message
-        } {
-        return $SIDSIDDiagnostics) {
-    }       $script:ADResolutionErrors[$SID] = $_.Exception.Message
-}       }
+        }
         return $SID
+    }
+}
+
 # Add function to translate SIDs using AD lookup
+$script:SidTranslationAttempts = @{}
+$script:MaxRetries = 3
+$script:RetryDelay = 2
+
 function Convert-SidToName {
     param(
-        [Parameter(Mandatory=$true)]ng AD lookup
-        [string]$SidToName {
-    )aram(
         [Parameter(Mandatory=$true)]
+        [string]$Sid
+    )
+    
     # Check cache first
     if ($script:SidCache.ContainsKey($Sid)) {
+        Write-Log -Message "Using cached SID translation: $Sid -> $($script:SidCache[$Sid])" -Color "DarkGray" -NoConsole
         return $script:SidCache[$Sid]
-    } Check cache first
-    if ($script:SidCache.ContainsKey($Sid)) {
-    # Check failed SIDs - suppress output for specific SIDs
-    if ($script:FailedSids.Contains($Sid)) {
+    }
+    
+    # Check retry count
+    if (-not $script:SidTranslationAttempts.ContainsKey($Sid)) {
+        $script:SidTranslationAttempts[$Sid] = 0
+    }
+    elseif ($script:SidTranslationAttempts[$Sid] -ge $script:MaxRetries) {
         if (-not ($script:SuppressedSids -contains $Sid)) {
-            Write-Host "Skipping previously failed SID: $Sid" -ForegroundColor DarkGray
-        }script:SidTranslationAttempts[$Sid] -ge $script:MaxRetries) {
-        return $Sidscript:SuppressedSids -contains $Sid)) {
-    }       $errorMsg = "Maximum retry attempts ($script:MaxRetries) reached for SID: $Sid"
-            Write-Log -Message $errorMsg -Color "Yellow"
+            Write-Log -Message "Maximum retry attempts ($script:MaxRetries) reached for SID: $Sid" -Color "Yellow"
+        }
+        $script:FailedSids.Add($Sid)
+        return $Sid
+    }
+
     try {
-        # Try to get user by SID
+        $script:SidTranslationAttempts[$Sid]++
+        $attempt = $script:SidTranslationAttempts[$Sid]
+        
+        Write-Log -Message "Attempting SID translation (attempt $attempt/$script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole
+        
         $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
         if ($user) {
-            $name = $user.SamAccountNameexists
-            $script:SidCache[$Sid] = $names.ContainsKey($Sid)) {
-            return $namelationAttempts[$Sid] = 0
+            $name = $user.SamAccountName
+            $script:SidCache[$Sid] = $name
+            Write-Log -Message "Successfully resolved SID on attempt $attempt: $Sid -> $name" -Color "Green" -NoConsole
+            return $name
         }
     }
-    catch {t = 0
-        # Add to failed SIDs cache and return original SID
-        $script:FailedSids.Add($Sid)
-        return $SidTranslationAttempts[$Sid]++
-    }
-}       try {
-            $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
-# Initialize variables {
-$script:SidCache = @{}= $user.SamAccountName
-$script:FailedSids = New-Object System.Collections.Generic.HashSet[string]
-$script:SuppressedSids = @(
-    'S-1-5-21-3715258189-2875184700-594828381-500',
-    'S-1-5-21-1787995930-3758959370-1315816792-13767',esolved SID on attempt $attempt: $Sid -> $name" -Color "Green"
-    'S-1-5-21-1787995930-3758959370-1315816792-13821',
-    'S-1-5-21-1787995930-3758959370-1315816792-17638'
-)               return $name
-            }
-# Function to process each folder
-function Invoke-FolderProcessing {
-    param(  $errorDetails = @{
-        [string]$Path,$Sid
-                Attempt = $attempt
-                ErrorType = $_.Exception.GetType().Name
-                ErrorMessage = $_.Exception.Message
-                InnerError = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { "None" }
-            }
+    catch {
+        $errorDetails = @{
+            SID = $Sid
+            Attempt = $attempt
+            ErrorType = $_.Exception.GetType().Name
+            ErrorMessage = $_.Exception.Message
+            InnerError = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { "None" }
+        }
 
-            $logMessage = @"
+        $logMessage = @"
 SID Translation Error:
   SID: $($errorDetails.SID)
   Attempt: $($errorDetails.Attempt) of $script:MaxRetries
@@ -334,16 +325,15 @@ SID Translation Error:
   Inner Error: $($errorDetails.InnerError)
 "@
 
-            Write-Log -Message $logMessage -Color "Yellow"
+        Write-Log -Message $logMessage -Color "Yellow"
 
-            if ($attempt -lt $script:MaxRetries) {
-                Write-Log -Message "Retrying in $script:RetryDelay seconds..." -Color "DarkGray"
-                Start-Sleep -Seconds $script:RetryDelay
-            }
+        if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
+            Write-Log -Message "Retrying in $script:RetryDelay seconds..." -Color "DarkGray"
+            Start-Sleep -Seconds $script:RetryDelay
+            return Convert-SidToName -Sid $Sid
         }
     }
 
-    # Add to failed SIDs cache after all retries exhausted
     $script:FailedSids.Add($Sid)
     return $Sid
 }
@@ -496,19 +486,17 @@ try {
             }
 
             $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
-        $script:ADResolutionErrors.GetEnumerator() | ForEach-Object {
-            Write-Log -Message "SID: $($_.Key)" -Color "White"olor "Cyan"
-            Write-Log -Message "Error: $($_.Value)" -Color "Red"
-        }   # Find all descendants with identical permissions
-    }       $identicalDescendants = $script:PermissionGroups[$data.PermissionHash].Folders | 
-}               Where-Object { 
-catch {             $_ -ne $folder -and 
-    Write-Log -Message "An error occurred: $($_.Exception.Message)" -Color "Red"
-}                   $script:FolderPermissions[$_].MatchesParent 
-finally {       }
-    Write-Progress -Activity "Analyzing Folder Permissions" -Completed
-    Write-Log -Message "`nScript execution completed. See $script:LogFile for full details." -Color "Green"
-}               Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
+            Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan"
+
+            # Find all descendants with identical permissions
+            $identicalDescendants = $script:PermissionGroups[$data.PermissionHash].Folders | 
+                Where-Object { 
+                    $_ -ne $folder -and 
+                    $script:FolderPermissions[$_].MatchesParent 
+                }
+
+            if ($identicalDescendants.Count -gt 0) {
+                Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
                 foreach ($descendant in ($identicalDescendants | Sort-Object)) {
                     $relativePath = $descendant.Substring($folder.Length + 1)
                     Write-Log -Message "  • $relativePath" -Color "DarkGray"
