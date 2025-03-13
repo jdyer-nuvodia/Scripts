@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 20:55:00 UTC
+# Last Updated: 2025-03-13 21:00:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.3.6
-# Additional Info: Added transcript status check
+# Additional Info: Fixed transcript handling and process check
 # =============================================================================
 
 # First all using statements
@@ -543,13 +543,21 @@ finally {
     $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Encoding utf8
     
     # Only stop transcript if it's running
-    if (Get-Command Get-PSHostProcessInfo -ErrorAction SilentlyContinue) {
-        $transcribing = Get-PSHostProcessInfo | 
-            Where-Object { $_.MainWindowTitle -eq $Host.UI.RawUI.WindowTitle } | 
-            Select-Object -ExpandProperty Processes | 
-            Where-Object { $_.Transcribing }
-        if ($transcribing) {
+    $ErrorActionPreference = 'SilentlyContinue'
+    
+    # Check if transcript is running before attempting to stop it
+    $transcriptRunning = $null -ne (Get-PSCallStack | 
+        Where-Object { $_.Command -eq "Start-Transcript" } | 
+        Select-Object -First 1)
+    
+    if ($transcriptRunning) {
+        try {
             Stop-Transcript
         }
+        catch {
+            Write-Verbose "Error stopping transcript: $_"
+        }
     }
+    
+    $ErrorActionPreference = 'Stop'
 }
