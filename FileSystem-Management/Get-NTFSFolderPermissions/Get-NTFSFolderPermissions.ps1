@@ -405,7 +405,7 @@ function Convert-SidToName {
         }
         catch {
             $retryCount++
-            Write-Host "Error in attempt $retryCount/$maxRetries: ${_}" -ForegroundColor Yellow
+            Write-Host "Error in attempt ${retryCount}/${maxRetries}: ${_}" -ForegroundColor Yellow
             if ($retryCount -lt $maxRetries) {
                 Start-Sleep -Seconds 2
             }
