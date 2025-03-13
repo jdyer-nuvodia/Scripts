@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-06 21:06:43 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:36:00 UTC
+# Last Updated: 2025-03-12 00:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.20.0
-# Additional Info: Improved output formatting and permission readability
+# Version: 1.21.1
+# Additional Info: Removed local SID translation fallback - DC only
 # =============================================================================
 
 <#
@@ -142,6 +142,7 @@ $script:ADResolutionErrors = @{}
 $script:PermissionGroups = @{}
 $script:InheritanceStatus = @{}
 $script:ParentPermissions = @{}  # Add new script-level variables for tracking parent permissions
+$script:SidCache = @{}  # Add SID translation cache
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
@@ -267,6 +268,41 @@ function Resolve-SIDToName {
     }
 }
 
+# Add function to translate SIDs using AD lookup
+function Convert-SidToName {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Sid
+    )
+    
+    # Check cache first
+    if ($script:SidCache.ContainsKey($Sid)) {
+        return $script:SidCache[$Sid]
+    }
+    
+    try {
+        Write-Host "Translating SID: $Sid" -ForegroundColor DarkGray
+        
+        # Only use AD translation
+        $obj = Get-ADObject -Filter {ObjectSID -eq $Sid} -Properties SamAccountName, Name -ErrorAction Stop
+        
+        if ($obj) {
+            $name = if ($obj.SamAccountName) { $obj.SamAccountName } else { $obj.Name }
+            # Cache the result
+            $script:SidCache[$Sid] = $name
+            Write-Host "Translated $Sid to $name" -ForegroundColor Green
+            return $name
+        } else {
+            Write-Host "Could not translate SID: $Sid" -ForegroundColor Yellow
+            return $Sid
+        }
+    }
+    catch {
+        Write-Host "Failed to translate SID: $Sid - $_" -ForegroundColor Red
+        return $Sid
+    }
+}
+
 # Function to process each folder
 function Invoke-FolderProcessing {
     param(
@@ -309,7 +345,7 @@ function Invoke-FolderProcessing {
             foreach ($accessRule in $permissionData.Access) {
                 $identity = $accessRule.IdentityReference.Value
                 if ($identity -match '^S-1-') {
-                    $identity = Resolve-SIDToName -SID $identity
+                    $identity = Convert-SidToName -Sid $identity
                 }
                 Write-Log -Message "  Identity: $identity" -NoConsole
                 Write-Log -Message "  Rights: $($accessRule.FileSystemRights)" -NoConsole
