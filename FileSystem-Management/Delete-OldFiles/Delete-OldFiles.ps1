@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 17:32:00 UTC
+# Last Updated: 2025-03-13 17:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added recursive directory handling and empty folder cleanup
+# Version: 1.3.2
+# Additional Info: Added documentation for -Recurse parameter
 # =============================================================================
 
 <#
@@ -15,17 +15,23 @@
     This script performs the following actions:
     - Takes a specified folder path and number of days as input
     - Calculates cutoff date based on current date minus specified days
-    - Recursively finds all files older than cutoff date
-    - Deletes found files and empty directories
+    - Finds all files older than cutoff date
+    - Deletes found files and displays volume information
     - Shows drive space comparison before and after deletion
+    - Optional recursive deletion of files and empty directories
     - Silent operation with error suppression
 .PARAMETER folderPath
     The path to the folder containing files to be cleaned up
 .PARAMETER daysOld
     Number of days old the files must be to be deleted
+.PARAMETER Recurse
+    Optional switch to enable recursive deletion of files and empty directories
 .EXAMPLE
     .\Delete-OldFiles.ps1
     Deletes files older than 30 days from C:\windows\System32\winevt\logs
+.EXAMPLE
+    .\Delete-OldFiles.ps1 -folderPath "D:\Backups" -daysOld 90 -Recurse
+    Recursively deletes files older than 90 days from D:\Backups and its subdirectories
 .NOTES
     Security Level: Medium
     Required Permissions: Administrator rights on target folder
@@ -37,7 +43,10 @@ param(
     [string]$folderPath = "C:\windows\System32\winevt\logs",
     
     [Parameter(Mandatory=$false)]
-    [int]$daysOld = 30
+    [int]$daysOld = 30,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$Recurse
 )
 
 function Show-DriveInfo {
@@ -73,23 +82,30 @@ try {
     # Calculate the cutoff date
     $cutoffDate = $currentDate.AddDays(-$daysOld)
 
-    Write-Host "`nDeleting files and directories older than $daysOld days..." -ForegroundColor Cyan
+    Write-Host "`nDeleting files$(if($Recurse) { ' and directories' }) older than $daysOld days..." -ForegroundColor Cyan
 
-    # Delete old files recursively
-    $oldFiles = Get-ChildItem -Path $folderPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+    # Get files to delete based on recursion setting
+    $oldFiles = if ($Recurse) {
+        Get-ChildItem -Path $folderPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+    } else {
+        Get-ChildItem -Path $folderPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+    }
+
     foreach ($file in $oldFiles) {
         Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
     }
 
-    # Delete empty directories that are older than cutoff date
-    $oldDirs = Get-ChildItem -Path $folderPath -Directory -Recurse | 
-               Where-Object { $_.LastWriteTime -lt $cutoffDate } |
-               Sort-Object FullName -Descending # Process deepest directories first
+    # Only process directories if -Recurse is specified
+    if ($Recurse) {
+        $oldDirs = Get-ChildItem -Path $folderPath -Directory -Recurse | 
+                   Where-Object { $_.LastWriteTime -lt $cutoffDate } |
+                   Sort-Object FullName -Descending
 
-    foreach ($dir in $oldDirs) {
-        if (!(Get-ChildItem -Path $dir.FullName -Force)) {
-            Remove-Item $dir.FullName -Force -ErrorAction SilentlyContinue
-            Write-Host "Removed empty directory: $($dir.FullName)" -ForegroundColor DarkGray
+        foreach ($dir in $oldDirs) {
+            if (!(Get-ChildItem -Path $dir.FullName -Force)) {
+                Remove-Item $dir.FullName -Force -ErrorAction SilentlyContinue
+                Write-Host "Removed empty directory: $($dir.FullName)" -ForegroundColor DarkGray
+            }
         }
     }
 
