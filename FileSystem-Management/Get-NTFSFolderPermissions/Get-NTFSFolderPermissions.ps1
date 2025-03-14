@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 20:14:00 UTC
+# Last Updated: 2025-03-14 20:24:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.0
-# Additional Info: Consolidated logging to two files and improved debug output
+# Version: 1.6.1
+# Additional Info: Consolidated logging to two files and removed redundant logging
 # =============================================================================
 
 using namespace System.Security.AccessControl
@@ -106,32 +106,31 @@ function Write-Log {
         [string]$Message,
         [string]$Color = "White",
         [switch]$NoConsole,
-        [switch]$DetailedOnly
+        [switch]$Debug
     )
     
     try {
-        # Create timestamp and diagnostic info
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
         $callingFunction = (Get-PSCallStack)[1].FunctionName
         if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
         
-        # Format detailed log entry
-        $detailedEntry = @"
+        # Format log entry
+        $logEntry = @"
 [TIMESTAMP: $timestamp UTC]
 [FUNCTION: $callingFunction]
 [MESSAGE: $Message]
 ----------------------------------------
 "@
         
-        # Write to detailed log buffer
-        if ($script:DetailedLogBuffer.Length + $detailedEntry.Length -gt $script:DetailedLogBuffer.Capacity) {
-            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
-            $script:DetailedLogBuffer.Clear()
+        # Write to appropriate log file
+        if ($Debug) {
+            Add-Content -Path $script:DebugLogFile -Value $logEntry -ErrorAction Stop
+        } else {
+            Add-Content -Path $script:LogFile -Value $logEntry -ErrorAction Stop
         }
-        [void]$script:DetailedLogBuffer.AppendLine($detailedEntry)
         
-        # Write to console (captured by transcript)
-        if (-not $NoConsole -and -not $DetailedOnly) {
+        # Write to console if requested
+        if (-not $NoConsole) {
             Write-Host $Message -ForegroundColor $Color
         }
     }
@@ -163,7 +162,7 @@ function Get-SafeFilename {
     )
     
     try {
-        Write-Log "Sanitizing path: $Path" -DetailedOnly
+        Write-Log "Sanitizing path: $Path" -Debug
         
         # Remove invalid characters
         $safeName = $Path -replace '[\\/:*?"<>|]', '_'
@@ -179,11 +178,11 @@ function Get-SafeFilename {
             $safeName = $safeName.Substring(0, 47) + '...'
         }
         
-        Write-Log "Sanitized path result: $safeName" -DetailedOnly
+        Write-Log "Sanitized path result: $safeName" -Debug
         return $safeName
     }
     catch {
-        Write-Log "Error in Get-SafeFilename: $_" -Color Red -DetailedOnly
+        Write-Log "Error in Get-SafeFilename: $_" -Color Red -Debug
         throw
     }
 }
@@ -191,21 +190,21 @@ function Get-SafeFilename {
 # Initialize logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $computerName = $env:COMPUTERNAME
-$safePath = $FolderPath.Replace(':', '_').Replace('\', '_')
+$safePath = Get-SafeFilename -Path $FolderPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
-$summaryLog = "${logBase}.log"
-$debugLog = "${logBase}_debug.log"
+$script:LogFile = "${logBase}.log"
+$script:DebugLogFile = "${logBase}_debug.log"
 
 # Initialize log files with headers
 @"
 # =============================================================================
-# NTFS Permissions Analysis Summary
+# NTFS Permissions Analysis
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
 # Analysis Path: $FolderPath
 # =============================================================================
 
-"@ | Set-Content $summaryLog
+"@ | Set-Content $script:LogFile
 
 @"
 # =============================================================================
@@ -215,18 +214,10 @@ $debugLog = "${logBase}_debug.log"
 # Analysis Path: $FolderPath
 # =============================================================================
 
-"@ | Set-Content $debugLog
+"@ | Set-Content $script:DebugLogFile
 
-# Start transcript (captures console output)
-try {
-    if ($Host.Name -eq 'ConsoleHost') {
-        Start-Transcript -Path "${logBase}_transcript" -Force -ErrorAction Stop
-        $script:TranscriptStarted = $true
-    }
-}
-catch {
-    Write-Warning "Could not start transcript: $_"
-}
+# Remove transcript-related code and variables
+Remove-Variable -Name TranscriptStarted -Scope Script -ErrorAction SilentlyContinue
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
@@ -317,7 +308,7 @@ try {
         $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_$(Get-Date -Format 'yyyyMMdd_HHmmss').transcript"
         Start-Transcript -Path $transcriptPath -Force -ErrorAction Stop
         $script:TranscriptStarted = $true
-        Write-Log "Transcript started at $transcriptPath" -DetailedOnly
+        Write-Log "Transcript started at $transcriptPath" -Debug
     }
 }
 catch {
