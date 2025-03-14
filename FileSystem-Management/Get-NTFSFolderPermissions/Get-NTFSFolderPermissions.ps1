@@ -736,10 +736,10 @@ finally {
     try {
         # Final flush of log buffers
         if ($null -ne $script:DetailedLogBuffer -and $script:DetailedLogBuffer.Length -gt 0) {
-            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
+            Add-Content -Path $script:LogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
         }
         
-        Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
+        Write-Host "Script execution completed. See $script:LogFile for full details." -ForegroundColor Green
         
         # Clean up transcript only if we started one
         if ($script:TranscriptStarted) {
@@ -752,7 +752,7 @@ finally {
     finally {
         # Properly clear buffer references
         Remove-Variable -Name DetailedLogBuffer -Scope Script -ErrorAction SilentlyContinue
-        Remove-Variable -Name ConsoleLogBuffer -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name ConsoleOutputCollection -Scope Script -ErrorAction SilentlyContinue
         Remove-Variable -Name BuffersInitialized -Scope Script -ErrorAction SilentlyContinue
     }
 }
