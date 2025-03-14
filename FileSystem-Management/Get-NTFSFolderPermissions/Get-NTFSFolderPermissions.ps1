@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:25:00 UTC
+# Last Updated: 2025-03-14 19:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.4
-# Additional Info: Removed duplicate startup messages
+# Version: 1.4.5
+# Additional Info: Fixed Write-Log function definition order
 # =============================================================================
 
 # First all using statements
@@ -68,6 +68,60 @@ $script:SidTranslationAttempts = @{}  # Add script-level variables for tracking 
 
 # Initialize well-known SIDs
 $script:WellKnownSIDs = @{}
+
+# Initialize script-level variables
+$script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
+
+# Define Write-Log function before any usage
+function Write-Log {
+    param (
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$NoConsole,
+        [switch]$DetailedOnly
+    )
+    
+    # Always create detailed log entry
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $callingFunction = (Get-PSCallStack)[1].FunctionName
+    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
+    
+    # Create detailed diagnostic information
+    $variables = $(Get-Variable -Scope 1 | 
+        Where-Object { $_.Name -notlike "*Preference" } | 
+        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "; "
+    
+    $callStack = $(Get-PSCallStack | 
+        Select-Object -Skip 1 | 
+        ForEach-Object { $_.Command }) -join " -> "
+    
+    $detailedEntry = @"
+[TIMESTAMP: $timestamp UTC]
+[FUNCTION: $callingFunction]
+[THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
+[MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
+[ACTION: $Message]
+[VARIABLES: $variables]
+[CALL_STACK: $callStack]
+----------------------------------------
+"@
+    
+    # Write to transcript (detailed log) using Write-Verbose
+    Write-Verbose $detailedEntry
+    
+    # Handle console and console log output
+    if (-not $DetailedOnly) {
+        if (-not $NoConsole) {
+            # Write to console with color
+            Write-Host $Message -ForegroundColor $Color
+        }
+        
+        # Add to console collection (for console log)
+        if ($Message.Trim() -ne "") {
+            [void]$script:ConsoleOutputCollection.Add($Message)
+        }
+    }
+}
 
 function Initialize-WellKnownSIDs {
     # Get Administrator SID using WMI
@@ -145,57 +199,6 @@ $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
 Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
 Write-Log -Message "Detailed analysis will be written to: $script:DetailedLogFile" -Color "Yellow"
 Write-Log -Message "Console summary will be written to: $script:ConsoleLogFile" -Color "Yellow"
-
-# Updated Write-Log function with proper output separation
-function Write-Log {
-    param (
-        [string]$Message,
-        [string]$Color = "White",
-        [switch]$NoConsole,
-        [switch]$DetailedOnly
-    )
-    
-    # Always create detailed log entry
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
-    $callingFunction = (Get-PSCallStack)[1].FunctionName
-    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
-    
-    # Create detailed diagnostic information without Join-String
-    $variables = $(Get-Variable -Scope 1 | 
-        Where-Object { $_.Name -notlike "*Preference" } | 
-        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "; "
-    
-    $callStack = $(Get-PSCallStack | 
-        Select-Object -Skip 1 | 
-        ForEach-Object { $_.Command }) -join " -> "
-    
-    $detailedEntry = @"
-[TIMESTAMP: $timestamp UTC]
-[FUNCTION: $callingFunction]
-[THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
-[MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
-[ACTION: $Message]
-[VARIABLES: $variables]
-[CALL_STACK: $callStack]
-----------------------------------------
-"@
-    
-    # Write to transcript (detailed log) using Write-Verbose
-    Write-Verbose $detailedEntry
-    
-    # Handle console and console log output
-    if (-not $DetailedOnly) {
-        if (-not $NoConsole) {
-            # Write to console with color
-            Write-Host $Message -ForegroundColor $Color
-        }
-        
-        # Add to console collection (for console log)
-        if ($Message.Trim() -ne "") {
-            [void]$script:ConsoleOutputCollection.Add($Message)
-        }
-    }
-}
 
 # Function to display progress bar
 function Write-ProgressBar {
