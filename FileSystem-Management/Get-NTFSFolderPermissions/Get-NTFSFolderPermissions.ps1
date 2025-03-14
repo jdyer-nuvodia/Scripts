@@ -97,7 +97,7 @@ function Write-Log {
 "@
         
         # Write to detailed log buffer
-        if ($script:DetailedLogBuffer.Length + $detailedEntry.Length > $script:DetailedLogBuffer.Capacity) {
+        if ($script:DetailedLogBuffer.Length + $detailedEntry.Length -gt $script:DetailedLogBuffer.Capacity) {
             Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
             $script:DetailedLogBuffer.Clear()
         }
@@ -652,7 +652,7 @@ finally {
     
     try {
         # Final flush of log buffers
-        if ($script:DetailedLogBuffer.Length > 0) {
+        if ($script:DetailedLogBuffer.Length -gt 0) {
             Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString()
             $script:DetailedLogBuffer.Clear()
         }
