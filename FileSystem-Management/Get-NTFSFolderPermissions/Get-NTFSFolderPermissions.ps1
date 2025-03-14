@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 21:28:00 UTC
+# Last Updated: 2025-03-14 21:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.6
-# Additional Info: Fixed duplicate code and inconsistent variable usage
+# Version: 1.8.0
+# Additional Info: Removed ViewMode parameter to simplify interface
 # =============================================================================
 
 <#
@@ -36,9 +36,6 @@ Skips Active Directory resolution for SIDs.
 .PARAMETER EnableSIDDiagnostics
 Enables detailed diagnostics for SID resolution issues.
 
-.PARAMETER ViewMode
-Specifies how to display results: "Hierarchy" or "Group".
-
 .EXAMPLE
 .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Temp"
 Analyzes permissions on C:\Temp and outputs to logs
@@ -67,11 +64,7 @@ param (
     [switch]$SkipADResolution,
 
     [Parameter(Mandatory = $false)]
-    [bool]$EnableSIDDiagnostics = $true,
-
-    [Parameter(Mandatory = $false)]
-    [ValidateSet("Hierarchy", "Group")]
-    [string]$ViewMode = "Hierarchy"
+    [bool]$EnableSIDDiagnostics = $true
 )
 
 # Enable strict mode and error handling
@@ -551,8 +544,7 @@ try {
     Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan"
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan"
 
-    # Display results based on view mode
-if ($ViewMode -eq "Hierarchy") {
+    # Display results in hierarchy mode
     Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow"
     $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
 
@@ -607,7 +599,6 @@ if ($ViewMode -eq "Hierarchy") {
         
         Write-Log -Message "-" * 80 -Color "DarkGray"
     }
-}
 
     # Display SID resolution errors if any
     if ($EnableSIDDiagnostics -and $script:ADResolutionErrors.Count -gt 0) {
