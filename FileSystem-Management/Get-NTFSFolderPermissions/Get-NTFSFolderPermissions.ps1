@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 23:34:00 UTC
+# Last Updated: 2025-03-14 23:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.9
-# Additional Info: Fixed string length validation in Get-SafeFilename
+# Version: 1.11.0
+# Additional Info: Added timeout and cancellation support
 # =============================================================================
 
 <#
@@ -36,6 +36,12 @@ Skips Active Directory resolution for SIDs.
 .PARAMETER EnableSIDDiagnostics
 Enables detailed diagnostics for SID resolution issues.
 
+.PARAMETER TimeoutMinutes
+Maximum time in minutes to allow the script to run.
+
+.PARAMETER EnableProgressBar
+Enables progress bar display during processing.
+
 .EXAMPLE
 .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Temp"
 Analyzes permissions on C:\Temp and outputs to logs
@@ -64,7 +70,13 @@ param (
     [switch]$SkipADResolution,
 
     [Parameter(Mandatory = $false)]
-    [bool]$EnableSIDDiagnostics = $true
+    [bool]$EnableSIDDiagnostics = $true,
+
+    [Parameter(Mandatory = $false)]
+    [int]$TimeoutMinutes = 120,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$EnableProgressBar
 )
 
 # Enable strict mode and error handling
@@ -92,6 +104,10 @@ $script:ADResolutionErrors = @{}
 # Define script-level retry values for consistency
 $script:MaxRetries = 3
 $script:RetryDelay = 2
+
+# Add script-level cancellation token
+$script:cancellationTokenSource = New-Object System.Threading.CancellationTokenSource
+$script:processingTimeout = New-TimeSpan -Minutes $TimeoutMinutes
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
@@ -526,15 +542,31 @@ function Invoke-FolderRecursively {
         [int]$CurrentDepth = 0
     )
 
-    $script:TotalFolders++
-    $script:ProcessedFolders++
-
-    Invoke-FolderProcessing -Path $Path -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
-
-    if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
-        Get-ChildItem -Path $Path -Directory | ForEach-Object {
-            Invoke-FolderRecursively -Path $_.FullName -CurrentDepth ($CurrentDepth + 1)
+    try {
+        if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+            Write-Log "Processing cancelled by user" -Level 'WARNING' -Color "Yellow"
+            return
         }
+
+        if ((Get-Date) - $script:StartTime -gt $script:processingTimeout) {
+            $script:cancellationTokenSource.Cancel()
+            Write-Log "Processing timeout reached ($TimeoutMinutes minutes)" -Level 'WARNING' -Color "Yellow"
+            return
+        }
+
+        $script:TotalFolders++
+        $script:ProcessedFolders++
+
+        Invoke-FolderProcessing -Path $Path -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
+
+        if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
+            Get-ChildItem -Path $Path -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                Invoke-FolderRecursively -Path $_.FullName -CurrentDepth ($CurrentDepth + 1)
+            }
+        }
+    }
+    catch {
+        Write-Log "Error processing folder $Path : $_" -Level 'ERROR' -Color "Red"
     }
 }
 
@@ -556,6 +588,13 @@ function Get-HumanReadablePermissions {
 
 # Main script execution
 try {
+    # Register ctrl+c handler
+    $null = [Console]::TreatControlCAsInput = $true
+    Register-ObjectEvent -InputObject ([Console]) -EventName CancelKeyPress -Action {
+        $script:cancellationTokenSource.Cancel()
+        Write-Log "Cancellation requested by user (Ctrl+C)" -Level 'WARNING' -Color "Yellow"
+    } | Out-Null
+
     Initialize-WellKnownSIDs
     
     # Output initial messages in specified order - only once
@@ -565,8 +604,12 @@ try {
     Write-Log ""
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
     
-    # Process folders
+    # Process folders with timeout tracking
     Invoke-FolderRecursively -Path $FolderPath
+
+    if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+        Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
+    }
 
     # Calculate elapsed time
     $script:EndTime = Get-Date
@@ -666,5 +709,9 @@ finally {
         Remove-Variable -Name SidCache -Scope Script -ErrorAction SilentlyContinue
         Remove-Variable -Name FailedSids -Scope Script -ErrorAction SilentlyContinue
         Remove-Variable -Name SuppressedSids -Scope Script -ErrorAction SilentlyContinue
+    }
+    # Cleanup cancellation token
+    if ($script:cancellationTokenSource) {
+        $script:cancellationTokenSource.Dispose()
     }
 }
