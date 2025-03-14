@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 20:50:00 UTC
+# Last Updated: 2025-03-15 21:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.1
-# Additional Info: Fixed log initialization sequence
+# Version: 1.7.3
+# Additional Info: Fixed duplicate code, consolidated logging, and addressed undefined variables
 # =============================================================================
 
 <#
@@ -20,6 +20,24 @@ Consolidates output into two log files:
 
 .PARAMETER FolderPath
 The folder path to analyze. Must be a valid NTFS path.
+
+.PARAMETER MaxThreads
+Maximum number of concurrent threads to use for processing.
+
+.PARAMETER MaxDepth
+Maximum folder depth to analyze. 0 means no limit.
+
+.PARAMETER SkipUniquenessCounting
+Skips the counting of unique permissions to improve performance.
+
+.PARAMETER SkipADResolution
+Skips Active Directory resolution for SIDs.
+
+.PARAMETER EnableSIDDiagnostics
+Enables detailed diagnostics for SID resolution issues.
+
+.PARAMETER ViewMode
+Specifies how to display results: "Hierarchy" or "Group".
 
 .EXAMPLE
 .\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Temp"
@@ -60,67 +78,12 @@ param (
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Script-level variables
+# Script-level variables - consolidated to avoid duplication
 $script:DetailedLogBuffer = $null
 $script:TranscriptStarted = $false
-
-# Initialize logging first
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$computerName = $env:COMPUTERNAME
-$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${timestamp}"
-$script:LogFile = "${logBase}.log" 
-$script:DebugLogFile = "${logBase}_debug.log"
-
-# Initialize log files with proper headers
-@"
-# =============================================================================
-# NTFS Permissions Analysis Log
-# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
-# System: $computerName
-# Version: 1.7.1
-# =============================================================================
-
-"@ | Set-Content $script:LogFile
-
-@"
-# =============================================================================
-# NTFS Permissions Debug Log
-# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
-# System: $computerName
-# Version: 1.7.1
-# =============================================================================
-
-"@ | Set-Content $script:DebugLogFile
-
-function Initialize-LogBuffers {
-    <#
-    .SYNOPSIS
-        Initializes logging buffers for the script.
-    .DESCRIPTION
-        Creates and configures StringBuilder objects for detailed logging.
-        Sets up initial capacity to optimize memory usage.
-    #>
-    [CmdletBinding()]
-    param()
-    
-    try {
-        if ($null -eq $script:DetailedLogBuffer) {
-            $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB
-            Write-Log "Log buffers initialized successfully" -DetailedOnly
-            return $true
-        }
-        return $false
-    }
-    catch {
-        Write-Log "Failed to initialize log buffers: $_" -Color Red
-        throw
-    }
-}
-
-# Import required modules
-Import-Module ActiveDirectory -ErrorAction SilentlyContinue
-
-# Initialize global variables
+$script:SidCache = @{}  # Single standardized cache
+$script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
+$script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
 $script:TotalFolders = 0
 $script:ProcessedFolders = 0
 $script:StartTime = Get-Date
@@ -129,49 +92,14 @@ $script:ElapsedTime = $null
 $script:FolderPermissions = @{}
 $script:UniquePermissions = @{}
 $script:PermissionGroups = @{}
-$script:ADObjectCache = @{}
-$script:SIDCache = @{}
-$script:ADResolutionErrors = @{}
-$script:PermissionGroups = @{}
 $script:InheritanceStatus = @{}
-$script:ParentPermissions = @{}  # Add new script-level variables for tracking parent permissions
-$script:SidCache = @{}  # Add SID translation cache
-$script:DomainController = $null
-$script:SidTranslationAttempts = @{}  # Add script-level variables for tracking SID translation attempts
-
-# Initialize well-known SIDs
+$script:ParentPermissions = @{}
+$script:SidTranslationAttempts = @{}
 $script:WellKnownSIDs = @{}
-
-# Initialize script-level variables
-$script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB initial capacity
-$script:TranscriptStarted = $false
-
-# Define Write-Log function before any usage
-function Write-Log {
-    param (
-        [string]$Message,
-        [string]$Color = "White",
-        [switch]$NoConsole,
-        [switch]$Debug
-    )
-    
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
-    $callingFunction = (Get-PSCallStack)[1].FunctionName
-    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
-    
-    $logEntry = "[TIMESTAMP: $timestamp]`n[FUNCTION: $callingFunction]`n[MESSAGE: $Message]`n----------------------------------------`n"
-    
-    # Write to appropriate log file
-    if ($Debug) {
-        Add-Content -Path $script:DebugLogFile -Value $logEntry
-    } else {
-        Add-Content -Path $script:LogFile -Value $logEntry
-    }
-    
-    if (-not $NoConsole) {
-        Write-Host $Message -ForegroundColor $Color
-    }
-}
+$script:ADResolutionErrors = @{}
+# Define missing variables referenced in code
+$script:MaxRetries = 3
+$script:RetryDelay = 2
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
@@ -196,8 +124,6 @@ function Get-SafeFilename {
     )
     
     try {
-        Write-Log "Sanitizing path: $Path" -Debug
-        
         # Remove invalid characters
         $safeName = $Path -replace '[\\/:*?"<>|]', '_'
         
@@ -212,27 +138,20 @@ function Get-SafeFilename {
             $safeName = $safeName.Substring(0, 47) + '...'
         }
         
-        Write-Log "Sanitized path result: $safeName" -Debug
         return $safeName
     }
     catch {
-        Write-Log "Error in Get-SafeFilename: $_" -Color Red -Debug
-        throw
+        throw $_
     }
 }
 
-# Initialize logging with consolidated files
+# Consolidated log initialization - single approach
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $computerName = $env:COMPUTERNAME
 $safePath = Get-SafeFilename -Path $FolderPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
-$script:LogFile = "${logBase}.log" 
+$script:LogFile = "${logBase}.log"
 $script:DebugLogFile = "${logBase}_debug.log"
-
-# Remove old logging variables
-Remove-Variable -Name TranscriptFile -ErrorAction SilentlyContinue
-Remove-Variable -Name DetailedLogFile -ErrorAction SilentlyContinue
-Remove-Variable -Name ConsoleLogFile -ErrorAction SilentlyContinue
 
 # Initialize log files with proper headers
 @"
@@ -241,7 +160,7 @@ Remove-Variable -Name ConsoleLogFile -ErrorAction SilentlyContinue
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
 # Analysis Path: $FolderPath
-# Version: 1.7.0
+# Version: 1.7.3
 # =============================================================================
 
 "@ | Set-Content $script:LogFile
@@ -252,13 +171,83 @@ Remove-Variable -Name ConsoleLogFile -ErrorAction SilentlyContinue
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
 # Analysis Path: $FolderPath
-# Version: 1.7.0
+# Version: 1.7.3
 # =============================================================================
 
 "@ | Set-Content $script:DebugLogFile
 
-# Remove transcript-related code and variables
-Remove-Variable -Name TranscriptStarted -Scope Script -ErrorAction SilentlyContinue
+# Define Write-Log function before any usage
+function Write-Log {
+    param (
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$NoConsole,
+        [switch]$Debug,
+        [switch]$DetailedOnly
+    )
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
+    $callingFunction = (Get-PSCallStack)[1].FunctionName
+    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
+    
+    $logEntry = "[TIMESTAMP: $timestamp]`n[FUNCTION: $callingFunction]`n[MESSAGE: $Message]`n----------------------------------------`n"
+    
+    # Write to appropriate log file
+    if ($Debug) {
+        Add-Content -Path $script:DebugLogFile -Value $logEntry
+    }
+    else {
+        Add-Content -Path $script:LogFile -Value $logEntry
+    }
+    
+    if (-not $NoConsole) {
+        Write-Host $Message -ForegroundColor $Color
+    }
+}
+
+function Initialize-LogBuffers {
+    <#
+    .SYNOPSIS
+        Initializes logging buffers for the script.
+    .DESCRIPTION
+        Creates and configures StringBuilder objects for detailed logging.
+        Sets up initial capacity to optimize memory usage.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    try {
+        if ($null -eq $script:DetailedLogBuffer) {
+            $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB
+            Write-Log "Log buffers initialized successfully" -Debug
+            return $true
+        }
+        return $false
+    }
+    catch {
+        Write-Log "Failed to initialize log buffers: $_" -Color Red
+        throw
+    }
+}
+
+# Import required modules
+Import-Module ActiveDirectory -ErrorAction SilentlyContinue
+
+# Initialize transcript - done only once
+if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
+    $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_${timestamp}.transcript"
+    try {
+        Start-Transcript -Path $transcriptPath -Force
+        $script:TranscriptStarted = $true
+        Write-Log "Transcript started at $transcriptPath" -Debug
+    }
+    catch {
+        Write-Warning "Could not start transcript: $_"
+    }
+}
+
+# Initialize log buffers - done only once
+Initialize-LogBuffers
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
@@ -301,64 +290,11 @@ function Test-WellKnownSID {
     return $null
 }
 
-# Simplified log file creation - Fix the swapped log file names
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$systemName = $env:COMPUTERNAME
-$safeFolderPath = Get-SafeFilename -Path $FolderPath
-
-# Define log files with correct naming
-$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
-$script:DetailedLogFile = "${logBase}_detailed.log"
-$script:ConsoleLogFile = "${logBase}_console.log"
-
-# Initialize log files and create them with headers
-@"
-# =============================================================================
-# Detailed Log File
-# Created: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
-# System: $systemName
-# Analysis Path: $FolderPath
-# =============================================================================
-
-"@ | Out-File -FilePath $script:DetailedLogFile -Force
-
-@"
-# =============================================================================
-# Console Log File
-# Created: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
-# System: $systemName
-# Analysis Path: $FolderPath
-# =============================================================================
-
-"@ | Out-File -FilePath $script:ConsoleLogFile -Force
-
-# Initialize console output collection for detailed log (swap from console)
-$script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
-
-# Output initial messages (remove duplicate Write-Host calls)
-Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
-Write-Log -Message "Detailed analysis will be written to: $script:DetailedLogFile" -Color "Yellow"
-Write-Log -Message "Console summary will be written to: $script:ConsoleLogFile" -Color "Yellow"
-
-# Add transcript state tracking
-$script:TranscriptStarted = $false
-
-# Modified transcript start handling
-try {
-    if ($Host.Name -eq 'ConsoleHost') {
-        $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_$(Get-Date -Format 'yyyyMMdd_HHmmss').transcript"
-        Start-Transcript -Path $transcriptPath -Force -ErrorAction Stop
-        $script:TranscriptStarted = $true
-        Write-Log "Transcript started at $transcriptPath" -Debug
-    }
-}
-catch {
-    Write-Warning "Could not start transcript: $_"
-    # Continue execution even if transcript fails
-}
-
-# Initialize buffers
-Initialize-LogBuffers
+# Initialize suppressed SIDs
+$script:SuppressedSids.Add('S-1-5-21-3715258189-2875184700-594828381-500')
+$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13767')
+$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13821')
+$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-17638')
 
 # Function to display progress bar
 function Write-ProgressBar {
@@ -370,6 +306,83 @@ function Write-ProgressBar {
     )
     $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
     Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
+}
+
+# Consolidated SID handling function
+function Convert-SidToName {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Sid
+    )
+    
+    if ($script:SuppressedSids -contains $Sid) {
+        Write-Log -Message "Skipping suppressed SID: $Sid" -Color "DarkGray" -NoConsole
+        return $Sid
+    }
+    
+    if ($script:SidCache.ContainsKey($Sid)) {
+        return $script:SidCache[$Sid]
+    }
+    
+    $wellKnownName = Test-WellKnownSID -Sid $Sid
+    if ($wellKnownName) {
+        $script:SidCache[$Sid] = $wellKnownName
+        return $wellKnownName
+    }
+
+    # If we've already failed this SID max times, return it immediately
+    if ($script:SidTranslationAttempts[$Sid] -ge $script:MaxRetries) {
+        return $Sid
+    }
+
+    try {
+        if (-not $script:SidTranslationAttempts.ContainsKey($Sid)) {
+            $script:SidTranslationAttempts[$Sid] = 0
+        }
+        
+        $script:SidTranslationAttempts[$Sid]++
+        $attempt = $script:SidTranslationAttempts[$Sid]
+        
+        Write-Log -Message "Attempting SID translation (attempt $attempt of $script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole -Debug
+        
+        # Try to resolve using .NET first
+        try {
+            $objSID = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+            $objName = $objSID.Translate([System.Security.Principal.NTAccount])
+            $name = $objName.Value
+            $script:SidCache[$Sid] = $name
+            Write-Log -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
+            return $name
+        }
+        catch {
+            # Fall back to AD lookup if .NET translation fails
+            Write-Log -Message "NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole -Debug
+            if (-not $SkipADResolution) {
+                $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
+                if ($user) {
+                    $name = $user.SamAccountName
+                    $script:SidCache[$Sid] = $name
+                    Write-Log -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
+                    return $name
+                }
+            }
+            else {
+                throw "AD resolution skipped by user"
+            }
+        }
+    }
+    catch {
+        Write-Log -Message "SID translation failed on attempt ${attempt}: ${Sid}" -Color "Yellow" -NoConsole -Debug
+        if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
+            Write-Log -Message "Retrying in $script:RetryDelay seconds (attempt ${attempt}/${script:MaxRetries})..." -Color "DarkGray" -NoConsole -Debug
+            Start-Sleep -Seconds $script:RetryDelay
+            return Convert-SidToName -Sid $Sid
+        }
+        $script:ADResolutionErrors[$Sid] = $_.Exception.Message
+        $script:FailedSids.Add($Sid)
+    }
+    
+    return $Sid
 }
 
 # Modify Get-FolderPermissions to check parent permissions
@@ -412,115 +425,6 @@ function Get-FolderPermissions {
         return $null
     }
 }
-
-# Function to resolve SID to name
-function Resolve-SIDToName {
-    param (
-        [string]$SID
-    )
-    if ($script:SIDCache.ContainsKey($SID)) {
-        return $script:SIDCache[$SID]
-    }
-    try {
-        $objSID = New-Object System.Security.Principal.SecurityIdentifier($SID)
-        $objName = $objSID.Translate([System.Security.Principal.NTAccount])
-        $name = $objName.Value
-        $script:SIDCache[$SID] = $name
-        return $name
-    }
-    catch {
-        if ($EnableSIDDiagnostics) {
-            $script:ADResolutionErrors[$SID] = $_.Exception.Message
-        }
-        return $SID
-    }
-}
-
-# Add function to translate SIDs using AD lookup
-$script:SidTranslationAttempts = @{}
-$script:MaxRetries = 3
-$script:RetryDelay = 2
-
-# Modify the Convert-SidToName function to properly handle suppressed SIDs
-function Convert-SidToName {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Sid
-    )
-    
-    # Check if SID is in suppressed list first
-    if ($script:SuppressedSids -contains $Sid) {
-        Write-Log -Message "Skipping suppressed SID: $Sid" -Color "DarkGray" -NoConsole
-        return $Sid
-    }
-    
-    # Check cache first
-    if ($script:SidCache.ContainsKey($Sid)) {
-        return $script:SidCache[$Sid]
-    }
-    
-    # Check if it's a well-known SID
-    $wellKnownName = Test-WellKnownSID -Sid $Sid
-    if ($wellKnownName) {
-        $script:SidCache[$Sid] = $wellKnownName
-        return $wellKnownName
-    }
-
-    # If we've already failed this SID max times, return it immediately
-    if ($script:SidTranslationAttempts[$Sid] -ge $script:MaxRetries) {
-        return $Sid
-    }
-
-    try {
-        $script:SidTranslationAttempts[$Sid]++
-        $attempt = $script:SidTranslationAttempts[$Sid]
-        
-        Write-Log -Message "Attempting SID translation (attempt $attempt of $script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole
-        
-        # Try to resolve using .NET first
-        try {
-            $objSID = New-Object System.Security.Principal.SecurityIdentifier($Sid)
-            $objName = $objSID.Translate([System.Security.Principal.NTAccount])
-            $name = $objName.Value
-            $script:SidCache[$Sid] = $name
-            Write-Log -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole
-            return $name
-        }
-        catch {
-            # Fall back to AD lookup if .NET translation fails
-            Write-Log -Message "NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole
-            $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
-            if ($user) {
-                $name = $user.SamAccountName
-                $script:SidCache[$Sid] = $name
-                Write-Log -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole
-                return $name
-            }
-        }
-    }
-    catch {
-        Write-Log -Message "SID translation failed on attempt ${attempt}: ${Sid}" -Color "Yellow" -NoConsole
-        if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
-            Write-Log -Message "Retrying in $script:RetryDelay seconds (attempt ${attempt}/${script:MaxRetries})..." -Color "DarkGray" -NoConsole
-            Start-Sleep -Seconds $script:RetryDelay
-            return Convert-SidToName -Sid $Sid
-        }
-        $script:FailedSids.Add($Sid)
-    }
-    
-    return $Sid
-}
-
-# Initialize variables
-$script:SidCache = @{}
-$script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
-$script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
-
-# Add suppressed SIDs individually
-$script:SuppressedSids.Add('S-1-5-21-3715258189-2875184700-594828381-500')
-$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13767')
-$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13821')
-$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-17638')
 
 # Function to process each folder
 function Invoke-FolderProcessing {
@@ -574,7 +478,10 @@ function Invoke-FolderProcessing {
 
             # Update unique permissions count
             if (-not $SkipUniquenessCounting) {
-                $permissionHash = ($permissionData.Access | ForEach-Object { "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)" }) -join ';'
+                $permissionHash = ($permissionData.Access | ForEach-Object { 
+                    "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)" 
+                }) -join ';'
+                
                 if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
                     $script:UniquePermissions[$permissionHash] = @($Path)
                 } else {
@@ -632,7 +539,11 @@ function Get-HumanReadablePermissions {
 # Main script execution
 try {
     Initialize-WellKnownSIDs
-    # Remove duplicate message here since it's already handled above
+    
+    # Output initial messages
+    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
+    Write-Log -Message "Detailed analysis will be written to: $script:LogFile" -Color "Yellow"
+    Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Color "Yellow"
     
     # Process folders
     Invoke-FolderRecursively -Path $FolderPath
@@ -710,54 +621,11 @@ try {
             Write-Log -Message "Error: $($_.Value)" -Color "Red"
         }
     }
-
-    # Generate console output and save to separate log
-    $consoleOutput = @()
-    $consoleOutput += "Analysis Complete"
-    $consoleOutput += "Total folders processed: $($script:ProcessedFolders)"
-    $consoleOutput += "Unique permission sets: $($script:UniquePermissions.Count)"
-    $consoleOutput += "Elapsed time: $($script:ElapsedTime.ToString())"
-    $consoleOutput += ""
-    $consoleOutput += "Folder Access Permissions:"
-
-    foreach ($group in $script:PermissionGroups.GetEnumerator()) {
-        $firstFolder = $group.Value.Folders[0]
-        $inherits = (Get-Acl $firstFolder).AreAccessRulesProtected -eq $false
-        $consoleOutput += "$firstFolder $(if ($inherits) {'(Inherits parent permissions)'})"
-        if ($group.Value.Owner) {
-            $consoleOutput += "Owner: $($group.Value.Owner)"
-        }
-        
-        if ($group.Value.Folders -and $group.Value.Folders.Count -gt 1) {
-            $consoleOutput += "Subfolders with same permissions:"
-            $group.Value.Folders | 
-                Where-Object { $_ } | 
-                Select-Object -Skip 1 | 
-                ForEach-Object {
-                    if ($_) {
-                        $consoleOutput += "  - $_"
-                    }
-                }
-        }
-        
-        $consoleOutput += "Access Rights:"
-        $group.Value.Permissions | ForEach-Object {
-            $consoleOutput += "  + $($_.IdentityReference) - $($_.FileSystemRights)"
-        }
-        $consoleOutput += "-" * 80
-    }
-
-    # Output to console and save to file
-    $consoleOutput | Out-File -FilePath $script:ConsoleLogFile
-    $consoleOutput | ForEach-Object { Write-Host $_ }
-
-    Stop-Transcript
 }
 catch [System.Exception] {
     Write-Error "An error occurred: $_"
     Write-Error $_.ScriptStackTrace
 }
-# In the finally block, update to:
 finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
     
@@ -780,7 +648,8 @@ finally {
     finally {
         # Properly clear buffer references
         Remove-Variable -Name DetailedLogBuffer -Scope Script -ErrorAction SilentlyContinue
-        Remove-Variable -Name ConsoleOutputCollection -Scope Script -ErrorAction SilentlyContinue
-        Remove-Variable -Name BuffersInitialized -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name SidCache -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name FailedSids -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name SuppressedSids -Scope Script -ErrorAction SilentlyContinue
     }
 }
