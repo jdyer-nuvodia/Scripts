@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 23:01:00 UTC
+# Last Updated: 2025-03-14 23:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.7
-# Additional Info: Removed duplicate initialization messages
+# Version: 1.10.8
+# Additional Info: Fixed path sanitization for special characters
 # =============================================================================
 
 <#
@@ -116,16 +116,19 @@ function Get-SafeFilename {
     )
     
     try {
-        # Remove invalid characters
-        $safeName = $Path -replace '[\\/:*?"<>|]', '_'
+        # Convert path to use underscores for directory separators
+        $safeName = $Path.Replace('\', '_').Replace('/', '_')
         
-        # Replace multiple spaces/special chars with single underscore
-        $safeName = $safeName -replace '[\s\p{P}]+', '_'
+        # Replace invalid characters but preserve dashes
+        $safeName = $safeName -replace '[:<>"|?*]', '_'
+        
+        # Replace multiple spaces or underscores with single underscore
+        $safeName = $safeName -replace '[\s_]+', '_'
         
         # Remove leading/trailing underscores
         $safeName = $safeName.Trim('_')
         
-        # Ensure length is reasonable
+        # Ensure length is reasonable - use proper string length check
         if ($safeName.Length -gt 50) {
             $safeName = $safeName.Substring(0, 47) + '...'
         }
@@ -133,7 +136,9 @@ function Get-SafeFilename {
         return $safeName
     }
     catch {
-        throw $_
+        Write-Log -Message "Error in Get-SafeFilename: $_" -Level 'ERROR' -Color "Red"
+        # Return a safe default if there's an error
+        return "DefaultLog_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
     }
 }
 
