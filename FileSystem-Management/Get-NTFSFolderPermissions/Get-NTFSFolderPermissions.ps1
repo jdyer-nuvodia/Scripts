@@ -731,47 +731,24 @@ finally {
     
     try {
         # Final flush of log buffers
-        if ($script:DetailedLogBuffer.Length -gt 0) {
-            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString()
-            $script:DetailedLogBuffer.Clear()
+        if ($null -ne $script:DetailedLogBuffer -and $script:DetailedLogBuffer.Length -gt 0) {
+            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
         }
         
         Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
         
         # Clean up transcript only if we started one
         if ($script:TranscriptStarted) {
-            Stop-Transcript -ErrorAction Stop
+            Stop-Transcript -ErrorAction SilentlyContinue
         }
     }
     catch {
         Write-Warning "Error during cleanup: $_"
     }
     finally {
-        # Clear buffer references
-        $script:DetailedLogBuffer = $null
-        $script:ConsoleLogBuffer = $null
-        $script:BuffersInitialized = $false
+        # Properly clear buffer references
+        Remove-Variable -Name DetailedLogBuffer -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name ConsoleLogBuffer -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name BuffersInitialized -Scope Script -ErrorAction SilentlyContinue
     }
 }
-
-# Initialize logging - do this only once
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$systemName = $env:COMPUTERNAME
-$safeFolderPath = Get-SafeFilename -Path $FolderPath
-$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
-$script:DetailedLogFile = "${logBase}_details.log"
-
-# Start transcript (only once)
-if (-not $script:TranscriptStarted -and $Host.Name -eq 'ConsoleHost') {
-    try {
-        Start-Transcript -Path "${logBase}_transcript" -Force -ErrorAction Stop
-        $script:TranscriptStarted = $true
-        Write-Log "Transcript started successfully" -DetailedOnly
-    }
-    catch {
-        Write-Warning "Could not start transcript: $_"
-    }
-}
-
-# Initialize buffers
-Initialize-LogBuffers

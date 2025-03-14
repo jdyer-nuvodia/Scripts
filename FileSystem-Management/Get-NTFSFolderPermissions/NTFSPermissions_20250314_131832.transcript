@@ -1,0 +1,293 @@
+**********************
+PowerShell transcript start
+Start time: 20250314131832
+Username: NUVODIA\jdyer
+RunAs User: NUVODIA\jdyer
+Configuration Name: 
+Machine: LT-JBDYER (Microsoft Windows NT 10.0.22631.0)
+Host Application: C:\Program Files\PowerShell\7\pwsh.dll
+Process ID: 42616
+PSVersion: 7.5.0
+PSEdition: Core
+GitCommitId: 7.5.0
+OS: Microsoft Windows 10.0.22631
+Platform: Win32NT
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1, 6.0, 7.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+WSManStackVersion: 3.0
+**********************
+Transcript started, output file is C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\FileSystem-Management\Get-NTFSFolderPermissions\NTFSPermissions_20250314_131832.transcript
+False
+The Administrator SID is: S-1-5-21-4210852157-26038491-1899259631-500
+
+Analysis Complete
+Total folders processed: 112
+Unique permission sets: 2
+Elapsed time: 00:00:00.6723707
+
+Folder Access Permissions:
+C:\Temp (Inherits parent permissions)
+Subfolders with same permissions:
+  • DattoRMM
+  • RAMMap
+  • Scripts - Copy
+  • Scripts - Copy\365
+  • Scripts - Copy\365\Add-UserListTo365Group
+  • Scripts - Copy\365\Delete-Mailboxes
+  • Scripts - Copy\365\Diagnose-MailboxFolderAssistant
+  • Scripts - Copy\365\Get-AllMailboxforwardingRules
+  • Scripts - Copy\365\Get-CalendarPermissions
+  • Scripts - Copy\365\Get-FullMailboxAttributes
+  • Scripts - Copy\365\Get-Mailboxes
+  • Scripts - Copy\365\Get-MailboxFolderList
+  • Scripts - Copy\365\Grant-CalendarPermissions
+  • Scripts - Copy\365\Grant-RMToMailboxEditCalendarPermissions
+  • Scripts - Copy\365\Remediate-365Account
+  • Scripts - Copy\365\Remove-AllMailboxPermissions
+  • Scripts - Copy\Azure
+  • Scripts - Copy\Azure\Add-FoldersToAzurePath
+  • Scripts - Copy\Azure\Create-TestDomainController
+  • Scripts - Copy\Azure\Delete-TestDomainController
+  • Scripts - Copy\Domain
+  • Scripts - Copy\Domain\Change-ADUserPassword
+  • Scripts - Copy\Domain\Copy-ADUser
+  • Scripts - Copy\Domain\Create-ADUser
+  • Scripts - Copy\Domain\Remove-GroupsFromDisabledUsers
+  • Scripts - Copy\Files-And-Folders
+  • Scripts - Copy\Files-And-Folders\Add-FoldersToPath
+  • Scripts - Copy\Files-And-Folders\Delete-AllFilesInDirectory
+  • Scripts - Copy\Files-And-Folders\Delete-OldFiles
+  • Scripts - Copy\Files-And-Folders\Get-FolderSizes
+  • Scripts - Copy\Files-And-Folders\Get-MachinePath
+  • Scripts - Copy\Files-And-Folders\Get-NTFSPermissions
+  • Scripts - Copy\Files-And-Folders\Get-UserPath
+  • Scripts - Copy\Files-And-Folders\Remove-FolderFromPath
+  • Scripts - Copy\Files-And-Folders\Rename-FolderCase
+  • Scripts - Copy\Files-And-Folders\Rename-ScriptToFolderName
+  • Scripts - Copy\Files-And-Folders\Unprotect-RMSFile
+  • Scripts - Copy\Local
+  • Scripts - Copy\Local\Change-LocalUserPassword
+  • Scripts - Copy\Local\Create-LocalAccount
+  • Scripts - Copy\Local\Repair-WindowsOS
+  • Scripts - Copy\My-Scripts
+  • Scripts - Copy\My-Scripts\Copy-FilestToAzureStorage
+  • Scripts - Copy\My-Scripts\Delete-OldScreenshots
+  • Scripts - Copy\My-Scripts\Mount-AzureStorage
+  • Scripts - Copy\Network
+  • Scripts - Copy\Network\Test-NetworkConnectivity
+  • Scripts - Copy\Nuvodia-Only
+  • Scripts - Copy\Nuvodia-Only\Create-NuvodialocalAccount
+  • Scripts - Copy\Software
+  • Scripts - Copy\Software\Get-InstalledSoftware
+  • Scripts - Copy\Software\Get-WizTreePortable
+  • Scripts - Copy\Software\Reinstall-OneDrive
+  • Scripts - Copy\Templates
+  • WizTree
+  • WizTree\locale
+  • WizTree\locale\bg
+  • WizTree\locale\bg\LC_MESSAGES
+  • WizTree\locale\cs
+  • WizTree\locale\cs\LC_MESSAGES
+  • WizTree\locale\da
+  • WizTree\locale\da\LC_MESSAGES
+  • WizTree\locale\de
+  • WizTree\locale\de\LC_MESSAGES
+  • WizTree\locale\el
+  • WizTree\locale\el\LC_MESSAGES
+  • WizTree\locale\en
+  • WizTree\locale\en\LC_MESSAGES
+  • WizTree\locale\es
+  • WizTree\locale\es\LC_MESSAGES
+  • WizTree\locale\fi
+  • WizTree\locale\fi\LC_MESSAGES
+  • WizTree\locale\fr
+  • WizTree\locale\fr\LC_MESSAGES
+  • WizTree\locale\hu
+  • WizTree\locale\hu\LC_MESSAGES
+  • WizTree\locale\id
+  • WizTree\locale\id\LC_MESSAGES
+  • WizTree\locale\it
+  • WizTree\locale\it\LC_MESSAGES
+  • WizTree\locale\ja
+  • WizTree\locale\ja\LC_MESSAGES
+  • WizTree\locale\ko
+  • WizTree\locale\ko\LC_MESSAGES
+  • WizTree\locale\nl
+  • WizTree\locale\nl\LC_MESSAGES
+  • WizTree\locale\no
+  • WizTree\locale\no\LC_MESSAGES
+  • WizTree\locale\pl
+  • WizTree\locale\pl\LC_MESSAGES
+  • WizTree\locale\pt_BR
+  • WizTree\locale\pt_BR\LC_MESSAGES
+  • WizTree\locale\ru
+  • WizTree\locale\ru\LC_MESSAGES
+  • WizTree\locale\sk
+  • WizTree\locale\sk\LC_MESSAGES
+  • WizTree\locale\sl
+  • WizTree\locale\sl\LC_MESSAGES
+  • WizTree\locale\sr
+  • WizTree\locale\sr\LC_MESSAGES
+  • WizTree\locale\sv
+  • WizTree\locale\sv\LC_MESSAGES
+  • WizTree\locale\tr
+  • WizTree\locale\tr\LC_MESSAGES
+  • WizTree\locale\uk
+  • WizTree\locale\uk\LC_MESSAGES
+  • WizTree\locale\zh_CHS
+  • WizTree\locale\zh_CHS\LC_MESSAGES
+  • WizTree\locale\zh_CHT
+  • WizTree\locale\zh_CHT\LC_MESSAGES
+Access Rights:
+  + BUILTIN\Administrators - Full Control
+  + NT AUTHORITY\SYSTEM - Full Control
+  + BUILTIN\Users - Full Control
+  + NT AUTHORITY\Authenticated Users - Full Control
+  + NT AUTHORITY\Authenticated Users - Full Control
+-
+C:\Temp\Scripts - Copy\Software\Remove-AdobeAcrobatReader (Custom permissions)
+Access Rights:
+  + NT AUTHORITY\Authenticated Users - Full Control
+  + NT AUTHORITY\SYSTEM - Full Control
+  + BUILTIN\Administrators - Full Control
+  + BUILTIN\Users - Full Control
+-
+Analysis Complete
+Total folders processed: 112
+Unique permission sets: 2
+Elapsed time: 00:00:00.6723707
+
+Folder Access Permissions:
+C:\Temp (Inherits parent permissions)
+Owner: BUILTIN\Administrators
+Subfolders with same permissions:
+  - C:\Temp\DattoRMM
+  - C:\Temp\RAMMap
+  - C:\Temp\Scripts - Copy
+  - C:\Temp\Scripts - Copy\365
+  - C:\Temp\Scripts - Copy\365\Add-UserListTo365Group
+  - C:\Temp\Scripts - Copy\365\Delete-Mailboxes
+  - C:\Temp\Scripts - Copy\365\Diagnose-MailboxFolderAssistant
+  - C:\Temp\Scripts - Copy\365\Get-AllMailboxforwardingRules
+  - C:\Temp\Scripts - Copy\365\Get-CalendarPermissions
+  - C:\Temp\Scripts - Copy\365\Get-FullMailboxAttributes
+  - C:\Temp\Scripts - Copy\365\Get-Mailboxes
+  - C:\Temp\Scripts - Copy\365\Get-MailboxFolderList
+  - C:\Temp\Scripts - Copy\365\Grant-CalendarPermissions
+  - C:\Temp\Scripts - Copy\365\Grant-RMToMailboxEditCalendarPermissions
+  - C:\Temp\Scripts - Copy\365\Remediate-365Account
+  - C:\Temp\Scripts - Copy\365\Remove-AllMailboxPermissions
+  - C:\Temp\Scripts - Copy\Azure
+  - C:\Temp\Scripts - Copy\Azure\Add-FoldersToAzurePath
+  - C:\Temp\Scripts - Copy\Azure\Create-TestDomainController
+  - C:\Temp\Scripts - Copy\Azure\Delete-TestDomainController
+  - C:\Temp\Scripts - Copy\Domain
+  - C:\Temp\Scripts - Copy\Domain\Change-ADUserPassword
+  - C:\Temp\Scripts - Copy\Domain\Copy-ADUser
+  - C:\Temp\Scripts - Copy\Domain\Create-ADUser
+  - C:\Temp\Scripts - Copy\Domain\Remove-GroupsFromDisabledUsers
+  - C:\Temp\Scripts - Copy\Files-And-Folders
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Add-FoldersToPath
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Delete-AllFilesInDirectory
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Delete-OldFiles
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Get-FolderSizes
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Get-MachinePath
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Get-NTFSPermissions
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Get-UserPath
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Remove-FolderFromPath
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Rename-FolderCase
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Rename-ScriptToFolderName
+  - C:\Temp\Scripts - Copy\Files-And-Folders\Unprotect-RMSFile
+  - C:\Temp\Scripts - Copy\Local
+  - C:\Temp\Scripts - Copy\Local\Change-LocalUserPassword
+  - C:\Temp\Scripts - Copy\Local\Create-LocalAccount
+  - C:\Temp\Scripts - Copy\Local\Repair-WindowsOS
+  - C:\Temp\Scripts - Copy\My-Scripts
+  - C:\Temp\Scripts - Copy\My-Scripts\Copy-FilestToAzureStorage
+  - C:\Temp\Scripts - Copy\My-Scripts\Delete-OldScreenshots
+  - C:\Temp\Scripts - Copy\My-Scripts\Mount-AzureStorage
+  - C:\Temp\Scripts - Copy\Network
+  - C:\Temp\Scripts - Copy\Network\Test-NetworkConnectivity
+  - C:\Temp\Scripts - Copy\Nuvodia-Only
+  - C:\Temp\Scripts - Copy\Nuvodia-Only\Create-NuvodialocalAccount
+  - C:\Temp\Scripts - Copy\Software
+  - C:\Temp\Scripts - Copy\Software\Get-InstalledSoftware
+  - C:\Temp\Scripts - Copy\Software\Get-WizTreePortable
+  - C:\Temp\Scripts - Copy\Software\Reinstall-OneDrive
+  - C:\Temp\Scripts - Copy\Templates
+  - C:\Temp\WizTree
+  - C:\Temp\WizTree\locale
+  - C:\Temp\WizTree\locale\bg
+  - C:\Temp\WizTree\locale\bg\LC_MESSAGES
+  - C:\Temp\WizTree\locale\cs
+  - C:\Temp\WizTree\locale\cs\LC_MESSAGES
+  - C:\Temp\WizTree\locale\da
+  - C:\Temp\WizTree\locale\da\LC_MESSAGES
+  - C:\Temp\WizTree\locale\de
+  - C:\Temp\WizTree\locale\de\LC_MESSAGES
+  - C:\Temp\WizTree\locale\el
+  - C:\Temp\WizTree\locale\el\LC_MESSAGES
+  - C:\Temp\WizTree\locale\en
+  - C:\Temp\WizTree\locale\en\LC_MESSAGES
+  - C:\Temp\WizTree\locale\es
+  - C:\Temp\WizTree\locale\es\LC_MESSAGES
+  - C:\Temp\WizTree\locale\fi
+  - C:\Temp\WizTree\locale\fi\LC_MESSAGES
+  - C:\Temp\WizTree\locale\fr
+  - C:\Temp\WizTree\locale\fr\LC_MESSAGES
+  - C:\Temp\WizTree\locale\hu
+  - C:\Temp\WizTree\locale\hu\LC_MESSAGES
+  - C:\Temp\WizTree\locale\id
+  - C:\Temp\WizTree\locale\id\LC_MESSAGES
+  - C:\Temp\WizTree\locale\it
+  - C:\Temp\WizTree\locale\it\LC_MESSAGES
+  - C:\Temp\WizTree\locale\ja
+  - C:\Temp\WizTree\locale\ja\LC_MESSAGES
+  - C:\Temp\WizTree\locale\ko
+  - C:\Temp\WizTree\locale\ko\LC_MESSAGES
+  - C:\Temp\WizTree\locale\nl
+  - C:\Temp\WizTree\locale\nl\LC_MESSAGES
+  - C:\Temp\WizTree\locale\no
+  - C:\Temp\WizTree\locale\no\LC_MESSAGES
+  - C:\Temp\WizTree\locale\pl
+  - C:\Temp\WizTree\locale\pl\LC_MESSAGES
+  - C:\Temp\WizTree\locale\pt_BR
+  - C:\Temp\WizTree\locale\pt_BR\LC_MESSAGES
+  - C:\Temp\WizTree\locale\ru
+  - C:\Temp\WizTree\locale\ru\LC_MESSAGES
+  - C:\Temp\WizTree\locale\sk
+  - C:\Temp\WizTree\locale\sk\LC_MESSAGES
+  - C:\Temp\WizTree\locale\sl
+  - C:\Temp\WizTree\locale\sl\LC_MESSAGES
+  - C:\Temp\WizTree\locale\sr
+  - C:\Temp\WizTree\locale\sr\LC_MESSAGES
+  - C:\Temp\WizTree\locale\sv
+  - C:\Temp\WizTree\locale\sv\LC_MESSAGES
+  - C:\Temp\WizTree\locale\tr
+  - C:\Temp\WizTree\locale\tr\LC_MESSAGES
+  - C:\Temp\WizTree\locale\uk
+  - C:\Temp\WizTree\locale\uk\LC_MESSAGES
+  - C:\Temp\WizTree\locale\zh_CHS
+  - C:\Temp\WizTree\locale\zh_CHS\LC_MESSAGES
+  - C:\Temp\WizTree\locale\zh_CHT
+  - C:\Temp\WizTree\locale\zh_CHT\LC_MESSAGES
+Access Rights:
+  + BUILTIN\Administrators - FullControl
+  + NT AUTHORITY\SYSTEM - FullControl
+  + BUILTIN\Users - ReadAndExecute, Synchronize
+  + NT AUTHORITY\Authenticated Users - Modify, Synchronize
+  + NT AUTHORITY\Authenticated Users - -536805376
+--------------------------------------------------------------------------------
+C:\Temp\Scripts - Copy\Software\Remove-AdobeAcrobatReader
+Owner: NUVODIA\jdyer
+Access Rights:
+  + NT AUTHORITY\Authenticated Users - Modify, Synchronize
+  + NT AUTHORITY\SYSTEM - FullControl
+  + BUILTIN\Administrators - FullControl
+  + BUILTIN\Users - ReadAndExecute, Synchronize
+--------------------------------------------------------------------------------
+**********************
+PowerShell transcript end
+End time: 20250314131833
+**********************
