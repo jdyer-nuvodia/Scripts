@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:19:00 UTC
+# Last Updated: 2025-03-14 18:21:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.2
-# Additional Info: Fixed SID translation and character display issues
+# Version: 1.4.3
+# Additional Info: Fixed unused attempt variable in SID translation
 # =============================================================================
 
 # First all using statements
@@ -313,26 +313,33 @@ function Convert-SidToName {
         $script:SidTranslationAttempts[$Sid]++
         $attempt = $script:SidTranslationAttempts[$Sid]
         
+        Write-Log -Message "Attempting SID translation (attempt $attempt of $script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole
+        
         # Try to resolve using .NET first
         try {
             $objSID = New-Object System.Security.Principal.SecurityIdentifier($Sid)
             $objName = $objSID.Translate([System.Security.Principal.NTAccount])
             $name = $objName.Value
             $script:SidCache[$Sid] = $name
+            Write-Log -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole
             return $name
         }
         catch {
             # Fall back to AD lookup if .NET translation fails
+            Write-Log -Message "NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole
             $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
             if ($user) {
                 $name = $user.SamAccountName
                 $script:SidCache[$Sid] = $name
+                Write-Log -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole
                 return $name
             }
         }
     }
     catch {
+        Write-Log -Message "SID translation failed on attempt ${attempt}: ${Sid}" -Color "Yellow" -NoConsole
         if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
+            Write-Log -Message "Retrying in $script:RetryDelay seconds (attempt ${attempt}/${script:MaxRetries})..." -Color "DarkGray" -NoConsole
             Start-Sleep -Seconds $script:RetryDelay
             return Convert-SidToName -Sid $Sid
         }
