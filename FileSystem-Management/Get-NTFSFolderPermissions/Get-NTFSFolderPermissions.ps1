@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 19:32:00 UTC
+# Last Updated: 2025-03-14 18:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.5
-# Additional Info: Fixed Write-Log function definition order
+# Version: 1.4.6
+# Additional Info: Fixed swapped log file output destinations
 # =============================================================================
 
 # First all using statements
@@ -81,19 +81,10 @@ function Write-Log {
         [switch]$DetailedOnly
     )
     
-    # Always create detailed log entry
+    # Create detailed log entry
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
     $callingFunction = (Get-PSCallStack)[1].FunctionName
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
-    
-    # Create detailed diagnostic information
-    $variables = $(Get-Variable -Scope 1 | 
-        Where-Object { $_.Name -notlike "*Preference" } | 
-        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "; "
-    
-    $callStack = $(Get-PSCallStack | 
-        Select-Object -Skip 1 | 
-        ForEach-Object { $_.Command }) -join " -> "
     
     $detailedEntry = @"
 [TIMESTAMP: $timestamp UTC]
@@ -101,25 +92,16 @@ function Write-Log {
 [THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
 [MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
 [ACTION: $Message]
-[VARIABLES: $variables]
-[CALL_STACK: $callStack]
-----------------------------------------
 "@
     
-    # Write to transcript (detailed log) using Write-Verbose
-    Write-Verbose $detailedEntry
-    
-    # Handle console and console log output
+    # Write detailed entry to detailed log file (not transcript)
     if (-not $DetailedOnly) {
-        if (-not $NoConsole) {
-            # Write to console with color
-            Write-Host $Message -ForegroundColor $Color
-        }
-        
-        # Add to console collection (for console log)
-        if ($Message.Trim() -ne "") {
-            [void]$script:ConsoleOutputCollection.Add($Message)
-        }
+        Add-Content -Path $script:DetailedLogFile -Value $detailedEntry
+    }
+    
+    # Write to console (which gets captured by transcript in console log)
+    if (-not $NoConsole) {
+        Write-Host $Message -ForegroundColor $Color
     }
 }
 
@@ -189,10 +171,10 @@ $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPa
 $script:DetailedLogFile = "${logBase}_detailed.log"
 $script:ConsoleLogFile = "${logBase}_console.log"
 
-# Start transcript to capture everything in the detailed log
-Start-Transcript -Path $script:DetailedLogFile -Force
+# Start transcript to capture console output in console log (swap from detailed)
+Start-Transcript -Path $script:ConsoleLogFile -Force
 
-# Initialize console output collection
+# Initialize console output collection for detailed log (swap from console)
 $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
 
 # Output initial messages (remove duplicate Write-Host calls)
@@ -600,10 +582,10 @@ catch [System.Exception] {
 # In the finally block, update to:
 finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
-    Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
+    Write-Host "Script execution completed. See $script:ConsoleLogFile for full details." -ForegroundColor Green
     
     # Save collected console output to the console log file
-    $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Encoding utf8
+    $script:ConsoleOutputCollection | Out-File -FilePath $script:DetailedLogFile -Append -Encoding utf8
     
     # Only stop transcript if it's running
     $ErrorActionPreference = 'SilentlyContinue'
