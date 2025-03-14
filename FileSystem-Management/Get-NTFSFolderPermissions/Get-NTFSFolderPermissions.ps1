@@ -648,11 +648,15 @@ try {
             Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray" -Level 'INFO'
             foreach ($descendant in ($identicalDescendants | Sort-Object)) {
                 if ($descendant -and $folder) {
-                    $relativePath = $descendant.Substring($folder.Length + 1)
-                    Write-Log -Message "  - $relativePath" -Color "DarkGray" -Level 'INFO'
+                    if ($descendant.Length > $folder.Length) {
+                        $relativePath = $descendant.Substring($folder.Length + 1)
+                        Write-Log -Message "  - $relativePath" -Color "DarkGray" -Level 'INFO'
+                    } else {
+                        # Handle case where descendant path is the same or shorter than folder path
+                        Write-Log -Message "  - <root folder>" -Color "DarkGray" -Level 'INFO'
+                    }
                 }
             }
-        }
 
         Write-Log -Message "Access Rights:" -Color "White" -Level 'INFO'
         # Remove duplicate entries by using a hashtable to track unique permissions
