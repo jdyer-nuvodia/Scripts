@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 17:18:00 UTC
+# Last Updated: 2025-03-14 18:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.9
-# Additional Info: Fixed SuppressedSids collection initialization
+# Version: 1.4.0
+# Additional Info: Added well-known SID translation functionality
 # =============================================================================
 
 # First all using statements
@@ -65,6 +65,48 @@ $script:ParentPermissions = @{}  # Add new script-level variables for tracking p
 $script:SidCache = @{}  # Add SID translation cache
 $script:DomainController = $null
 $script:SidTranslationAttempts = @{}  # Add script-level variables for tracking SID translation attempts
+
+# Initialize well-known SIDs
+$script:WellKnownSIDs = @{}
+
+function Initialize-WellKnownSIDs {
+    # Get Administrator SID using WMI
+    $AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
+
+    $script:WellKnownSIDs = @{
+        "Nobody" = "S-1-0-0"
+        "Everyone" = "S-1-1-0"
+        "Local" = "S-1-2-0"
+        "CreatorOwner" = "S-1-3-0"
+        "CreatorGroup" = "S-1-3-1"
+        "Network" = "S-1-5-2"
+        "Interactive" = "S-1-5-4"
+        "AuthenticatedUsers" = "S-1-5-11"
+        "LocalSystem" = "S-1-5-18"
+        "LocalService" = "S-1-5-19"
+        "NetworkService" = "S-1-5-20"
+        "Administrator" = if ($AdminSID) { $AdminSID } else { "S-1-5-21-domain-500" }
+        "Administrators" = "S-1-5-32-544"
+        "Users" = "S-1-5-32-545"
+        "Guests" = "S-1-5-32-546"
+    }
+    Write-Log -Message "Initialized well-known SIDs collection" -Color "DarkGray" -NoConsole
+}
+
+function Test-WellKnownSID {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Sid
+    )
+    
+    if ($script:WellKnownSIDs.Values -contains $Sid) {
+        $name = $script:WellKnownSIDs.GetEnumerator() | 
+            Where-Object { $_.Value -eq $Sid } | 
+            Select-Object -First 1 -ExpandProperty Key
+        return $name
+    }
+    return $null
+}
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
@@ -248,6 +290,14 @@ function Convert-SidToName {
         return $script:SidCache[$Sid]
     }
     
+    # Check if it's a well-known SID
+    $wellKnownName = Test-WellKnownSID -Sid $Sid
+    if ($wellKnownName) {
+        $script:SidCache[$Sid] = $wellKnownName
+        Write-Log -Message "Resolved well-known SID: $Sid -> $wellKnownName" -Color "DarkGray" -NoConsole
+        return $wellKnownName
+    }
+    
     # Check retry count
     if (-not $script:SidTranslationAttempts.ContainsKey($Sid)) {
         $script:SidTranslationAttempts[$Sid] = 0
@@ -425,6 +475,7 @@ function Get-HumanReadablePermissions {
 
 # Main script execution
 try {
+    Initialize-WellKnownSIDs
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
     Write-Log -Message "Detailed analysis will be written to: $script:DetailedLogFile" -Color "Yellow"
 
