@@ -167,7 +167,7 @@ function Write-Log {
         [string]$Message,
         [string]$Color = "White",
         [switch]$NoConsole,
-        [switch]$Debug = $true  # Always write to debug log
+        [switch]$Debug
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
@@ -350,7 +350,7 @@ function Get-PermissionHash {
         [object]$AccessRules,
         
         [Parameter(Mandatory=$false)]
-        [switch]$IncludeInheritance = $true
+        [bool]$IncludeInheritance = $true
     )
     
     if ($IncludeInheritance) {
