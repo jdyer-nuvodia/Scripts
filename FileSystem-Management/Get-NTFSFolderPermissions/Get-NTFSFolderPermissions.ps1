@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 22:45:00 UTC
+# Last Updated: 2025-03-14 22:47:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.1
-# Additional Info: Fixed log level validation error
+# Version: 1.10.3
+# Additional Info: Removed duplicate transcript message
 # =============================================================================
 
 <#
@@ -222,12 +222,12 @@ Import-Module ActiveDirectory -ErrorAction SilentlyContinue
 if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
     $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_${timestamp}.log"
     try {
-        Start-Transcript -Path $transcriptPath -Force
+        Start-Transcript -Path $transcriptPath -Force | Out-Null
         $script:TranscriptStarted = $true
-        Write-Log "Transcript started at $transcriptPath" -Level 'INFO'
+        Write-Log -Message "Initializing transcript at: $transcriptPath" -Level 'INFO' -Color "Cyan"
     }
     catch {
-        Write-Log "Could not start transcript: $_" -Level 'ERROR'
+        Write-Log -Message "Could not start transcript: $_" -Level 'ERROR' -Color "Red"
     }
 }
 
@@ -235,7 +235,9 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
 function Initialize-WellKnownSIDs {
     # Get Administrator SID using WMI
     $AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
+    Write-Log ""
     Write-Log -Message "The Administrator SID is: $AdminSID" -Color "White" -Level 'INFO'
+    Write-Log ""
 
     $script:WellKnownSIDs = @{
         "Nobody" = "S-1-0-0"
