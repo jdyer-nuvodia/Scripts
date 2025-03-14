@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:52:00 UTC
+# Last Updated: 2025-03-14 18:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.10
-# Additional Info: Fixed transcript handling
+# Version: 1.4.11
+# Additional Info: Fixed transcript handling and buffer management
 # =============================================================================
 
 # First all using statements
@@ -76,6 +76,10 @@ $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
 $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(4096)
 $script:ConsoleLogBuffer = [System.Text.StringBuilder]::new(2048)
 
+# Script-level variables for state tracking
+$script:TranscriptStarted = $false
+$script:BuffersInitialized = $false
+
 # Define Write-Log function before any usage
 function Write-Log {
     param (
@@ -130,18 +134,37 @@ function Write-Log {
 # Add function to flush log buffers
 function FlushLogBuffers {
     try {
-        if ($script:DetailedLogBuffer.Length -gt 0) {
-            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString()
-            $script:DetailedLogBuffer.Clear()
-        }
-        
-        if ($script:ConsoleLogBuffer.Length -gt 0) {
-            Add-Content -Path $script:ConsoleLogFile -Value $script:ConsoleLogBuffer.ToString()
-            $script:ConsoleLogBuffer.Clear()
+        if ($script:BuffersInitialized) {
+            if ($null -ne $script:DetailedLogBuffer -and $script:DetailedLogBuffer.Length -gt 0) {
+                Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
+                $script:DetailedLogBuffer.Clear()
+            }
+            
+            if ($null -ne $script:ConsoleLogBuffer -and $script:ConsoleLogBuffer.Length -gt 0) {
+                Add-Content -Path $script:ConsoleLogFile -Value $script:ConsoleLogBuffer.ToString() -ErrorAction Stop
+                $script:ConsoleLogBuffer.Clear()
+            }
         }
     }
     catch {
         Write-Warning "Error flushing log buffers: $_"
+        throw
+    }
+}
+
+# Initialize buffers with proper error handling
+function Initialize-LogBuffers {
+    try {
+        if (-not $script:BuffersInitialized) {
+            $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB
+            $script:ConsoleLogBuffer = [System.Text.StringBuilder]::new(120192)   # 117KB
+            $script:BuffersInitialized = $true
+            Write-Log "Log buffers initialized successfully" -DetailedOnly
+        }
+    }
+    catch {
+        Write-Warning "Failed to initialize log buffers: $_"
+        throw
     }
 }
 
@@ -247,7 +270,7 @@ $script:TranscriptStarted = $false
 try {
     if ($Host.Name -eq 'ConsoleHost') {
         $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_$(Get-Date -Format 'yyyyMMdd_HHmmss').transcript"
-        Start-Transcript -Path $transcriptPath -ErrorAction Stop
+        Start-Transcript -Path $transcriptPath -Force -ErrorAction Stop
         $script:TranscriptStarted = $true
         Write-Log "Transcript started at $transcriptPath" -DetailedOnly
     }
@@ -256,6 +279,9 @@ catch {
     Write-Warning "Could not start transcript: $_"
     # Continue execution even if transcript fails
 }
+
+# Initialize buffers
+Initialize-LogBuffers
 
 # Function to display progress bar
 function Write-ProgressBar {
@@ -660,21 +686,24 @@ finally {
     
     try {
         # Final flush of log buffers
-        FlushLogBuffers
+        if ($script:BuffersInitialized) {
+            FlushLogBuffers
+        }
         
         Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
-    }
-    catch {
-        Write-Warning "Error in final log writes: $_"
-    }
-    
-    # Clean up transcript only if we started one
-    if ($script:TranscriptStarted) {
-        try {
+        
+        # Clean up transcript only if we started one
+        if ($script:TranscriptStarted) {
             Stop-Transcript -ErrorAction Stop
         }
-        catch {
-            Write-Warning "Error stopping transcript: $_"
-        }
+    }
+    catch {
+        Write-Warning "Error during cleanup: $_"
+    }
+    finally {
+        # Clear buffer references
+        $script:DetailedLogBuffer = $null
+        $script:ConsoleLogBuffer = $null
+        $script:BuffersInitialized = $false
     }
 }
