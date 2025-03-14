@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 21:00:00 UTC
+# Last Updated: 2025-03-14 16:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.6
-# Additional Info: Fixed transcript handling and process check
+# Version: 1.3.7
+# Additional Info: Fixed Join-String compatibility and log file naming
 # =============================================================================
 
 # First all using statements
@@ -82,15 +82,15 @@ function Get-SafeFilename {
     return $safe
 }
 
-# Simplified log file creation
+# Simplified log file creation - Fix the swapped log file names
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
 $safeFolderPath = Get-SafeFilename -Path $FolderPath
 
-# Define log files with enhanced detailed logging
+# Define log files with correct naming
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
-$script:ConsoleLogFile = "${logBase}_detailed.log"
-$script:DetailedLogFile = "${logBase}_console.log"
+$script:DetailedLogFile = "${logBase}_detailed.log"
+$script:ConsoleLogFile = "${logBase}_console.log"
 
 # Start transcript to capture everything in the detailed log
 Start-Transcript -Path $script:DetailedLogFile -Force
@@ -118,15 +118,23 @@ function Write-Log {
     $callingFunction = (Get-PSCallStack)[1].FunctionName
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    # Detailed diagnostic information
+    # Create detailed diagnostic information without Join-String
+    $variables = $(Get-Variable -Scope 1 | 
+        Where-Object { $_.Name -notlike "*Preference" } | 
+        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "; "
+    
+    $callStack = $(Get-PSCallStack | 
+        Select-Object -Skip 1 | 
+        ForEach-Object { $_.Command }) -join " -> "
+    
     $detailedEntry = @"
 [TIMESTAMP: $timestamp UTC]
 [FUNCTION: $callingFunction]
 [THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
 [MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
 [ACTION: $Message]
-[VARIABLES: $(Get-Variable -Scope 1 | Where-Object { $_.Name -notlike "*Preference" } | ForEach-Object { "$($_.Name)=$($_.Value)" } | Join-String -Separator "; ")]
-[CALL_STACK: $(Get-PSCallStack | Select-Object -Skip 1 | ForEach-Object { $_.Command } | Join-String -Separator " -> ")]
+[VARIABLES: $variables]
+[CALL_STACK: $callStack]
 ----------------------------------------
 "@
     
