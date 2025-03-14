@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 17:27:00 UTC
+# Last Updated: 2025-03-14 17:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.11
-# Additional Info: Fixed log file naming and output separation
+# Version: 1.3.8
+# Additional Info: Fixed collection handling and Count property access
 # =============================================================================
 
 # First all using statements
@@ -82,12 +82,12 @@ function Get-SafeFilename {
     return $safe
 }
 
-# Simplified log file creation with correct naming
+# Simplified log file creation - Fix the swapped log file names
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
 $safeFolderPath = Get-SafeFilename -Path $FolderPath
 
-# Define log files with correct naming (fix the swap)
+# Define log files with correct naming
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
 $script:DetailedLogFile = "${logBase}_detailed.log"
 $script:ConsoleLogFile = "${logBase}_console.log"
@@ -113,25 +113,42 @@ function Write-Log {
         [switch]$DetailedOnly
     )
     
-    # Create timestamp and get calling function
+    # Always create detailed log entry
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
     $callingFunction = (Get-PSCallStack)[1].FunctionName
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    # Format detailed log entry
-    $detailedEntry = "[$timestamp UTC][$callingFunction] $Message"
+    # Create detailed diagnostic information without Join-String
+    $variables = $(Get-Variable -Scope 1 | 
+        Where-Object { $_.Name -notlike "*Preference" } | 
+        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "; "
     
-    # Write to transcript (detailed log)
+    $callStack = $(Get-PSCallStack | 
+        Select-Object -Skip 1 | 
+        ForEach-Object { $_.Command }) -join " -> "
+    
+    $detailedEntry = @"
+[TIMESTAMP: $timestamp UTC]
+[FUNCTION: $callingFunction]
+[THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
+[MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
+[ACTION: $Message]
+[VARIABLES: $variables]
+[CALL_STACK: $callStack]
+----------------------------------------
+"@
+    
+    # Write to transcript (detailed log) using Write-Verbose
     Write-Verbose $detailedEntry
     
     # Handle console and console log output
     if (-not $DetailedOnly) {
         if (-not $NoConsole) {
-            # Write to console
+            # Write to console with color
             Write-Host $Message -ForegroundColor $Color
         }
         
-        # Add to console collection for log file
+        # Add to console collection (for console log)
         if ($Message.Trim() -ne "") {
             [void]$script:ConsoleOutputCollection.Add($Message)
         }
@@ -292,12 +309,12 @@ SID Translation Error:
 $script:SidCache = @{}
 $script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
 $script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
-
-# Add suppressed SIDs individually
-$script:SuppressedSids.Add('S-1-5-21-3715258189-2875184700-594828381-500')
-$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13767')
-$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13821')
-$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-17638')
+$script:SuppressedSids.AddRange(@(
+    'S-1-5-21-3715258189-2875184700-594828381-500',
+    'S-1-5-21-1787995930-3758959370-1315816792-13767',
+    'S-1-5-21-1787995930-3758959370-1315816792-13821',
+    'S-1-5-21-1787995930-3758959370-1315816792-17638'
+))
 
 # Function to process each folder
 function Invoke-FolderProcessing {
@@ -418,52 +435,146 @@ try {
     $script:EndTime = Get-Date
     $script:ElapsedTime = $script:EndTime - $script:StartTime
 
-    # Write summary to console collection
+    # Display summary
     Write-Log -Message "`nAnalysis Complete" -Color "Green"
     Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan"
     Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan"
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan"
 
-    # First, save console output to file
-    $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Encoding utf8
-    
-    # Stop transcript before final console writes
-    try {
-        Stop-Transcript
+    # Display results based on view mode
+    if ($ViewMode -eq "Hierarchy") {
+        Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow"
+        $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
+
+        foreach ($folder in $sortedFolders) {
+            $data = $script:FolderPermissions[$folder]
+
+            # Skip folders with identical permissions as parent
+            if ($data.MatchesParent) {
+                continue
+            }
+
+            $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
+            Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan"
+
+            # Find all descendants with identical permissions
+            $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
+                Where-Object { 
+                    $_ -and 
+                    $_ -ne $folder -and 
+                    $script:FolderPermissions[$_].MatchesParent 
+                })
+
+            if ($identicalDescendants -and $identicalDescendants.Count -gt 0) {
+                Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
+                foreach ($descendant in ($identicalDescendants | Sort-Object)) {
+                    if ($descendant -and $folder) {
+                        $relativePath = $descendant.Substring($folder.Length + 1)
+                        Write-Log -Message "  • $relativePath" -Color "DarkGray"
+                    }
+                }
+            }
+
+            Write-Log -Message "Access Rights:" -Color "White"
+            $data.Access | ForEach-Object {
+                $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
+                $accessType = if ($_.AccessControlType -eq 'Allow') { '✓' } else { '✗' }
+                Write-Log -Message "  $accessType $($_.IdentityReference) - $permission" -Color "Gray"
+            }
+            Write-Log -Message "-" * 80 -Color "DarkGray"
+        }
     }
-    catch {
-        Write-Warning "Error stopping transcript: $_"
+    elseif ($ViewMode -eq "Group") {
+        Write-Log -Message "`nPermission Groups:" -Color "Yellow"
+        $script:UniquePermissions.GetEnumerator() | Sort-Object { $_.Value.Count } -Descending | ForEach-Object {
+            $permissionSet = $_.Key -split ';' | ForEach-Object { $_ -replace '\|', ' : ' }
+            Write-Log -Message "Group with $($_.Value.Count) folder(s):" -Color "White"
+            $permissionSet | ForEach-Object { Write-Log -Message "  $_" -Color "Gray" }
+            Write-Log -Message "Folders:" -Color "White"
+            $_.Value | ForEach-Object { Write-Log -Message "  $_" -Color "Gray" }
+            Write-Log -Message "" -Color "White"
+        }
     }
 
-    # Now write to console directly
-    $script:ConsoleOutputCollection | ForEach-Object { Write-Host $_ }
-    
-    # Clear the collection
-    $script:ConsoleOutputCollection.Clear()
+    # Display SID resolution errors if any
+    if ($EnableSIDDiagnostics -and $script:ADResolutionErrors.Count -gt 0) {
+        Write-Log -Message "`nSID Resolution Errors:" -Color "Yellow"
+        $script:ADResolutionErrors.GetEnumerator() | ForEach-Object {
+            Write-Log -Message "SID: $($_.Key)" -Color "White"
+            Write-Log -Message "Error: $($_.Value)" -Color "Red"
+        }
+    }
+
+    # Generate console output and save to separate log
+    $consoleOutput = @()
+    $consoleOutput += "Analysis Complete"
+    $consoleOutput += "Total folders processed: $($script:ProcessedFolders)"
+    $consoleOutput += "Unique permission sets: $($script:UniquePermissions.Count)"
+    $consoleOutput += "Elapsed time: $($script:ElapsedTime.ToString())"
+    $consoleOutput += ""
+    $consoleOutput += "Folder Access Permissions:"
+
+    foreach ($group in $script:PermissionGroups.GetEnumerator()) {
+        $firstFolder = $group.Value.Folders[0]
+        $inherits = (Get-Acl $firstFolder).AreAccessRulesProtected -eq $false
+        $consoleOutput += "$firstFolder $(if ($inherits) {'(Inherits parent permissions)'})"
+        if ($group.Value.Owner) {
+            $consoleOutput += "Owner: $($group.Value.Owner)"
+        }
+        
+        if ($group.Value.Folders -and $group.Value.Folders.Count -gt 1) {
+            $consoleOutput += "Subfolders with same permissions:"
+            $group.Value.Folders | 
+                Where-Object { $_ } | 
+                Select-Object -Skip 1 | 
+                ForEach-Object {
+                    if ($_) {
+                        $consoleOutput += "  - $_"
+                    }
+                }
+        }
+        
+        $consoleOutput += "Access Rights:"
+        $group.Value.Permissions | ForEach-Object {
+            $consoleOutput += "  + $($_.IdentityReference) - $($_.FileSystemRights)"
+        }
+        $consoleOutput += "-" * 80
+    }
+
+    # Output to console and save to file
+    $consoleOutput | Out-File -FilePath $script:ConsoleLogFile
+    $consoleOutput | ForEach-Object { Write-Host $_ }
+
+    Stop-Transcript
 }
-catch {
+catch [System.Exception] {
     Write-Error "An error occurred: $_"
     Write-Error $_.ScriptStackTrace
 }
+# In the finally block, update to:
 finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
-    
-    # Ensure console output is saved if not already done
-    if ($script:ConsoleOutputCollection.Count -gt 0) {
-        $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Encoding utf8 -Append
-        $script:ConsoleOutputCollection.Clear()
-    }
-    
-    # Final cleanup
     Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
     
-    # Stop transcript if still running
-    if ($Host.Name -eq 'ConsoleHost') {
+    # Save collected console output to the console log file
+    $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Encoding utf8
+    
+    # Only stop transcript if it's running
+    $ErrorActionPreference = 'SilentlyContinue'
+    
+    # Check if transcript is running before attempting to stop it
+    $transcriptRunning = $null -ne (Get-PSCallStack | 
+        Where-Object { $_.Command -eq "Start-Transcript" } | 
+        Select-Object -First 1)
+    
+    if ($transcriptRunning) {
         try {
-            Stop-Transcript -ErrorAction SilentlyContinue
+            Stop-Transcript
         }
         catch {
-            # Ignore any transcript errors in finally block
+            Write-Verbose "Error stopping transcript: $_"
         }
     }
+    
+    $ErrorActionPreference = 'Stop'
 }
