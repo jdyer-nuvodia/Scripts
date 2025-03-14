@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:43:00 UTC
+# Last Updated: 2025-03-14 18:46:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.7
-# Additional Info: Fixed log file access conflicts
+# Version: 1.4.8
+# Additional Info: Fixed concurrent file access issues in logging
 # =============================================================================
 
 # First all using statements
@@ -72,6 +72,10 @@ $script:WellKnownSIDs = @{}
 # Initialize script-level variables
 $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
 
+# Initialize log files with buffered writers
+$script:DetailedLogBuffer = [System.Text.StringBuilder]::new()
+$script:ConsoleLogBuffer = [System.Text.StringBuilder]::new()
+
 # Define Write-Log function before any usage
 function Write-Log {
     param (
@@ -96,23 +100,46 @@ function Write-Log {
 ----------------------------------------
 "@
         
-        # Write to detailed log
-        Add-Content -Path $script:DetailedLogFile -Value $detailedEntry
+        # Add to detailed log buffer
+        [void]$script:DetailedLogBuffer.AppendLine($detailedEntry)
         
-        # Handle console and console log output
+        # Handle console output
         if (-not $DetailedOnly) {
             if (-not $NoConsole) {
                 Write-Host $Message -ForegroundColor $Color
             }
             
-            # Add to console collection for later writing
+            # Add to console buffer
             if ($Message.Trim() -ne "") {
-                [void]$script:ConsoleOutputCollection.Add("$timestamp UTC: $Message")
+                [void]$script:ConsoleLogBuffer.AppendLine("$timestamp UTC: $Message")
             }
+        }
+        
+        # Periodically flush buffers to files
+        if ($script:DetailedLogBuffer.Length -gt 10KB) {
+            FlushLogBuffers
         }
     }
     catch {
         Write-Warning "Failed to write log entry: $_"
+    }
+}
+
+# Add function to flush log buffers
+function FlushLogBuffers {
+    try {
+        if ($script:DetailedLogBuffer.Length -gt 0) {
+            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString()
+            $script:DetailedLogBuffer.Clear()
+        }
+        
+        if ($script:ConsoleLogBuffer.Length -gt 0) {
+            Add-Content -Path $script:ConsoleLogFile -Value $script:ConsoleLogBuffer.ToString()
+            $script:ConsoleLogBuffer.Clear()
+        }
+    }
+    catch {
+        Write-Warning "Error flushing log buffers: $_"
     }
 }
 
@@ -611,32 +638,24 @@ catch [System.Exception] {
 # In the finally block, update to:
 finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
-    Write-Host "Script execution completed. See $script:ConsoleLogFile for full details." -ForegroundColor Green
     
     try {
-        # Write collected console output
-        $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Append
+        # Final flush of log buffers
+        FlushLogBuffers
+        
+        Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
     }
     catch {
-        Write-Warning "Error writing final log entries: $_"
+        Write-Warning "Error in final log writes: $_"
     }
     
-    # Only stop transcript if it's running
-    $ErrorActionPreference = 'SilentlyContinue'
-    
-    # Check if transcript is running before attempting to stop it
-    $transcriptRunning = $null -ne (Get-PSCallStack | 
-        Where-Object { $_.Command -eq "Start-Transcript" } | 
-        Select-Object -First 1)
-    
-    if ($transcriptRunning) {
-        try {
-            Stop-Transcript
-        }
-        catch {
-            Write-Verbose "Error stopping transcript: $_"
+    # Clean up transcript
+    try {
+        if ($Host.Name -eq 'ConsoleHost') {
+            Stop-Transcript -ErrorAction SilentlyContinue
         }
     }
-    
-    $ErrorActionPreference = 'Stop'
+    catch {
+        Write-Warning "Error stopping transcript: $_"
+    }
 }
