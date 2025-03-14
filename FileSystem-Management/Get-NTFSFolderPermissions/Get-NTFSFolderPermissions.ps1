@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:46:00 UTC
+# Last Updated: 2025-03-14 18:49:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.8
-# Additional Info: Fixed concurrent file access issues in logging
+# Version: 1.4.9
+# Additional Info: Fixed StringBuilder buffer management
 # =============================================================================
 
 # First all using statements
@@ -72,9 +72,9 @@ $script:WellKnownSIDs = @{}
 # Initialize script-level variables
 $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
 
-# Initialize log files with buffered writers
-$script:DetailedLogBuffer = [System.Text.StringBuilder]::new()
-$script:ConsoleLogBuffer = [System.Text.StringBuilder]::new()
+# Initialize log buffers with specific initial capacities
+$script:DetailedLogBuffer = [System.Text.StringBuilder]::new(4096)
+$script:ConsoleLogBuffer = [System.Text.StringBuilder]::new(2048)
 
 # Define Write-Log function before any usage
 function Write-Log {
@@ -100,7 +100,10 @@ function Write-Log {
 ----------------------------------------
 "@
         
-        # Add to detailed log buffer
+        # Add to detailed log buffer with capacity check
+        if ($script:DetailedLogBuffer.Length + $detailedEntry.Length > $script:DetailedLogBuffer.Capacity) {
+            FlushLogBuffers
+        }
         [void]$script:DetailedLogBuffer.AppendLine($detailedEntry)
         
         # Handle console output
@@ -109,15 +112,14 @@ function Write-Log {
                 Write-Host $Message -ForegroundColor $Color
             }
             
-            # Add to console buffer
-            if ($Message.Trim() -ne "") {
-                [void]$script:ConsoleLogBuffer.AppendLine("$timestamp UTC: $Message")
+            # Add to console buffer with capacity check
+            $consoleEntry = "$timestamp UTC: $Message"
+            if ($script:ConsoleLogBuffer.Length + $consoleEntry.Length > $script:ConsoleLogBuffer.Capacity) {
+                FlushLogBuffers
             }
-        }
-        
-        # Periodically flush buffers to files
-        if ($script:DetailedLogBuffer.Length -gt 10KB) {
-            FlushLogBuffers
+            if ($Message.Trim() -ne "") {
+                [void]$script:ConsoleLogBuffer.AppendLine($consoleEntry)
+            }
         }
     }
     catch {
