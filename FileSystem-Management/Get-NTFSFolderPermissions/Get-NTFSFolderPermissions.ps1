@@ -2,18 +2,16 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 20:06:00 UTC
+# Last Updated: 2025-03-14 20:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.4
-# Additional Info: Fixed Initialize-LogBuffers function placement
+# Version: 1.6.0
+# Additional Info: Consolidated logging to two files and improved debug output
 # =============================================================================
 
-# First all using statements
 using namespace System.Security.AccessControl
 using namespace System.IO
 using namespace System.Security.Principal
 
-# Then CmdletBinding
 [CmdletBinding()]
 param (
     [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
@@ -190,14 +188,34 @@ function Get-SafeFilename {
     }
 }
 
-# Initialize logs
+# Initialize logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$systemName = $env:COMPUTERNAME
-$safeFolderPath = Get-SafeFilename -Path $FolderPath
+$computerName = $env:COMPUTERNAME
+$safePath = $FolderPath.Replace(':', '_').Replace('\', '_')
+$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
+$summaryLog = "${logBase}.log"
+$debugLog = "${logBase}_debug.log"
 
-# Define log files with correct naming
-$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
-$script:DetailedLogFile = "${logBase}_details.log"
+# Initialize log files with headers
+@"
+# =============================================================================
+# NTFS Permissions Analysis Summary
+# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+# System: $computerName
+# Analysis Path: $FolderPath
+# =============================================================================
+
+"@ | Set-Content $summaryLog
+
+@"
+# =============================================================================
+# NTFS Permissions Debug Log
+# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+# System: $computerName
+# Analysis Path: $FolderPath
+# =============================================================================
+
+"@ | Set-Content $debugLog
 
 # Start transcript (captures console output)
 try {
