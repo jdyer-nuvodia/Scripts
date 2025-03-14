@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 19:02:00 UTC
+# Last Updated: 2025-03-14 19:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Simplified logging architecture - removed redundant logs
+# Version: 1.5.1
+# Additional Info: Added missing Get-SafeFilename function
 # =============================================================================
 
 # First all using statements
