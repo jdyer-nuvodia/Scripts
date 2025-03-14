@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 21:35:00 UTC
+# Last Updated: 2025-03-14 22:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.0
-# Additional Info: Removed ViewMode parameter to simplify interface
+# Version: 1.9.0
+# Additional Info: Removed .log functionality, keeping only transcript and debug.log
 # =============================================================================
 
 <#
@@ -142,30 +142,24 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $computerName = $env:COMPUTERNAME
 $safePath = Get-SafeFilename -Path $FolderPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
-$script:LogFile = "${logBase}.log"
 $script:DebugLogFile = "${logBase}_debug.log"
 
 # Function to create a standardized log header
 function New-LogHeader {
-    param (
-        [string]$LogType
-    )
-    
     return @"
 # =============================================================================
-# NTFS Permissions ${LogType} Log
+# NTFS Permissions Debug Log
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
 # Analysis Path: $FolderPath
-# Version: 1.7.5
+# Version: 1.9.0
 # =============================================================================
 
 "@
 }
 
-# Initialize log files with proper headers
-Set-Content -Path $script:LogFile -Value (New-LogHeader -LogType "Analysis")
-Set-Content -Path $script:DebugLogFile -Value (New-LogHeader -LogType "Debug")
+# Initialize debug log with proper header
+Set-Content -Path $script:DebugLogFile -Value (New-LogHeader)
 
 # Define Write-Log function before any usage
 function Write-Log {
@@ -173,8 +167,7 @@ function Write-Log {
         [string]$Message,
         [string]$Color = "White",
         [switch]$NoConsole,
-        [switch]$Debug,
-        [switch]$DetailedOnly
+        [switch]$Debug = $true  # Always write to debug log
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
@@ -183,13 +176,8 @@ function Write-Log {
     
     $logEntry = "[TIMESTAMP: $timestamp]`n[FUNCTION: $callingFunction]`n[MESSAGE: $Message]`n----------------------------------------`n"
     
-    # Write to appropriate log file
-    if ($Debug) {
-        Add-Content -Path $script:DebugLogFile -Value $logEntry
-    }
-    else {
-        Add-Content -Path $script:LogFile -Value $logEntry
-    }
+    # Write to debug log
+    Add-Content -Path $script:DebugLogFile -Value $logEntry
     
     if (-not $NoConsole) {
         Write-Host $Message -ForegroundColor $Color
@@ -430,7 +418,6 @@ function Get-FolderPermissions {
 }
 
 # Function to process each folder
-# Function to process each folder
 function Invoke-FolderProcessing {
     param(
         [string]$Path,
@@ -528,7 +515,6 @@ try {
     
     # Output initial messages
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
-    Write-Log -Message "Detailed analysis will be written to: $script:LogFile" -Color "Yellow"
     Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Color "Yellow"
     
     # Process folders
@@ -617,7 +603,7 @@ finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
     
     try {
-        Write-Host "Script execution completed. See $script:LogFile for full details." -ForegroundColor Green
+        Write-Host "Script execution completed. See $script:DebugLogFile for full details." -ForegroundColor Green
         
         # Clean up transcript only if we started one
         if ($script:TranscriptStarted) {
