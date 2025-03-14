@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:16:00 UTC
+# Last Updated: 2025-03-14 18:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Updated Administrator SID output format
+# Version: 1.4.2
+# Additional Info: Fixed SID translation and character display issues
 # =============================================================================
 
 # First all using statements
@@ -279,15 +279,21 @@ $script:SidTranslationAttempts = @{}
 $script:MaxRetries = 3
 $script:RetryDelay = 2
 
+# Modify the Convert-SidToName function to properly handle suppressed SIDs
 function Convert-SidToName {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Sid
     )
     
+    # Check if SID is in suppressed list first
+    if ($script:SuppressedSids -contains $Sid) {
+        Write-Log -Message "Skipping suppressed SID: $Sid" -Color "DarkGray" -NoConsole
+        return $Sid
+    }
+    
     # Check cache first
     if ($script:SidCache.ContainsKey($Sid)) {
-        Write-Log -Message "Using cached SID translation: $Sid -> $($script:SidCache[$Sid])" -Color "DarkGray" -NoConsole
         return $script:SidCache[$Sid]
     }
     
@@ -295,19 +301,11 @@ function Convert-SidToName {
     $wellKnownName = Test-WellKnownSID -Sid $Sid
     if ($wellKnownName) {
         $script:SidCache[$Sid] = $wellKnownName
-        Write-Log -Message "Resolved well-known SID: $Sid -> $wellKnownName" -Color "DarkGray" -NoConsole
         return $wellKnownName
     }
-    
-    # Check retry count
-    if (-not $script:SidTranslationAttempts.ContainsKey($Sid)) {
-        $script:SidTranslationAttempts[$Sid] = 0
-    }
-    elseif ($script:SidTranslationAttempts[$Sid] -ge $script:MaxRetries) {
-        if (-not ($script:SuppressedSids -contains $Sid)) {
-            Write-Log -Message "Maximum retry attempts ($script:MaxRetries) reached for SID: $Sid" -Color "Yellow"
-        }
-        $script:FailedSids.Add($Sid)
+
+    # If we've already failed this SID max times, return it immediately
+    if ($script:SidTranslationAttempts[$Sid] -ge $script:MaxRetries) {
         return $Sid
     }
 
@@ -315,44 +313,32 @@ function Convert-SidToName {
         $script:SidTranslationAttempts[$Sid]++
         $attempt = $script:SidTranslationAttempts[$Sid]
         
-        Write-Log -Message "Attempting SID translation (attempt $attempt/$script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole
-        
-        $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
-        if ($user) {
-            $name = $user.SamAccountName
+        # Try to resolve using .NET first
+        try {
+            $objSID = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+            $objName = $objSID.Translate([System.Security.Principal.NTAccount])
+            $name = $objName.Value
             $script:SidCache[$Sid] = $name
-            Write-Log -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole
             return $name
+        }
+        catch {
+            # Fall back to AD lookup if .NET translation fails
+            $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
+            if ($user) {
+                $name = $user.SamAccountName
+                $script:SidCache[$Sid] = $name
+                return $name
+            }
         }
     }
     catch {
-        $errorDetails = @{
-            SID = $Sid
-            Attempt = $attempt
-            ErrorType = $_.Exception.GetType().Name
-            ErrorMessage = $_.Exception.Message
-            InnerError = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { "None" }
-        }
-
-        $logMessage = @"
-SID Translation Error:
-  SID: $($errorDetails.SID)
-  Attempt: $($errorDetails.Attempt) of $script:MaxRetries
-  Error Type: $($errorDetails.ErrorType)
-  Message: $($errorDetails.ErrorMessage)
-  Inner Error: $($errorDetails.InnerError)
-"@
-
-        Write-Log -Message $logMessage -Color "Yellow"
-
         if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
-            Write-Log -Message "Retrying in $script:RetryDelay seconds..." -Color "DarkGray"
             Start-Sleep -Seconds $script:RetryDelay
             return Convert-SidToName -Sid $Sid
         }
+        $script:FailedSids.Add($Sid)
     }
-
-    $script:FailedSids.Add($Sid)
+    
     return $Sid
 }
 
@@ -530,7 +516,7 @@ try {
             Write-Log -Message "Access Rights:" -Color "White"
             $data.Access | ForEach-Object {
                 $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
-                $accessType = if ($_.AccessControlType -eq 'Allow') { '✓' } else { '✗' }
+                $accessType = if ($_.AccessControlType -eq 'Allow') { '+' } else { '-' }
                 Write-Log -Message "  $accessType $($_.IdentityReference) - $permission" -Color "Gray"
             }
             Write-Log -Message "-" * 80 -Color "DarkGray"
