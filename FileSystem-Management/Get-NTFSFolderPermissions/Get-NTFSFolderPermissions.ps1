@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 22:30:00 UTC
+# Last Updated: 2025-03-14 22:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.0
-# Additional Info: Removed .log functionality, keeping only transcript and debug.log
+# Version: 1.9.1
+# Additional Info: Fixed missing IncludeInheritance parameter in Get-FolderPermissions
 # =============================================================================
 
 <#
@@ -389,7 +389,7 @@ function Get-FolderPermissions {
         $access = $acl.Access
         $isInherited = $acl.AreAccessRulesProtected -eq $false
         $parentPath = Split-Path -Path $Folder -Parent
-        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -IncludeInheritance
+        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -IncludeInheritance $true
         
         # Check if permissions match parent
         $matchesParent = $false
