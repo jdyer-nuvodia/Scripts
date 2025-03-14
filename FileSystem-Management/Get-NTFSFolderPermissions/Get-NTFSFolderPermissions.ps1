@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:00:00 UTC
+# Last Updated: 2025-03-14 18:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added well-known SID translation functionality
+# Version: 1.4.1
+# Additional Info: Updated Administrator SID output format
 # =============================================================================
 
 # First all using statements
@@ -72,7 +72,7 @@ $script:WellKnownSIDs = @{}
 function Initialize-WellKnownSIDs {
     # Get Administrator SID using WMI
     $AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
-    echo $AdminSID
+    Write-Log -Message "The Administrator SID is: $AdminSID" -Color "White"
 
     $script:WellKnownSIDs = @{
         "Nobody" = "S-1-0-0"
