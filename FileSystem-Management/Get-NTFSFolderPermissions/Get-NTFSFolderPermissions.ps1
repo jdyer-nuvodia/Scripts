@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-03-14 17:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.10
-# Additional Info: Fixed script hanging issue with transcript and console output
+# Version: 1.3.11
+# Additional Info: Fixed log file naming and output separation
 # =============================================================================
 
 # First all using statements
@@ -82,12 +82,12 @@ function Get-SafeFilename {
     return $safe
 }
 
-# Simplified log file creation - Fix the swapped log file names
+# Simplified log file creation with correct naming
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
 $safeFolderPath = Get-SafeFilename -Path $FolderPath
 
-# Define log files with correct naming
+# Define log files with correct naming (fix the swap)
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
 $script:DetailedLogFile = "${logBase}_detailed.log"
 $script:ConsoleLogFile = "${logBase}_console.log"
@@ -113,42 +113,25 @@ function Write-Log {
         [switch]$DetailedOnly
     )
     
-    # Always create detailed log entry
+    # Create timestamp and get calling function
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
     $callingFunction = (Get-PSCallStack)[1].FunctionName
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    # Create detailed diagnostic information without Join-String
-    $variables = $(Get-Variable -Scope 1 | 
-        Where-Object { $_.Name -notlike "*Preference" } | 
-        ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "; "
+    # Format detailed log entry
+    $detailedEntry = "[$timestamp UTC][$callingFunction] $Message"
     
-    $callStack = $(Get-PSCallStack | 
-        Select-Object -Skip 1 | 
-        ForEach-Object { $_.Command }) -join " -> "
-    
-    $detailedEntry = @"
-[TIMESTAMP: $timestamp UTC]
-[FUNCTION: $callingFunction]
-[THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
-[MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
-[ACTION: $Message]
-[VARIABLES: $variables]
-[CALL_STACK: $callStack]
-----------------------------------------
-"@
-    
-    # Write to transcript (detailed log) using Write-Verbose
+    # Write to transcript (detailed log)
     Write-Verbose $detailedEntry
     
     # Handle console and console log output
     if (-not $DetailedOnly) {
         if (-not $NoConsole) {
-            # Write to console with color
+            # Write to console
             Write-Host $Message -ForegroundColor $Color
         }
         
-        # Add to console collection (for console log)
+        # Add to console collection for log file
         if ($Message.Trim() -ne "") {
             [void]$script:ConsoleOutputCollection.Add($Message)
         }
