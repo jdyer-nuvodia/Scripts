@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-15 21:10:00 UTC
+# Last Updated: 2025-03-14 21:17:22 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.3
-# Additional Info: Fixed duplicate code, consolidated logging, and addressed undefined variables
+# Version: 1.7.4
+# Additional Info: Fixed incomplete SID resolution function
 # =============================================================================
 
 <#
@@ -296,18 +296,6 @@ $script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13767')
 $script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13821')
 $script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-17638')
 
-# Function to display progress bar
-function Write-ProgressBar {
-    param (
-        [int]$Current,
-        [int]$Total,
-        [string]$Activity,
-        [string]$Status
-    )
-    $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
-    Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
-}
-
 # Consolidated SID handling function
 function Convert-SidToName {
     param(
@@ -356,14 +344,32 @@ function Convert-SidToName {
         }
         catch {
             # Fall back to AD lookup if .NET translation fails
-            Write-Log -Message "NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole -Debug
+            Write-Log -Message ".NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole -Debug
             if (-not $SkipADResolution) {
-                $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
-                if ($user) {
-                    $name = $user.SamAccountName
-                    $script:SidCache[$Sid] = $name
-                    Write-Log -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
-                    return $name
+                try {
+                    $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
+                    if ($user) {
+                        $name = $user.SamAccountName
+                        $script:SidCache[$Sid] = $name
+                        Write-Log -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
+                        return $name
+                    }
+                }
+                catch {
+                    # Try as a group if user lookup failed
+                    try {
+                        $group = Get-ADGroup -Identity $Sid -Properties SamAccountName -ErrorAction Stop
+                        if ($group) {
+                            $name = $group.SamAccountName
+                            $script:SidCache[$Sid] = $name
+                            Write-Log -Message "Successfully resolved SID via AD (group) on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
+                            return $name
+                        }
+                    }
+                    catch {
+                        Write-Log -Message "AD resolution failed for SID: $Sid" -Color "Yellow" -NoConsole -Debug
+                        throw "Failed to resolve SID via AD: $_"
+                    }
                 }
             }
             else {
@@ -379,9 +385,10 @@ function Convert-SidToName {
             return Convert-SidToName -Sid $Sid
         }
         $script:ADResolutionErrors[$Sid] = $_.Exception.Message
-        $script:FailedSids.Add($Sid)
+        $script:FailedSids.Add($Sid) | Out-Null
     }
     
+    # If all resolution attempts fail, return the original SID
     return $Sid
 }
 
