@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 20:29:00 UTC
+# Last Updated: 2025-03-14 20:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.0
-# Additional Info: Consolidated logging to two files for cleaner output
+# Version: 1.7.1
+# Additional Info: Fixed log initialization sequence
 # =============================================================================
 
 <#
@@ -63,6 +63,34 @@ $ErrorActionPreference = 'Stop'
 # Script-level variables
 $script:DetailedLogBuffer = $null
 $script:TranscriptStarted = $false
+
+# Initialize logging first
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$computerName = $env:COMPUTERNAME
+$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${timestamp}"
+$script:LogFile = "${logBase}.log" 
+$script:DebugLogFile = "${logBase}_debug.log"
+
+# Initialize log files with proper headers
+@"
+# =============================================================================
+# NTFS Permissions Analysis Log
+# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+# System: $computerName
+# Version: 1.7.1
+# =============================================================================
+
+"@ | Set-Content $script:LogFile
+
+@"
+# =============================================================================
+# NTFS Permissions Debug Log
+# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+# System: $computerName
+# Version: 1.7.1
+# =============================================================================
+
+"@ | Set-Content $script:DebugLogFile
 
 function Initialize-LogBuffers {
     <#
