@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 22:32:00 UTC
+# Last Updated: 2025-03-14 22:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.1
-# Additional Info: Fixed missing IncludeInheritance parameter in Get-FolderPermissions
+# Version: 1.9.2
+# Additional Info: Changed transcript file extension from .transcript to .log
 # =============================================================================
 
 <#
@@ -189,7 +189,7 @@ Import-Module ActiveDirectory -ErrorAction SilentlyContinue
 
 # Initialize transcript - done only once
 if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
-    $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_${timestamp}.transcript"
+    $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_${timestamp}.log"
     try {
         Start-Transcript -Path $transcriptPath -Force
         $script:TranscriptStarted = $true
