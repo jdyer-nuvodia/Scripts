@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:21:00 UTC
+# Last Updated: 2025-03-14 18:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.3
-# Additional Info: Fixed unused attempt variable in SID translation
+# Version: 1.4.4
+# Additional Info: Removed duplicate startup messages
 # =============================================================================
 
 # First all using statements
@@ -140,12 +140,11 @@ Start-Transcript -Path $script:DetailedLogFile -Force
 
 # Initialize console output collection
 $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
-[void]$script:ConsoleOutputCollection.Add("Starting folder permission analysis for $FolderPath")
 
-# Output initial messages
-Write-Host "Starting folder permission analysis for $FolderPath" -ForegroundColor Cyan
-Write-Host "Detailed analysis will be written to: $script:DetailedLogFile" -ForegroundColor Yellow
-Write-Host "Console summary will be written to: $script:ConsoleLogFile" -ForegroundColor Yellow
+# Output initial messages (remove duplicate Write-Host calls)
+Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
+Write-Log -Message "Detailed analysis will be written to: $script:DetailedLogFile" -Color "Yellow"
+Write-Log -Message "Console summary will be written to: $script:ConsoleLogFile" -Color "Yellow"
 
 # Updated Write-Log function with proper output separation
 function Write-Log {
@@ -470,9 +469,8 @@ function Get-HumanReadablePermissions {
 # Main script execution
 try {
     Initialize-WellKnownSIDs
-    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
-    Write-Log -Message "Detailed analysis will be written to: $script:DetailedLogFile" -Color "Yellow"
-
+    # Remove duplicate message here since it's already handled above
+    
     # Process folders
     Invoke-FolderRecursively -Path $FolderPath
 
