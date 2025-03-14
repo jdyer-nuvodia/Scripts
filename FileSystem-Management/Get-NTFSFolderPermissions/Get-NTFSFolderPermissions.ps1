@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:55:00 UTC
+# Last Updated: 2025-03-14 19:02:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.11
-# Additional Info: Fixed transcript handling and buffer management
+# Version: 1.5.0
+# Additional Info: Simplified logging architecture - removed redundant logs
 # =============================================================================
 
 # First all using statements
@@ -70,15 +70,8 @@ $script:SidTranslationAttempts = @{}  # Add script-level variables for tracking 
 $script:WellKnownSIDs = @{}
 
 # Initialize script-level variables
-$script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
-
-# Initialize log buffers with specific initial capacities
-$script:DetailedLogBuffer = [System.Text.StringBuilder]::new(4096)
-$script:ConsoleLogBuffer = [System.Text.StringBuilder]::new(2048)
-
-# Script-level variables for state tracking
+$script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB initial capacity
 $script:TranscriptStarted = $false
-$script:BuffersInitialized = $false
 
 # Define Write-Log function before any usage
 function Write-Log {
@@ -99,31 +92,20 @@ function Write-Log {
         $detailedEntry = @"
 [TIMESTAMP: $timestamp UTC]
 [FUNCTION: $callingFunction]
-[THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
-[ACTION: $Message]
+[MESSAGE: $Message]
 ----------------------------------------
 "@
         
-        # Add to detailed log buffer with capacity check
+        # Write to detailed log buffer
         if ($script:DetailedLogBuffer.Length + $detailedEntry.Length > $script:DetailedLogBuffer.Capacity) {
-            FlushLogBuffers
+            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
+            $script:DetailedLogBuffer.Clear()
         }
         [void]$script:DetailedLogBuffer.AppendLine($detailedEntry)
         
-        # Handle console output
-        if (-not $DetailedOnly) {
-            if (-not $NoConsole) {
-                Write-Host $Message -ForegroundColor $Color
-            }
-            
-            # Add to console buffer with capacity check
-            $consoleEntry = "$timestamp UTC: $Message"
-            if ($script:ConsoleLogBuffer.Length + $consoleEntry.Length > $script:ConsoleLogBuffer.Capacity) {
-                FlushLogBuffers
-            }
-            if ($Message.Trim() -ne "") {
-                [void]$script:ConsoleLogBuffer.AppendLine($consoleEntry)
-            }
+        # Write to console (captured by transcript)
+        if (-not $NoConsole -and -not $DetailedOnly) {
+            Write-Host $Message -ForegroundColor $Color
         }
     }
     catch {
@@ -131,43 +113,27 @@ function Write-Log {
     }
 }
 
-# Add function to flush log buffers
-function FlushLogBuffers {
-    try {
-        if ($script:BuffersInitialized) {
-            if ($null -ne $script:DetailedLogBuffer -and $script:DetailedLogBuffer.Length -gt 0) {
-                Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString() -ErrorAction Stop
-                $script:DetailedLogBuffer.Clear()
-            }
-            
-            if ($null -ne $script:ConsoleLogBuffer -and $script:ConsoleLogBuffer.Length -gt 0) {
-                Add-Content -Path $script:ConsoleLogFile -Value $script:ConsoleLogBuffer.ToString() -ErrorAction Stop
-                $script:ConsoleLogBuffer.Clear()
-            }
-        }
-    }
-    catch {
-        Write-Warning "Error flushing log buffers: $_"
-        throw
+# Initialize logs
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$systemName = $env:COMPUTERNAME
+$safeFolderPath = Get-SafeFilename -Path $FolderPath
+
+# Define log files with correct naming
+$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
+$script:DetailedLogFile = "${logBase}_details.log"
+
+# Start transcript (captures console output)
+try {
+    if ($Host.Name -eq 'ConsoleHost') {
+        Start-Transcript -Path "${logBase}_transcript" -Force -ErrorAction Stop
+        $script:TranscriptStarted = $true
     }
 }
-
-# Initialize buffers with proper error handling
-function Initialize-LogBuffers {
-    try {
-        if (-not $script:BuffersInitialized) {
-            $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB
-            $script:ConsoleLogBuffer = [System.Text.StringBuilder]::new(120192)   # 117KB
-            $script:BuffersInitialized = $true
-            Write-Log "Log buffers initialized successfully" -DetailedOnly
-        }
-    }
-    catch {
-        Write-Warning "Failed to initialize log buffers: $_"
-        throw
-    }
+catch {
+    Write-Warning "Could not start transcript: $_"
 }
 
+# Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
     # Get Administrator SID using WMI
     $AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
@@ -686,8 +652,9 @@ finally {
     
     try {
         # Final flush of log buffers
-        if ($script:BuffersInitialized) {
-            FlushLogBuffers
+        if ($script:DetailedLogBuffer.Length > 0) {
+            Add-Content -Path $script:DetailedLogFile -Value $script:DetailedLogBuffer.ToString()
+            $script:DetailedLogBuffer.Clear()
         }
         
         Write-Host "Script execution completed. See $script:DetailedLogFile for full details." -ForegroundColor Green
