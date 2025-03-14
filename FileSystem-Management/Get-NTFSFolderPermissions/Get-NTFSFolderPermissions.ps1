@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 16:38:00 UTC
+# Last Updated: 2025-03-14 17:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.7
-# Additional Info: Fixed Join-String compatibility and log file naming
+# Version: 1.3.8
+# Additional Info: Fixed collection handling and Count property access
 # =============================================================================
 
 # First all using statements
@@ -307,13 +307,14 @@ SID Translation Error:
 
 # Initialize variables
 $script:SidCache = @{}
-$script:FailedSids = New-Object System.Collections.Generic.HashSet[string]
-$script:SuppressedSids = @(
+$script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
+$script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
+$script:SuppressedSids.AddRange(@(
     'S-1-5-21-3715258189-2875184700-594828381-500',
     'S-1-5-21-1787995930-3758959370-1315816792-13767',
     'S-1-5-21-1787995930-3758959370-1315816792-13821',
     'S-1-5-21-1787995930-3758959370-1315816792-17638'
-)
+))
 
 # Function to process each folder
 function Invoke-FolderProcessing {
@@ -457,17 +458,20 @@ try {
             Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan"
 
             # Find all descendants with identical permissions
-            $identicalDescendants = $script:PermissionGroups[$data.PermissionHash].Folders | 
+            $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
                 Where-Object { 
+                    $_ -and 
                     $_ -ne $folder -and 
                     $script:FolderPermissions[$_].MatchesParent 
-                }
+                })
 
-            if ($identicalDescendants.Count -gt 0) {
+            if ($identicalDescendants -and $identicalDescendants.Count -gt 0) {
                 Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
                 foreach ($descendant in ($identicalDescendants | Sort-Object)) {
-                    $relativePath = $descendant.Substring($folder.Length + 1)
-                    Write-Log -Message "  • $relativePath" -Color "DarkGray"
+                    if ($descendant -and $folder) {
+                        $relativePath = $descendant.Substring($folder.Length + 1)
+                        Write-Log -Message "  • $relativePath" -Color "DarkGray"
+                    }
                 }
             }
 
@@ -518,11 +522,16 @@ try {
             $consoleOutput += "Owner: $($group.Value.Owner)"
         }
         
-        if ($group.Value.Folders.Count -gt 1) {
+        if ($group.Value.Folders -and $group.Value.Folders.Count -gt 1) {
             $consoleOutput += "Subfolders with same permissions:"
-            $group.Value.Folders | Select-Object -Skip 1 | ForEach-Object {
-                $consoleOutput += "  - $_"
-            }
+            $group.Value.Folders | 
+                Where-Object { $_ } | 
+                Select-Object -Skip 1 | 
+                ForEach-Object {
+                    if ($_) {
+                        $consoleOutput += "  - $_"
+                    }
+                }
         }
         
         $consoleOutput += "Access Rights:"
