@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:37:00 UTC
+# Last Updated: 2025-03-14 18:43:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.6
-# Additional Info: Fixed swapped log file output destinations
+# Version: 1.4.7
+# Additional Info: Fixed log file access conflicts
 # =============================================================================
 
 # First all using statements
@@ -81,27 +81,38 @@ function Write-Log {
         [switch]$DetailedOnly
     )
     
-    # Create detailed log entry
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
-    $callingFunction = (Get-PSCallStack)[1].FunctionName
-    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
-    
-    $detailedEntry = @"
+    try {
+        # Create timestamp and diagnostic info
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+        $callingFunction = (Get-PSCallStack)[1].FunctionName
+        if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
+        
+        # Format detailed log entry
+        $detailedEntry = @"
 [TIMESTAMP: $timestamp UTC]
 [FUNCTION: $callingFunction]
 [THREAD_ID: $([System.Threading.Thread]::CurrentThread.ManagedThreadId)]
-[MEMORY_USAGE: $([System.GC]::GetTotalMemory($false)) bytes]
 [ACTION: $Message]
+----------------------------------------
 "@
-    
-    # Write detailed entry to detailed log file (not transcript)
-    if (-not $DetailedOnly) {
+        
+        # Write to detailed log
         Add-Content -Path $script:DetailedLogFile -Value $detailedEntry
+        
+        # Handle console and console log output
+        if (-not $DetailedOnly) {
+            if (-not $NoConsole) {
+                Write-Host $Message -ForegroundColor $Color
+            }
+            
+            # Add to console collection for later writing
+            if ($Message.Trim() -ne "") {
+                [void]$script:ConsoleOutputCollection.Add("$timestamp UTC: $Message")
+            }
+        }
     }
-    
-    # Write to console (which gets captured by transcript in console log)
-    if (-not $NoConsole) {
-        Write-Host $Message -ForegroundColor $Color
+    catch {
+        Write-Warning "Failed to write log entry: $_"
     }
 }
 
@@ -171,8 +182,26 @@ $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPa
 $script:DetailedLogFile = "${logBase}_detailed.log"
 $script:ConsoleLogFile = "${logBase}_console.log"
 
-# Start transcript to capture console output in console log (swap from detailed)
-Start-Transcript -Path $script:ConsoleLogFile -Force
+# Initialize log files and create them with headers
+@"
+# =============================================================================
+# Detailed Log File
+# Created: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+# System: $systemName
+# Analysis Path: $FolderPath
+# =============================================================================
+
+"@ | Out-File -FilePath $script:DetailedLogFile -Force
+
+@"
+# =============================================================================
+# Console Log File
+# Created: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+# System: $systemName
+# Analysis Path: $FolderPath
+# =============================================================================
+
+"@ | Out-File -FilePath $script:ConsoleLogFile -Force
 
 # Initialize console output collection for detailed log (swap from console)
 $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
@@ -584,8 +613,13 @@ finally {
     Write-Progress -Activity "Analyzing Folder Permissions" -Completed
     Write-Host "Script execution completed. See $script:ConsoleLogFile for full details." -ForegroundColor Green
     
-    # Save collected console output to the console log file
-    $script:ConsoleOutputCollection | Out-File -FilePath $script:DetailedLogFile -Append -Encoding utf8
+    try {
+        # Write collected console output
+        $script:ConsoleOutputCollection | Out-File -FilePath $script:ConsoleLogFile -Append
+    }
+    catch {
+        Write-Warning "Error writing final log entries: $_"
+    }
     
     # Only stop transcript if it's running
     $ErrorActionPreference = 'SilentlyContinue'
