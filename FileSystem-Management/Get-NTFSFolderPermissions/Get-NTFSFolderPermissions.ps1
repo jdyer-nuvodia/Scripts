@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 18:49:00 UTC
+# Last Updated: 2025-03-14 18:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.9
-# Additional Info: Fixed StringBuilder buffer management
+# Version: 1.4.10
+# Additional Info: Fixed transcript handling
 # =============================================================================
 
 # First all using statements
@@ -239,6 +239,23 @@ $script:ConsoleOutputCollection = [System.Collections.ArrayList]@()
 Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
 Write-Log -Message "Detailed analysis will be written to: $script:DetailedLogFile" -Color "Yellow"
 Write-Log -Message "Console summary will be written to: $script:ConsoleLogFile" -Color "Yellow"
+
+# Add transcript state tracking
+$script:TranscriptStarted = $false
+
+# Modified transcript start handling
+try {
+    if ($Host.Name -eq 'ConsoleHost') {
+        $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_$(Get-Date -Format 'yyyyMMdd_HHmmss').transcript"
+        Start-Transcript -Path $transcriptPath -ErrorAction Stop
+        $script:TranscriptStarted = $true
+        Write-Log "Transcript started at $transcriptPath" -DetailedOnly
+    }
+}
+catch {
+    Write-Warning "Could not start transcript: $_"
+    # Continue execution even if transcript fails
+}
 
 # Function to display progress bar
 function Write-ProgressBar {
@@ -651,13 +668,13 @@ finally {
         Write-Warning "Error in final log writes: $_"
     }
     
-    # Clean up transcript
-    try {
-        if ($Host.Name -eq 'ConsoleHost') {
-            Stop-Transcript -ErrorAction SilentlyContinue
+    # Clean up transcript only if we started one
+    if ($script:TranscriptStarted) {
+        try {
+            Stop-Transcript -ErrorAction Stop
         }
-    }
-    catch {
-        Write-Warning "Error stopping transcript: $_"
+        catch {
+            Write-Warning "Error stopping transcript: $_"
+        }
     }
 }
