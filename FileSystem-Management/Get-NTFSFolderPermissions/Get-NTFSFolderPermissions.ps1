@@ -220,7 +220,7 @@ Import-Module ActiveDirectory -ErrorAction SilentlyContinue
 
 # Initialize transcript - done only once
 if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
-    $transcriptPath = Join-Path $PSScriptRoot "NTFSPermissions_${timestamp}.log"
+    $transcriptPath = "${logBase}_transcript.log"
     try {
         Start-Transcript -Path $transcriptPath -Force | Out-Null
         $script:TranscriptStarted = $true
