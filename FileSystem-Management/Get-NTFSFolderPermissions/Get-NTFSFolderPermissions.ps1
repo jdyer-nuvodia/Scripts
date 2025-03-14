@@ -2,11 +2,29 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 20:24:00 UTC
+# Last Updated: 2025-03-14 20:29:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.1
-# Additional Info: Consolidated logging to two files and removed redundant logging
+# Version: 1.7.0
+# Additional Info: Consolidated logging to two files for cleaner output
 # =============================================================================
+
+<#
+.SYNOPSIS
+Gets NTFS folder permissions for specified path.
+
+.DESCRIPTION
+Analyzes and reports NTFS permissions for specified folder path and its subfolders.
+Consolidates output into two log files:
+- Main log for permission details
+- Debug log for troubleshooting information
+
+.PARAMETER FolderPath
+The folder path to analyze. Must be a valid NTFS path.
+
+.EXAMPLE
+.\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Temp"
+Analyzes permissions on C:\Temp and outputs to logs
+#>
 
 using namespace System.Security.AccessControl
 using namespace System.IO
@@ -109,33 +127,21 @@ function Write-Log {
         [switch]$Debug
     )
     
-    try {
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
-        $callingFunction = (Get-PSCallStack)[1].FunctionName
-        if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
-        
-        # Format log entry
-        $logEntry = @"
-[TIMESTAMP: $timestamp UTC]
-[FUNCTION: $callingFunction]
-[MESSAGE: $Message]
-----------------------------------------
-"@
-        
-        # Write to appropriate log file
-        if ($Debug) {
-            Add-Content -Path $script:DebugLogFile -Value $logEntry -ErrorAction Stop
-        } else {
-            Add-Content -Path $script:LogFile -Value $logEntry -ErrorAction Stop
-        }
-        
-        # Write to console if requested
-        if (-not $NoConsole) {
-            Write-Host $Message -ForegroundColor $Color
-        }
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
+    $callingFunction = (Get-PSCallStack)[1].FunctionName
+    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
+    
+    $logEntry = "[TIMESTAMP: $timestamp]`n[FUNCTION: $callingFunction]`n[MESSAGE: $Message]`n----------------------------------------`n"
+    
+    # Write to appropriate log file
+    if ($Debug) {
+        Add-Content -Path $script:DebugLogFile -Value $logEntry
+    } else {
+        Add-Content -Path $script:LogFile -Value $logEntry
     }
-    catch {
-        Write-Warning "Failed to write log entry: $_"
+    
+    if (-not $NoConsole) {
+        Write-Host $Message -ForegroundColor $Color
     }
 }
 
@@ -187,21 +193,27 @@ function Get-SafeFilename {
     }
 }
 
-# Initialize logging
+# Initialize logging with consolidated files
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $computerName = $env:COMPUTERNAME
 $safePath = Get-SafeFilename -Path $FolderPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
-$script:LogFile = "${logBase}.log"
+$script:LogFile = "${logBase}.log" 
 $script:DebugLogFile = "${logBase}_debug.log"
 
-# Initialize log files with headers
+# Remove old logging variables
+Remove-Variable -Name TranscriptFile -ErrorAction SilentlyContinue
+Remove-Variable -Name DetailedLogFile -ErrorAction SilentlyContinue
+Remove-Variable -Name ConsoleLogFile -ErrorAction SilentlyContinue
+
+# Initialize log files with proper headers
 @"
 # =============================================================================
-# NTFS Permissions Analysis
+# NTFS Permissions Analysis Log
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
 # Analysis Path: $FolderPath
+# Version: 1.7.0
 # =============================================================================
 
 "@ | Set-Content $script:LogFile
@@ -212,6 +224,7 @@ $script:DebugLogFile = "${logBase}_debug.log"
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
 # Analysis Path: $FolderPath
+# Version: 1.7.0
 # =============================================================================
 
 "@ | Set-Content $script:DebugLogFile
