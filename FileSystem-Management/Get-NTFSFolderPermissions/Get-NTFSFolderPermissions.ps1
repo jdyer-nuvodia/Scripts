@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 22:36:00 UTC
+# Last Updated: 2025-03-14 22:41:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.2
-# Additional Info: Changed transcript file extension from .transcript to .log
+# Version: 1.10.0
+# Additional Info: Enhanced debug logging functionality and verbosity
 # =============================================================================
 
 <#
@@ -137,22 +137,28 @@ function Get-SafeFilename {
     }
 }
 
-# Consolidated log initialization - single approach
+# Consolidated log initialization with enhanced configuration
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $computerName = $env:COMPUTERNAME
 $safePath = Get-SafeFilename -Path $FolderPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
 $script:DebugLogFile = "${logBase}_debug.log"
 
-# Function to create a standardized log header
+# Function to create a standardized log header with enhanced metadata
 function New-LogHeader {
-    return @"
+    @"
 # =============================================================================
 # NTFS Permissions Debug Log
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
+# PowerShell Version: $($PSVersionTable.PSVersion)
 # Analysis Path: $FolderPath
-# Version: 1.9.0
+# Max Threads: $MaxThreads
+# Max Depth: $MaxDepth
+# Skip AD Resolution: $SkipADResolution
+# Skip Uniqueness Counting: $SkipUniquenessCounting
+# Enable SID Diagnostics: $EnableSIDDiagnostics
+# Script Version: 1.10.0
 # =============================================================================
 
 "@
@@ -161,26 +167,51 @@ function New-LogHeader {
 # Initialize debug log with proper header
 Set-Content -Path $script:DebugLogFile -Value (New-LogHeader)
 
-# Define Write-Log function before any usage
+# Define Write-Log function with enhanced functionality
 function Write-Log {
     param (
         [string]$Message,
         [string]$Color = "White",
         [switch]$NoConsole,
-        [switch]$Debug
+        [switch]$Debug,
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS')]
+        [string]$Level = 'INFO'
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
-    $callingFunction = (Get-PSCallStack)[1].FunctionName
+    $callStack = Get-PSCallStack
+    $callingFunction = $callStack[1].FunctionName
+    $lineNumber = $callStack[1].ScriptLineNumber
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    $logEntry = "[TIMESTAMP: $timestamp]`n[FUNCTION: $callingFunction]`n[MESSAGE: $Message]`n----------------------------------------`n"
+    $logEntry = @"
+[TIMESTAMP: $timestamp]
+[LEVEL: $Level]
+[FUNCTION: $callingFunction]
+[LINE: $lineNumber]
+[THREAD: $([Threading.Thread]::CurrentThread.ManagedThreadId)]
+[MESSAGE: $Message]
+----------------------------------------
+"@
     
-    # Write to debug log
-    Add-Content -Path $script:DebugLogFile -Value $logEntry
+    # Write to debug log with error handling
+    try {
+        Add-Content -Path $script:DebugLogFile -Value $logEntry
+    }
+    catch {
+        Write-Warning "Failed to write to debug log: $_"
+    }
     
     if (-not $NoConsole) {
-        Write-Host $Message -ForegroundColor $Color
+        $levelColors = @{
+            'INFO' = 'White'
+            'WARNING' = 'Yellow'
+            'ERROR' = 'Red'
+            'DEBUG' = 'Magenta'
+            'SUCCESS' = 'Green'
+        }
+        $messageColor = if ($levelColors.ContainsKey($Level)) { $levelColors[$Level] } else { $Color }
+        Write-Host $Message -ForegroundColor $messageColor
     }
 }
 
