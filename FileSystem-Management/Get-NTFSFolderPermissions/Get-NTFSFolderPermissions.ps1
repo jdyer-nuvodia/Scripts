@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 19:03:00 UTC
+# Last Updated: 2025-03-14 19:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.1
-# Additional Info: Added missing Get-SafeFilename function
+# Version: 1.5.2
+# Additional Info: Added Get-SafeFilename function with input validation
 # =============================================================================
 
 # First all using statements
@@ -176,18 +176,50 @@ function Test-WellKnownSID {
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
-    param([string]$Path)
-    # Replace invalid filename characters and common separators
-    $safe = $Path -replace '[\\\/\:\*\?\"\<\>\|]', '_'
-    # Replace multiple underscores with single underscore
-    $safe = $safe -replace '_{2,}', '_'
-    # Trim underscores from ends
-    $safe = $safe.Trim('_')
-    # Limit length to prevent extremely long filenames
-    if ($safe.Length -gt 50) {
-        $safe = $safe.Substring(0, 47) + '...'
+    <#
+    .SYNOPSIS
+        Sanitizes a file path for safe file name creation.
+    .DESCRIPTION
+        Removes invalid characters and converts spaces to underscores.
+        Truncates names longer than 50 characters.
+        Returns sanitized path suitable for file naming.
+    .PARAMETER Path
+        The file path to sanitize.
+    .EXAMPLE
+        Get-SafeFilename -Path "C:\Program Files\My App"
+        Returns: C_Program_Files_My_App
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true, Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Path
+    )
+    
+    try {
+        Write-Log "Sanitizing path: $Path" -DetailedOnly
+        
+        # Remove invalid characters
+        $safeName = $Path -replace '[\\/:*?"<>|]', '_'
+        
+        # Replace multiple spaces/special chars with single underscore
+        $safeName = $safeName -replace '[\s\p{P}]+', '_'
+        
+        # Remove leading/trailing underscores
+        $safeName = $safeName.Trim('_')
+        
+        # Ensure length is reasonable
+        if ($safeName.Length -gt 50) {
+            $safeName = $safeName.Substring(0, 47) + '...'
+        }
+        
+        Write-Log "Sanitized path result: $safeName" -DetailedOnly
+        return $safeName
     }
-    return $safe
+    catch {
+        Write-Log "Error in Get-SafeFilename: $_" -Color Red -DetailedOnly
+        throw
+    }
 }
 
 # Simplified log file creation - Fix the swapped log file names
