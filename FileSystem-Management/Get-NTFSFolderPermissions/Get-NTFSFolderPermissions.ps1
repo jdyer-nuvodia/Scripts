@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 19:08:00 UTC
+# Last Updated: 2025-03-14 19:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.2
-# Additional Info: Added Get-SafeFilename function with input validation
+# Version: 1.5.3
+# Additional Info: Fixed transcript duplication and added buffer initialization
 # =============================================================================
 
 # First all using statements
@@ -706,3 +706,54 @@ finally {
         $script:BuffersInitialized = $false
     }
 }
+
+# Script-level variables
+$script:DetailedLogBuffer = $null
+$script:TranscriptStarted = $false
+
+function Initialize-LogBuffers {
+    <#
+    .SYNOPSIS
+        Initializes logging buffers for the script.
+    .DESCRIPTION
+        Creates and configures StringBuilder objects for detailed logging.
+        Sets up initial capacity to optimize memory usage.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    try {
+        if ($null -eq $script:DetailedLogBuffer) {
+            $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB
+            Write-Log "Log buffers initialized successfully" -DetailedOnly
+            return $true
+        }
+        return $false
+    }
+    catch {
+        Write-Log "Failed to initialize log buffers: $_" -Color Red
+        throw
+    }
+}
+
+# Initialize logging - do this only once
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$systemName = $env:COMPUTERNAME
+$safeFolderPath = Get-SafeFilename -Path $FolderPath
+$logBase = Join-Path $PSScriptRoot "NTFSPermissions_${systemName}_${safeFolderPath}_${timestamp}"
+$script:DetailedLogFile = "${logBase}_details.log"
+
+# Start transcript (only once)
+if (-not $script:TranscriptStarted -and $Host.Name -eq 'ConsoleHost') {
+    try {
+        Start-Transcript -Path "${logBase}_transcript" -Force -ErrorAction Stop
+        $script:TranscriptStarted = $true
+        Write-Log "Transcript started successfully" -DetailedOnly
+    }
+    catch {
+        Write-Warning "Could not start transcript: $_"
+    }
+}
+
+# Initialize buffers
+Initialize-LogBuffers
