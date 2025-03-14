@@ -72,6 +72,7 @@ $script:WellKnownSIDs = @{}
 function Initialize-WellKnownSIDs {
     # Get Administrator SID using WMI
     $AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
+    echo $AdminSID
 
     $script:WellKnownSIDs = @{
         "Nobody" = "S-1-0-0"
