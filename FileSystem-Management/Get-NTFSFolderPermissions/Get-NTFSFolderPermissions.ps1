@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 22:52:00 UTC
+# Last Updated: 2025-03-14 22:53:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.5
-# Additional Info: Reordered initialization messages to improve readability
+# Version: 1.10.6
+# Additional Info: Fixed AdminSID initialization sequence
 # =============================================================================
 
 <#
@@ -233,14 +233,11 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
-    Write-Log ""
-    # Get Administrator SID using WMI
-    $AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
-    
-    # Output initial messages
+    # Get Administrator SID using WMI first
+    $script:AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
     Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
     Write-Log ""
-    Write-Log -Message "The Administrator SID is: $AdminSID" -Color "White" -Level 'INFO'
+    Write-Log -Message "The Administrator SID is: $script:AdminSID" -Color "White" -Level 'INFO'
     Write-Log ""
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
 
@@ -256,7 +253,7 @@ function Initialize-WellKnownSIDs {
         "LocalSystem" = "S-1-5-18"
         "LocalService" = "S-1-5-19"
         "NetworkService" = "S-1-5-20"
-        "Administrator" = if ($AdminSID) { $AdminSID } else { "S-1-5-21-domain-500" }
+        "Administrator" = if ($script:AdminSID) { $script:AdminSID } else { "S-1-5-21-domain-500" }
         "Administrators" = "S-1-5-32-544"
         "Users" = "S-1-5-32-545"
         "Guests" = "S-1-5-32-546"
