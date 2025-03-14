@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 22:53:00 UTC
+# Last Updated: 2025-03-14 23:01:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.6
-# Additional Info: Fixed AdminSID initialization sequence
+# Version: 1.10.7
+# Additional Info: Removed duplicate initialization messages
 # =============================================================================
 
 <#
@@ -235,11 +235,6 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
 function Initialize-WellKnownSIDs {
     # Get Administrator SID using WMI first
     $script:AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
-    Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
-    Write-Log ""
-    Write-Log -Message "The Administrator SID is: $script:AdminSID" -Color "White" -Level 'INFO'
-    Write-Log ""
-    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
 
     $script:WellKnownSIDs = @{
         "Nobody" = "S-1-0-0"
@@ -548,10 +543,10 @@ function Get-HumanReadablePermissions {
 try {
     Initialize-WellKnownSIDs
     
-    # Output initial messages in specified order
+    # Output initial messages in specified order - only once
     Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
     Write-Log ""
-    Write-Log -Message "The Administrator SID is: $AdminSID" -Color "White" -Level 'INFO'
+    Write-Log -Message "The Administrator SID is: $script:AdminSID" -Color "White" -Level 'INFO'
     Write-Log ""
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
     
