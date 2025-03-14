@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 23:15:00 UTC
+# Last Updated: 2025-03-14 23:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.8
-# Additional Info: Fixed path sanitization for special characters
+# Version: 1.10.9
+# Additional Info: Fixed string length validation in Get-SafeFilename
 # =============================================================================
 
 <#
@@ -95,19 +95,6 @@ $script:RetryDelay = 2
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
-    <#
-    .SYNOPSIS
-        Sanitizes a file path for safe file name creation.
-    .DESCRIPTION
-        Removes invalid characters and converts spaces to underscores.
-        Truncates names longer than 50 characters.
-        Returns sanitized path suitable for file naming.
-    .PARAMETER Path
-        The file path to sanitize.
-    .EXAMPLE
-        Get-SafeFilename -Path "C:\Program Files\My App"
-        Returns: C_Program_Files_My_App
-    #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory=$true, Position=0)]
@@ -116,29 +103,52 @@ function Get-SafeFilename {
     )
     
     try {
-        # Convert path to use underscores for directory separators
+        # Initial null/empty check
+        if ([string]::IsNullOrEmpty($Path)) {
+            throw "Path cannot be null or empty"
+        }
+
+        # Convert path separators to underscores
         $safeName = $Path.Replace('\', '_').Replace('/', '_')
         
-        # Replace invalid characters but preserve dashes
+        # Replace invalid characters but preserve dashes and spaces
         $safeName = $safeName -replace '[:<>"|?*]', '_'
         
-        # Replace multiple spaces or underscores with single underscore
+        # Handle multiple spaces/underscores
         $safeName = $safeName -replace '[\s_]+', '_'
         
         # Remove leading/trailing underscores
         $safeName = $safeName.Trim('_')
         
-        # Ensure length is reasonable - use proper string length check
+        # Length validation with proper checks
+        if ([string]::IsNullOrEmpty($safeName)) {
+            throw "Sanitized path resulted in empty string"
+        }
+
+        # Safe substring operation
         if ($safeName.Length -gt 50) {
-            $safeName = $safeName.Substring(0, 47) + '...'
+            $safeName = $safeName.Substring(0, [Math]::Min(47, $safeName.Length)) + "..."
+        }
+        
+        # Final validation
+        if ([string]::IsNullOrEmpty($safeName)) {
+            throw "Final sanitized path is empty"
         }
         
         return $safeName
     }
     catch {
         Write-Log -Message "Error in Get-SafeFilename: $_" -Level 'ERROR' -Color "Red"
-        # Return a safe default if there's an error
-        return "DefaultLog_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        # Return a safe default name that includes part of the original path
+        $defaultName = "DefaultLog_" + (Get-Date -Format 'yyyyMMdd_HHmmss')
+        if (-not [string]::IsNullOrEmpty($Path)) {
+            # Take last part of path if available
+            $lastPart = $Path.Split('\')[-1]
+            if (-not [string]::IsNullOrEmpty($lastPart)) {
+                $defaultName = "Log_" + ($lastPart -replace '[^\w\-]', '_')
+            }
+        }
+        return $defaultName
     }
 }
 
