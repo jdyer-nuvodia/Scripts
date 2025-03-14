@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 23:50:00 UTC
+# Last Updated: 2025-03-14 23:56:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.0
-# Additional Info: Added timeout and cancellation support
+# Version: 1.10.10
+# Additional Info: Fixed UTF-8 character encoding in output
 # =============================================================================
 
 <#
@@ -649,7 +649,7 @@ try {
             foreach ($descendant in ($identicalDescendants | Sort-Object)) {
                 if ($descendant -and $folder) {
                     $relativePath = $descendant.Substring($folder.Length + 1)
-                    Write-Log -Message "  • $relativePath" -Color "DarkGray" -Level 'INFO'
+                    Write-Log -Message "  - $relativePath" -Color "DarkGray" -Level 'INFO'
                 }
             }
         }
