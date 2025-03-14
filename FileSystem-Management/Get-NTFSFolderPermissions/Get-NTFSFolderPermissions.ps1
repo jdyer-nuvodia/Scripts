@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 17:16:00 UTC
+# Last Updated: 2025-03-14 17:18:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.8
-# Additional Info: Fixed collection handling and Count property access
+# Version: 1.3.9
+# Additional Info: Fixed SuppressedSids collection initialization
 # =============================================================================
 
 # First all using statements
@@ -309,12 +309,12 @@ SID Translation Error:
 $script:SidCache = @{}
 $script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
 $script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
-$script:SuppressedSids.AddRange(@(
-    'S-1-5-21-3715258189-2875184700-594828381-500',
-    'S-1-5-21-1787995930-3758959370-1315816792-13767',
-    'S-1-5-21-1787995930-3758959370-1315816792-13821',
-    'S-1-5-21-1787995930-3758959370-1315816792-17638'
-))
+
+# Add suppressed SIDs individually
+$script:SuppressedSids.Add('S-1-5-21-3715258189-2875184700-594828381-500')
+$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13767')
+$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-13821')
+$script:SuppressedSids.Add('S-1-5-21-1787995930-3758959370-1315816792-17638')
 
 # Function to process each folder
 function Invoke-FolderProcessing {
