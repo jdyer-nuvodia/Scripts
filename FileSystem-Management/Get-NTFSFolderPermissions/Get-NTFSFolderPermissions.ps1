@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 22:41:00 UTC
+# Last Updated: 2025-03-14 22:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.0
-# Additional Info: Enhanced debug logging functionality and verbosity
+# Version: 1.10.1
+# Additional Info: Fixed log level validation error
 # =============================================================================
 
 <#
@@ -158,7 +158,7 @@ function New-LogHeader {
 # Skip AD Resolution: $SkipADResolution
 # Skip Uniqueness Counting: $SkipUniquenessCounting
 # Enable SID Diagnostics: $EnableSIDDiagnostics
-# Script Version: 1.10.0
+# Script Version: 1.10.1
 # =============================================================================
 
 "@
@@ -175,7 +175,7 @@ function Write-Log {
         [switch]$NoConsole,
         [switch]$Debug,
         [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS')]
-        [string]$Level = 'INFO'
+        [string]$Level = $(if ($Debug) { 'DEBUG' } else { 'INFO' })
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
@@ -224,10 +224,10 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
     try {
         Start-Transcript -Path $transcriptPath -Force
         $script:TranscriptStarted = $true
-        Write-Log "Transcript started at $transcriptPath" -Debug
+        Write-Log "Transcript started at $transcriptPath" -Level 'INFO'
     }
     catch {
-        Write-Warning "Could not start transcript: $_"
+        Write-Log "Could not start transcript: $_" -Level 'ERROR'
     }
 }
 
@@ -235,7 +235,7 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
 function Initialize-WellKnownSIDs {
     # Get Administrator SID using WMI
     $AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
-    Write-Log -Message "The Administrator SID is: $AdminSID" -Color "White"
+    Write-Log -Message "The Administrator SID is: $AdminSID" -Color "White" -Level 'INFO'
 
     $script:WellKnownSIDs = @{
         "Nobody" = "S-1-0-0"
@@ -254,7 +254,7 @@ function Initialize-WellKnownSIDs {
         "Users" = "S-1-5-32-545"
         "Guests" = "S-1-5-32-546"
     }
-    Write-Log -Message "Initialized well-known SIDs collection" -Color "DarkGray" -NoConsole
+    Write-Log -Message "Initialized well-known SIDs collection" -Color "DarkGray" -NoConsole -Level 'DEBUG'
 }
 
 function Test-WellKnownSID {
@@ -286,7 +286,7 @@ function Convert-SidToName {
     )
     
     if ($script:SuppressedSids -contains $Sid) {
-        Write-Log -Message "Skipping suppressed SID: $Sid" -Color "DarkGray" -NoConsole
+        Write-Log -Message "Skipping suppressed SID: $Sid" -Color "DarkGray" -NoConsole -Level 'DEBUG'
         return $Sid
     }
     
@@ -313,7 +313,7 @@ function Convert-SidToName {
         $script:SidTranslationAttempts[$Sid]++
         $attempt = $script:SidTranslationAttempts[$Sid]
         
-        Write-Log -Message "Attempting SID translation (attempt $attempt of $script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole -Debug
+        Write-Log -Message "Attempting SID translation (attempt $attempt of $script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole -Level 'DEBUG'
         
         # Try to resolve using .NET first
         try {
@@ -321,19 +321,19 @@ function Convert-SidToName {
             $objName = $objSID.Translate([System.Security.Principal.NTAccount])
             $name = $objName.Value
             $script:SidCache[$Sid] = $name
-            Write-Log -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
+            Write-Log -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Level 'SUCCESS'
             return $name
         }
         catch {
             # Fall back to AD lookup if .NET translation fails
-            Write-Log -Message ".NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole -Debug
+            Write-Log -Message ".NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole -Level 'DEBUG'
             if (-not $SkipADResolution) {
                 try {
                     $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
                     if ($user) {
                         $name = $user.SamAccountName
                         $script:SidCache[$Sid] = $name
-                        Write-Log -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
+                        Write-Log -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Level 'SUCCESS'
                         return $name
                     }
                 }
@@ -344,12 +344,12 @@ function Convert-SidToName {
                         if ($group) {
                             $name = $group.SamAccountName
                             $script:SidCache[$Sid] = $name
-                            Write-Log -Message "Successfully resolved SID via AD (group) on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Debug
+                            Write-Log -Message "Successfully resolved SID via AD (group) on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Level 'SUCCESS'
                             return $name
                         }
                     }
                     catch {
-                        Write-Log -Message "AD resolution failed for SID: $Sid" -Color "Yellow" -NoConsole -Debug
+                        Write-Log -Message "AD resolution failed for SID: $Sid" -Color "Yellow" -NoConsole -Level 'WARNING'
                         throw "Failed to resolve SID via AD: $_"
                     }
                 }
@@ -360,9 +360,9 @@ function Convert-SidToName {
         }
     }
     catch {
-        Write-Log -Message "SID translation failed on attempt ${attempt}: ${Sid}" -Color "Yellow" -NoConsole -Debug
+        Write-Log -Message "SID translation failed on attempt ${attempt}: ${Sid}" -Color "Yellow" -NoConsole -Level 'WARNING'
         if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
-            Write-Log -Message "Retrying in $script:RetryDelay seconds (attempt ${attempt}/${script:MaxRetries})..." -Color "DarkGray" -NoConsole -Debug
+            Write-Log -Message "Retrying in $script:RetryDelay seconds (attempt ${attempt}/${script:MaxRetries})..." -Color "DarkGray" -NoConsole -Level 'DEBUG'
             Start-Sleep -Seconds $script:RetryDelay
             return Convert-SidToName -Sid $Sid
         }
@@ -443,7 +443,7 @@ function Get-FolderPermissions {
         return $permissionData
     }
     catch {
-        Write-Log -Message "Error getting permissions for ${Folder}: $($_.Exception.Message)" -Color "Red"
+        Write-Log -Message "Error getting permissions for ${Folder}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
         return $null
     }
 }
@@ -494,11 +494,11 @@ function Invoke-FolderProcessing {
                 }
             }
         } else {
-            Write-Log -Message "Could not retrieve permissions for $Path" -Color "Yellow"
+            Write-Log -Message "Could not retrieve permissions for $Path" -Color "Yellow" -Level 'WARNING'
         }
     }
     catch {
-        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red"
+        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
     }
     finally {
         Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status "Processing: $Path" -Current $CurrentCount -Total $TotalCount
@@ -545,8 +545,8 @@ try {
     Initialize-WellKnownSIDs
     
     # Output initial messages
-    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan"
-    Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Color "Yellow"
+    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
     
     # Process folders
     Invoke-FolderRecursively -Path $FolderPath
@@ -556,13 +556,13 @@ try {
     $script:ElapsedTime = $script:EndTime - $script:StartTime
 
     # Display summary
-    Write-Log -Message "`nAnalysis Complete" -Color "Green"
-    Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan"
-    Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan"
-    Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan"
+    Write-Log -Message "`nAnalysis Complete" -Color "Green" -Level 'SUCCESS'
+    Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
 
     # Display results in hierarchy mode
-    Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow"
+    Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow" -Level 'INFO'
     $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
 
     foreach ($folder in $sortedFolders) {
@@ -574,7 +574,7 @@ try {
         }
 
         $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
-        Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan"
+        Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan" -Level 'INFO'
 
         # Find all descendants with identical permissions
         $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
@@ -585,16 +585,16 @@ try {
             })
 
         if ($identicalDescendants -and $identicalDescendants.Count -gt 0) {
-            Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
+            Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray" -Level 'INFO'
             foreach ($descendant in ($identicalDescendants | Sort-Object)) {
                 if ($descendant -and $folder) {
                     $relativePath = $descendant.Substring($folder.Length + 1)
-                    Write-Log -Message "  • $relativePath" -Color "DarkGray"
+                    Write-Log -Message "  • $relativePath" -Color "DarkGray" -Level 'INFO'
                 }
             }
         }
 
-        Write-Log -Message "Access Rights:" -Color "White"
+        Write-Log -Message "Access Rights:" -Color "White" -Level 'INFO'
         # Remove duplicate entries by using a hashtable to track unique permissions
         $uniqueAccessRules = @{}
         
@@ -610,19 +610,19 @@ try {
                 
                 $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
                 $accessType = if ($_.AccessControlType -eq 'Allow') { '+' } else { '-' }
-                Write-Log -Message "  $accessType $identity - $permission" -Color "Gray"
+                Write-Log -Message "  $accessType $identity - $permission" -Color "Gray" -Level 'INFO'
             }
         }
         
-        Write-Log -Message "-" * 80 -Color "DarkGray"
+        Write-Log -Message "-" * 80 -Color "DarkGray" -Level 'INFO'
     }
 
     # Display SID resolution errors if any
     if ($EnableSIDDiagnostics -and $script:ADResolutionErrors.Count -gt 0) {
-        Write-Log -Message "`nSID Resolution Errors:" -Color "Yellow"
+        Write-Log -Message "`nSID Resolution Errors:" -Color "Yellow" -Level 'WARNING'
         $script:ADResolutionErrors.GetEnumerator() | ForEach-Object {
-            Write-Log -Message "SID: $($_.Key)" -Color "White"
-            Write-Log -Message "Error: $($_.Value)" -Color "Red"
+            Write-Log -Message "SID: $($_.Key)" -Color "White" -Level 'INFO'
+            Write-Log -Message "Error: $($_.Value)" -Color "Red" -Level 'ERROR'
         }
     }
 }
@@ -642,7 +642,7 @@ finally {
         }
     }
     catch {
-        Write-Warning "Error during cleanup: $_"
+        Write-Log -Message "Error during cleanup: $_" -Level 'ERROR'
     }
     finally {
         # Properly clear important variables
