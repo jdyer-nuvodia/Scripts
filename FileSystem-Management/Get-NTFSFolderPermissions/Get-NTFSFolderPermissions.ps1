@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 19:13:00 UTC
+# Last Updated: 2025-03-14 20:06:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.3
-# Additional Info: Fixed transcript duplication and added buffer initialization
+# Version: 1.5.4
+# Additional Info: Fixed Initialize-LogBuffers function placement
 # =============================================================================
 
 # First all using statements
@@ -43,6 +43,35 @@ param (
 # Enable strict mode and error handling
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Script-level variables
+$script:DetailedLogBuffer = $null
+$script:TranscriptStarted = $false
+
+function Initialize-LogBuffers {
+    <#
+    .SYNOPSIS
+        Initializes logging buffers for the script.
+    .DESCRIPTION
+        Creates and configures StringBuilder objects for detailed logging.
+        Sets up initial capacity to optimize memory usage.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    try {
+        if ($null -eq $script:DetailedLogBuffer) {
+            $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB
+            Write-Log "Log buffers initialized successfully" -DetailedOnly
+            return $true
+        }
+        return $false
+    }
+    catch {
+        Write-Log "Failed to initialize log buffers: $_" -Color Red
+        throw
+    }
+}
 
 # Import required modules
 Import-Module ActiveDirectory -ErrorAction SilentlyContinue
@@ -704,35 +733,6 @@ finally {
         $script:DetailedLogBuffer = $null
         $script:ConsoleLogBuffer = $null
         $script:BuffersInitialized = $false
-    }
-}
-
-# Script-level variables
-$script:DetailedLogBuffer = $null
-$script:TranscriptStarted = $false
-
-function Initialize-LogBuffers {
-    <#
-    .SYNOPSIS
-        Initializes logging buffers for the script.
-    .DESCRIPTION
-        Creates and configures StringBuilder objects for detailed logging.
-        Sets up initial capacity to optimize memory usage.
-    #>
-    [CmdletBinding()]
-    param()
-    
-    try {
-        if ($null -eq $script:DetailedLogBuffer) {
-            $script:DetailedLogBuffer = [System.Text.StringBuilder]::new(360192)  # 352KB
-            Write-Log "Log buffers initialized successfully" -DetailedOnly
-            return $true
-        }
-        return $false
-    }
-    catch {
-        Write-Log "Failed to initialize log buffers: $_" -Color Red
-        throw
     }
 }
 
