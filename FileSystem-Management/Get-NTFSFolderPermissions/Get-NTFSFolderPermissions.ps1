@@ -113,6 +113,54 @@ function Write-Log {
     }
 }
 
+# Add function for sanitizing path for filename
+function Get-SafeFilename {
+    <#
+    .SYNOPSIS
+        Sanitizes a file path for safe file name creation.
+    .DESCRIPTION
+        Removes invalid characters and converts spaces to underscores.
+        Truncates names longer than 50 characters.
+        Returns sanitized path suitable for file naming.
+    .PARAMETER Path
+        The file path to sanitize.
+    .EXAMPLE
+        Get-SafeFilename -Path "C:\Program Files\My App"
+        Returns: C_Program_Files_My_App
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true, Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Path
+    )
+    
+    try {
+        Write-Log "Sanitizing path: $Path" -DetailedOnly
+        
+        # Remove invalid characters
+        $safeName = $Path -replace '[\\/:*?"<>|]', '_'
+        
+        # Replace multiple spaces/special chars with single underscore
+        $safeName = $safeName -replace '[\s\p{P}]+', '_'
+        
+        # Remove leading/trailing underscores
+        $safeName = $safeName.Trim('_')
+        
+        # Ensure length is reasonable
+        if ($safeName.Length -gt 50) {
+            $safeName = $safeName.Substring(0, 47) + '...'
+        }
+        
+        Write-Log "Sanitized path result: $safeName" -DetailedOnly
+        return $safeName
+    }
+    catch {
+        Write-Log "Error in Get-SafeFilename: $_" -Color Red -DetailedOnly
+        throw
+    }
+}
+
 # Initialize logs
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
@@ -172,54 +220,6 @@ function Test-WellKnownSID {
         return $name
     }
     return $null
-}
-
-# Add function for sanitizing path for filename
-function Get-SafeFilename {
-    <#
-    .SYNOPSIS
-        Sanitizes a file path for safe file name creation.
-    .DESCRIPTION
-        Removes invalid characters and converts spaces to underscores.
-        Truncates names longer than 50 characters.
-        Returns sanitized path suitable for file naming.
-    .PARAMETER Path
-        The file path to sanitize.
-    .EXAMPLE
-        Get-SafeFilename -Path "C:\Program Files\My App"
-        Returns: C_Program_Files_My_App
-    #>
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, Position=0)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Path
-    )
-    
-    try {
-        Write-Log "Sanitizing path: $Path" -DetailedOnly
-        
-        # Remove invalid characters
-        $safeName = $Path -replace '[\\/:*?"<>|]', '_'
-        
-        # Replace multiple spaces/special chars with single underscore
-        $safeName = $safeName -replace '[\s\p{P}]+', '_'
-        
-        # Remove leading/trailing underscores
-        $safeName = $safeName.Trim('_')
-        
-        # Ensure length is reasonable
-        if ($safeName.Length -gt 50) {
-            $safeName = $safeName.Substring(0, 47) + '...'
-        }
-        
-        Write-Log "Sanitized path result: $safeName" -DetailedOnly
-        return $safeName
-    }
-    catch {
-        Write-Log "Error in Get-SafeFilename: $_" -Color Red -DetailedOnly
-        throw
-    }
 }
 
 # Simplified log file creation - Fix the swapped log file names
