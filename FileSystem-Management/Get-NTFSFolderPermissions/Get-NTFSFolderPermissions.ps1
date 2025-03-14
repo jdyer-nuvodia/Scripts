@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 21:26:00 UTC
+# Last Updated: 2025-03-14 21:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.5
-# Additional Info: Fixed duplicate code and optimized SID handling
+# Version: 1.7.6
+# Additional Info: Fixed duplicate code and inconsistent variable usage
 # =============================================================================
 
 <#
@@ -96,6 +96,9 @@ $script:ParentPermissions = @{}
 $script:SidTranslationAttempts = @{}
 $script:WellKnownSIDs = @{}
 $script:ADResolutionErrors = @{}
+# Define script-level retry values for consistency
+$script:MaxRetries = 3
+$script:RetryDelay = 2
 
 # Add function for sanitizing path for filename
 function Get-SafeFilename {
@@ -270,10 +273,6 @@ function Convert-SidToName {
         [string]$Sid
     )
     
-    # Localize these variables that are only used in this function
-    $maxRetries = 3
-    $retryDelay = 2
-    
     if ($script:SuppressedSids -contains $Sid) {
         Write-Log -Message "Skipping suppressed SID: $Sid" -Color "DarkGray" -NoConsole
         return $Sid
@@ -290,7 +289,7 @@ function Convert-SidToName {
     }
 
     # If we've already failed this SID max times, return it immediately
-    if ($script:SidTranslationAttempts[$Sid] -ge $maxRetries) {
+    if ($script:SidTranslationAttempts[$Sid] -ge $script:MaxRetries) {
         return $Sid
     }
 
@@ -302,7 +301,7 @@ function Convert-SidToName {
         $script:SidTranslationAttempts[$Sid]++
         $attempt = $script:SidTranslationAttempts[$Sid]
         
-        Write-Log -Message "Attempting SID translation (attempt $attempt of $maxRetries): $Sid" -Color "DarkGray" -NoConsole -Debug
+        Write-Log -Message "Attempting SID translation (attempt $attempt of $script:MaxRetries): $Sid" -Color "DarkGray" -NoConsole -Debug
         
         # Try to resolve using .NET first
         try {
@@ -350,9 +349,9 @@ function Convert-SidToName {
     }
     catch {
         Write-Log -Message "SID translation failed on attempt ${attempt}: ${Sid}" -Color "Yellow" -NoConsole -Debug
-        if ($script:SidTranslationAttempts[$Sid] -lt $maxRetries) {
-            Write-Log -Message "Retrying in $retryDelay seconds (attempt ${attempt}/${maxRetries})..." -Color "DarkGray" -NoConsole -Debug
-            Start-Sleep -Seconds $retryDelay
+        if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
+            Write-Log -Message "Retrying in $script:RetryDelay seconds (attempt ${attempt}/${script:MaxRetries})..." -Color "DarkGray" -NoConsole -Debug
+            Start-Sleep -Seconds $script:RetryDelay
             return Convert-SidToName -Sid $Sid
         }
         $script:ADResolutionErrors[$Sid] = $_.Exception.Message
@@ -438,6 +437,7 @@ function Get-FolderPermissions {
 }
 
 # Function to process each folder
+# Function to process each folder
 function Invoke-FolderProcessing {
     param(
         [string]$Path,
@@ -472,22 +472,7 @@ function Invoke-FolderProcessing {
             $script:PermissionGroups[$permissionData.PermissionHash].Folders += $Path
             $script:FolderPermissions[$Path] = $permissionData
 
-            # Process the $permissionData object
-            Write-Log -Message "Analyzing: $Path" -NoConsole
-            Write-Log -Message "Owner: $($permissionData.Owner)" -NoConsole
-
-            # Iterate through the access rules
-            foreach ($accessRule in $permissionData.Access) {
-                $identity = $accessRule.IdentityReference.Value
-                if ($identity -match '^S-1-') {
-                    $identity = Convert-SidToName -Sid $identity
-                }
-                Write-Log -Message "  Identity: $identity" -NoConsole
-                Write-Log -Message "  Rights: $($accessRule.FileSystemRights)" -NoConsole
-                Write-Log -Message "  Type: $($accessRule.AccessControlType)" -NoConsole
-            }
-
-            # Update unique permissions count
+            # Update unique permissions count - only write to debug log
             if (-not $SkipUniquenessCounting) {
                 $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -IncludeInheritance:$false
                 
@@ -567,59 +552,62 @@ try {
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan"
 
     # Display results based on view mode
-    if ($ViewMode -eq "Hierarchy") {
-        Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow"
-        $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
+if ($ViewMode -eq "Hierarchy") {
+    Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow"
+    $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
 
-        foreach ($folder in $sortedFolders) {
-            $data = $script:FolderPermissions[$folder]
+    foreach ($folder in $sortedFolders) {
+        $data = $script:FolderPermissions[$folder]
 
-            # Skip folders with identical permissions as parent
-            if ($data.MatchesParent) {
-                continue
-            }
+        # Skip folders with identical permissions as parent
+        if ($data.MatchesParent) {
+            continue
+        }
 
-            $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
-            Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan"
+        $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
+        Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan"
 
-            # Find all descendants with identical permissions
-            $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
-                Where-Object { 
-                    $_ -and 
-                    $_ -ne $folder -and 
-                    $script:FolderPermissions[$_].MatchesParent 
-                })
+        # Find all descendants with identical permissions
+        $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
+            Where-Object { 
+                $_ -and 
+                $_ -ne $folder -and 
+                $script:FolderPermissions[$_].MatchesParent 
+            })
 
-            if ($identicalDescendants -and $identicalDescendants.Count -gt 0) {
-                Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
-                foreach ($descendant in ($identicalDescendants | Sort-Object)) {
-                    if ($descendant -and $folder) {
-                        $relativePath = $descendant.Substring($folder.Length + 1)
-                        Write-Log -Message "  • $relativePath" -Color "DarkGray"
-                    }
+        if ($identicalDescendants -and $identicalDescendants.Count -gt 0) {
+            Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray"
+            foreach ($descendant in ($identicalDescendants | Sort-Object)) {
+                if ($descendant -and $folder) {
+                    $relativePath = $descendant.Substring($folder.Length + 1)
+                    Write-Log -Message "  • $relativePath" -Color "DarkGray"
                 }
             }
+        }
 
-            Write-Log -Message "Access Rights:" -Color "White"
-            $data.Access | ForEach-Object {
+        Write-Log -Message "Access Rights:" -Color "White"
+        # Remove duplicate entries by using a hashtable to track unique permissions
+        $uniqueAccessRules = @{}
+        
+        $data.Access | ForEach-Object {
+            $identity = $_.IdentityReference.Value
+            if ($identity -match '^S-1-') {
+                $identity = Convert-SidToName -Sid $identity
+            }
+            
+            $key = "$identity|$($_.FileSystemRights)|$($_.AccessControlType)"
+            if (-not $uniqueAccessRules.ContainsKey($key)) {
+                $uniqueAccessRules[$key] = $_
+                
                 $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
                 $accessType = if ($_.AccessControlType -eq 'Allow') { '+' } else { '-' }
-                Write-Log -Message "  $accessType $($_.IdentityReference) - $permission" -Color "Gray"
+                Write-Log -Message "  $accessType $identity - $permission" -Color "Gray"
             }
-            Write-Log -Message "-" * 80 -Color "DarkGray"
         }
+        
+        Write-Log -Message "-" * 80 -Color "DarkGray"
     }
-    elseif ($ViewMode -eq "Group") {
-        Write-Log -Message "`nPermission Groups:" -Color "Yellow"
-        $script:UniquePermissions.GetEnumerator() | Sort-Object { $_.Value.Count } -Descending | ForEach-Object {
-            $permissionSet = $_.Key -split ';' | ForEach-Object { $_ -replace '\|', ' : ' }
-            Write-Log -Message "Group with $($_.Value.Count) folder(s):" -Color "White"
-            $permissionSet | ForEach-Object { Write-Log -Message "  $_" -Color "Gray" }
-            Write-Log -Message "Folders:" -Color "White"
-            $_.Value | ForEach-Object { Write-Log -Message "  $_" -Color "Gray" }
-            Write-Log -Message "" -Color "White"
-        }
-    }
+}
 
     # Display SID resolution errors if any
     if ($EnableSIDDiagnostics -and $script:ADResolutionErrors.Count -gt 0) {
