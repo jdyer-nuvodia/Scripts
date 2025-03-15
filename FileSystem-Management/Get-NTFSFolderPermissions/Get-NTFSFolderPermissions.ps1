@@ -648,7 +648,7 @@ try {
             Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray" -Level 'INFO'
             foreach ($descendant in ($identicalDescendants | Sort-Object)) {
                 if ($descendant -and $folder) {
-                    if ($descendant.Length > $folder.Length) {
+                    if ($descendant.Length -gt $folder.Length) {
                         $relativePath = $descendant.Substring($folder.Length + 1)
                         Write-Log -Message "  - $relativePath" -Color "DarkGray" -Level 'INFO'
                     } else {
@@ -657,7 +657,8 @@ try {
                     }
                 }
             }
-
+        }
+    
         Write-Log -Message "Access Rights:" -Color "White" -Level 'INFO'
         # Remove duplicate entries by using a hashtable to track unique permissions
         $uniqueAccessRules = @{}
