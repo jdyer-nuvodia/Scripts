@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-14 23:56:00 UTC
+# Last Updated: 2025-03-15 00:05:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.10
-# Additional Info: Fixed UTF-8 character encoding in output
+# Version: 1.10.11
+# Additional Info: Fixed missing closing brace in function structure
 # =============================================================================
 
 <#
