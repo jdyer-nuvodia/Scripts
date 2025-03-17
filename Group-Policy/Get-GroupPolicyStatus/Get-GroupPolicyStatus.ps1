@@ -2,10 +2,10 @@
 # Script: Get-GroupPolicyStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-17 18:10:00 UTC
+# Last Updated: 2024-03-17 18:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Added support for non-DC environments using gpresult.exe
+# Version: 1.1.1
+# Additional Info: Fixed gpresult access issues and improved error handling
 # =============================================================================
 
 <#
@@ -57,16 +57,46 @@ function Get-GPStatusWithGpresult {
         [string]$ReportType = "Both"
     )
     
-    $tempFile = [System.IO.Path]::GetTempFileName() + ".html"
+    $tempFolder = Join-Path $env:TEMP "GPReport"
+    if (-not (Test-Path $tempFolder)) {
+        New-Item -ItemType Directory -Path $tempFolder | Out-Null
+    }
+    
+    $reportFile = Join-Path $tempFolder "GPReport_$(Get-Date -Format 'yyyyMMdd_HHmmss').html"
     
     Write-StatusMessage "Generating GPResult report..." -Type "Process"
-    $null = gpresult.exe /H "$tempFile" /F
     
-    if (Test-Path $tempFile) {
-        Start-Process $tempFile
-        Write-StatusMessage "GPResult report generated and opened in default browser" -Type "Success"
-    } else {
-        Write-StatusMessage "Failed to generate GPResult report" -Type "Error"
+    try {
+        # Run gpresult with explicit scope
+        $process = Start-Process -FilePath "gpresult.exe" -ArgumentList "/H `"$reportFile`"", "/F" -Wait -NoNewWindow -PassThru
+        
+        if ($process.ExitCode -eq 0 -and (Test-Path $reportFile)) {
+            Write-StatusMessage "Report generated successfully at: $reportFile" -Type "Success"
+            Start-Process $reportFile
+        } else {
+            # Fall back to text-based report if HTML fails
+            Write-StatusMessage "HTML report generation failed, attempting text report..." -Type "Warning"
+            $textReport = gpresult.exe /R
+            Write-StatusMessage "`nGroup Policy Report (Text Format):" -Type "Info"
+            $textReport | ForEach-Object {
+                Write-StatusMessage $_ -Type "Detail"
+            }
+        }
+    }
+    catch {
+        Write-StatusMessage "Error generating Group Policy report: $($_.Exception.Message)" -Type "Error"
+        Write-StatusMessage "Attempting to run with scope..." -Type "Warning"
+        try {
+            # Final fallback - try user scope only
+            $textReport = gpresult.exe /SCOPE USER /R
+            Write-StatusMessage "`nUser Group Policy Report:" -Type "Info"
+            $textReport | ForEach-Object {
+                Write-StatusMessage $_ -Type "Detail"
+            }
+        }
+        catch {
+            Write-StatusMessage "Failed to generate any Group Policy report: $($_.Exception.Message)" -Type "Error"
+        }
     }
 }
 
