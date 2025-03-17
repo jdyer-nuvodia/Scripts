@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 10:44:52 UTC
+# Last Updated: 2025-03-17 21:54:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Fixed function structure and assignment issues
+# Version: 1.0.2
+# Additional Info: Fixed division by zero error in progress calculation
 # =============================================================================
 
 <#
@@ -476,7 +476,11 @@ function Write-ProgressStatus {
         [int]$Total
     )
     
-    $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
+    if ($Total -gt 0) {
+        $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
+    } else {
+        $percentComplete = 0
+    }
     Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
 }
 
@@ -531,6 +535,11 @@ function Invoke-FolderProcessing {
     )
 
     try {
+        # Initialize TotalCount to 1 if it's 0 to prevent division by zero
+        if ($TotalCount -eq 0) {
+            $TotalCount = 1
+        }
+        
         if ($PermissionData) {
             if (-not $SkipUniquenessCounting) {
                 $permissionHash = Get-PermissionHash -AccessRules $PermissionData.Access -IncludeInheritance:$false
