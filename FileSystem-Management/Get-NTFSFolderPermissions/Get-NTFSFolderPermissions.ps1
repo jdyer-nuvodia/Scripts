@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 17:09:00 UTC
+# Last Updated: 2025-03-17 17:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.3
-# Additional Info: Fixed try/catch block structure to correct error in main execution flow
+# Version: 1.11.4
+# Additional Info: Fixed duplicate transcript initialization messages
 # =============================================================================
 
 <#
@@ -612,7 +612,8 @@ function Get-HumanReadablePermissions {
 try {
     # Start transcript first thing
     try {
-        Start-Transcript -Path $script:TranscriptFile -Force
+        # Suppress default transcript message by redirecting to null
+        Start-Transcript -Path $script:TranscriptFile -Force | Out-Null
         $script:TranscriptStarted = $true
         Write-Host "Initializing transcript at: $script:TranscriptFile" -ForegroundColor Cyan
     }
