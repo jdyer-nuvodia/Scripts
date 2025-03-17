@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 21:54:00 UTC
+# Last Updated: 2025-03-17 14:56:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.2
-# Additional Info: Fixed division by zero error in progress calculation
+# Version: 1.0.3
+# Additional Info: Fixed null StartTime parameter error in folder processing
 # =============================================================================
 
 <#
@@ -531,15 +531,16 @@ function Invoke-FolderProcessing {
         [bool]$SkipUniquenessCounting,
         [int]$CurrentCount,
         [int]$TotalCount,
-        [DateTime]$StartTime
+        [Parameter(Mandatory=$false)]
+        [nullable[DateTime]]$StartTime = $null
     )
 
     try {
-        # Initialize TotalCount to 1 if it's 0 to prevent division by zero
-        if ($TotalCount -eq 0) {
-            $TotalCount = 1
+        # Ensure StartTime has a value
+        if ($null -eq $StartTime) {
+            $StartTime = Get-Date
         }
-        
+
         if ($PermissionData) {
             if (-not $SkipUniquenessCounting) {
                 $permissionHash = Get-PermissionHash -AccessRules $PermissionData.Access -IncludeInheritance:$false
@@ -586,12 +587,17 @@ function Invoke-FolderRecursively {
             return
         }
 
-        $permissionData = Get-FolderPermissions -Folder $Path
         $processingStart = Get-Date
-        Invoke-FolderProcessing -Path $Path -PermissionData $permissionData -SkipUniquenessCounting $SkipUniquenessCounting -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders -StartTime $processingStart
-        $script:ProcessedFolders++
+        $permissionData = Get-FolderPermissions -Folder $Path
+        
+        if ($null -eq $permissionData) {
+            Write-Log -Message "Unable to get permissions for $Path" -Level 'WARNING' -Color "Yellow"
+            return
+        }
 
-        Invoke-FolderProcessing -Path $Path -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
+        Invoke-FolderProcessing -Path $Path -PermissionData $permissionData -SkipUniquenessCounting $SkipUniquenessCounting -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders -StartTime $processingStart
+
+        $script:ProcessedFolders++
 
         if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
             Get-ChildItem -Path $Path -Directory -ErrorAction SilentlyContinue | ForEach-Object {
