@@ -38,7 +38,7 @@
     - Disk I/O: Low to Medium
     - Network: Low (unless scanning network paths)
 
-.PARAMETER Path
+.PARAMETER StartPath
     The root directory path to start scanning from. Defaults to "C:\"
 
 .PARAMETER MaxDepth
@@ -62,11 +62,11 @@
     Scans the C:\ drive with default settings
 
 .EXAMPLE
-    .\Get-FolderSizes.ps1 -Path "D:\Users" -MaxDepth 5
+    .\Get-FolderSizes.ps1 -StartPath "D:\Users" -MaxDepth 5
     Scans the D:\Users directory with a maximum depth of 5 levels
 
 .EXAMPLE
-    .\Get-FolderSizes.ps1 -Path "\\server\share"
+    .\Get-FolderSizes.ps1 -StartPath "\\server\share"
     Scans a network share starting from the root
 
 .EXAMPLE
@@ -78,7 +78,7 @@
     Scans the C:\ drive but excludes hidden and system folders
 
 .EXAMPLE
-    .\Get-FolderSizes.ps1 -Path "D:\Data" -MaxThreads 20
+    .\Get-FolderSizes.ps1 -StartPath "D:\Data" -MaxThreads 20
     Scans the D:\Data directory using 20 parallel threads for faster processing on multi-core systems.
 
 .NOTES
@@ -166,7 +166,7 @@
 #>
 
 param (
-    [string]$Path = 'C:\',  # Note the explicit backslash
+    [string]$StartPath = 'C:\',  # Note the explicit backslash
     [int]$MaxDepth = 10,
     [ValidateRange(1, 50)]
     [int]$Top = 3,
@@ -535,7 +535,7 @@ Write-Host "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor
 Write-Host "Started (UTC): $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor White
 Write-Host "User: $env:USERNAME" -ForegroundColor White
 Write-Host "Computer: $env:COMPUTERNAME" -ForegroundColor White
-Write-Host "Target Path: $Path" -ForegroundColor White
+Write-Host "Target Path: $StartPath" -ForegroundColor White
 Write-Host "Admin Privileges: $isAdmin" -ForegroundColor White
 Write-Host "======================================================" -ForegroundColor White
 Write-Host ""
@@ -660,7 +660,7 @@ public static class FolderSizeHelper
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-Write-Host "Ultra-fast folder analysis starting at: $Path" -ForegroundColor Cyan
+Write-Host "Ultra-fast folder analysis starting at: $StartPath" -ForegroundColor Cyan
 Write-Host "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor White
 
 #endregion
