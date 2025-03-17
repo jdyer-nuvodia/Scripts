@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 21:19:00 UTC
+# Last Updated: 2025-03-17 21:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.3
-# Additional Info: Fixed transcript log location to use $PSScriptRoot
+# Version: 1.1.4
+# Additional Info: Remove duplicate transcript message
 # =============================================================================
 
 <#
@@ -61,7 +61,7 @@ function Write-ColorOutput {
 # Initialize logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $logFile = Join-Path $PSScriptRoot "Search-ContentRecursively_${timestamp}.transcript.log"
-Start-Transcript -Path $logFile
+$null = Start-Transcript -Path $logFile
 
 try {
     Write-ColorOutput "Transcript logging started at $logFile" -ForegroundColor Magenta
