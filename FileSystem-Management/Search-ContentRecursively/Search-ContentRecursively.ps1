@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 21:00:00 UTC
+# Last Updated: 2025-03-17 21:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial script creation for recursive content searching
+# Version: 1.1.0
+# Additional Info: Added transcript logging functionality
 # =============================================================================
 
 <#
@@ -45,72 +45,88 @@ param(
     [string]$StartPath
 )
 
-function Write-ColorOutput {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$ForegroundColor
-    )
-    
-    Write-Host $Message -ForegroundColor $ForegroundColor
+# Initialize transcript
+$transcriptPath = Join-Path $PSScriptRoot "logs"
+if (-not (Test-Path -Path $transcriptPath)) {
+    New-Item -ItemType Directory -Path $transcriptPath | Out-Null
 }
+$transcriptFile = Join-Path $transcriptPath "Search-ContentRecursively_$(Get-Date -Format 'yyyyMMdd_HHmmss').transcript.log"
 
-# Validate the start path
-if (-not (Test-Path -Path $StartPath)) {
-    Write-ColorOutput "Error: The specified path '$StartPath' does not exist." -ForegroundColor Red
-    exit 1
-}
-
-Write-ColorOutput "Starting search for keyword '$Keyword' in path '$StartPath'..." -ForegroundColor Cyan
-
-# Search in file and directory names
-Write-ColorOutput "`nSearching in file and directory names..." -ForegroundColor White
-$nameMatches = Get-ChildItem -Path $StartPath -Recurse | 
-    Where-Object { $_.Name -like "*$Keyword*" }
-
-if ($nameMatches) {
-    Write-ColorOutput "Found matches in names:" -ForegroundColor Green
-    foreach ($match in $nameMatches) {
-        Write-ColorOutput "  $($match.FullName)" -ForegroundColor White
-    }
-} else {
-    Write-ColorOutput "No matches found in file or directory names." -ForegroundColor DarkGray
-}
-
-# Search in file contents
-Write-ColorOutput "`nSearching in file contents..." -ForegroundColor White
 try {
-    $contentMatches = Get-ChildItem -Path $StartPath -Recurse -File |
-        Where-Object { $_.Extension -notmatch '\.(exe|dll|zip|png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx)$' } |
-        ForEach-Object {
-            $file = $_
-            $lineNumber = 1
-            Get-Content $file.FullName -ErrorAction SilentlyContinue | 
-                ForEach-Object {
-                    if ($_ -match $Keyword) {
-                        [PSCustomObject]@{
-                            File = $file.FullName
-                            LineNumber = $lineNumber
-                            Line = $_
-                        }
-                    }
-                    $lineNumber++
-                }
-        }
+    Start-Transcript -Path $transcriptFile -ErrorAction Stop
+    Write-ColorOutput "Transcript logging started at $transcriptFile" -ForegroundColor Magenta
 
-    if ($contentMatches) {
-        Write-ColorOutput "Found matches in content:" -ForegroundColor Green
-        $contentMatches | ForEach-Object {
-            Write-ColorOutput "`nFile: $($_.File)" -ForegroundColor Yellow
-            Write-ColorOutput "Line $($_.LineNumber): $($_.Line)" -ForegroundColor White
+    function Write-ColorOutput {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Message,
+            
+            [Parameter(Mandatory = $true)]
+            [string]$ForegroundColor
+        )
+        
+        Write-Host $Message -ForegroundColor $ForegroundColor
+    }
+
+    # Validate the start path
+    if (-not (Test-Path -Path $StartPath)) {
+        Write-ColorOutput "Error: The specified path '$StartPath' does not exist." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-ColorOutput "Starting search for keyword '$Keyword' in path '$StartPath'..." -ForegroundColor Cyan
+
+    # Search in file and directory names
+    Write-ColorOutput "`nSearching in file and directory names..." -ForegroundColor White
+    $nameMatches = Get-ChildItem -Path $StartPath -Recurse | 
+        Where-Object { $_.Name -like "*$Keyword*" }
+
+    if ($nameMatches) {
+        Write-ColorOutput "Found matches in names:" -ForegroundColor Green
+        foreach ($match in $nameMatches) {
+            Write-ColorOutput "  $($match.FullName)" -ForegroundColor White
         }
     } else {
-        Write-ColorOutput "No matches found in file contents." -ForegroundColor DarkGray
+        Write-ColorOutput "No matches found in file or directory names." -ForegroundColor DarkGray
     }
-} catch {
-    Write-ColorOutput "Error occurred while searching file contents: $_" -ForegroundColor Red
-}
 
-Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
+    # Search in file contents
+    Write-ColorOutput "`nSearching in file contents..." -ForegroundColor White
+    try {
+        $contentMatches = Get-ChildItem -Path $StartPath -Recurse -File |
+            Where-Object { $_.Extension -notmatch '\.(exe|dll|zip|png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx)$' } |
+            ForEach-Object {
+                $file = $_
+                $lineNumber = 1
+                Get-Content $file.FullName -ErrorAction SilentlyContinue | 
+                    ForEach-Object {
+                        if ($_ -match $Keyword) {
+                            [PSCustomObject]@{
+                                File = $file.FullName
+                                LineNumber = $lineNumber
+                                Line = $_
+                            }
+                        }
+                        $lineNumber++
+                    }
+            }
+
+        if ($contentMatches) {
+            Write-ColorOutput "Found matches in content:" -ForegroundColor Green
+            $contentMatches | ForEach-Object {
+                Write-ColorOutput "`nFile: $($_.File)" -ForegroundColor Yellow
+                Write-ColorOutput "Line $($_.LineNumber): $($_.Line)" -ForegroundColor White
+            }
+        } else {
+            Write-ColorOutput "No matches found in file contents." -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-ColorOutput "Error occurred while searching file contents: $_" -ForegroundColor Red
+    }
+
+    Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
+} catch {
+    Write-ColorOutput "Error: $_" -ForegroundColor Red
+} finally {
+    Stop-Transcript
+}
