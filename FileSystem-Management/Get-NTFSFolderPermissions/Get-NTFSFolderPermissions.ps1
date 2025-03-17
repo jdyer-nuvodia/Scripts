@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 16:25:00 UTC
+# Last Updated: 2025-03-17 16:29:07 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.12
-# Additional Info: Fixed Administrator SID identification to prevent multiple SIDs being displayed
+# Version: 1.10.13
+# Additional Info: Enhanced Administrator SID display with domain context information
 # =============================================================================
 
 <#
@@ -264,21 +264,28 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
-    # Get Administrator SID using WMI first - target only local machine account
-    $localAdminSIDs = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator' AND LocalAccount='True'" -ErrorAction SilentlyContinue
+    # Get all Administrator SIDs from WMI
+    $allAdminSIDs = @()
+    $adminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue
     
-    # If multiple results, select just the first one
-    if ($localAdminSIDs -is [array] -and $localAdminSIDs.Count -gt 0) {
-        $script:AdminSID = $localAdminSIDs[0].SID
-        Write-Log -Message "Multiple Administrator accounts found, using first one: $($script:AdminSID)" -Color "Yellow" -Level 'WARNING'
-    } 
-    elseif ($localAdminSIDs) {
-        $script:AdminSID = $localAdminSIDs.SID
+    if ($adminAccounts) {
+        # Process each admin account and add domain context
+        foreach ($account in $adminAccounts) {
+            $domainType = if ($account.LocalAccount) { "Local" } else { "Domain" }
+            $domain = if ($account.Domain) { $account.Domain } else { $env:COMPUTERNAME }
+            $allAdminSIDs += "$($account.SID) [$domainType: $domain]"
+        }
+        
+        $script:AdminSID = $allAdminSIDs -join ' '
+        
+        if ($allAdminSIDs.Count -gt 1) {
+            Write-Log -Message "Multiple Administrator accounts found ($($allAdminSIDs.Count))" -Color "Yellow" -Level 'WARNING'
+        }
     }
     else {
         # Fallback to default Administrator SID pattern
-        $script:AdminSID = "S-1-5-21-domain-500"
-        Write-Log -Message "Could not retrieve local Administrator SID, using placeholder" -Color "Yellow" -Level 'WARNING'
+        $script:AdminSID = "S-1-5-21-domain-500 [Unknown domain]"
+        Write-Log -Message "Could not retrieve Administrator SIDs, using placeholder" -Color "Yellow" -Level 'WARNING'
     }
 
     $script:WellKnownSIDs = @{
@@ -286,19 +293,19 @@ function Initialize-WellKnownSIDs {
         "Everyone" = "S-1-1-0"
         "Local" = "S-1-2-0"
         "CreatorOwner" = "S-1-3-0"
-        "CreatorGroup" = "S-1-3-1"
+        "CreatorGroup" = "S-1-3-1" 
         "Network" = "S-1-5-2"
         "Interactive" = "S-1-5-4"
         "AuthenticatedUsers" = "S-1-5-11"
         "LocalSystem" = "S-1-5-18"
         "LocalService" = "S-1-5-19"
         "NetworkService" = "S-1-5-20"
-        "Administrator" = $script:AdminSID
+        "Administrator" = $script:AdminSID.Split(' ')[0]  # Use first SID for lookups
         "Administrators" = "S-1-5-32-544"
         "Users" = "S-1-5-32-545"
         "Guests" = "S-1-5-32-546"
     }
-    Write-Log -Message "Initialized well-known SIDs collection with Administrator SID: $script:AdminSID" -Color "DarkGray" -NoConsole -Level 'DEBUG'
+    Write-Log -Message "Initialized well-known SIDs collection with Administrator SIDs: $script:AdminSID" -Color "DarkGray" -NoConsole -Level 'DEBUG'
 }
 
 function Test-WellKnownSID {
