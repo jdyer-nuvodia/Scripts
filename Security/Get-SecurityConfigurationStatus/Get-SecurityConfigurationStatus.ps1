@@ -2,10 +2,10 @@
 # Script: Get-SecurityConfigurationStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-18 15:22:00 UTC
+# Last Updated: 2024-03-17 20:56:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.1
-# Additional Info: Fixed unused variable in Get-SecurityPolicySettings function
+# Version: 1.6.2
+# Additional Info: Fixed secedit export path handling and file cleanup
 # =============================================================================
 
 <#
@@ -112,38 +112,53 @@ function Get-SecurityPolicySettings {
     Write-StatusMessage "Analyzing Security Policy Settings..." -Type "Process"
     
     try {
-        # Get password policy settings using SecEdit
-        secedit /export /cfg "$env:TEMP\secpol.cfg" | Out-Null
-        $securitySettings = Get-Content "$env:TEMP\secpol.cfg" | Where-Object { $_ -match "Password|MinimumPasswordAge|MaximumPasswordAge|PasswordComplexity|LockoutBadCount|ResetLockoutCount" }
-        Remove-Item "$env:TEMP\secpol.cfg" -Force
-
-        Write-StatusMessage "`nPassword Policy Settings:" -Type "Info"
-        foreach ($setting in $securitySettings) {
-            $name = ($setting -split '=')[0].Trim()
-            $value = ($setting -split '=')[1].Trim()
-            Write-StatusMessage "  $name : $value" -Type "Detail"
-        }
-
-        # Get additional security settings using PowerShell
-        Write-StatusMessage "`nAdditional Security Settings:" -Type "Info"
+        # Create a unique temporary file for secedit export
+        $secpolPath = Join-Path $env:TEMP "secpol_$(Get-Random).cfg"
         
-        # Account Policies
-        $accountPolicies = net accounts
-        Write-StatusMessage "Account Policies:" -Type "Success"
-        $accountPolicies | Where-Object { $_ -match ":" } | ForEach-Object {
-            Write-StatusMessage "  $_" -Type "Detail"
-        }
+        # Export security policy settings
+        $null = secedit /export /cfg $secpolPath
+        
+        if (Test-Path $secpolPath) {
+            $securitySettings = Get-Content $secpolPath | Where-Object { 
+                $_ -match "Password|MinimumPasswordAge|MaximumPasswordAge|PasswordComplexity|LockoutBadCount|ResetLockoutCount" 
+            }
+            Remove-Item $secpolPath -Force
 
-        # User Rights Assignment (if on domain)
-        if ($env:USERDOMAIN -ne $env:COMPUTERNAME) {
-            Write-StatusMessage "`nUser Rights Assignment:" -Type "Success"
-            $rightsSettings = Get-Content "$env:TEMP\userrights.cfg" | Where-Object { $_ -match "SeSecurityPrivilege|SeBackupPrivilege|SeRestorePrivilege" }
-            Remove-Item "$env:TEMP\userrights.cfg" -Force
-            
-            foreach ($right in $rightsSettings) {
-                $name = ($right -split '=')[0].Trim()
-                $value = ($right -split '=')[1].Trim()
+            Write-StatusMessage "`nPassword Policy Settings:" -Type "Info"
+            foreach ($setting in $securitySettings) {
+                $name = ($setting -split '=')[0].Trim()
+                $value = ($setting -split '=')[1].Trim()
                 Write-StatusMessage "  $name : $value" -Type "Detail"
+            }
+
+            # Get additional security settings using PowerShell
+            Write-StatusMessage "`nAdditional Security Settings:" -Type "Info"
+            
+            # Account Policies
+            $accountPolicies = net accounts
+            Write-StatusMessage "Account Policies:" -Type "Success"
+            $accountPolicies | Where-Object { $_ -match ":" } | ForEach-Object {
+                Write-StatusMessage "  $_" -Type "Detail"
+            }
+
+            # User Rights Assignment (if on domain)
+            if ($env:USERDOMAIN -ne $env:COMPUTERNAME) {
+                Write-StatusMessage "`nUser Rights Assignment:" -Type "Success"
+                $userRightsPath = Join-Path $env:TEMP "userrights_$(Get-Random).cfg"
+                $null = secedit /export /areas USER_RIGHTS /cfg $userRightsPath
+                
+                if (Test-Path $userRightsPath) {
+                    $rightsSettings = Get-Content $userRightsPath | Where-Object { 
+                        $_ -match "SeSecurityPrivilege|SeBackupPrivilege|SeRestorePrivilege" 
+                    }
+                    Remove-Item $userRightsPath -Force
+                    
+                    foreach ($right in $rightsSettings) {
+                        $name = ($right -split '=')[0].Trim()
+                        $value = ($right -split '=')[1].Trim()
+                        Write-StatusMessage "  $name : $value" -Type "Detail"
+                    }
+                }
             }
         }
     }
@@ -175,35 +190,40 @@ function Get-SystemAccessControl {
     Write-StatusMessage "Analyzing System Access Control Settings..." -Type "Process"
     
     try {
-        $systemSettings = Get-Content "$env:TEMP\sysctrl.cfg" | Where-Object { 
-            $_ -match "EnableAdminAccount|EnableGuestAccount|LSAAnonymousNameLookup|RestrictAnonymousSAM"
-        }
-        Remove-Item "$env:TEMP\sysctrl.cfg" -Force
+        $sysctrlPath = Join-Path $env:TEMP "sysctrl_$(Get-Random).cfg"
+        $null = secedit /export /cfg $sysctrlPath
+        
+        if (Test-Path $sysctrlPath) {
+            $systemSettings = Get-Content $sysctrlPath | Where-Object { 
+                $_ -match "EnableAdminAccount|EnableGuestAccount|LSAAnonymousNameLookup|RestrictAnonymousSAM" 
+            }
+            Remove-Item $sysctrlPath -Force
 
-        Write-StatusMessage "`nSystem Access Control Settings:" -Type "Info"
-        foreach ($setting in $systemSettings) {
-            $name = ($setting -split '=')[0].Trim()
-            $value = ($setting -split '=')[1].Trim()
-            Write-StatusMessage "  $name : $value" -Type "Detail"
-        }
+            Write-StatusMessage "`nSystem Access Control Settings:" -Type "Info"
+            foreach ($setting in $systemSettings) {
+                $name = ($setting -split '=')[0].Trim()
+                $value = ($setting -split '=')[1].Trim()
+                Write-StatusMessage "  $name : $value" -Type "Detail"
+            }
 
-        # Get Registry Security Settings
-        Write-StatusMessage "`nRegistry Security Settings:" -Type "Info"
-        $registryPaths = @(
-            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
-            "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
-        )
+            # Get Registry Security Settings
+            Write-StatusMessage "`nRegistry Security Settings:" -Type "Info"
+            $registryPaths = @(
+                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
+                "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+            )
 
-        foreach ($path in $registryPaths) {
-            if (Test-Path $path) {
-                Write-StatusMessage "Registry Path: $path" -Type "Success"
-                Get-ItemProperty -Path $path | 
-                    Select-Object -Property * -ExcludeProperty PS* |
-                    ForEach-Object {
-                        $_.PSObject.Properties | ForEach-Object {
-                            Write-StatusMessage "  $($_.Name): $($_.Value)" -Type "Detail"
+            foreach ($path in $registryPaths) {
+                if (Test-Path $path) {
+                    Write-StatusMessage "Registry Path: $path" -Type "Success"
+                    Get-ItemProperty -Path $path | 
+                        Select-Object -Property * -ExcludeProperty PS* |
+                        ForEach-Object {
+                            $_.PSObject.Properties | ForEach-Object {
+                                Write-StatusMessage "  $($_.Name): $($_.Value)" -Type "Detail"
+                            }
                         }
-                    }
+                }
             }
         }
     }
@@ -368,48 +388,28 @@ try {
         
             # Get Computer Policy Settings
             Write-StatusMessage "Analyzing Computer Policy Settings..." -Type "Process"
-            $computerPolicies = Get-GPResultantSetOfPolicy -ReportType Computer -Computer $env:COMPUTERNAME
-            
-            Write-StatusMessage "`nComputer Policies:" -Type "Info"
-            $computerPolicies.ComputerResults.ExtensionData | ForEach-Object {
-                $extension = $_
-                Write-StatusMessage "Category: $($extension.Name)" -Type "Success"
-                $extension.Extension.Policy | ForEach-Object {
-                    Write-StatusMessage "  Policy: $($_.Name)" -Type "Detail"
-                    Write-StatusMessage "  State: $($_.State)" -Type "Detail"
-                    Write-StatusMessage "  Setting: $($_.Setting)" -Type "Detail"
-                    Write-StatusMessage "" -Type "Detail"
+            try {
+                $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+                $userPolicies = Get-GPResultantSetOfPolicy -ReportType User -User $currentUser
+                
+                if ($userPolicies.UserResults -and $userPolicies.UserResults.ExtensionData) {
+                    $userPolicies.UserResults.ExtensionData | ForEach-Object {
+                        $extension = $_
+                        Write-StatusMessage "Category: $($extension.Name)" -Type "Success"
+                        $extension.Extension.Policy | ForEach-Object {
+                            Write-StatusMessage "  Policy: $($_.Name)" -Type "Detail"
+                            Write-StatusMessage "  State: $($_.State)" -Type "Detail"
+                            Write-StatusMessage "  Setting: $($_.Setting)" -Type "Detail"
+                            Write-StatusMessage "" -Type "Detail"
+                        }
+                    }
+                } else {
+                    Write-StatusMessage "  No policy data available for this user" -Type "Warning"
                 }
             }
-            
-            # Get User Policy Settings for all users
-            Write-StatusMessage "`nAnalyzing User Policy Settings..." -Type "Process"
-            $users = Get-LocalUser | Where-Object Enabled -eq $true
-            
-            foreach ($user in $users) {
-                Write-StatusMessage "`nUser Policies for: $($user.Name)" -Type "Info"
-                try {
-                    $userPolicies = Get-GPResultantSetOfPolicy -ReportType User -User $user.Name
-                    
-                    if ($userPolicies.UserResults -and $userPolicies.UserResults.ExtensionData) {
-                        $userPolicies.UserResults.ExtensionData | ForEach-Object {
-                            $extension = $_
-                            Write-StatusMessage "Category: $($extension.Name)" -Type "Success"
-                            $extension.Extension.Policy | ForEach-Object {
-                                Write-StatusMessage "  Policy: $($_.Name)" -Type "Detail"
-                                Write-StatusMessage "  State: $($_.State)" -Type "Detail"
-                                Write-StatusMessage "  Setting: $($_.Setting)" -Type "Detail"
-                                Write-StatusMessage "" -Type "Detail"
-                            }
-                        }
-                    } else {
-                        Write-StatusMessage "  No policy data available for this user" -Type "Warning"
-                    }
-                }
-                catch {
-                    Write-StatusMessage "Unable to retrieve policies for user: $($user.Name)" -Type "Warning"
-                    Write-StatusMessage $_.Exception.Message -Type "Error"
-                }
+            catch {
+                Write-StatusMessage "Unable to retrieve policies for current user" -Type "Warning"
+                Write-StatusMessage $_.Exception.Message -Type "Error"
             }
         } else {
             Write-StatusMessage "GroupPolicy module not available. Falling back to gpresult." -Type "Warning"
