@@ -2,10 +2,10 @@
 # Script: Get-GroupPolicyStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-17 18:26:00 UTC
+# Last Updated: 2024-03-17 19:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added better handling for workgroup computers and non-domain scenarios
+# Version: 1.4.0
+# Additional Info: Added comprehensive security policy analysis
 # =============================================================================
 
 <#
@@ -107,6 +107,52 @@ function Get-GPStatusWithGpresult {
     }
 }
 
+# Function to get detailed security and password policy settings
+function Get-SecurityPolicySettings {
+    Write-StatusMessage "Analyzing Security Policy Settings..." -Type "Process"
+    
+    try {
+        # Get password policy settings using SecEdit
+        $securityConfig = secedit /export /cfg "$env:TEMP\secpol.cfg" | Out-Null
+        $securitySettings = Get-Content "$env:TEMP\secpol.cfg" | Where-Object { $_ -match "Password|MinimumPasswordAge|MaximumPasswordAge|PasswordComplexity|LockoutBadCount|ResetLockoutCount" }
+        Remove-Item "$env:TEMP\secpol.cfg" -Force
+
+        Write-StatusMessage "`nPassword Policy Settings:" -Type "Info"
+        foreach ($setting in $securitySettings) {
+            $name = ($setting -split '=')[0].Trim()
+            $value = ($setting -split '=')[1].Trim()
+            Write-StatusMessage "  $name : $value" -Type "Detail"
+        }
+
+        # Get additional security settings using PowerShell
+        Write-StatusMessage "`nAdditional Security Settings:" -Type "Info"
+        
+        # Account Policies
+        $accountPolicies = net accounts
+        Write-StatusMessage "Account Policies:" -Type "Success"
+        $accountPolicies | Where-Object { $_ -match ":" } | ForEach-Object {
+            Write-StatusMessage "  $_" -Type "Detail"
+        }
+
+        # User Rights Assignment (if on domain)
+        if ($env:USERDOMAIN -ne $env:COMPUTERNAME) {
+            Write-StatusMessage "`nUser Rights Assignment:" -Type "Success"
+            $userRights = secedit /export /areas USER_RIGHTS /cfg "$env:TEMP\userrights.cfg" | Out-Null
+            $rightsSettings = Get-Content "$env:TEMP\userrights.cfg" | Where-Object { $_ -match "SeSecurityPrivilege|SeBackupPrivilege|SeRestorePrivilege" }
+            Remove-Item "$env:TEMP\userrights.cfg" -Force
+            
+            foreach ($right in $rightsSettings) {
+                $name = ($right -split '=')[0].Trim()
+                $value = ($right -split '=')[1].Trim()
+                Write-StatusMessage "  $name : $value" -Type "Detail"
+            }
+        }
+    }
+    catch {
+        Write-StatusMessage "Error retrieving security settings: $($_.Exception.Message)" -Type "Error"
+    }
+}
+
 # Get system and domain information
 $computerSystem = Get-WmiObject Win32_ComputerSystem
 $computerName = $computerSystem.Name
@@ -122,6 +168,9 @@ try {
     Write-StatusMessage "Domain: $domainName" -Type "Info"
     Write-StatusMessage "----------------------------------------" -Type "Info"
     
+    # Add security policy analysis
+    Get-SecurityPolicySettings
+
     if ($domainName -eq "WORKGROUP") {
         Write-StatusMessage "Computer is in a workgroup. Limited Group Policy information will be available." -Type "Warning"
         Get-GPStatusWithGpresult -OutputFormat $OutputFormat
