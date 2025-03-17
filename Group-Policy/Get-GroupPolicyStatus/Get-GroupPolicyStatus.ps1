@@ -2,10 +2,10 @@
 # Script: Get-GroupPolicyStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-17 18:20:00 UTC
+# Last Updated: 2024-03-17 18:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Added null checks for user policy results
+# Version: 1.3.0
+# Additional Info: Added better handling for workgroup computers and non-domain scenarios
 # =============================================================================
 
 <#
@@ -27,6 +27,12 @@ Requires GroupPolicy module
 #>
 
 #Requires -RunAsAdministrator
+
+[CmdletBinding()]
+param(
+    [ValidateSet('HTML', 'Text')]
+    [string]$OutputFormat = 'HTML'
+)
 
 # Function to format output with colors based on status
 function Write-StatusMessage {
@@ -54,49 +60,50 @@ function Test-IsDomainController {
 # Function to get GP status using gpresult
 function Get-GPStatusWithGpresult {
     param (
-        [string]$ReportType = "Both"
+        [string]$ReportType = "Both",
+        [string]$OutputFormat = $script:OutputFormat
     )
     
     $tempFolder = Join-Path $env:TEMP "GPReport"
     if (-not (Test-Path $tempFolder)) {
         New-Item -ItemType Directory -Path $tempFolder | Out-Null
     }
-    
-    $reportFile = Join-Path $tempFolder "GPReport_$(Get-Date -Format 'yyyyMMdd_HHmmss').html"
-    
-    Write-StatusMessage "Generating GPResult report..." -Type "Process"
-    
-    try {
-        # Run gpresult with explicit scope
-        $process = Start-Process -FilePath "gpresult.exe" -ArgumentList "/H `"$reportFile`"", "/F" -Wait -NoNewWindow -PassThru
+
+    if ($OutputFormat -eq 'HTML') {
+        $reportFile = Join-Path $tempFolder "GPReport_$(Get-Date -Format 'yyyyMMdd_HHmmss').html"
+        Write-StatusMessage "Generating HTML GPResult report..." -Type "Process"
         
-        if ($process.ExitCode -eq 0 -and (Test-Path $reportFile)) {
-            Write-StatusMessage "Report generated successfully at: $reportFile" -Type "Success"
-            Start-Process $reportFile
-        } else {
-            # Fall back to text-based report if HTML fails
-            Write-StatusMessage "HTML report generation failed, attempting text report..." -Type "Warning"
-            $textReport = gpresult.exe /R
-            Write-StatusMessage "`nGroup Policy Report (Text Format):" -Type "Info"
-            $textReport | ForEach-Object {
-                Write-StatusMessage $_ -Type "Detail"
-            }
-        }
-    }
-    catch {
-        Write-StatusMessage "Error generating Group Policy report: $($_.Exception.Message)" -Type "Error"
-        Write-StatusMessage "Attempting to run with scope..." -Type "Warning"
         try {
-            # Final fallback - try user scope only
-            $textReport = gpresult.exe /SCOPE USER /R
-            Write-StatusMessage "`nUser Group Policy Report:" -Type "Info"
-            $textReport | ForEach-Object {
-                Write-StatusMessage $_ -Type "Detail"
+            $process = Start-Process -FilePath "gpresult.exe" -ArgumentList "/H `"$reportFile`"", "/F" -Wait -NoNewWindow -PassThru
+            
+            if ($process.ExitCode -eq 0 -and (Test-Path $reportFile)) {
+                Write-StatusMessage "Report generated successfully at: $reportFile" -Type "Success"
+                Start-Process $reportFile
+                return
             }
         }
         catch {
-            Write-StatusMessage "Failed to generate any Group Policy report: $($_.Exception.Message)" -Type "Error"
+            Write-StatusMessage "HTML report generation failed: $($_.Exception.Message)" -Type "Warning"
         }
+    }
+
+    # Fallback or primary text report generation
+    Write-StatusMessage "Generating text-based report..." -Type "Process"
+    try {
+        $textReport = gpresult.exe /R
+        if ($textReport) {
+            Write-StatusMessage "`nGroup Policy Report (Text Format):" -Type "Info"
+            $textReport | Where-Object { $_ -notmatch "ERROR:|INFO:" } | ForEach-Object {
+                if ($_.Trim()) {
+                    Write-StatusMessage $_ -Type "Detail"
+                }
+            }
+        } else {
+            Write-StatusMessage "No Group Policy settings found" -Type "Warning"
+        }
+    }
+    catch {
+        Write-StatusMessage "Failed to generate Group Policy report: $($_.Exception.Message)" -Type "Error"
     }
 }
 
@@ -115,7 +122,11 @@ try {
     Write-StatusMessage "Domain: $domainName" -Type "Info"
     Write-StatusMessage "----------------------------------------" -Type "Info"
     
-    if (Test-IsDomainController) {
+    if ($domainName -eq "WORKGROUP") {
+        Write-StatusMessage "Computer is in a workgroup. Limited Group Policy information will be available." -Type "Warning"
+        Get-GPStatusWithGpresult -OutputFormat $OutputFormat
+    }
+    elseif (Test-IsDomainController) {
         if (Get-Module -ListAvailable -Name GroupPolicy) {
             Import-Module GroupPolicy
         
@@ -166,11 +177,11 @@ try {
             }
         } else {
             Write-StatusMessage "GroupPolicy module not available. Falling back to gpresult." -Type "Warning"
-            Get-GPStatusWithGpresult
+            Get-GPStatusWithGpresult -OutputFormat $OutputFormat
         }
     } else {
-        Write-StatusMessage "Not running on a Domain Controller. Using gpresult for Group Policy analysis." -Type "Info"
-        Get-GPStatusWithGpresult
+        Write-StatusMessage "Computer is domain-joined but not a Domain Controller. Using gpresult for analysis." -Type "Info"
+        Get-GPStatusWithGpresult -OutputFormat $OutputFormat
     }
 }
 catch {
