@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 16:42:12 UTC
+# Last Updated: 2025-03-17 16:48:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.15
-# Additional Info: Enhanced Administrator SID display with individual domain entries
+# Version: 1.10.16
+# Additional Info: Fixed null reference error in administrator SID handling
 # =============================================================================
 
 <#
@@ -646,15 +646,19 @@ try {
     # Initialize SIDs and get Administrator accounts
     $adminAccounts = Initialize-WellKnownSIDs
     
-    # Display warning about multiple accounts if needed
-    if ($adminAccounts.Count -gt 1) {
+    # Display warning about multiple accounts if needed - add null check
+    if ($adminAccounts -and ($adminAccounts.Count -gt 1)) {
         Write-Log -Message "Multiple Administrator accounts found ($($adminAccounts.Count))" -Color "Yellow" -Level 'WARNING'
     }
     
-    # Display each Administrator SID individually
-    foreach ($admin in $adminAccounts) {
-        $domainName = if ($admin.DomainType -eq "Local") { "LOCAL" } else { $admin.FQDN }
-        Write-Log -Message "The Administrator SID for $domainName is $($admin.SID)" -Color "White" -Level 'INFO'
+    # Display each Administrator SID individually - add null check
+    if ($adminAccounts) {
+        foreach ($admin in $adminAccounts) {
+            $domainName = if ($admin.DomainType -eq "Local") { "LOCAL" } else { $admin.FQDN }
+            Write-Log -Message "The Administrator SID for $domainName is $($admin.SID)" -Color "White" -Level 'INFO'
+        }
+    } else {
+        Write-Log -Message "No Administrator accounts found. Using default SID patterns." -Color "Yellow" -Level 'WARNING'
     }
     
     Write-Log ""
