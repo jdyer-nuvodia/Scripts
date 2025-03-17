@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 17:53:00 UTC
+# Last Updated: 2025-03-17 17:00:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.1
-# Additional Info: Fixed Count property issue with administrator accounts
+# Version: 1.11.2
+# Additional Info: Restored transcript initialization and closing messages
 # =============================================================================
 
 <#
@@ -174,6 +174,7 @@ $computerName = $env:COMPUTERNAME
 $safePath = Get-SafeFilename -Path $FolderPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
 $script:DebugLogFile = "${logBase}_debug.log"
+$script:TranscriptFile = "${logBase}_transcript.log"
 
 # Function to create a standardized log header with enhanced metadata
 function New-LogHeader {
@@ -609,6 +610,17 @@ function Get-HumanReadablePermissions {
 
 # Main script execution
 try {
+    # Start transcript first thing
+    try {
+        Start-Transcript -Path $script:TranscriptFile -Force
+        $script:TranscriptStarted = $true
+        Write-Host "Initializing transcript at: $script:TranscriptFile" -ForegroundColor Cyan
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        $script:TranscriptStarted = $false
+    }
+
     # Register ctrl+c handler
     $null = [Console]::TreatControlCAsInput = $true
     Register-ObjectEvent -InputObject ([Console]) -EventName CancelKeyPress -Action {
@@ -736,6 +748,7 @@ try {
             Write-Log -Message "Error: $($_.Value)" -Color "Red" -Level 'ERROR'
         }
     }
+}
 }
 catch [System.Exception] {
     Write-Error "An error occurred: $_"
