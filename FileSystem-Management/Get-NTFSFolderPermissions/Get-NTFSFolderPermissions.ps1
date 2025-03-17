@@ -273,7 +273,7 @@ function Initialize-WellKnownSIDs {
         foreach ($account in $adminAccounts) {
             $domainType = if ($account.LocalAccount) { "Local" } else { "Domain" }
             $domain = if ($account.Domain) { $account.Domain } else { $env:COMPUTERNAME }
-            $allAdminSIDs += "$($account.SID) [$domainType: $domain]"
+            $allAdminSIDs += "$($account.SID) [${domainType}: ${domain}]"
         }
         
         $script:AdminSID = $allAdminSIDs -join ' '
