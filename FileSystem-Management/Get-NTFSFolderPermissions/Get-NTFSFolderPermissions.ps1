@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 16:50:00 UTC
+# Last Updated: 2025-03-17 17:53:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.0
-# Additional Info: Updated logging format to follow standardized PowerShell conventions
+# Version: 1.11.1
+# Additional Info: Fixed Count property issue with administrator accounts
 # =============================================================================
 
 <#
@@ -623,13 +623,22 @@ try {
     # Initialize SIDs and get Administrator accounts
     $adminAccounts = Initialize-WellKnownSIDs
     
-    # Display warning about multiple accounts if needed - add null check
-    if ($adminAccounts -and ($adminAccounts.Count -gt 1)) {
+    # Always ensure $adminAccounts is an array for consistent behavior
+    if ($null -eq $adminAccounts) {
+        $adminAccounts = @()
+    }
+    elseif ($adminAccounts -isnot [Array] -and $adminAccounts -isnot [System.Collections.ICollection]) {
+        # Convert single item to array
+        $adminAccounts = @($adminAccounts)
+    }
+    
+    # Display warning about multiple accounts if needed
+    if ($adminAccounts.Count -gt 1) {
         Write-Log -Message "Multiple Administrator accounts found ($($adminAccounts.Count))" -Color "Yellow" -Level 'WARNING'
     }
     
-    # Display each Administrator SID individually - add null check
-    if ($adminAccounts) {
+    # Display each Administrator SID individually
+    if ($adminAccounts.Count -gt 0) {
         foreach ($admin in $adminAccounts) {
             $domainName = if ($admin.DomainType -eq "Local") { "LOCAL" } else { $admin.FQDN }
             Write-Log -Message "The Administrator SID for $domainName is $($admin.SID)" -Color "White" -Level 'INFO'
