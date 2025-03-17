@@ -1,5 +1,5 @@
 # =============================================================================
-# Script: Get-GroupPolicyStatus.ps1
+# Script: Get-SecurityConfigurationStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2024-03-18 15:22:00 UTC
