@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 16:33:00 UTC
+# Last Updated: 2025-03-17 16:42:12 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.14
-# Additional Info: Fixed message output ordering to ensure consistent user experience
+# Version: 1.10.15
+# Additional Info: Enhanced Administrator SID display with individual domain entries
 # =============================================================================
 
 <#
@@ -265,22 +265,46 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
     # Get all Administrator SIDs from WMI
-    $allAdminSIDs = @()
-    $adminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue
+    $adminAccounts = @()
+    $wmiAdminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue
     
-    if ($adminAccounts) {
-        # Process each admin account and add domain context
-        foreach ($account in $adminAccounts) {
+    if ($wmiAdminAccounts) {
+        # Process each admin account and store structured information
+        foreach ($account in $wmiAdminAccounts) {
             $domainType = if ($account.LocalAccount) { "Local" } else { "Domain" }
             $domain = if ($account.Domain) { $account.Domain } else { $env:COMPUTERNAME }
-            $allAdminSIDs += "$($account.SID) [${domainType}: ${domain}]"
+            
+            # Try to get FQDN for domain accounts
+            $fqdn = $domain
+            if (-not $account.LocalAccount) {
+                try {
+                    $domainObj = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain(
+                        (New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $domain))
+                    )
+                    $fqdn = $domainObj.Name
+                }
+                catch {
+                    Write-Log -Message "Could not get FQDN for domain $domain" -Color "DarkGray" -NoConsole -Level 'DEBUG'
+                }
+            }
+            
+            $adminAccounts += [PSCustomObject]@{
+                SID = $account.SID
+                Domain = $domain
+                FQDN = $fqdn
+                DomainType = $domainType
+                DisplayName = "$($account.SID) [${domainType}: $fqdn]"
+            }
         }
         
-        $script:AdminSID = $allAdminSIDs -join ' '
+        # Set the first SID for lookups
+        if ($adminAccounts.Count -gt 0) {
+            $script:AdminSID = $adminAccounts[0].SID
+        }
     }
     else {
         # Fallback to default Administrator SID pattern
-        $script:AdminSID = "S-1-5-21-domain-500 [Unknown domain]"
+        $script:AdminSID = "S-1-5-21-domain-500"
         Write-Log -Message "Could not retrieve Administrator SIDs, using placeholder" -Color "Yellow" -Level 'WARNING'
     }
 
@@ -296,15 +320,15 @@ function Initialize-WellKnownSIDs {
         "LocalSystem" = "S-1-5-18"
         "LocalService" = "S-1-5-19"
         "NetworkService" = "S-1-5-20"
-        "Administrator" = $script:AdminSID.Split(' ')[0]  # Use first SID for lookups
+        "Administrator" = $script:AdminSID  # Use first SID for lookups
         "Administrators" = "S-1-5-32-544"
         "Users" = "S-1-5-32-545"
         "Guests" = "S-1-5-32-546"
     }
-    Write-Log -Message "Initialized well-known SIDs collection with Administrator SIDs: $script:AdminSID" -Color "DarkGray" -NoConsole -Level 'DEBUG'
+    Write-Log -Message "Initialized well-known SIDs collection with primary Administrator SID: $script:AdminSID" -Color "DarkGray" -NoConsole -Level 'DEBUG'
 
-    # Return the count of Administrator accounts found
-    return $allAdminSIDs.Count
+    # Return the administrator accounts collection
+    return $adminAccounts
 }
 
 function Test-WellKnownSID {
@@ -619,16 +643,20 @@ try {
     Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
     Write-Log ""
     
-    # Initialize SIDs and get Administrator account count
-    $adminCount = Initialize-WellKnownSIDs
+    # Initialize SIDs and get Administrator accounts
+    $adminAccounts = Initialize-WellKnownSIDs
     
     # Display warning about multiple accounts if needed
-    if ($adminCount -gt 1) {
-        Write-Log -Message "Multiple Administrator accounts found ($adminCount)" -Color "Yellow" -Level 'WARNING'
+    if ($adminAccounts.Count -gt 1) {
+        Write-Log -Message "Multiple Administrator accounts found ($($adminAccounts.Count))" -Color "Yellow" -Level 'WARNING'
     }
     
-    # Display the Administrator SID
-    Write-Log -Message "The Administrator SID is: $script:AdminSID" -Color "White" -Level 'INFO'
+    # Display each Administrator SID individually
+    foreach ($admin in $adminAccounts) {
+        $domainName = if ($admin.DomainType -eq "Local") { "LOCAL" } else { $admin.FQDN }
+        Write-Log -Message "The Administrator SID for $domainName is $($admin.SID)" -Color "White" -Level 'INFO'
+    }
+    
     Write-Log ""
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
     
