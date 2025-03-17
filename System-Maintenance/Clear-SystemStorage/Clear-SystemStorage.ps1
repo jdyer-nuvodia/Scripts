@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 15:30:00 UTC
+# Last Updated: 2025-03-12 23:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.6
-# Additional Info: Excluded Internet Explorer logs from cleanup
+# Version: 1.5.0
+# Additional Info: Added drive space monitoring before and after cleanup
 # =============================================================================
 
 <#
@@ -68,6 +68,22 @@ function Write-Log {
     }
 }
 
+function Show-DriveInfo {
+    param (
+        [Parameter(Mandatory=$true)]
+        [object]$Volume
+    )
+    
+    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
+    Write-Host "------------------------" -ForegroundColor Green
+    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
+    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
+    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
+    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
+    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
+    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
+}
 function Write-StatusMessage {
     param(
         [string]$Message,
@@ -387,13 +403,43 @@ try {
             Write-Log "Skipping restore point creation as requested." -Color Yellow
         }
     
-        # Perform cleanup operations
-        Remove-TempFiles
-        Clear-RecycleBin
-        Clear-ShadowCopies
-        Remove-WindowsErrorReports
-        Clear-BrowserCaches
-        Remove-WindowsLogs
+    # Get initial drive space information
+    try {
+        Write-StatusMessage "Getting initial drive space information..." -Color Cyan
+        $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter
+        if ($volumes.Count -eq 0) {
+            Write-Log "No drives with letters found on the system." -Color Red
+            exit 1
+        }
+        $lowestVolume = $volumes[0]
+        Write-Log "Initial drive space for $($lowestVolume.DriveLetter):" -Color Yellow
+        Show-DriveInfo -Volume $lowestVolume
+    }
+    catch {
+        Write-Log "Error accessing initial drive information: $_" -Color Red
+    }
+
+    # Perform cleanup operations
+    Remove-TempFiles
+    Clear-RecycleBin
+    Clear-ShadowCopies
+    Remove-WindowsErrorReports
+    Clear-BrowserCaches
+    Remove-WindowsLogs
+
+    # Get final drive space information
+    try {
+        Write-StatusMessage "`nGetting final drive space information..." -Color Cyan
+        $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter
+        if ($volumes.Count -gt 0) {
+            $lowestVolume = $volumes[0]
+            Write-Log "Final drive space for $($lowestVolume.DriveLetter):" -Color Yellow
+            Show-DriveInfo -Volume $lowestVolume
+        }
+    }
+    catch {
+        Write-Log "Error accessing final drive information: $_" -Color Red
+    }
     
     Write-Log "System storage cleanup completed successfully. See log file for details: $logFile" -Color Green
 }
