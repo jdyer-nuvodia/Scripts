@@ -2,10 +2,10 @@
 # Script: Get-GroupPolicyStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-17 18:14:00 UTC
+# Last Updated: 2024-03-17 18:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Fixed gpresult access issues and improved error handling
+# Version: 1.2.1
+# Additional Info: Added null checks for user policy results
 # =============================================================================
 
 <#
@@ -100,12 +100,20 @@ function Get-GPStatusWithGpresult {
     }
 }
 
-# Initialize log file
-$LogPath = Join-Path $PSScriptRoot "$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+# Get system and domain information
+$computerSystem = Get-WmiObject Win32_ComputerSystem
+$computerName = $computerSystem.Name
+$domainName = if ($computerSystem.PartOfDomain) { $computerSystem.Domain } else { "WORKGROUP" }
+
+# Initialize log file with system info
+$LogPath = Join-Path $PSScriptRoot "$computerName`_$($domainName.Split('.')[0])_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 Start-Transcript -Path $LogPath
 
 try {
     Write-StatusMessage "Starting Group Policy analysis..." -Type "Process"
+    Write-StatusMessage "System Name: $computerName" -Type "Info"
+    Write-StatusMessage "Domain: $domainName" -Type "Info"
+    Write-StatusMessage "----------------------------------------" -Type "Info"
     
     if (Test-IsDomainController) {
         if (Get-Module -ListAvailable -Name GroupPolicy) {
@@ -136,15 +144,19 @@ try {
                 try {
                     $userPolicies = Get-GPResultantSetOfPolicy -ReportType User -User $user.Name
                     
-                    $userPolicies.UserResults.ExtensionData | ForEach-Object {
-                        $extension = $_
-                        Write-StatusMessage "Category: $($extension.Name)" -Type "Success"
-                        $extension.Extension.Policy | ForEach-Object {
-                            Write-StatusMessage "  Policy: $($_.Name)" -Type "Detail"
-                            Write-StatusMessage "  State: $($_.State)" -Type "Detail"
-                            Write-StatusMessage "  Setting: $($_.Setting)" -Type "Detail"
-                            Write-StatusMessage "" -Type "Detail"
+                    if ($userPolicies.UserResults -and $userPolicies.UserResults.ExtensionData) {
+                        $userPolicies.UserResults.ExtensionData | ForEach-Object {
+                            $extension = $_
+                            Write-StatusMessage "Category: $($extension.Name)" -Type "Success"
+                            $extension.Extension.Policy | ForEach-Object {
+                                Write-StatusMessage "  Policy: $($_.Name)" -Type "Detail"
+                                Write-StatusMessage "  State: $($_.State)" -Type "Detail"
+                                Write-StatusMessage "  Setting: $($_.Setting)" -Type "Detail"
+                                Write-StatusMessage "" -Type "Detail"
+                            }
                         }
+                    } else {
+                        Write-StatusMessage "  No policy data available for this user" -Type "Warning"
                     }
                 }
                 catch {
@@ -166,6 +178,9 @@ catch {
     Write-StatusMessage $_.Exception.Message -Type "Error"
 }
 finally {
-    Write-StatusMessage "`nGroup Policy analysis complete. Log file saved to: $LogPath" -Type "Success"
+    Write-StatusMessage "`nAnalysis Summary:" -Type "Info"
+    Write-StatusMessage "System Name: $computerName" -Type "Detail"
+    Write-StatusMessage "Domain: $domainName" -Type "Detail"
+    Write-StatusMessage "Log file saved to: $LogPath" -Type "Success"
     Stop-Transcript
 }
