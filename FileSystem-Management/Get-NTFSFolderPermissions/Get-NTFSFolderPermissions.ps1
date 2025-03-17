@@ -2,7 +2,7 @@
  # Script: Get-NTFSFolderPermissions.ps1
  # Created: 2025-02-07 21:21:53 UTC
  # Author: jdyer-nuvodia
- # Last Updated: 2025-03-17 17:13:00 UTC
+ # Last Updated: 2025-03-17 22:14:00 UTC
  # Updated By: jdyer-nuvodia
  # Version: 1.11.4
  # Additional Info: Fixed duplicate transcript initialization messages
@@ -176,102 +176,96 @@
  $script:DebugLogFile = "${logBase}_debug.log"
  $script:TranscriptFile = "${logBase}_transcript.log"
  
- # Function to create a standardized log header with enhanced metadata
- function New-LogHeader {
-     # Get execution context information
-     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")
-     $os = Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object -ExpandProperty Caption
-     
-     @"
- # =============================================================================
- # NTFS Permissions Debug Log
- # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
- # System: $computerName
- # OS Version: $os
- # PowerShell Version: $($PSVersionTable.PSVersion)
- # Executed By: $currentUser
- # Admin Privileges: $isAdmin
- # Analysis Path: $FolderPath
- # Max Threads: $MaxThreads
- # Max Depth: $MaxDepth
- # Skip AD Resolution: $SkipADResolution
- # Skip Uniqueness Counting: $SkipUniquenessCounting
- # Enable SID Diagnostics: $EnableSIDDiagnostics
- # Script Version: 1.10.1
- # Script Version: 1.12.0
- # =============================================================================
+# Function to create a standardized log header with enhanced metadata
+function New-LogHeader {
+    # Get execution context information
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object -ExpandProperty Caption
+    
+    @"
+# =============================================================================
+# NTFS Permissions Debug Log
+# Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+# System: $computerName
+# OS Version: $os
+# PowerShell Version: $($PSVersionTable.PSVersion)
+# Executed By: $currentUser
+# Admin Privileges: $isAdmin
+# Analysis Path: $FolderPath
+# Max Threads: $MaxThreads
+# Max Depth: $MaxDepth
+# Skip AD Resolution: $SkipADResolution
+# Skip Uniqueness Counting: $SkipUniquenessCounting
+# Enable SID Diagnostics: $EnableSIDDiagnostics
+# Script Version: 1.12.0
+# =============================================================================
+
+"@
+}
+
+# Initialize debug log with proper header
+Set-Content -Path $script:DebugLogFile -Value (New-LogHeader)
  
- "@
- }
- 
- # Initialize debug log with proper header
- Set-Content -Path $script:DebugLogFile -Value (New-LogHeader)
- 
- # Define Write-Log function with standardized PowerShell format
- # Define Write-Log function with standardized PowerShell format and enhanced metrics
- function Write-Log {
-     param (
-         [string]$Message,
-         [string]$Color = "White",
-         [switch]$NoConsole,
-         [switch]$Debug,
-         [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS')]
-         [string]$Level = $(if ($Debug) { 'DEBUG' } else { 'INFO' })
-         [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS', 'METRIC', 'VERBOSE')]
-         [string]$Level = $(if ($Debug) { 'DEBUG' } else { 'INFO' }),
-         [string]$Category = "",
-         [int]$Indent = 0
-     )
- 
-     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
-     $callStack = Get-PSCallStack
-     $callingFunction = $callStack[1].FunctionName
-     $lineNumber = $callStack[1].ScriptLineNumber
-     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
- 
-     # Standard PowerShell log format
-     $logEntry = "$timestamp [$Level] [Thread:$([Threading.Thread]::CurrentThread.ManagedThreadId)] [$callingFunction`:$lineNumber] $Message"
-     # Calculate memory usage for metrics
-     $memoryInfo = ""
-     if ($Level -eq 'METRIC') {
-         $process = Get-Process -Id $PID
-         $memoryMB = [math]::Round($process.WorkingSet / 1MB, 2)
-         $memoryInfo = "[Memory:${memoryMB}MB] "
-     }
-     
-     # Add category for better filtering
-     $categoryInfo = if ($Category) { "[$Category] " } else { "" }
-     
-     # Add indentation for hierarchical clarity
-     $indentation = if ($Indent -gt 0) { " " * $Indent } else { "" }
-     
-     # Standard PowerShell log format with enhancements
-     $logEntry = "$timestamp [$Level] [Thread:$([Threading.Thread]::CurrentThread.ManagedThreadId)] [$callingFunction`:$lineNumber] ${memoryInfo}${categoryInfo}${indentation}$Message"
- 
-     # Write to debug log with error handling
-     try {
-         Add-Content -Path $script:DebugLogFile -Value $logEntry
-     }
-     catch {
-         Write-Warning "Failed to write to debug log: $_"
-     }
- 
-     if (-not $NoConsole) {
-         $levelColors = @{
-             'INFO' = 'White'
-             'WARNING' = 'Yellow'
-             'ERROR' = 'Red'
-             'DEBUG' = 'Magenta'
-             'SUCCESS' = 'Green'
-             'METRIC' = 'Cyan'
-             'VERBOSE' = 'DarkGray'
-         }
-         $messageColor = if ($levelColors.ContainsKey($Level)) { $levelColors[$Level] } else { $Color }
-         Write-Host $Message -ForegroundColor $messageColor
-         Write-Host "$indentation$Message" -ForegroundColor $messageColor
-     }
- }
+# Define Write-Log function with standardized PowerShell format and enhanced metrics
+# Define Write-Log function with standardized PowerShell format and enhanced metrics
+function Write-Log {
+    param (
+        [string]$Message,
+        [string]$Color = "White",
+        [switch]$NoConsole,
+        [switch]$Debug,
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS', 'METRIC', 'VERBOSE')]
+        [string]$Level = $(if ($Debug) { 'DEBUG' } else { 'INFO' }),
+        [string]$Category = "",
+        [int]$Indent = 0
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $callStack = Get-PSCallStack
+    $callingFunction = $callStack[1].FunctionName
+    $lineNumber = $callStack[1].ScriptLineNumber
+    if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
+    
+    # Calculate memory usage for metrics
+    $memoryInfo = ""
+    if ($Level -eq 'METRIC') {
+        $process = Get-Process -Id $PID
+        $memoryMB = [math]::Round($process.WorkingSet / 1MB, 2)
+        $memoryInfo = "[Memory:${memoryMB}MB] "
+    }
+    
+    # Add category for better filtering
+    $categoryInfo = if ($Category) { "[$Category] " } else { "" }
+    
+    # Add indentation for hierarchical clarity
+    $indentation = if ($Indent -gt 0) { " " * $Indent } else { "" }
+    
+    # Standard PowerShell log format with enhancements
+    $logEntry = "$timestamp [$Level] [Thread:$([Threading.Thread]::CurrentThread.ManagedThreadId)] [$callingFunction`:$lineNumber] ${memoryInfo}${categoryInfo}${indentation}$Message"
+
+    # Write to debug log with error handling
+    try {
+        Add-Content -Path $script:DebugLogFile -Value $logEntry
+    }
+    catch {
+        Write-Warning "Failed to write to debug log: $_"
+    }
+
+    if (-not $NoConsole) {
+        $levelColors = @{
+            'INFO' = 'White'
+            'WARNING' = 'Yellow'
+            'ERROR' = 'Red'
+            'DEBUG' = 'Magenta'
+            'SUCCESS' = 'Green'
+            'METRIC' = 'Cyan'
+            'VERBOSE' = 'DarkGray'
+        }
+        $messageColor = if ($levelColors.ContainsKey($Level)) { $levelColors[$Level] } else { $Color }
+        Write-Host "$indentation$Message" -ForegroundColor $messageColor
+    }
+}
  
  # Add function to record performance metrics during folder processing
  function Write-PerformanceMetric {
@@ -483,6 +477,38 @@
      return $Sid
  }
  
+# Enhanced SID translation function
+function Get-SIDTranslation {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$SID
+    )
+    
+    try {
+        if ($script:SidCache.ContainsKey($SID)) {
+            return $script:SidCache[$SID]
+        }
+        
+        # Get domain SID prefix
+        $domainSid = $SID.Split('-')[0..4] -join '-'
+        Write-Log "Attempting to translate SID: $SID (Domain prefix: $domainSid)" -Level 'DEBUG'
+        
+        $objSID = New-Object System.Security.Principal.SecurityIdentifier($SID)
+        $objUser = $objSID.Translate([System.Security.Principal.NTAccount])
+        
+        $script:SidCache[$SID] = $objUser.Value
+        Write-Log "Successfully translated $SID to $($objUser.Value)" -Level 'DEBUG'
+        return $objUser.Value
+    }
+    catch {
+        Write-Log "Failed to translate SID $SID : $_" -Level 'WARNING'
+        if (-not $script:FailedSids.ContainsKey($SID)) {
+            $script:FailedSids[$SID] = $_
+        }
+        return $SID
+    }
+}
+
  # Standardized function to generate permission hashes
  function Get-PermissionHash {
      param (
@@ -850,3 +876,4 @@
      if ($script:cancellationTokenSource) {
          $script:cancellationTokenSource.Dispose()
      }
+}
