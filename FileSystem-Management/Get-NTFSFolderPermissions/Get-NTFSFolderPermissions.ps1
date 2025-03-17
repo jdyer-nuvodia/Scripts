@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 16:29:07 UTC
+# Last Updated: 2025-03-17 16:33:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.13
-# Additional Info: Enhanced Administrator SID display with domain context information
+# Version: 1.10.14
+# Additional Info: Fixed message output ordering to ensure consistent user experience
 # =============================================================================
 
 <#
@@ -277,10 +277,6 @@ function Initialize-WellKnownSIDs {
         }
         
         $script:AdminSID = $allAdminSIDs -join ' '
-        
-        if ($allAdminSIDs.Count -gt 1) {
-            Write-Log -Message "Multiple Administrator accounts found ($($allAdminSIDs.Count))" -Color "Yellow" -Level 'WARNING'
-        }
     }
     else {
         # Fallback to default Administrator SID pattern
@@ -306,6 +302,9 @@ function Initialize-WellKnownSIDs {
         "Guests" = "S-1-5-32-546"
     }
     Write-Log -Message "Initialized well-known SIDs collection with Administrator SIDs: $script:AdminSID" -Color "DarkGray" -NoConsole -Level 'DEBUG'
+
+    # Return the count of Administrator accounts found
+    return $allAdminSIDs.Count
 }
 
 function Test-WellKnownSID {
@@ -615,12 +614,20 @@ try {
         $script:cancellationTokenSource.Cancel()
         Write-Log "Cancellation requested by user (Ctrl+C)" -Level 'WARNING' -Color "Yellow"
     } | Out-Null
-
-    Initialize-WellKnownSIDs
     
-    # Output initial messages in specified order - only once
+    # Output initial messages in correct order
     Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
     Write-Log ""
+    
+    # Initialize SIDs and get Administrator account count
+    $adminCount = Initialize-WellKnownSIDs
+    
+    # Display warning about multiple accounts if needed
+    if ($adminCount -gt 1) {
+        Write-Log -Message "Multiple Administrator accounts found ($adminCount)" -Color "Yellow" -Level 'WARNING'
+    }
+    
+    # Display the Administrator SID
     Write-Log -Message "The Administrator SID is: $script:AdminSID" -Color "White" -Level 'INFO'
     Write-Log ""
     Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
