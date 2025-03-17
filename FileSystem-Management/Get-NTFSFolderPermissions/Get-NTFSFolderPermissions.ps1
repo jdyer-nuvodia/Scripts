@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 16:48:00 UTC
+# Last Updated: 2025-03-17 16:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.16
-# Additional Info: Fixed null reference error in administrator SID handling
+# Version: 1.11.0
+# Additional Info: Updated logging format to follow standardized PowerShell conventions
 # =============================================================================
 
 <#
@@ -198,7 +198,7 @@ function New-LogHeader {
 # Initialize debug log with proper header
 Set-Content -Path $script:DebugLogFile -Value (New-LogHeader)
 
-# Define Write-Log function with enhanced functionality
+# Define Write-Log function with standardized PowerShell format
 function Write-Log {
     param (
         [string]$Message,
@@ -209,21 +209,14 @@ function Write-Log {
         [string]$Level = $(if ($Debug) { 'DEBUG' } else { 'INFO' })
     )
     
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff UTC"
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
     $callStack = Get-PSCallStack
     $callingFunction = $callStack[1].FunctionName
     $lineNumber = $callStack[1].ScriptLineNumber
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    $logEntry = @"
-[TIMESTAMP: $timestamp]
-[LEVEL: $Level]
-[FUNCTION: $callingFunction]
-[LINE: $lineNumber]
-[THREAD: $([Threading.Thread]::CurrentThread.ManagedThreadId)]
-[MESSAGE: $Message]
-----------------------------------------
-"@
+    # Standard PowerShell log format
+    $logEntry = "$timestamp [$Level] [Thread:$([Threading.Thread]::CurrentThread.ManagedThreadId)] [$callingFunction`:$lineNumber] $Message"
     
     # Write to debug log with error handling
     try {
@@ -243,22 +236,6 @@ function Write-Log {
         }
         $messageColor = if ($levelColors.ContainsKey($Level)) { $levelColors[$Level] } else { $Color }
         Write-Host $Message -ForegroundColor $messageColor
-    }
-}
-
-# Import required modules
-Import-Module ActiveDirectory -ErrorAction SilentlyContinue
-
-# Initialize transcript - done only once
-if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
-    $transcriptPath = "${logBase}_transcript.log"
-    try {
-        Start-Transcript -Path $transcriptPath -Force | Out-Null
-        $script:TranscriptStarted = $true
-        Write-Log -Message "Initializing transcript at: $transcriptPath" -Level 'INFO' -Color "Cyan"
-    }
-    catch {
-        Write-Log -Message "Could not start transcript: $_" -Level 'ERROR' -Color "Red"
     }
 }
 
