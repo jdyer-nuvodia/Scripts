@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 17:00:12 UTC
+# Last Updated: 2025-03-17 17:09:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.2
-# Additional Info: Restored transcript initialization and closing messages
+# Version: 1.11.3
+# Additional Info: Fixed try/catch block structure to correct error in main execution flow
 # =============================================================================
 
 <#
@@ -682,7 +682,7 @@ try {
     # Display results in hierarchy mode
     Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow" -Level 'INFO'
     $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
-
+ 
     foreach ($folder in $sortedFolders) {
         $data = $script:FolderPermissions[$folder]
 
@@ -748,8 +748,7 @@ try {
             Write-Log -Message "Error: $($_.Value)" -Color "Red" -Level 'ERROR'
         }
     }
-}
-}
+} # End of main try block
 catch [System.Exception] {
     Write-Error "An error occurred: $_"
     Write-Error $_.ScriptStackTrace
