@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 10:52:00 UTC
+# Last Updated: 2025-03-17 10:44:52 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.12.0
-# Additional Info: Added multi-domain Administrator SID translation support
+# Version: 1.0.1
+# Additional Info: Fixed function structure and assignment issues
 # =============================================================================
 
 <#
@@ -225,37 +225,6 @@ function Write-Log {
             'INFO' = 'White'
             'WARNING' = 'Yellow'
             'ERROR' = 'Red'
-            'DEBUG' = 'Magenta'
-            'SUCCESS' = 'Green'
-            'METRIC' = 'Cyan'
-            'VERBOSE' = 'DarkGray'
-        }
-        $messageColor = if ($levelColors.ContainsKey($Level)) { $levelColors[$Level] } else { $Color }
-        Write-Host "$indentation$Message" -ForegroundColor $messageColor
-    }
-}
-
-# Add function to record performance metrics during folder processing
-function Write-PerformanceMetric {
-    param(
-        [string]$Operation,
-        [datetime]$StartTime,
-        [int]$ItemCount = 0
-    )
-    
-    $endTime = Get-Date
-    $duration = ($endTime - $StartTime).TotalMilliseconds
-    $itemsPerSec = if ($ItemCount -gt 0 -and $duration -gt 0) { 
-        [math]::Round(($ItemCount * 1000) / $duration, 2) 
-    } else { 
-        0 
-    }
-    
-    $message = "$Operation completed in $([math]::Round($duration, 2))ms"
-    if ($ItemCount -gt 0) {
-        $message += " ($itemsPerSec items/sec)"
-    }
-    
             'DEBUG' = 'Magenta'
             'SUCCESS' = 'Green'
             'METRIC' = 'Cyan'
@@ -554,50 +523,17 @@ function Get-FolderPermissions {
 function Invoke-FolderProcessing {
     param(
         [string]$Path,
+        [PSObject]$PermissionData,
+        [bool]$SkipUniquenessCounting,
         [int]$CurrentCount,
-        [int]$TotalCount
+        [int]$TotalCount,
+        [DateTime]$StartTime
     )
 
-    $startTime = Get-Date
     try {
-        Write-Log -Message "Processing folder: $Path" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
-
-        # Get permissions for the folder
-        $permissionData = Get-FolderPermissions -Folder $Path
-
-        if ($permissionData) {
-            # Track unique permission sets
-            if (-not $script:PermissionGroups.ContainsKey($permissionData.PermissionHash)) {
-                $script:PermissionGroups[$permissionData.PermissionHash] = @{
-                    Folders = @()
-                    Permissions = $permissionData.Access
-                    Owner = $permissionData.Owner
-                    IsInherited = $permissionData.IsInherited
-                    ParentPaths = @{}
-                }
-                Write-Log -Message "Found new permission set (hash: $($permissionData.PermissionHash.Substring(0,20))...)" -Level 'DEBUG' -Category 'Permissions' -NoConsole
-            }
-
-            # Group by parent path for better organization
-            $currentParent = Split-Path -Path $Path -Parent
-            if (-not [string]::IsNullOrEmpty($currentParent)) {
-                if (-not $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths.ContainsKey($currentParent)) {
-                    $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths[$currentParent] = @()
-                }
-                $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths[$currentParent] += $Path
-            }
-
-            $script:PermissionGroups[$permissionData.PermissionHash].Folders += $Path
-            $script:FolderPermissions[$Path] = $permissionData
-
-            # Log non-inherited permissions for security analysis
-            if (-not $permissionData.IsInherited) {
-                Write-Log -Message "Found explicit permissions on: $Path" -Level 'DEBUG' -Category 'Security' -NoConsole
-            }
-
-            # Update unique permissions count - only write to debug log
+        if ($PermissionData) {
             if (-not $SkipUniquenessCounting) {
-                $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -IncludeInheritance:$false
+                $permissionHash = Get-PermissionHash -AccessRules $PermissionData.Access -IncludeInheritance:$false
                 
                 if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
                     $script:UniquePermissions[$permissionHash] = @($Path)
@@ -614,7 +550,7 @@ function Invoke-FolderProcessing {
         Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
     }
     finally {
-        Write-PerformanceMetric -Operation "Folder processing for $Path" -StartTime $startTime
+        Write-PerformanceMetric -Operation "Folder processing for $Path" -StartTime $StartTime
         Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status "Processing: $Path" -Current $CurrentCount -Total $TotalCount
     }
 }
@@ -622,7 +558,10 @@ function Invoke-FolderProcessing {
 # Function to process folders recursively
 function Invoke-FolderRecursively {
     param (
+        [Parameter(Mandatory=$true)]
         [string]$Path,
+        
+        [Parameter(Mandatory=$false)]
         [int]$CurrentDepth = 0
     )
 
@@ -638,7 +577,9 @@ function Invoke-FolderRecursively {
             return
         }
 
-        $script:TotalFolders++
+        $permissionData = Get-FolderPermissions -Folder $Path
+        $processingStart = Get-Date
+        Invoke-FolderProcessing -Path $Path -PermissionData $permissionData -SkipUniquenessCounting $SkipUniquenessCounting -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders -StartTime $processingStart
         $script:ProcessedFolders++
 
         Invoke-FolderProcessing -Path $Path -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
@@ -701,11 +642,6 @@ function Get-DomainAdministratorSids {
     
     return $adminSidMap
 }
-
-# Add to beginning of main script:
-$script:AdminSidMapping = Get-DomainAdministratorSids
-
-# Modify SID translation in permission processing:
 function Format-SecurityPrincipal {
     param([string]$SID)
     
@@ -713,7 +649,8 @@ function Format-SecurityPrincipal {
         return "$($script:AdminSidMapping[$SID])\Administrator"
     }
     
-    # ...existing code for normal translation...
+    # Fall back to standard SID translation
+    return Convert-SidToName -Sid $SID
 }
 
 # Main script execution
