@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 21:10:00 UTC
+# Last Updated: 2025-03-17 21:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Added transcript logging functionality
+# Version: 1.1.1
+# Additional Info: Fixed Write-ColorOutput function scope issue
 # =============================================================================
 
 <#
@@ -45,6 +45,19 @@ param(
     [string]$StartPath
 )
 
+# Define helper function first
+function Write-ColorOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ForegroundColor
+    )
+    
+    Write-Host $Message -ForegroundColor $ForegroundColor
+}
+
 # Initialize transcript
 $transcriptPath = Join-Path $PSScriptRoot "logs"
 if (-not (Test-Path -Path $transcriptPath)) {
@@ -55,18 +68,6 @@ $transcriptFile = Join-Path $transcriptPath "Search-ContentRecursively_$(Get-Dat
 try {
     Start-Transcript -Path $transcriptFile -ErrorAction Stop
     Write-ColorOutput "Transcript logging started at $transcriptFile" -ForegroundColor Magenta
-
-    function Write-ColorOutput {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Message,
-            
-            [Parameter(Mandatory = $true)]
-            [string]$ForegroundColor
-        )
-        
-        Write-Host $Message -ForegroundColor $ForegroundColor
-    }
 
     # Validate the start path
     if (-not (Test-Path -Path $StartPath)) {
@@ -126,7 +127,9 @@ try {
 
     Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
 } catch {
-    Write-ColorOutput "Error: $_" -ForegroundColor Red
+    Write-Host "Error: $_" -ForegroundColor Red
 } finally {
-    Stop-Transcript
+    if ($transcriptFile) {
+        Stop-Transcript
+    }
 }
