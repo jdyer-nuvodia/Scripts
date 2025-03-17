@@ -178,19 +178,27 @@ $script:TranscriptFile = "${logBase}_transcript.log"
 
 # Function to create a standardized log header with enhanced metadata
 function New-LogHeader {
+    # Get execution context information
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object -ExpandProperty Caption
+    
     @"
 # =============================================================================
 # NTFS Permissions Debug Log
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
 # System: $computerName
+# OS Version: $os
 # PowerShell Version: $($PSVersionTable.PSVersion)
+# Executed By: $currentUser
+# Admin Privileges: $isAdmin
 # Analysis Path: $FolderPath
 # Max Threads: $MaxThreads
 # Max Depth: $MaxDepth
 # Skip AD Resolution: $SkipADResolution
 # Skip Uniqueness Counting: $SkipUniquenessCounting
 # Enable SID Diagnostics: $EnableSIDDiagnostics
-# Script Version: 1.10.1
+# Script Version: 1.12.0
 # =============================================================================
 
 "@
@@ -199,15 +207,17 @@ function New-LogHeader {
 # Initialize debug log with proper header
 Set-Content -Path $script:DebugLogFile -Value (New-LogHeader)
 
-# Define Write-Log function with standardized PowerShell format
+# Define Write-Log function with standardized PowerShell format and enhanced metrics
 function Write-Log {
     param (
         [string]$Message,
         [string]$Color = "White",
         [switch]$NoConsole,
         [switch]$Debug,
-        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS')]
-        [string]$Level = $(if ($Debug) { 'DEBUG' } else { 'INFO' })
+        [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS', 'METRIC', 'VERBOSE')]
+        [string]$Level = $(if ($Debug) { 'DEBUG' } else { 'INFO' }),
+        [string]$Category = "",
+        [int]$Indent = 0
     )
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
@@ -216,8 +226,22 @@ function Write-Log {
     $lineNumber = $callStack[1].ScriptLineNumber
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
     
-    # Standard PowerShell log format
-    $logEntry = "$timestamp [$Level] [Thread:$([Threading.Thread]::CurrentThread.ManagedThreadId)] [$callingFunction`:$lineNumber] $Message"
+    # Calculate memory usage for metrics
+    $memoryInfo = ""
+    if ($Level -eq 'METRIC') {
+        $process = Get-Process -Id $PID
+        $memoryMB = [math]::Round($process.WorkingSet / 1MB, 2)
+        $memoryInfo = "[Memory:${memoryMB}MB] "
+    }
+    
+    # Add category for better filtering
+    $categoryInfo = if ($Category) { "[$Category] " } else { "" }
+    
+    # Add indentation for hierarchical clarity
+    $indentation = if ($Indent -gt 0) { " " * $Indent } else { "" }
+    
+    # Standard PowerShell log format with enhancements
+    $logEntry = "$timestamp [$Level] [Thread:$([Threading.Thread]::CurrentThread.ManagedThreadId)] [$callingFunction`:$lineNumber] ${memoryInfo}${categoryInfo}${indentation}$Message"
     
     # Write to debug log with error handling
     try {
@@ -234,10 +258,36 @@ function Write-Log {
             'ERROR' = 'Red'
             'DEBUG' = 'Magenta'
             'SUCCESS' = 'Green'
+            'METRIC' = 'Cyan'
+            'VERBOSE' = 'DarkGray'
         }
         $messageColor = if ($levelColors.ContainsKey($Level)) { $levelColors[$Level] } else { $Color }
-        Write-Host $Message -ForegroundColor $messageColor
+        Write-Host "$indentation$Message" -ForegroundColor $messageColor
     }
+}
+
+# Add function to record performance metrics during folder processing
+function Write-PerformanceMetric {
+    param(
+        [string]$Operation,
+        [datetime]$StartTime,
+        [int]$ItemCount = 0
+    )
+    
+    $endTime = Get-Date
+    $duration = ($endTime - $StartTime).TotalMilliseconds
+    $itemsPerSec = if ($ItemCount -gt 0 -and $duration -gt 0) { 
+        [math]::Round(($ItemCount * 1000) / $duration, 2) 
+    } else { 
+        0 
+    }
+    
+    $message = "$Operation completed in $([math]::Round($duration, 2))ms"
+    if ($ItemCount -gt 0) {
+        $message += " ($itemsPerSec items/sec)"
+    }
+    
+    Write-Log -Message $message -Level 'METRIC' -Category 'Performance' -NoConsole
 }
 
 # Initialize well-known SIDs
@@ -500,7 +550,7 @@ function Get-FolderPermissions {
     }
 }
 
-# Function to process each folder
+# Modify Invoke-FolderProcessing to track detailed metrics
 function Invoke-FolderProcessing {
     param(
         [string]$Path,
@@ -508,11 +558,15 @@ function Invoke-FolderProcessing {
         [int]$TotalCount
     )
 
+    $startTime = Get-Date
     try {
+        Write-Log -Message "Processing folder: $Path" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
+
         # Get permissions for the folder
         $permissionData = Get-FolderPermissions -Folder $Path
 
         if ($permissionData) {
+            # Track unique permission sets
             if (-not $script:PermissionGroups.ContainsKey($permissionData.PermissionHash)) {
                 $script:PermissionGroups[$permissionData.PermissionHash] = @{
                     Folders = @()
@@ -521,6 +575,7 @@ function Invoke-FolderProcessing {
                     IsInherited = $permissionData.IsInherited
                     ParentPaths = @{}
                 }
+                Write-Log -Message "Found new permission set (hash: $($permissionData.PermissionHash.Substring(0,20))...)" -Level 'DEBUG' -Category 'Permissions' -NoConsole
             }
 
             # Group by parent path for better organization
@@ -535,6 +590,11 @@ function Invoke-FolderProcessing {
             $script:PermissionGroups[$permissionData.PermissionHash].Folders += $Path
             $script:FolderPermissions[$Path] = $permissionData
 
+            # Log non-inherited permissions for security analysis
+            if (-not $permissionData.IsInherited) {
+                Write-Log -Message "Found explicit permissions on: $Path" -Level 'DEBUG' -Category 'Security' -NoConsole
+            }
+
             # Update unique permissions count - only write to debug log
             if (-not $SkipUniquenessCounting) {
                 $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -IncludeInheritance:$false
@@ -546,13 +606,15 @@ function Invoke-FolderProcessing {
                 }
             }
         } else {
-            Write-Log -Message "Could not retrieve permissions for $Path" -Color "Yellow" -Level 'WARNING'
+            Write-Log -Message "Could not retrieve permissions for $Path" -Color "Yellow" -Level 'WARNING' -Category 'AccessDenied'
         }
     }
     catch {
-        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
+        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR' -Category 'Exception'
+        Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
     }
     finally {
+        Write-PerformanceMetric -Operation "Folder processing for $Path" -StartTime $startTime
         Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status "Processing: $Path" -Current $CurrentCount -Total $TotalCount
     }
 }
