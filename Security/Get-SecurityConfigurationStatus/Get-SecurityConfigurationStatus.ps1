@@ -2,10 +2,10 @@
 # Script: Get-GroupPolicyStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-17 19:55:00 UTC
+# Last Updated: 2024-03-18 15:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.0
-# Additional Info: Added security template and database analysis
+# Version: 1.6.1
+# Additional Info: Fixed unused variable in Get-SecurityPolicySettings function
 # =============================================================================
 
 <#
@@ -113,7 +113,7 @@ function Get-SecurityPolicySettings {
     
     try {
         # Get password policy settings using SecEdit
-        $securityConfig = secedit /export /cfg "$env:TEMP\secpol.cfg" | Out-Null
+        secedit /export /cfg "$env:TEMP\secpol.cfg" | Out-Null
         $securitySettings = Get-Content "$env:TEMP\secpol.cfg" | Where-Object { $_ -match "Password|MinimumPasswordAge|MaximumPasswordAge|PasswordComplexity|LockoutBadCount|ResetLockoutCount" }
         Remove-Item "$env:TEMP\secpol.cfg" -Force
 
@@ -137,7 +137,6 @@ function Get-SecurityPolicySettings {
         # User Rights Assignment (if on domain)
         if ($env:USERDOMAIN -ne $env:COMPUTERNAME) {
             Write-StatusMessage "`nUser Rights Assignment:" -Type "Success"
-            $userRights = secedit /export /areas USER_RIGHTS /cfg "$env:TEMP\userrights.cfg" | Out-Null
             $rightsSettings = Get-Content "$env:TEMP\userrights.cfg" | Where-Object { $_ -match "SeSecurityPrivilege|SeBackupPrivilege|SeRestorePrivilege" }
             Remove-Item "$env:TEMP\userrights.cfg" -Force
             
@@ -176,7 +175,6 @@ function Get-SystemAccessControl {
     Write-StatusMessage "Analyzing System Access Control Settings..." -Type "Process"
     
     try {
-        $securityConfig = secedit /export /cfg "$env:TEMP\sysctrl.cfg" | Out-Null
         $systemSettings = Get-Content "$env:TEMP\sysctrl.cfg" | Where-Object { 
             $_ -match "EnableAdminAccount|EnableGuestAccount|LSAAnonymousNameLookup|RestrictAnonymousSAM"
         }
