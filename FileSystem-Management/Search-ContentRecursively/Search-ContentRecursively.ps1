@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 21:11:00 UTC
+# Last Updated: 2025-03-17 21:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Fixed Write-ColorOutput function scope issue
+# Version: 1.1.2
+# Additional Info: Fixed log file location to use current execution directory
 # =============================================================================
 
 <#
@@ -58,12 +58,8 @@ function Write-ColorOutput {
     Write-Host $Message -ForegroundColor $ForegroundColor
 }
 
-# Initialize transcript
-$transcriptPath = Join-Path $PSScriptRoot "logs"
-if (-not (Test-Path -Path $transcriptPath)) {
-    New-Item -ItemType Directory -Path $transcriptPath | Out-Null
-}
-$transcriptFile = Join-Path $transcriptPath "Search-ContentRecursively_$(Get-Date -Format 'yyyyMMdd_HHmmss').transcript.log"
+# Initialize transcript in current directory
+$transcriptFile = Join-Path $PWD "Search-ContentRecursively_$(Get-Date -Format 'yyyyMMdd_HHmmss').transcript.log"
 
 try {
     Start-Transcript -Path $transcriptFile -ErrorAction Stop
