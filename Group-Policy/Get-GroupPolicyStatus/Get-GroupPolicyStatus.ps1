@@ -2,10 +2,10 @@
 # Script: Get-GroupPolicyStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-17 19:50:00 UTC
+# Last Updated: 2024-03-17 19:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added comprehensive security policy analysis
+# Version: 1.6.0
+# Additional Info: Added security template and database analysis
 # =============================================================================
 
 <#
@@ -153,6 +153,190 @@ function Get-SecurityPolicySettings {
     }
 }
 
+# Function to get audit policy settings
+function Get-AuditPolicySettings {
+    Write-StatusMessage "Analyzing Audit Policy Settings..." -Type "Process"
+    
+    try {
+        $auditPol = auditpol /get /category:* /r | ConvertFrom-Csv
+        
+        Write-StatusMessage "`nAudit Policy Settings:" -Type "Info"
+        foreach ($policy in $auditPol) {
+            Write-StatusMessage "Category: $($policy.'Subcategory')" -Type "Success"
+            Write-StatusMessage "  Setting: $($policy.'Inclusion Setting')" -Type "Detail"
+        }
+    }
+    catch {
+        Write-StatusMessage "Error retrieving audit policy settings: $($_.Exception.Message)" -Type "Error"
+    }
+}
+
+# Function to get system access control settings
+function Get-SystemAccessControl {
+    Write-StatusMessage "Analyzing System Access Control Settings..." -Type "Process"
+    
+    try {
+        $securityConfig = secedit /export /cfg "$env:TEMP\sysctrl.cfg" | Out-Null
+        $systemSettings = Get-Content "$env:TEMP\sysctrl.cfg" | Where-Object { 
+            $_ -match "EnableAdminAccount|EnableGuestAccount|LSAAnonymousNameLookup|RestrictAnonymousSAM"
+        }
+        Remove-Item "$env:TEMP\sysctrl.cfg" -Force
+
+        Write-StatusMessage "`nSystem Access Control Settings:" -Type "Info"
+        foreach ($setting in $systemSettings) {
+            $name = ($setting -split '=')[0].Trim()
+            $value = ($setting -split '=')[1].Trim()
+            Write-StatusMessage "  $name : $value" -Type "Detail"
+        }
+
+        # Get Registry Security Settings
+        Write-StatusMessage "`nRegistry Security Settings:" -Type "Info"
+        $registryPaths = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
+            "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+        )
+
+        foreach ($path in $registryPaths) {
+            if (Test-Path $path) {
+                Write-StatusMessage "Registry Path: $path" -Type "Success"
+                Get-ItemProperty -Path $path | 
+                    Select-Object -Property * -ExcludeProperty PS* |
+                    ForEach-Object {
+                        $_.PSObject.Properties | ForEach-Object {
+                            Write-StatusMessage "  $($_.Name): $($_.Value)" -Type "Detail"
+                        }
+                    }
+            }
+        }
+    }
+    catch {
+        Write-StatusMessage "Error retrieving system access control settings: $($_.Exception.Message)" -Type "Error"
+    }
+}
+
+# Function to get security template settings
+function Get-SecurityTemplateSettings {
+    Write-StatusMessage "Analyzing Security Template Settings..." -Type "Process"
+    
+    try {
+        # Create temporary security template
+        $templatePath = Join-Path $env:TEMP "security_template.inf"
+        secedit /export /cfg $templatePath | Out-Null
+        
+        if (Test-Path $templatePath) {
+            $templateContent = Get-Content $templatePath
+            
+            Write-StatusMessage "`nSecurity Template Settings:" -Type "Info"
+            
+            # Analyze different sections
+            $currentSection = ""
+            foreach ($line in $templateContent) {
+                if ($line -match '^\[(.+)\]') {
+                    $currentSection = $matches[1]
+                    Write-StatusMessage "`nSection: $currentSection" -Type "Success"
+                }
+                elseif ($line -match '^(.+?)\s*=\s*(.+)$') {
+                    $setting = $matches[1].Trim()
+                    $value = $matches[2].Trim()
+                    Write-StatusMessage "  $setting = $value" -Type "Detail"
+                }
+            }
+            
+            Remove-Item $templatePath -Force
+        }
+    }
+    catch {
+        Write-StatusMessage "Error analyzing security template: $($_.Exception.Message)" -Type "Error"
+    }
+}
+
+# Function to get security database settings
+function Get-SecurityDatabaseSettings {
+    Write-StatusMessage "Analyzing Security Database Settings..." -Type "Process"
+    
+    try {
+        # Check Security Configuration and Analysis settings
+        $scaPath = Join-Path $env:TEMP "sca_analysis"
+        
+        # Create new security database
+        secedit /export /cfg "$scaPath.inf" | Out-Null
+        secedit /configure /db "$scaPath.sdb" /cfg "$scaPath.inf" /quiet
+        
+        if (Test-Path "$scaPath.inf") {
+            Write-StatusMessage "`nSecurity Database Analysis:" -Type "Info"
+            
+            # Get security areas
+            $areas = @("Account Policies", "Local Policies", "Event Log", "Restricted Groups", 
+                      "System Services", "Registry", "File System")
+            
+            foreach ($area in $areas) {
+                Write-StatusMessage "`nAnalyzing $area..." -Type "Success"
+                secedit /areas $area /export /cfg "$scaPath`_$($area -replace '\s', '_').inf" /quiet
+                
+                if (Test-Path "$scaPath`_$($area -replace '\s', '_').inf") {
+                    $content = Get-Content "$scaPath`_$($area -replace '\s', '_').inf"
+                    $content | Where-Object { $_ -match '=' } | ForEach-Object {
+                        Write-StatusMessage "  $_" -Type "Detail"
+                    }
+                    Remove-Item "$scaPath`_$($area -replace '\s', '_').inf" -Force
+                }
+            }
+            
+            # Cleanup
+            Remove-Item "$scaPath.inf" -Force -ErrorAction SilentlyContinue
+            Remove-Item "$scaPath.sdb" -Force -ErrorAction SilentlyContinue
+            Remove-Item "$scaPath.jfm" -Force -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        Write-StatusMessage "Error analyzing security database: $($_.Exception.Message)" -Type "Error"
+    }
+}
+
+# Function to get advanced registry settings
+function Get-AdvancedRegistrySettings {
+    Write-StatusMessage "Analyzing Advanced Registry Security Settings..." -Type "Process"
+    
+    try {
+        $registryPaths = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
+            "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa",
+            "HKLM:\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters",
+            "HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest",
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters",
+            "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\kernel",
+            "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer"
+        )
+
+        Write-StatusMessage "`nAdvanced Registry Security Settings:" -Type "Info"
+        
+        foreach ($path in $registryPaths) {
+            if (Test-Path $path) {
+                Write-StatusMessage "`nRegistry Path: $path" -Type "Success"
+                try {
+                    $properties = Get-ItemProperty -Path $path -ErrorAction Stop
+                    $properties.PSObject.Properties | 
+                        Where-Object { $_.Name -notlike 'PS*' } | 
+                        ForEach-Object {
+                            $value = if ($_.Value -is [byte[]]) {
+                                [System.BitConverter]::ToString($_.Value)
+                            } else {
+                                $_.Value
+                            }
+                            Write-StatusMessage "  $($_.Name): $value" -Type "Detail"
+                        }
+                }
+                catch {
+                    Write-StatusMessage "  Error reading properties: $($_.Exception.Message)" -Type "Warning"
+                }
+            }
+        }
+    }
+    catch {
+        Write-StatusMessage "Error analyzing registry settings: $($_.Exception.Message)" -Type "Error"
+    }
+}
+
 # Get system and domain information
 $computerSystem = Get-WmiObject Win32_ComputerSystem
 $computerName = $computerSystem.Name
@@ -168,8 +352,13 @@ try {
     Write-StatusMessage "Domain: $domainName" -Type "Info"
     Write-StatusMessage "----------------------------------------" -Type "Info"
     
-    # Add security policy analysis
+    # Get all security-related settings
     Get-SecurityPolicySettings
+    Get-AuditPolicySettings
+    Get-SystemAccessControl
+    Get-SecurityTemplateSettings
+    Get-SecurityDatabaseSettings
+    Get-AdvancedRegistrySettings
 
     if ($domainName -eq "WORKGROUP") {
         Write-StatusMessage "Computer is in a workgroup. Limited Group Policy information will be available." -Type "Warning"
