@@ -2,49 +2,18 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 17:13:00 UTC
+# Last Updated: 2025-03-17 10:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.4
-# Additional Info: Fixed duplicate transcript initialization messages
+# Version: 1.12.0
+# Additional Info: Added multi-domain Administrator SID translation support
 # =============================================================================
 
 <#
 .SYNOPSIS
-Gets NTFS folder permissions for specified path.
-
+Gets NTFS permissions for folders and identifies unique permission sets.
 .DESCRIPTION
-Analyzes and reports NTFS permissions for specified folder path and its subfolders.
-Consolidates output into two log files:
-- Main log for permission details
-- Debug log for troubleshooting information
-
-.PARAMETER FolderPath
-The folder path to analyze. Must be a valid NTFS path.
-
-.PARAMETER MaxThreads
-Maximum number of concurrent threads to use for processing.
-
-.PARAMETER MaxDepth
-Maximum folder depth to analyze. 0 means no limit.
-
-.PARAMETER SkipUniquenessCounting
-Skips the counting of unique permissions to improve performance.
-
-.PARAMETER SkipADResolution
-Skips Active Directory resolution for SIDs.
-
-.PARAMETER EnableSIDDiagnostics
-Enables detailed diagnostics for SID resolution issues.
-
-.PARAMETER TimeoutMinutes
-Maximum time in minutes to allow the script to run.
-
-.PARAMETER EnableProgressBar
-Enables progress bar display during processing.
-
-.EXAMPLE
-.\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Temp"
-Analyzes permissions on C:\Temp and outputs to logs
+Recursively analyzes folder permissions, handles multi-domain Administrator SIDs,
+and generates reports on unique permission configurations.
 #>
 
 using namespace System.Security.AccessControl
@@ -256,6 +225,37 @@ function Write-Log {
             'INFO' = 'White'
             'WARNING' = 'Yellow'
             'ERROR' = 'Red'
+            'DEBUG' = 'Magenta'
+            'SUCCESS' = 'Green'
+            'METRIC' = 'Cyan'
+            'VERBOSE' = 'DarkGray'
+        }
+        $messageColor = if ($levelColors.ContainsKey($Level)) { $levelColors[$Level] } else { $Color }
+        Write-Host "$indentation$Message" -ForegroundColor $messageColor
+    }
+}
+
+# Add function to record performance metrics during folder processing
+function Write-PerformanceMetric {
+    param(
+        [string]$Operation,
+        [datetime]$StartTime,
+        [int]$ItemCount = 0
+    )
+    
+    $endTime = Get-Date
+    $duration = ($endTime - $StartTime).TotalMilliseconds
+    $itemsPerSec = if ($ItemCount -gt 0 -and $duration -gt 0) { 
+        [math]::Round(($ItemCount * 1000) / $duration, 2) 
+    } else { 
+        0 
+    }
+    
+    $message = "$Operation completed in $([math]::Round($duration, 2))ms"
+    if ($ItemCount -gt 0) {
+        $message += " ($itemsPerSec items/sec)"
+    }
+    
             'DEBUG' = 'Magenta'
             'SUCCESS' = 'Green'
             'METRIC' = 'Cyan'
@@ -668,6 +668,52 @@ function Get-HumanReadablePermissions {
         { $_ -band [System.Security.AccessControl.FileSystemRights]::Write } { return "Write Only" }
         default { return $Rights.ToString() }
     }
+}
+
+function Get-DomainAdministratorSids {
+    [CmdletBinding()]
+    param()
+    
+    $adminSidMap = @{}
+    
+    try {
+        # Get current domain first
+        $currentDomain = Get-ADDomain
+        $adminSidMap[$currentDomain.DomainSID.Value + "-500"] = $currentDomain.Name
+        
+        # Get all trusted domains
+        $trustedDomains = Get-ADTrust -Filter * | Where-Object {$_.Direction -eq "Bidirectional" -or $_.Direction -eq "Inbound"}
+        
+        foreach($trust in $trustedDomains) {
+            try {
+                $domain = Get-ADDomain -Server $trust.Target
+                $adminSidMap[$domain.DomainSID.Value + "-500"] = $domain.Name
+                Write-Log "Added admin SID mapping for domain: $($domain.Name)" -Level 'DEBUG'
+            }
+            catch {
+                Write-Log "Could not get domain info for trust: $($trust.Target)" -Level 'WARNING'
+            }
+        }
+    }
+    catch {
+        Write-Log "Error collecting domain administrator SIDs: $($_.Exception.Message)" -Level 'ERROR'
+    }
+    
+    return $adminSidMap
+}
+
+# Add to beginning of main script:
+$script:AdminSidMapping = Get-DomainAdministratorSids
+
+# Modify SID translation in permission processing:
+function Format-SecurityPrincipal {
+    param([string]$SID)
+    
+    if($script:AdminSidMapping.ContainsKey($SID)) {
+        return "$($script:AdminSidMapping[$SID])\Administrator"
+    }
+    
+    # ...existing code for normal translation...
 }
 
 # Main script execution
