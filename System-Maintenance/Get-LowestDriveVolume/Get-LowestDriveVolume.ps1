@@ -41,6 +41,7 @@ function Show-DriveInfo {
     Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
     Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
     Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
+    Write-Host ""
 }
 
 try {
