@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-10 18:50:00 UTC
+# Last Updated: 2025-03-17 15:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.12
-# Additional Info: Fixed initial path scanning to start from root directory
+# Version: 2.1.13
+# Additional Info: Added path validation and handling for empty paths
 # =============================================================================
 
 # Requires -Version 5.1
@@ -163,9 +163,19 @@
     2.1.9 - Fixed incorrect root directory processing order
     2.1.10 - Fixed syntax errors in Try-Catch blocks
     2.1.12 - Fixed initial path scanning to start from root directory
+    2.1.13 - Added path validation and handling for empty paths
 #>
 
 param (
+    [ValidateScript({
+        if([string]::IsNullOrWhiteSpace($_)) {
+            throw "Path cannot be empty or whitespace."
+        }
+        if(!(Test-Path $_)) {
+            throw "Path '$_' does not exist."
+        }
+        return $true
+    })]
     [string]$StartPath = 'C:\',  # Note the explicit backslash
     [int]$MaxDepth = 10,
     [ValidateRange(1, 50)]
@@ -789,8 +799,27 @@ function Get-FolderSize {
     )
 
     try {
+        # Validate input path
+        if([string]::IsNullOrWhiteSpace($FolderPath)) {
+            Write-Warning "Invalid path: Path cannot be empty or whitespace"
+            return @{ 
+                ProcessedFolders = $false
+                HasSubfolders = $false
+                CompletionMessageShown = $false
+            }
+        }
+
         # Normalize path to ensure consistent formatting
-        $FolderPath = [System.IO.Path]::GetFullPath($FolderPath)
+        try {
+            $FolderPath = [System.IO.Path]::GetFullPath($FolderPath)
+        } catch {
+            Write-Warning "Error normalizing path '$FolderPath': $($_.Exception.Message)"
+            return @{ 
+                ProcessedFolders = $false
+                HasSubfolders = $false
+                CompletionMessageShown = $false
+            }
+        }
         
         if ($CurrentDepth -gt $MaxDepth) {
             return @{ 
@@ -919,7 +948,7 @@ function Get-FolderSize {
 }
 
 # Start the Recursive Scan
-Get-FolderSize -FolderPath $Path -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-Null
+Get-FolderSize -FolderPath $StartPath -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-Null
 
 #endregion
 
