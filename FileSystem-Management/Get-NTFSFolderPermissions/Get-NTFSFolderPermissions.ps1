@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-15 00:05:00 UTC
+# Last Updated: 2025-03-17 16:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.11
-# Additional Info: Fixed missing closing brace in function structure
+# Version: 1.10.12
+# Additional Info: Fixed Administrator SID identification to prevent multiple SIDs being displayed
 # =============================================================================
 
 <#
@@ -264,8 +264,22 @@ if ($Host.Name -eq 'ConsoleHost' -and -not $script:TranscriptStarted) {
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
-    # Get Administrator SID using WMI first
-    $script:AdminSID = (Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue).SID
+    # Get Administrator SID using WMI first - target only local machine account
+    $localAdminSIDs = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator' AND LocalAccount='True'" -ErrorAction SilentlyContinue
+    
+    # If multiple results, select just the first one
+    if ($localAdminSIDs -is [array] -and $localAdminSIDs.Count -gt 0) {
+        $script:AdminSID = $localAdminSIDs[0].SID
+        Write-Log -Message "Multiple Administrator accounts found, using first one: $($script:AdminSID)" -Color "Yellow" -Level 'WARNING'
+    } 
+    elseif ($localAdminSIDs) {
+        $script:AdminSID = $localAdminSIDs.SID
+    }
+    else {
+        # Fallback to default Administrator SID pattern
+        $script:AdminSID = "S-1-5-21-domain-500"
+        Write-Log -Message "Could not retrieve local Administrator SID, using placeholder" -Color "Yellow" -Level 'WARNING'
+    }
 
     $script:WellKnownSIDs = @{
         "Nobody" = "S-1-0-0"
@@ -279,12 +293,12 @@ function Initialize-WellKnownSIDs {
         "LocalSystem" = "S-1-5-18"
         "LocalService" = "S-1-5-19"
         "NetworkService" = "S-1-5-20"
-        "Administrator" = if ($script:AdminSID) { $script:AdminSID } else { "S-1-5-21-domain-500" }
+        "Administrator" = $script:AdminSID
         "Administrators" = "S-1-5-32-544"
         "Users" = "S-1-5-32-545"
         "Guests" = "S-1-5-32-546"
     }
-    Write-Log -Message "Initialized well-known SIDs collection" -Color "DarkGray" -NoConsole -Level 'DEBUG'
+    Write-Log -Message "Initialized well-known SIDs collection with Administrator SID: $script:AdminSID" -Color "DarkGray" -NoConsole -Level 'DEBUG'
 }
 
 function Test-WellKnownSID {
