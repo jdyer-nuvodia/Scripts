@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 16:42:00 UTC
+# Last Updated: 2025-03-18 16:54:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.1
-# Additional Info: Added explicit owner check for subfolder permission comparison
+# Version: 1.14.2
+# Additional Info: Fixed null reference and Count property errors
 # =============================================================================
 
 <#
@@ -900,20 +900,22 @@ try {
                 $_ -and 
                 $_ -ne $folder -and 
                 $script:FolderPermissions[$_].MatchesParent -and
-                $script:FolderPermissions[$_].Owner -eq $data.Owner  # Added explicit owner check
+                $script:FolderPermissions[$_].Owner -eq $data.Owner
             })
 
-        if ($identicalDescendants -and $identicalDescendants.Count -gt 0) {
+        if ($identicalDescendants -and @($identicalDescendants).Count -gt 0) {
             # Check if ALL subfolders are identical (permissions AND owner)
-            $allSubfolders = Get-ChildItem -Path $folder -Directory -Recurse | Select-Object -ExpandProperty FullName
-            $nonMatchingSubfolders = $allSubfolders | Where-Object { 
+            $allSubfolders = @(Get-ChildItem -Path $folder -Directory -Recurse | Select-Object -ExpandProperty FullName)
+            
+            # Safe check for non-matching subfolders
+            $nonMatchingSubfolders = @($allSubfolders | Where-Object { 
                 $_ -notin $identicalDescendants -and 
                 $script:FolderPermissions[$_] -and 
                 (-not $script:FolderPermissions[$_].MatchesParent -or
-                 $script:FolderPermissions[$_].Owner -ne $data.Owner)  # Added explicit owner check
-            }
+                 $script:FolderPermissions[$_].Owner -ne $data.Owner)
+            })
 
-            if ($nonMatchingSubfolders.Count -eq 0) {
+            if ($allSubfolders.Count -gt 0 -and $nonMatchingSubfolders.Count -eq 0) {
                 Write-Log -Message "  All Subfolders (Identical Permissions and Owner)" -Color "DarkGray" -Level 'INFO'
             } else {
                 Write-Log -Message "Subfolders with same permissions and owner:" -Color "DarkGray" -Level 'INFO'
