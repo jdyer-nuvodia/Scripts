@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:44:00 UTC
+# Last Updated: 2025-03-19 23:48:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.14
-# Additional Info: Fixed progress bar and folder counting issues
+# Version: 1.1.15
+# Additional Info: Fixed folder recursion and progress tracking
 # =============================================================================
 
 <#
@@ -166,12 +166,11 @@ function Write-ProgressStatus {
     if (-not $EnableProgressBar) { return }
     
     try {
-        $adjustedTotal = [math]::Max($Total, 1)
-        $adjustedCurrent = [math]::Min($Current, $adjustedTotal)
-        $percentComplete = [math]::Min([math]::Round(($adjustedCurrent / $adjustedTotal) * 100), 100)
+        $percentComplete = [math]::Min([math]::Round(($Current / [math]::Max($Total, 1)) * 100), 100)
+        $statusMessage = "$Status`nProgress: $Current of $Total folders ($percentComplete%)"
         
         Write-Progress -Activity $Activity `
-                      -Status "$Status ($adjustedCurrent of $adjustedTotal)" `
+                      -Status $statusMessage `
                       -PercentComplete $percentComplete `
                       -Id $Id
     }
@@ -276,35 +275,44 @@ function Invoke-FolderRecursively {
         return
     }
     
-    # Check timeout
-    $currentDuration = (Get-Date) - $script:StartTime
-    if ($currentDuration -gt $script:processingTimeout) {
-        Write-Log "Processing timeout reached ($TimeoutMinutes minutes). Canceling further processing." -Level 'WARNING' -Color "Yellow"
-        $script:cancellationTokenSource.Cancel()
-        return
-    }
-    
-    # Check depth limit
-    if ($MaxDepth -gt 0 -and $CurrentDepth -gt $MaxDepth) {
-        return
-    }
-    
     try {
+        # Process current folder first
         $script:ProcessedFolders++
+        Write-Log "Processing folder ($script:ProcessedFolders of $script:TotalFolders): $Path" -Level 'INFO' -Color "Cyan" -NoConsole
         
-        # Process current folder
-        Invoke-FolderProcessing -StartPath $Path -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
+        # Get and process current folder permissions
+        $currentAcl = Get-Acl -Path $Path -ErrorAction Stop
+        $modified = Remove-TargetSIDPermissions -StartPath $Path -Acl $currentAcl
         
-        # Get subfolders
-        $subFolders = Get-ChildItem -Path $Path -Directory -ErrorAction SilentlyContinue
+        if ($modified) {
+            Write-Log "Updated permissions on: $Path" -Level 'SUCCESS' -Color "Green"
+        }
         
-        # Process subfolders
+        # Get subfolders with error handling
+        $subFolders = @()
+        try {
+            $subFolders = Get-ChildItem -Path $Path -Directory -ErrorAction Stop
+        }
+        catch {
+            Write-Log "Error accessing subfolders in ${Path}: $_" -Level 'WARNING' -Color "Yellow"
+        }
+        
+        # Process each subfolder
         foreach ($folder in $subFolders) {
-            Invoke-FolderRecursively -Path $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+            if (-not $script:cancellationTokenSource.Token.IsCancellationRequested) {
+                Invoke-FolderRecursively -Path $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+            }
         }
     }
     catch {
-        Write-Log "Error processing path $Path recursively: $_" -Level 'ERROR' -Color "Red"
+        Write-Log "Error processing ${Path}: $_" -Level 'ERROR' -Color "Red"
+    }
+    finally {
+        # Update progress
+        Write-ProgressStatus -Activity "Processing Folders" `
+                           -Status "Current: $Path" `
+                           -Current $script:ProcessedFolders `
+                           -Total $script:TotalFolders
     }
 }
 
