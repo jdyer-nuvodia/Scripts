@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 23:48:00 UTC
+# Last Updated: 2025-03-18 23:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.15
-# Additional Info: Fixed folder recursion and progress tracking
+# Version: 1.1.16
+# Additional Info: Implemented reliable folder scanning from Get-NTFSFolderPermissions
 # =============================================================================
 
 <#
@@ -265,54 +265,56 @@ function Get-FolderPermissions {
 # Function to recursively process folders
 function Invoke-FolderRecursively {
     param (
-        [Parameter(Mandatory=$true)]
-        [string]$Path,
+        [string]$StartPath,
         [int]$CurrentDepth = 0
     )
-    
-    if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
-        Write-Log "Cancellation requested. Stopping folder recursion." -Level 'WARNING' -Color "Yellow"
-        return
-    }
-    
+
     try {
-        # Process current folder first
+        if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+            Write-Log "Processing cancelled by user" -Level 'WARNING' -Color "Yellow"
+            return
+        }
+
+        if ((Get-Date) - $script:StartTime -gt $script:processingTimeout) {
+            $script:cancellationTokenSource.Cancel()
+            Write-Log "Processing timeout reached ($TimeoutMinutes minutes)" -Level 'WARNING' -Color "Yellow"
+            return
+        }
+
         $script:ProcessedFolders++
-        Write-Log "Processing folder ($script:ProcessedFolders of $script:TotalFolders): $Path" -Level 'INFO' -Color "Cyan" -NoConsole
+        
+        # Process current folder first
+        Write-Log "Processing folder ($script:ProcessedFolders of $script:TotalFolders): $StartPath" -Level 'INFO' -Color "Cyan" -NoConsole
         
         # Get and process current folder permissions
-        $currentAcl = Get-Acl -Path $Path -ErrorAction Stop
-        $modified = Remove-TargetSIDPermissions -StartPath $Path -Acl $currentAcl
-        
-        if ($modified) {
-            Write-Log "Updated permissions on: $Path" -Level 'SUCCESS' -Color "Green"
-        }
-        
-        # Get subfolders with error handling
-        $subFolders = @()
-        try {
-            $subFolders = Get-ChildItem -Path $Path -Directory -ErrorAction Stop
-        }
-        catch {
-            Write-Log "Error accessing subfolders in ${Path}: $_" -Level 'WARNING' -Color "Yellow"
-        }
-        
-        # Process each subfolder
-        foreach ($folder in $subFolders) {
-            if (-not $script:cancellationTokenSource.Token.IsCancellationRequested) {
-                Invoke-FolderRecursively -Path $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+        $currentAcl = Get-Acl -Path $StartPath -ErrorAction Stop
+        $modified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $currentAcl
+
+        # Process subfolders only if current folder was processed successfully
+        if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
+            $subFolders = @()
+            try {
+                $subFolders = Get-ChildItem -Path $StartPath -Directory -ErrorAction Stop
+            }
+            catch {
+                Write-Log "Error accessing subfolders in ${StartPath}: $_" -Level 'WARNING' -Color "Yellow"
+            }
+
+            foreach ($folder in $subFolders) {
+                if (-not $script:cancellationTokenSource.Token.IsCancellationRequested) {
+                    Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+                }
             }
         }
-    }
-    catch {
-        Write-Log "Error processing ${Path}: $_" -Level 'ERROR' -Color "Red"
-    }
-    finally {
-        # Update progress
+
+        # Update progress after processing current folder and its children
         Write-ProgressStatus -Activity "Processing Folders" `
-                           -Status "Current: $Path" `
+                           -Status "Current: $StartPath" `
                            -Current $script:ProcessedFolders `
                            -Total $script:TotalFolders
+    }
+    catch {
+        Write-Log "Error processing folder ${StartPath}: $_" -Level 'ERROR' -Color "Red"
     }
 }
 
@@ -548,7 +550,13 @@ function Initialize-FolderCount {
     
     try {
         Write-Log "Counting total folders..." -Level 'INFO' -Color "Cyan"
-        $script:TotalFolders = (Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop | Measure-Object).Count + 1
+        $script:TotalFolders = 0
+        
+        # Use straightforward recursive counting
+        $script:TotalFolders = 1  # Count the start folder
+        $folders = Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop
+        $script:TotalFolders += @($folders).Count
+        
         Write-Log "Found $script:TotalFolders folders to process" -Level 'INFO' -Color "Cyan"
     }
     catch {
@@ -600,7 +608,7 @@ try {
     
     # Process folders with timeout tracking
     Write-Log "Beginning folder processing..." -Level 'INFO' -Color "Cyan"
-    Invoke-FolderRecursively -Path $StartPath
+    Invoke-FolderRecursively -StartPath $StartPath
     
     if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
         Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
