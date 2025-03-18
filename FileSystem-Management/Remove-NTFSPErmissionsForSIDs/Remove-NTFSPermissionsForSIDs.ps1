@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:01:00 UTC
+# Last Updated: 2025-03-18 23:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.8
-# Additional Info: Fixed displayName variable issue in Confirm-SIDRemoval function
+# Version: 1.1.9
+# Additional Info: Fixed displayName variable error and progress bar issues
 # =============================================================================
 
 <#
@@ -148,41 +148,30 @@ function Write-Log {
 # Enhanced progress bar handling function
 function Write-ProgressStatus {
     param (
+        [Parameter(Mandatory=$true)]
         [string]$Activity,
+        [Parameter(Mandatory=$true)]
         [string]$Status,
+        [Parameter(Mandatory=$true)]
         [int]$Current,
+        [Parameter(Mandatory=$true)]
         [int]$Total,
         [int]$Id = 0
     )
     
     if (-not $EnableProgressBar) { return }
     
-    try {
-        if ($Total -gt 0) {
-            $percentComplete = [math]::Min([math]::Round(($Current / $Total) * 100), 100)
-            $remainingItems = $Total - $Current
-            $progressParams = @{
-                Activity = $Activity
-                Status = "$Status ($Current of $Total)"
-                PercentComplete = $percentComplete
-                Id = $Id
-            }
-            
-            if ($Current -gt 0 -and $Total -gt 0) {
-                $avgTimePerItem = ($script:ElapsedTime.TotalSeconds) / $Current
-                $estimatedSecondsRemaining = $avgTimePerItem * $remainingItems
-                $progressParams['SecondsRemaining'] = [math]::Round($estimatedSecondsRemaining)
-            }
-            
-            Write-Progress @progressParams
-        }
-        else {
-            Write-Progress -Activity $Activity -Status $Status -Id $Id
-        }
+    $percentComplete = [math]::Min([math]::Round(($Current / $Total) * 100), 100)
+    $remainingItems = $Total - $Current
+    
+    $progressParams = @{
+        Activity = $Activity
+        Status = "$Status ($Current of $Total)"
+        PercentComplete = $percentComplete
+        Id = $Id
     }
-    catch {
-        Write-Log "Error updating progress bar: $_" -Level 'WARNING' -NoConsole
-    }
+    
+    Write-Progress @progressParams
 }
 
 # Function to handle performance metrics
