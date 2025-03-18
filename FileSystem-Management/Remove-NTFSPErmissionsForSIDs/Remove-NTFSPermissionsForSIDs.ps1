@@ -80,6 +80,9 @@ param (
     [switch]$EnableProgressBar
 )
 
+# Initialize the display name variable
+$script:displayName = $null  
+
 # Enable strict mode and error handling
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -555,10 +558,22 @@ try {
     Write-Log -Message "Permissions removed for: $(@($script:ApprovedSIDRemovals.Keys | Where-Object { $script:ApprovedSIDRemovals[$_] }).Count) SIDs" -Color "Cyan" -Level 'INFO'
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
 }
+
 catch [System.Exception] {
-    Write-Error "An error occurred: $_"
-    Write-Error $_.ScriptStackTrace
+    Write-Log "Critical error encountered:" -Level 'ERROR' -Color 'Red'
+    Write-Log "Error message: $_" -Level 'ERROR' -Color 'Red'
+    Write-Log "Stack trace:" -Level 'ERROR' -Color 'Red'
+    Write-Log $_.ScriptStackTrace -Level 'ERROR' -Color 'Red'
+    
+    if ($_.Exception.InnerException) {
+        Write-Log "Inner exception:" -Level 'ERROR' -Color 'Red'
+        Write-Log $_.Exception.InnerException.Message -Level 'ERROR' -Color 'Red'
+    }
+    
+    # Ensure the error is properly recorded in the PowerShell error stream
+    $PSCmdlet.ThrowTerminatingError($_)
 }
+
 finally {
     # Stop transcript safely
     if ($script:TranscriptStarted) {
