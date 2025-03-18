@@ -80,8 +80,9 @@ param (
     [switch]$EnableProgressBar
 )
 
-# Initialize the display name variable
+# Initialize script-level display variables
 $script:displayName = $null  
+$script:displayText = $null
 
 # Enable strict mode and error handling
 Set-StrictMode -Version Latest
@@ -365,14 +366,14 @@ function Confirm-SIDRemoval {
         $SID 
     }
     
-    Write-Host "Do you want to remove permissions for $displayText? (Y/N)" -ForegroundColor Yellow
+    Write-Host "Do you want to remove permissions for ${displayText}? (Y/N)" -ForegroundColor Yellow
     $confirmation = Read-Host
     $approved = $confirmation -eq 'Y'
     $script:ApprovedSIDRemovals[$SID] = $approved
 
     $logLevel = if ($approved) { 'INFO' } else { 'WARNING' }
     $logMessage = if ($approved) { "approved" } else { "denied" }
-    Write-Log "User $logMessage removal of permissions for $displayText" -Level $logLevel
+    Write-Log "User $logMessage removal of permissions for ${displayText}" -Level $logLevel
 
     return $approved
 }
