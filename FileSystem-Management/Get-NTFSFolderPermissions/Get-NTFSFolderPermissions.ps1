@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 00:53:00 UTC
+# Last Updated: 2025-03-17 00:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.11.5
-# Additional Info: Fixed syntax errors in ConvertTo-NTAccountOrSID function
+# Version: 1.12.0
+# Additional Info: Added owner display and included owner in permission comparisons
 # =============================================================================
 
 <#
@@ -553,17 +553,21 @@ function Get-PermissionHash {
         [Parameter(Mandatory=$true)]
         [object]$AccessRules,
 
+        [Parameter(Mandatory=$true)]
+        [string]$Owner,
+
         [Parameter(Mandatory=$false)]
         [bool]$IncludeInheritance = $true
     )
 
+    $ownerPart = "OWNER:$Owner"
     if ($IncludeInheritance) {
-        return ($AccessRules | ForEach-Object { 
+        return "$ownerPart;" + ($AccessRules | ForEach-Object { 
             "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" 
         }) -join ';'
     }
     else {
-        return ($AccessRules | ForEach-Object { 
+        return "$ownerPart;" + ($AccessRules | ForEach-Object { 
             "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)" 
         }) -join ';'
     }
@@ -593,7 +597,7 @@ function Get-FolderPermissions {
         $access = $acl.Access
         $isInherited = $acl.AreAccessRulesProtected -eq $false
         $parentPath = Split-Path -Path $Folder -Parent
-        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -IncludeInheritance $true
+        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $owner -IncludeInheritance $true
 
         # Check if permissions match parent
         $matchesParent = $false
@@ -638,28 +642,30 @@ function Invoke-FolderProcessing {
         $permissionData = Get-FolderPermissions -Folder $Path
 
         if ($permissionData) {
-            # Track unique permission sets
-            if (-not $script:PermissionGroups.ContainsKey($permissionData.PermissionHash)) {
-                $script:PermissionGroups[$permissionData.PermissionHash] = @{
+            # Track unique permission sets with owner
+            $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -Owner $permissionData.Owner -IncludeInheritance $true
+            
+            if (-not $script:PermissionGroups.ContainsKey($permissionHash)) {
+                $script:PermissionGroups[$permissionHash] = @{
                     Folders = @()
                     Permissions = $permissionData.Access
                     Owner = $permissionData.Owner
                     IsInherited = $permissionData.IsInherited
                     ParentPaths = @{}
                 }
-                Write-Log -Message "Found new permission set (hash: $($permissionData.PermissionHash.Substring(0,20))...)" -Level 'DEBUG' -Category 'Permissions' -NoConsole
+                Write-Log -Message "Found new permission set with owner (hash: $($permissionHash.Substring(0,20))...)" -Level 'DEBUG' -Category 'Permissions' -NoConsole
             }
 
             # Group by parent path for better organization
             $currentParent = Split-Path -Path $Path -Parent
             if (-not [string]::IsNullOrEmpty($currentParent)) {
-                if (-not $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths.ContainsKey($currentParent)) {
-                    $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths[$currentParent] = @()
+                if (-not $script:PermissionGroups[$permissionHash].ParentPaths.ContainsKey($currentParent)) {
+                    $script:PermissionGroups[$permissionHash].ParentPaths[$currentParent] = @()
                 }
-                $script:PermissionGroups[$permissionData.PermissionHash].ParentPaths[$currentParent] += $Path
+                $script:PermissionGroups[$permissionHash].ParentPaths[$currentParent] += $Path
             }
 
-            $script:PermissionGroups[$permissionData.PermissionHash].Folders += $Path
+            $script:PermissionGroups[$permissionHash].Folders += $Path
             $script:FolderPermissions[$Path] = $permissionData
 
             # Log non-inherited permissions for security analysis
@@ -669,7 +675,7 @@ function Invoke-FolderProcessing {
 
             # Update unique permissions count - only write to debug log
             if (-not $SkipUniquenessCounting) {
-                $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -IncludeInheritance:$false
+                $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -Owner $permissionData.Owner -IncludeInheritance:$false
 
                 if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
                     $script:UniquePermissions[$permissionHash] = @($Path)
@@ -823,15 +829,18 @@ try {
     foreach ($folder in $sortedFolders) {
         $data = $script:FolderPermissions[$folder]
 
-        # Skip folders with identical permissions as parent
+        # Skip folders with identical permissions as parent (including owner)
         if ($data.MatchesParent) {
             continue
         }
 
         $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
         Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan" -Level 'INFO'
+        
+        # Display owner information
+        Write-Log -Message "Owner: $($data.Owner)" -Color "White" -Level 'INFO'
 
-        # Find all descendants with identical permissions
+        # Find all descendants with identical permissions (including owner)
         $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
             Where-Object { 
                 $_ -and 
