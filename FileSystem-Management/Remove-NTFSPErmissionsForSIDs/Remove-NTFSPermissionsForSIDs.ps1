@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 22:52:00 UTC
+# Last Updated: 2025-03-18 22:57:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.5
-# Additional Info: Added system name and timestamp to log file names
+# Version: 1.1.6
+# Additional Info: Simplified log files, improved console output readability
 # =============================================================================
 
 <#
@@ -88,9 +88,8 @@ $ErrorActionPreference = 'Stop'
 $script:TranscriptStarted = $false
 $script:ComputerName = $env:COMPUTERNAME
 $script:TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$script:MainLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_${script:ComputerName}_${script:TimeStamp}.log"
-$script:DebugLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Debug_${script:ComputerName}_${script:TimeStamp}.log"
-$script:TranscriptFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Transcript_${script:ComputerName}_${script:TimeStamp}.log"
+$script:DebugLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_${script:ComputerName}_${script:TimeStamp}_debug.log"
+$script:TranscriptFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_${script:ComputerName}_${script:TimeStamp}_transcript.log"
 $script:SidCache = @{}
 $script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
 $script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
@@ -132,15 +131,18 @@ function Write-Log {
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $categoryText = if ($Category) { "[$Category] " } else { "" }
-    $logMessage = "[$timestamp] [$Level] $categoryText$Message"
+    
+    # Format console output to be more readable
+    $consoleMessage = "$categoryText$Message"
+    $debugMessage = "[$timestamp] [$Level] $categoryText$Message"
     
     # Write to console with color if not suppressed
     if (-not $NoConsole) {
-        Write-Host $logMessage -ForegroundColor $Color
+        Write-Host $consoleMessage -ForegroundColor $Color
     }
     
-    # Write to log file
-    Add-Content -Path $script:DebugLogFile -Value $logMessage
+    # Write detailed info to debug log
+    Add-Content -Path $script:DebugLogFile -Value $debugMessage
 }
 
 # Function to handle progress reporting
@@ -486,10 +488,12 @@ try {
         Start-Transcript -Path $script:TranscriptFile -Force
     }
 
-    # Initialize log files - no need for archiving since filenames are unique
-    foreach ($logFile in @($script:MainLogFile, $script:DebugLogFile)) {
-        $null = New-Item -ItemType File -Path $logFile -Force
-    }
+    # Initialize debug log
+    $null = New-Item -ItemType File -Path $script:DebugLogFile -Force
+
+    Write-Log "Starting permission analysis on $StartPath" -Color Cyan
+    Write-Log "Debug log: $script:DebugLogFile" -Level 'DEBUG' -NoConsole
+    Write-Log "Transcript: $script:TranscriptFile" -Level 'DEBUG' -NoConsole
 
     # Load target SIDs
     Import-TargetSIDs
