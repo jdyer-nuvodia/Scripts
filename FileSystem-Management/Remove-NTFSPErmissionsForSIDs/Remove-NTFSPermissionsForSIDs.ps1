@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 22:57:00 UTC
+# Last Updated: 2025-03-18 22:59:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.6
-# Additional Info: Simplified log files, improved console output readability
+# Version: 1.1.7
+# Additional Info: Added progress bar display for better console output
 # =============================================================================
 
 <#
@@ -145,20 +145,43 @@ function Write-Log {
     Add-Content -Path $script:DebugLogFile -Value $debugMessage
 }
 
-# Function to handle progress reporting
+# Enhanced progress bar handling function
 function Write-ProgressStatus {
     param (
         [string]$Activity,
         [string]$Status,
         [int]$Current,
-        [int]$Total
+        [int]$Total,
+        [int]$Id = 0
     )
     
-    if ($Total -gt 0) {
-        $percentComplete = [math]::Min([math]::Round(($Current / $Total) * 100), 100)
-        Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
-    } else {
-        Write-Progress -Activity $Activity -Status $Status
+    if (-not $EnableProgressBar) { return }
+    
+    try {
+        if ($Total -gt 0) {
+            $percentComplete = [math]::Min([math]::Round(($Current / $Total) * 100), 100)
+            $remainingItems = $Total - $Current
+            $progressParams = @{
+                Activity = $Activity
+                Status = "$Status ($Current of $Total)"
+                PercentComplete = $percentComplete
+                Id = $Id
+            }
+            
+            if ($Current -gt 0 -and $Total -gt 0) {
+                $avgTimePerItem = ($script:ElapsedTime.TotalSeconds) / $Current
+                $estimatedSecondsRemaining = $avgTimePerItem * $remainingItems
+                $progressParams['SecondsRemaining'] = [math]::Round($estimatedSecondsRemaining)
+            }
+            
+            Write-Progress @progressParams
+        }
+        else {
+            Write-Progress -Activity $Activity -Status $Status -Id $Id
+        }
+    }
+    catch {
+        Write-Log "Error updating progress bar: $_" -Level 'WARNING' -NoConsole
     }
 }
 
@@ -415,7 +438,7 @@ function Remove-TargetSIDPermissions {
     return $modified
 }
 
-# Modified Invoke-FolderProcessing to include permission removal - FIXED PARAMETER NAME
+# Enhanced folder processing with better progress tracking
 function Invoke-FolderProcessing {
     param(
         [string]$StartPath,
@@ -425,43 +448,53 @@ function Invoke-FolderProcessing {
 
     $startTime = Get-Date
     try {
-        Write-Log -Message "Processing folder: $StartPath" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
+        # Update main progress bar
+        Write-ProgressStatus -Activity "Analyzing and Updating Folder Permissions" `
+                           -Status "Processing: $StartPath" `
+                           -Current $CurrentCount `
+                           -Total $TotalCount `
+                           -Id 0
 
-        # Verify permissions before attempting changes
-        try {
-            $testFile = Join-Path $env:TEMP "ACLTest_$(Get-Random).tmp"
-            New-Item -Path $testFile -ItemType File | Out-Null
-            Remove-Item -Path $testFile -Force | Out-Null
-        } catch {
-            Write-Log "Insufficient permissions to make changes to the file system. Run as administrator." -Level 'ERROR' -Color "Red"
-            return
-        }
+        # Update sub-progress for current folder
+        Write-ProgressStatus -Activity "Current Folder Analysis" `
+                           -Status "Checking permissions and SIDs" `
+                           -Current 1 `
+                           -Total 3 `
+                           -Id 1
 
         # Get current ACL
         $acl = Get-Acl -Path $StartPath
-        
-        # Check and remove target SID permissions - FIXED PARAMETER NAME
+
+        # Update sub-progress
+        Write-ProgressStatus -Activity "Current Folder Analysis" `
+                           -Status "Removing target SID permissions" `
+                           -Current 2 `
+                           -Total 3 `
+                           -Id 1
+
+        # Check and remove target SID permissions
         $modified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $acl
+
+        # Final sub-progress update
+        Write-ProgressStatus -Activity "Current Folder Analysis" `
+                           -Status "Finalizing changes" `
+                           -Current 3 `
+                           -Total 3 `
+                           -Id 1
 
         # Get updated permissions for logging
         if ($modified) {
             $acl = Get-Acl -Path $StartPath
         }
 
-        # Continue with permission analysis
-        $permissionData = Get-FolderPermissions -Folder $StartPath
-
-        if ($permissionData) {
-            # Process permissions as before            
-        }
+        Write-Log -Message "Processed: $StartPath" -Level 'INFO' -NoConsole
     }
     catch {
-        Write-Log -Message "Error processing folder ${StartPath}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
-        Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
+        Write-Log -Message "Error processing folder ${StartPath}: $_" -Level 'ERROR' -Color "Red"
     }
     finally {
         Write-PerformanceMetric -Operation "Folder processing for $StartPath" -StartTime $startTime
-        Write-ProgressStatus -Activity "Analyzing and Updating Folder Permissions" -Status "Processing: $StartPath" -Current $CurrentCount -Total $TotalCount
+        Write-Progress -Id 1 -Completed
     }
 }
 
