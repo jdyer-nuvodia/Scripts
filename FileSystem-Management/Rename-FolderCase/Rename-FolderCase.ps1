@@ -88,13 +88,13 @@ function Convert-ToPascalCase {
 
 function Rename-FolderWithCase {
     param(
-        [string]$folderPath
+        [string]$StartPath
     )
     
     try {
-        $folder = Get-Item -LiteralPath $folderPath
-        $parentPath = Split-Path -Path $folderPath -Parent
-        $currentName = Split-Path -Path $folderPath -Leaf
+        $folder = Get-Item -LiteralPath $StartPath
+        $parentPath = Split-Path -Path $StartPath -Parent
+        $currentName = Split-Path -Path $StartPath -Leaf
         
         # Skip if it's a file
         if (!$folder.PSIsContainer) {
@@ -110,13 +110,13 @@ function Rename-FolderWithCase {
             $newPath = Join-Path -Path $parentPath -ChildPath $newName
             
             # Handle case where only case is different (needs temp rename)
-            if ($newPath.ToLower() -eq $folderPath.ToLower()) {
+            if ($newPath.ToLower() -eq $StartPath.ToLower()) {
                 $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8)
                 $tempPath = Join-Path -Path $parentPath -ChildPath $tempName
                 
-                if ($PSCmdlet.ShouldProcess($folderPath, "Rename to temp folder '$tempPath'")) {
-                    Write-Verbose "Temporary rename: '$folderPath' -> '$tempPath'"
-                    Rename-Item -LiteralPath $folderPath -NewName $tempName -ErrorAction Stop
+                if ($PSCmdlet.ShouldProcess($StartPath, "Rename to temp folder '$tempPath'")) {
+                    Write-Verbose "Temporary rename: '$StartPath' -> '$tempPath'"
+                    Rename-Item -LiteralPath $StartPath -NewName $tempName -ErrorAction Stop
                     
                     Write-Verbose "Final rename: '$tempPath' -> '$newPath'"
                     Rename-Item -LiteralPath $tempPath -NewName $newName -ErrorAction Stop
@@ -124,8 +124,8 @@ function Rename-FolderWithCase {
                 }
             }
             else {
-                if ($PSCmdlet.ShouldProcess($folderPath, "Rename to '$newPath'")) {
-                    Rename-Item -LiteralPath $folderPath -NewName $newName -ErrorAction Stop
+                if ($PSCmdlet.ShouldProcess($StartPath, "Rename to '$newPath'")) {
+                    Rename-Item -LiteralPath $StartPath -NewName $newName -ErrorAction Stop
                     Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
                 }
             }
@@ -135,7 +135,7 @@ function Rename-FolderWithCase {
         }
     }
     catch {
-        Write-Error "Error processing folder '$folderPath': $_"
+        Write-Error "Error processing folder '$StartPath': $_"
         Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     }
 }
@@ -169,13 +169,13 @@ try {
     # Process each folder
     foreach ($folder in $folders) {
         Write-Host "`nProcessing folder: $($folder.FullName)" -ForegroundColor Cyan
-        Rename-FolderWithCase -folderPath $folder.FullName
+        Rename-FolderWithCase -StartPath $folder.FullName
     }
     
     # Process the root folder if it's a directory
     if ((Get-Item -Path $Path).PSIsContainer) {
         Write-Host "`nProcessing root folder: $Path" -ForegroundColor Cyan
-        Rename-FolderWithCase -folderPath $Path
+        Rename-FolderWithCase -StartPath $Path
     }
     
     Write-Host "`nFolder case correction process completed successfully." -ForegroundColor Green

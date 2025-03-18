@@ -489,7 +489,7 @@ function Write-TableHeader {
 
 function Write-TableRow {
     param(
-        [string]$FolderPath,
+        [string]$StartPath,
         [long]$Size,
         [int]$SubfolderCount,
         [int]$FileCount,
@@ -504,7 +504,7 @@ function Write-TableRow {
         "No files found"
     }
     
-    Write-Host ($FolderPath.PadRight(50) + " | " + 
+    Write-Host ($StartPath.PadRight(50) + " | " + 
                 $sizeGB.PadLeft(11) + " | " + 
                 $SubfolderCount.ToString().PadLeft(15) + " | " + 
                 $FileCount.ToString().PadLeft(12) + " | " + 
@@ -704,19 +704,19 @@ function Start-FolderProcessing {
         Write-Host "`rActive Runspaces: $activeRunspaces/$MaxThreads" -NoNewline -ForegroundColor Magenta
 
         [void]$ps.AddScript({
-            param($FolderPath)
+            param($StartPath)
             
             $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
-            Write-Host "`nThread $threadId processing: $FolderPath" -ForegroundColor DarkGray
+            Write-Host "`nThread $threadId processing: $StartPath" -ForegroundColor DarkGray
             
             try {
-                $counts = [FolderSizeHelper]::GetDirectoryCounts($FolderPath)
-                $size = [FolderSizeHelper]::GetDirectorySize($FolderPath)
-                $largestFile = [FolderSizeHelper]::GetLargestFile($FolderPath)
+                $counts = [FolderSizeHelper]::GetDirectoryCounts($StartPath)
+                $size = [FolderSizeHelper]::GetDirectorySize($StartPath)
+                $largestFile = [FolderSizeHelper]::GetLargestFile($StartPath)
                 
                 return @{
                     Success = $true
-                    FolderPath = $FolderPath
+                    StartPath = $StartPath
                     Size = $size
                     FileCount = $counts.Item1
                     FolderCount = $counts.Item2
@@ -727,7 +727,7 @@ function Start-FolderProcessing {
             catch {
                 return @{
                     Success = $false
-                    FolderPath = $FolderPath
+                    StartPath = $StartPath
                     Error = $_.Exception.Message
                     ThreadId = $threadId
                 }
@@ -757,9 +757,9 @@ function Start-FolderProcessing {
             Write-TranscriptOnly "Processing: $($r.Folder)"
             
             if ($result.Success) {
-                Write-TranscriptOnly "Thread $($result.ThreadId) completed: $($result.FolderPath) in $($processingTime.ToString('0.00'))s"
+                Write-TranscriptOnly "Thread $($result.ThreadId) completed: $($result.StartPath) in $($processingTime.ToString('0.00'))s"
                 
-                $FolderSizeMap[$result.FolderPath] = @{ 
+                $FolderSizeMap[$result.StartPath] = @{ 
                     Size = $result.Size
                     FileCount = $result.FileCount
                     FolderCount = $result.FolderCount
@@ -792,7 +792,7 @@ function Start-FolderProcessing {
 # Modify the Get-FolderSize function to use parallel processing
 function Get-FolderSize {
     param (
-        [string]$FolderPath,
+        [string]$StartPath,
         [int]$CurrentDepth,
         [int]$MaxDepth,
         [int]$Top
@@ -800,7 +800,7 @@ function Get-FolderSize {
 
     try {
         # Validate input path
-        if([string]::IsNullOrWhiteSpace($FolderPath)) {
+        if([string]::IsNullOrWhiteSpace($StartPath)) {
             Write-Warning "Invalid path: Path cannot be empty or whitespace"
             return @{ 
                 ProcessedFolders = $false
@@ -811,9 +811,9 @@ function Get-FolderSize {
 
         # Normalize path to ensure consistent formatting
         try {
-            $FolderPath = [System.IO.Path]::GetFullPath($FolderPath)
+            $StartPath = [System.IO.Path]::GetFullPath($StartPath)
         } catch {
-            Write-Warning "Error normalizing path '$FolderPath': $($_.Exception.Message)"
+            Write-Warning "Error normalizing path '$StartPath': $($_.Exception.Message)"
             return @{ 
                 ProcessedFolders = $false
                 HasSubfolders = $false
@@ -829,9 +829,9 @@ function Get-FolderSize {
             }
         }
 
-        $folderPath = Format-Path $FolderPath
-        if (-not (Test-Path -Path $folderPath -PathType Container)) {
-            Write-Warning "Path '$FolderPath' does not exist or is not a directory."
+        $StartPath = Format-Path $StartPath
+        if (-not (Test-Path -Path $StartPath -PathType Container)) {
+            Write-Warning "Path '$StartPath' does not exist or is not a directory."
             return @{ 
                 ProcessedFolders = $false
                 HasSubfolders = $false
@@ -839,17 +839,17 @@ function Get-FolderSize {
             }
         }
 
-        Write-Host "`nTop $Top Largest Folders in: $folderPath" -ForegroundColor Cyan
+        Write-Host "`nTop $Top Largest Folders in: $StartPath" -ForegroundColor Cyan
         Write-Host ""
         
         # First, analyze the root path itself
         if ($CurrentDepth -eq 1) {
-            $rootSize = [FolderSizeHelper]::GetDirectorySize($folderPath)
-            $rootCounts = [FolderSizeHelper]::GetDirectoryCounts($folderPath)
-            $rootLargestFile = [FolderSizeHelper]::GetLargestFile($folderPath)
+            $rootSize = [FolderSizeHelper]::GetDirectorySize($StartPath)
+            $rootCounts = [FolderSizeHelper]::GetDirectoryCounts($StartPath)
+            $rootLargestFile = [FolderSizeHelper]::GetLargestFile($StartPath)
             
             Write-TableHeader
-            Write-TableRow -FolderPath $folderPath `
+            Write-TableRow -StartPath $StartPath `
                           -Size $rootSize `
                           -SubfolderCount $rootCounts.Item2 `
                           -FileCount $rootCounts.Item1 `
@@ -861,13 +861,13 @@ function Get-FolderSize {
         # Get all immediate subfolders in the root and process them
         $rootFolders = try { 
             if ($IncludeHiddenSystem) {
-                Get-ChildItem -Path $folderPath -Directory -Force -ErrorAction Stop
+                Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop
             }
             else {
-                Get-ChildItem -Path $folderPath -Directory -ErrorAction Stop
+                Get-ChildItem -Path $StartPath -Directory -ErrorAction Stop
             }
         } catch { 
-            Write-Warning "Error getting root folders in '$folderPath': $($_.Exception.Message)"
+            Write-Warning "Error getting root folders in '$StartPath': $($_.Exception.Message)"
             @() 
         }
 
@@ -897,7 +897,7 @@ function Get-FolderSize {
             $topFolders = $sortedFolders | Select-Object -First $topFoldersCount
             
             foreach ($folder in $topFolders) {
-                Write-TableRow -FolderPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
+                Write-TableRow -StartPath $folder.Path -Size $folder.Size -SubfolderCount $folder.FolderCount -FileCount $folder.FileCount -LargestFile $folder.LargestFile
             }
             
             Write-Host ("-" * 150) -ForegroundColor DarkGray
@@ -911,7 +911,7 @@ function Get-FolderSize {
                 Write-Host "`nDescending into largest subfolder: $($largestFolder.Path)" -ForegroundColor Cyan
                 
                 # Call recursively and capture the structured return value
-                $result = Get-FolderSize -FolderPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
+                $result = Get-FolderSize -StartPath $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -Top $Top
                 
                 if ($result.ProcessedFolders -eq $true -and 
                     $result.HasSubfolders -eq $true -and 
@@ -938,7 +938,7 @@ function Get-FolderSize {
         }
     }
     catch {
-        Write-Warning "Error processing folder '$FolderPath': $($_.Exception.Message)"
+        Write-Warning "Error processing folder '$StartPath': $($_.Exception.Message)"
         return @{ 
             ProcessedFolders = $false
             HasSubfolders = $false
@@ -948,7 +948,7 @@ function Get-FolderSize {
 }
 
 # Start the Recursive Scan
-Get-FolderSize -FolderPath $StartPath -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-Null
+Get-FolderSize -StartPath $StartPath -CurrentDepth 1 -MaxDepth $MaxDepth -Top $Top | Out-Null
 
 #endregion
 

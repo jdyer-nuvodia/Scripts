@@ -66,19 +66,19 @@ param(
 
 function Rename-ScriptFile {
     param(
-        [string]$FolderPath
+        [string]$StartPath
     )
     
     try {
         # Get folder info to preserve exact case
-        $folderInfo = Get-Item -Path $FolderPath
+        $folderInfo = Get-Item -Path $StartPath
         $folderName = $folderInfo.Name  # This preserves the exact case
         
-        Write-Host "`nProcessing folder: $FolderPath" -ForegroundColor Cyan
+        Write-Host "`nProcessing folder: $StartPath" -ForegroundColor Cyan
         Write-Host "Folder name (exact case): $folderName" -ForegroundColor Gray
         
         # Get all .ps1 files in the folder
-        $psFiles = Get-ChildItem -Path $FolderPath -Filter "*.ps1" -File
+        $psFiles = Get-ChildItem -Path $StartPath -Filter "*.ps1" -File
         
         if ($psFiles.Count -eq 0) {
             Write-Host "  No PowerShell scripts found in this folder" -ForegroundColor Yellow
@@ -105,7 +105,7 @@ function Rename-ScriptFile {
             }
             
             # Rename the file
-            $newPath = Join-Path -Path $FolderPath -ChildPath $newName
+            $newPath = Join-Path -Path $StartPath -ChildPath $newName
             if ($PSCmdlet.ShouldProcess($psFile.FullName, "Rename to '$newName'")) {
                 Write-Host "  Renaming '$($psFile.Name)' to '$newName'" -ForegroundColor Gray
                 
@@ -113,7 +113,7 @@ function Rename-ScriptFile {
                 if ($psFile.Name -eq $newName) {
                     $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8) + ".ps1"
                     Rename-Item -Path $psFile.FullName -NewName $tempName -Force
-                    Rename-Item -Path (Join-Path -Path $FolderPath -ChildPath $tempName) -NewName $newName -Force
+                    Rename-Item -Path (Join-Path -Path $StartPath -ChildPath $tempName) -NewName $newName -Force
                 }
                 else {
                     Rename-Item -Path $psFile.FullName -NewName $newName -Force
@@ -143,7 +143,7 @@ function Rename-ScriptFile {
                         if ($selectedFile.Name -eq $newName) {
                             $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8) + ".ps1"
                             Rename-Item -Path $selectedFile.FullName -NewName $tempName -Force
-                            Rename-Item -Path (Join-Path -Path $FolderPath -ChildPath $tempName) -NewName $newName -Force
+                            Rename-Item -Path (Join-Path -Path $StartPath -ChildPath $tempName) -NewName $newName -Force
                         }
                         else {
                             Rename-Item -Path $selectedFile.FullName -NewName $newName -Force
@@ -154,13 +154,13 @@ function Rename-ScriptFile {
                 }
                 else {
                     Write-Warning "Invalid file selection '$fileChoice'. Please enter a number between 0 and $($psFiles.Count - 1)"
-                    Write-Host "  Skipping folder: $FolderPath" -ForegroundColor Yellow
+                    Write-Host "  Skipping folder: $StartPath" -ForegroundColor Yellow
                 }
             }
         }
     }
     catch {
-        Write-Error "Error processing folder '$FolderPath': $_"
+        Write-Error "Error processing folder '$StartPath': $_"
         Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     }
 }
@@ -196,7 +196,7 @@ try {
     
     # Process each folder
     foreach ($folder in $folders) {
-        Rename-ScriptFile -FolderPath $folder.FullName
+        Rename-ScriptFile -StartPath $folder.FullName
     }
     
     Write-Host "`nScript rename process completed successfully." -ForegroundColor Green

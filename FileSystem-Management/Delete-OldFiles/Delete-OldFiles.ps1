@@ -20,7 +20,7 @@
     - Shows drive space comparison before and after deletion
     - Optional recursive deletion of files and empty directories
     - Silent operation with error suppression
-.PARAMETER folderPath
+.PARAMETER StartPath
     The path to the folder containing files to be cleaned up
 .PARAMETER daysOld
     Number of days old the files must be to be deleted
@@ -30,7 +30,7 @@
     .\Delete-OldFiles.ps1
     Deletes files older than 30 days from C:\windows\System32\winevt\logs
 .EXAMPLE
-    .\Delete-OldFiles.ps1 -folderPath "D:\Backups" -daysOld 90 -Recurse
+    .\Delete-OldFiles.ps1 -StartPath "D:\Backups" -daysOld 90 -Recurse
     Recursively deletes files older than 90 days from D:\Backups and its subdirectories
 .NOTES
     Security Level: Medium
@@ -40,7 +40,7 @@
 
 param(
     [Parameter(Mandatory=$false)]
-    [string]$folderPath = "C:\windows\System32\winevt\logs",
+    [string]$StartPath = "C:\windows\System32\winevt\logs",
     
     [Parameter(Mandatory=$false)]
     [int]$daysOld = 30,
@@ -74,7 +74,7 @@ try {
     Start-Transcript -Path $logFile -Force
 
     # Get the drive letter from the folder path
-    $driveLetter = $folderPath.Substring(0, 1)
+    $driveLetter = $StartPath.Substring(0, 1)
     
     # Get volume information before deletion
     Write-Host "Getting drive information before deletion..." -ForegroundColor Cyan
@@ -92,9 +92,9 @@ try {
 
     # Get files to delete based on recursion setting
     $oldFiles = if ($Recurse) {
-        Get-ChildItem -Path $folderPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+        Get-ChildItem -Path $StartPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
     } else {
-        Get-ChildItem -Path $folderPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+        Get-ChildItem -Path $StartPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
     }
 
     foreach ($file in $oldFiles) {
@@ -103,7 +103,7 @@ try {
 
     # Only process directories if -Recurse is specified
     if ($Recurse) {
-        $oldDirs = Get-ChildItem -Path $folderPath -Directory -Recurse | 
+        $oldDirs = Get-ChildItem -Path $StartPath -Directory -Recurse | 
                    Where-Object { $_.LastWriteTime -lt $cutoffDate } |
                    Sort-Object FullName -Descending
 

@@ -97,13 +97,13 @@ try {
     Get-ChildItem -Path $TargetPath -Directory -Recurse -ErrorAction SilentlyContinue | 
         Sort-Object -Property FullName -Descending | 
         ForEach-Object {
-            $folderPath = $_.FullName
-            Write-Host "Attempting to delete folder: $folderPath" -ForegroundColor Yellow
+            $StartPath = $_.FullName
+            Write-Host "Attempting to delete folder: $StartPath" -ForegroundColor Yellow
             try {
                 # Enable long path support if needed
-                if ($folderPath.Length -ge 260) {
-                    $folderPath = "\\?\$folderPath"
-                    Write-Host "Using long path format: $folderPath" -ForegroundColor Yellow
+                if ($StartPath.Length -ge 260) {
+                    $StartPath = "\\?\$StartPath"
+                    Write-Host "Using long path format: $StartPath" -ForegroundColor Yellow
                 }
                 
                 # Try up to 3 times with a small delay between attempts
@@ -113,7 +113,7 @@ try {
                 
                 while (-not $success -and $attempt -le $maxAttempts) {
                     try {
-                        Remove-Item -LiteralPath $folderPath -Recurse -Force -ErrorAction Stop
+                        Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
                         $success = $true
                         Write-Host "Successfully deleted folder: $($_.FullName)" -ForegroundColor Green
                     }

@@ -17,7 +17,7 @@
     - Searches specified screenshots folder
     - Removes files older than threshold
     - Runs silently without user interaction
-.PARAMETER folderPath
+.PARAMETER StartPath
     The path to the screenshots folder
 .PARAMETER daysOld
     Number of days old the files must be before deletion
@@ -31,7 +31,7 @@
 #>
 
 # Set the folder path
-$folderPath = "C:\Users\jdyer\OneDrive - Nuvodia\Pictures\Screenshots"
+$StartPath = "C:\Users\jdyer\OneDrive - Nuvodia\Pictures\Screenshots"
 
 # Set the number of days old for files to be deleted
 $daysOld = 30
@@ -43,7 +43,7 @@ $currentDate = Get-Date
 $cutoffDate = $currentDate.AddDays(-$daysOld)
 
 # Get all files in the folder older than the cutoff date
-$oldFiles = Get-ChildItem -Path $folderPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
+$oldFiles = Get-ChildItem -Path $StartPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
 
 # Delete the old files silently
 foreach ($file in $oldFiles) {

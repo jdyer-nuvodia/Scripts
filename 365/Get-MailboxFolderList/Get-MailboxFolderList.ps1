@@ -31,11 +31,11 @@ Write-Host "Starting mailbox folder analysis for: $MailboxName" -ForegroundColor
 try {
     # Get all folders in the mailbox
     $Folders = Get-MailboxFolderStatistics -Identity $MailboxName | 
-               Where-Object {$_.FolderPath -like $FolderNameSearch}
+               Where-Object {$_.StartPath -like $FolderNameSearch}
 
     # Get all folders in the mailbox and export to CSV
     $Folders | 
-        Select-Object FolderPath, FolderType, ItemsInFolder, FolderSize |
+        Select-Object StartPath, FolderType, ItemsInFolder, FolderSize |
         Export-Csv -Path "C:\Users\jdyer\OneDrive - Nuvodia\Documents\WindowsPowerShell\Scripts\getMailboxFolderList\MailboxFolders.csv" -NoTypeInformation
 
     Write-Host "Export completed successfully" -ForegroundColor Green
