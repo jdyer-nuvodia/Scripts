@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 01:03:00 UTC
+# Last Updated: 2025-03-18 01:07:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.13.0
-# Additional Info: Added multi-domain Administrator SID discovery
+# Version: 1.13.1
+# Additional Info: Fixed domain count handling and array initialization
 # =============================================================================
 
 <#
@@ -198,7 +198,7 @@ function New-LogHeader {
 # Skip AD Resolution: $SkipADResolution
 # Skip Uniqueness Counting: $SkipUniquenessCounting
 # Enable SID Diagnostics: $EnableSIDDiagnostics
-# Script Version: 1.13.0
+# Script Version: 1.13.1
 # =============================================================================
 
 "@
@@ -293,23 +293,23 @@ function Write-PerformanceMetric {
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
-    $adminAccounts = @()
-    $domains = Get-DomainControllers
+    [array]$adminAccounts = @()  # Explicitly declare as array
+    [array]$domains = @(Get-DomainControllers)  # Force array
 
     if ($domains.Count -eq 0) {
         Write-Log -Message "No domains found. Only checking local Administrator accounts." -Level 'WARNING' -Color "Yellow"
         
         # Get local Administrator account
-        $wmiAdminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator' AND LocalAccount='True'" -ErrorAction SilentlyContinue
+        $wmiAdminAccounts = @(Get-WmiObject Win32_UserAccount -Filter "Name='Administrator' AND LocalAccount='True'" -ErrorAction SilentlyContinue)
     }
     else {
-        Write-Log -Message "Checking Administrator accounts across $(($domains | Measure-Object).Count) domains..." -Level 'INFO' -Color "Cyan"
+        Write-Log -Message "Checking Administrator accounts across $($domains.Count) domain(s)..." -Level 'INFO' -Color "Cyan"
         
         # Get all Administrator accounts (both local and domain)
-        $wmiAdminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue
+        $wmiAdminAccounts = @(Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue)
     }
 
-    if ($wmiAdminAccounts) {
+    if ($wmiAdminAccounts -and $wmiAdminAccounts.Count -gt 0) {
         foreach ($account in $wmiAdminAccounts) {
             $domainType = if ($account.LocalAccount) { "Local" } else { "Domain" }
             $domain = if ($account.Domain) { $account.Domain } else { $env:COMPUTERNAME }
@@ -767,13 +767,15 @@ function Get-HumanReadablePermissions {
 function Get-DomainControllers {
     try {
         Write-Log -Message "Discovering domain controllers..." -Level 'INFO' -Color "Cyan"
-        $domains = @()
+        [array]$domains = @()  # Explicitly declare as array
         
         # Get the current domain
         try {
             $currentDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-            $domains += $currentDomain
-            Write-Log -Message "Found current domain: $($currentDomain.Name)" -Level 'DEBUG' -NoConsole
+            if ($currentDomain) {
+                $domains += $currentDomain
+                Write-Log -Message "Found current domain: $($currentDomain.Name)" -Level 'DEBUG' -NoConsole
+            }
         }
         catch {
             Write-Log -Message "Could not get current domain: $_" -Level 'WARNING' -Color "Yellow"
@@ -782,14 +784,19 @@ function Get-DomainControllers {
         # Get trusted domains
         try {
             $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
-            $domains += $forest.Domains | Where-Object { $_.Name -ne $currentDomain.Name }
-            Write-Log -Message "Found $(($domains | Measure-Object).Count) total domains" -Level 'DEBUG' -NoConsole
+            if ($forest) {
+                $forestDomains = @($forest.Domains | Where-Object { $_.Name -ne $currentDomain.Name })
+                if ($forestDomains) {
+                    $domains += $forestDomains
+                }
+            }
+            Write-Log -Message "Found $($domains.Count) total domain(s)" -Level 'DEBUG' -NoConsole
         }
         catch {
             Write-Log -Message "Could not get forest domains: $_" -Level 'WARNING' -Color "Yellow"
         }
 
-        return $domains
+        return @($domains)  # Force array return
     }
     catch {
         Write-Log -Message "Error discovering domain controllers: $_" -Level 'ERROR' -Color "Red"
