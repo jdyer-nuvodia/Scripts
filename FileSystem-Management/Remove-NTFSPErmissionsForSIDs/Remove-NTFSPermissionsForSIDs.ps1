@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 17:25:00 UTC
+# Last Updated: 2025-03-18 18:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Added usage of adminAccounts variable for admin SID validation
+# Version: 1.1.2
+# Additional Info: Fixed parameter naming inconsistencies, added missing functions, corrected Write-Log parameters
 # =============================================================================
 
 <#
@@ -115,13 +115,44 @@ $script:processingTimeout = New-TimeSpan -Minutes $TimeoutMinutes
 # Core Functions - Import existing functions from Get-NTFSFolderPermissions.ps1
 # =============================================================================
 
-# Function to handle progress reporting
-function Write-Progress {
+# Function to handle logging with colors
+function Write-Log {
     param (
         [string]$Message,
-        [int]$PercentComplete
+        [string]$Level = 'INFO',
+        [string]$Color = 'White',
+        [string]$Category = '',
+        [switch]$NoConsole
     )
-    Write-Progress -Activity "Processing Permissions" -Status $Message -PercentComplete $PercentComplete
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $categoryText = if ($Category) { "[$Category] " } else { "" }
+    $logMessage = "[$timestamp] [$Level] $categoryText$Message"
+    
+    # Write to console with color if not suppressed
+    if (-not $NoConsole) {
+        Write-Host $logMessage -ForegroundColor $Color
+    }
+    
+    # Write to log file
+    Add-Content -Path $script:DebugLogFile -Value $logMessage
+}
+
+# Function to handle progress reporting
+function Write-ProgressStatus {
+    param (
+        [string]$Activity,
+        [string]$Status,
+        [int]$Current,
+        [int]$Total
+    )
+    
+    if ($Total -gt 0) {
+        $percentComplete = [math]::Min([math]::Round(($Current / $Total) * 100), 100)
+        Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
+    } else {
+        Write-Progress -Activity $Activity -Status $Status
+    }
 }
 
 # Function to handle performance metrics
@@ -139,22 +170,148 @@ function Write-PerformanceMetric {
     Write-Log -Message "Performance: $Operation completed in $([math]::Round($duration, 2))ms ($rate items/sec)" -Level 'METRIC'
 }
 
-# Function to handle logging with colors
-function Write-Log {
+# Function to convert SID to name
+function Convert-SidToName {
     param (
-        [string]$Message,
-        [string]$Level = 'INFO',
-        [string]$Color = 'White'
+        [Parameter(Mandatory=$true)]
+        [string]$Sid
     )
     
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] [$Level] $Message"
+    # Check if we already have this SID cached
+    if ($script:SidCache.ContainsKey($Sid)) {
+        return $script:SidCache[$Sid]
+    }
     
-    # Write to console with color
-    Write-Host $logMessage -ForegroundColor $Color
+    try {
+        $sidObj = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+        $name = $sidObj.Translate([System.Security.Principal.NTAccount]).Value
+        $script:SidCache[$Sid] = $name
+        return $name
+    }
+    catch {
+        if ($EnableSIDDiagnostics) {
+            Write-Log "Failed to resolve SID ${Sid}: $_" -Level 'DEBUG' -Color "Magenta"
+        }
+        $script:SidCache[$Sid] = $Sid
+        $script:FailedSids.Add($Sid) | Out-Null
+        return $Sid
+    }
+}
+
+# Function to get folder permissions
+function Get-FolderPermissions {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Folder
+    )
     
-    # Write to log file
-    Add-Content -Path $script:DebugLogFile -Value $logMessage
+    try {
+        $acl = Get-Acl -Path $Folder
+        $permissions = @()
+        
+        foreach ($ace in $acl.Access) {
+            $sid = if ($ace.IdentityReference -match '^S-1-') {
+                $ace.IdentityReference.Value
+            } else {
+                try {
+                    $ntAccount = [System.Security.Principal.NTAccount]$ace.IdentityReference
+                    $sid = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                } catch {
+                    "Unknown"
+                }
+            }
+            
+            $permissions += [PSCustomObject]@{
+                Path = $Folder
+                Identity = $ace.IdentityReference.Value
+                SID = $sid
+                Type = $ace.AccessControlType
+                Rights = $ace.FileSystemRights
+                Inheritance = $ace.InheritanceFlags
+                Propagation = $ace.PropagationFlags
+                IsInherited = $ace.IsInherited
+            }
+        }
+        
+        return $permissions
+    }
+    catch {
+        Write-Log "Error getting permissions for ${Folder}: $_" -Level 'ERROR' -Color "Red"
+        return $null
+    }
+}
+
+# Function to recursively process folders
+function Invoke-FolderRecursively {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Path,
+        [int]$CurrentDepth = 0
+    )
+    
+    if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+        Write-Log "Cancellation requested. Stopping folder recursion." -Level 'WARNING' -Color "Yellow"
+        return
+    }
+    
+    # Check timeout
+    $currentDuration = (Get-Date) - $script:StartTime
+    if ($currentDuration -gt $script:processingTimeout) {
+        Write-Log "Processing timeout reached ($TimeoutMinutes minutes). Canceling further processing." -Level 'WARNING' -Color "Yellow"
+        $script:cancellationTokenSource.Cancel()
+        return
+    }
+    
+    # Check depth limit
+    if ($MaxDepth -gt 0 -and $CurrentDepth -gt $MaxDepth) {
+        return
+    }
+    
+    try {
+        $script:ProcessedFolders++
+        
+        # Process current folder
+        Invoke-FolderProcessing -StartPath $Path -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
+        
+        # Get subfolders
+        $subFolders = Get-ChildItem -Path $Path -Directory -ErrorAction SilentlyContinue
+        
+        # Process subfolders
+        foreach ($folder in $subFolders) {
+            Invoke-FolderRecursively -Path $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+        }
+    }
+    catch {
+        Write-Log "Error processing path $Path recursively: $_" -Level 'ERROR' -Color "Red"
+    }
+}
+
+# Function to initialize well-known SIDs
+function Initialize-WellKnownSIDs {
+    $wellKnownAccounts = @(
+        [PSCustomObject]@{ Name = "Administrator"; Domain = "BUILTIN"; SID = "S-1-5-32-544" },
+        [PSCustomObject]@{ Name = "Domain Admins"; Domain = "DOMAIN"; SID = "S-1-5-21-DOMAIN-512" },
+        [PSCustomObject]@{ Name = "Enterprise Admins"; Domain = "DOMAIN"; SID = "S-1-5-21-DOMAIN-519" }
+    )
+    
+    # Try to get the actual domain SID to replace placeholders
+    try {
+        $domain = (Get-CimInstance Win32_ComputerSystem).Domain
+        $domainSid = (New-Object System.Security.Principal.NTAccount("$domain\Domain Users")).Translate([System.Security.Principal.SecurityIdentifier]).Value
+        $domainSidBase = $domainSid -replace "-513$", ""
+        
+        # Update domain SIDs with actual domain SID
+        foreach ($account in $wellKnownAccounts) {
+            if ($account.Domain -eq "DOMAIN") {
+                $account.SID = $account.SID -replace "S-1-5-21-DOMAIN", $domainSidBase
+            }
+        }
+    }
+    catch {
+        Write-Log "Could not determine domain SID. Using placeholder values." -Level 'WARNING' -Color "Yellow"
+    }
+    
+    return $wellKnownAccounts
 }
 
 # New function to load target SIDs from file
@@ -193,7 +350,7 @@ function Confirm-SIDRemoval {
     return $approved
 }
 
-# New function to remove permissions for target SIDs
+# New function to remove permissions for target SIDs - FIXED PARAMETER NAME
 function Remove-TargetSIDPermissions {
     param (
         [Parameter(Mandatory=$true)]
@@ -230,17 +387,28 @@ function Remove-TargetSIDPermissions {
 
     if ($modified) {
         try {
+            # Backup ACL for potential rollback
+            $backupAcl = Get-Acl -Path $StartPath
+            
             Set-Acl -Path $StartPath -AclObject $Acl
             Write-Log "Successfully updated permissions on $StartPath (Removed $removedCount permissions)" -Level 'SUCCESS' -Color "Green"
         } catch {
-            Write-Log "Failed to update permissions on ${Path}: $_" -Level 'ERROR' -Color "Red"
+            Write-Log "Failed to update permissions on ${StartPath}: $_" -Level 'ERROR' -Color "Red"
+            
+            # Attempt rollback
+            try {
+                Set-Acl -Path $StartPath -AclObject $backupAcl
+                Write-Log "Rolled back permissions on $StartPath due to error" -Level 'WARNING' -Color "Yellow"
+            } catch {
+                Write-Log "Failed to rollback permissions on ${StartPath}: $_" -Level 'ERROR' -Color "Red"
+            }
         }
     }
 
     return $modified
 }
 
-# Modified Invoke-FolderProcessing to include permission removal
+# Modified Invoke-FolderProcessing to include permission removal - FIXED PARAMETER NAME
 function Invoke-FolderProcessing {
     param(
         [string]$StartPath,
@@ -252,11 +420,21 @@ function Invoke-FolderProcessing {
     try {
         Write-Log -Message "Processing folder: $StartPath" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
 
+        # Verify permissions before attempting changes
+        try {
+            $testFile = Join-Path $env:TEMP "ACLTest_$(Get-Random).tmp"
+            New-Item -Path $testFile -ItemType File | Out-Null
+            Remove-Item -Path $testFile -Force | Out-Null
+        } catch {
+            Write-Log "Insufficient permissions to make changes to the file system. Run as administrator." -Level 'ERROR' -Color "Red"
+            return
+        }
+
         # Get current ACL
         $acl = Get-Acl -Path $StartPath
         
-        # Check and remove target SID permissions
-        $modified = Remove-TargetSIDPermissions -Path $StartPath -Acl $acl
+        # Check and remove target SID permissions - FIXED PARAMETER NAME
+        $modified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $acl
 
         # Get updated permissions for logging
         if ($modified) {
@@ -271,7 +449,7 @@ function Invoke-FolderProcessing {
         }
     }
     catch {
-        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
+        Write-Log -Message "Error processing folder ${StartPath}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
         Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
     }
     finally {
