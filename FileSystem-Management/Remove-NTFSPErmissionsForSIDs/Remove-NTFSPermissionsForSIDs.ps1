@@ -2,7 +2,7 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 00:15:00 UTC
+# Last Updated: 2025-03-18 23:12:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.1.10
 # Additional Info: Fixed duplicate key in Write-ProgressStatus hash table
