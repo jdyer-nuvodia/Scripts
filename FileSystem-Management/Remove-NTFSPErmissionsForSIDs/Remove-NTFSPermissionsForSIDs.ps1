@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:12:00 UTC
+# Last Updated: 2025-03-18 23:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.10
-# Additional Info: Fixed duplicate key in Write-ProgressStatus hash table
+# Version: 1.1.11
+# Additional Info: Fixed variable reference error in Confirm-SIDRemoval and added Write-Progress error handling
 # =============================================================================
 
 <#
@@ -145,7 +145,7 @@ function Write-Log {
     Add-Content -Path $script:DebugLogFile -Value $debugMessage
 }
 
-# Enhanced progress bar handling function
+# Function to handle progress bar with error handling
 function Write-ProgressStatus {
     param (
         [Parameter(Mandatory=$true)]
@@ -161,10 +161,15 @@ function Write-ProgressStatus {
     
     if (-not $EnableProgressBar) { return }
     
-    Write-Progress -Activity $Activity `
-                  -Status "$Status ($Current of $Total)" `
-                  -PercentComplete ([math]::Min([math]::Round(($Current / $Total) * 100), 100)) `
-                  -Id $Id
+    try {
+        Write-Progress -Activity $Activity `
+                      -Status "$Status ($Current of $Total)" `
+                      -PercentComplete ([math]::Min([math]::Round(($Current / $Total) * 100), 100)) `
+                      -Id $Id
+    }
+    catch {
+        Write-Log "Error updating progress bar: $_" -Level 'WARNING' -Color "Yellow" -NoConsole
+    }
 }
 
 # Function to handle performance metrics
@@ -350,7 +355,6 @@ function Confirm-SIDRemoval {
         return $script:ApprovedSIDRemovals[$SID]
     }
 
-    # Ensure we have a name to display
     $displayName = if ($Name -and $Name -ne $SID) { 
         "$Name ($SID)" 
     } else { 
@@ -363,7 +367,8 @@ function Confirm-SIDRemoval {
     $script:ApprovedSIDRemovals[$SID] = $approved
 
     $logLevel = if ($approved) { 'INFO' } else { 'WARNING' }
-    Write-Log "User $('approved' * $approved + 'denied' * -not $approved) removal of permissions for $displayName" -Level $logLevel
+    $logMessage = if ($approved) { "approved" } else { "denied" }
+    Write-Log "User $logMessage removal of permissions for $displayName" -Level $logLevel
 
     return $approved
 }
