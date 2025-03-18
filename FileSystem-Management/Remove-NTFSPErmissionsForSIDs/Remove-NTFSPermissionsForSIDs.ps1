@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 22:59:00 UTC
+# Last Updated: 2025-03-18 23:01:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.7
-# Additional Info: Added progress bar display for better console output
+# Version: 1.1.8
+# Additional Info: Fixed displayName variable issue in Confirm-SIDRemoval function
 # =============================================================================
 
 <#
@@ -200,14 +200,13 @@ function Write-PerformanceMetric {
     Write-Log -Message "Performance: $Operation completed in $([math]::Round($duration, 2))ms ($rate items/sec)" -Level 'METRIC'
 }
 
-# Function to convert SID to name
+# Enhanced function to handle SID to name conversion with better error handling
 function Convert-SidToName {
     param (
         [Parameter(Mandatory=$true)]
         [string]$Sid
     )
     
-    # Check if we already have this SID cached
     if ($script:SidCache.ContainsKey($Sid)) {
         return $script:SidCache[$Sid]
     }
@@ -219,9 +218,7 @@ function Convert-SidToName {
         return $name
     }
     catch {
-        if ($EnableSIDDiagnostics) {
-            Write-Log "Failed to resolve SID ${Sid}: $_" -Level 'DEBUG' -Color "Magenta"
-        }
+        Write-Log "Failed to resolve SID ${Sid}: $_" -Level 'DEBUG' -Color "Magenta" -NoConsole
         $script:SidCache[$Sid] = $Sid
         $script:FailedSids.Add($Sid) | Out-Null
         return $Sid
@@ -359,24 +356,33 @@ function Import-TargetSIDs {
     Write-Log "Loaded $($script:TargetSIDs.Count) SIDs from SIDs.txt" -Level 'INFO' -Color "Cyan"
 }
 
-# New function to confirm SID removal
+# Fixed Confirm-SIDRemoval function
 function Confirm-SIDRemoval {
     param (
         [Parameter(Mandatory=$true)]
         [string]$SID,
-        [string]$Name
+        [string]$Name = $null
     )
 
     if ($script:ApprovedSIDRemovals.ContainsKey($SID)) {
         return $script:ApprovedSIDRemovals[$SID]
     }
 
-    $displayName = if ($Name -and $Name -ne $SID) { "$Name ($SID)" } else { $SID }
-    $confirmation = Read-Host -Prompt "Remove permissions for $displayName? (Y/N)"
+    # Ensure we have a name to display
+    $displayName = if ($Name -and $Name -ne $SID) { 
+        "$Name ($SID)" 
+    } else { 
+        $SID 
+    }
+    
+    Write-Host "Do you want to remove permissions for $displayName? (Y/N)" -ForegroundColor Yellow
+    $confirmation = Read-Host
     $approved = $confirmation -eq 'Y'
     $script:ApprovedSIDRemovals[$SID] = $approved
 
-    Write-Log "User $('approved' * $approved + 'denied' * -not $approved) removal of permissions for $displayName" -Level $(if ($approved) { 'INFO' } else { 'WARNING' })
+    $logLevel = if ($approved) { 'INFO' } else { 'WARNING' }
+    Write-Log "User $('approved' * $approved + 'denied' * -not $approved) removal of permissions for $displayName" -Level $logLevel
+
     return $approved
 }
 
