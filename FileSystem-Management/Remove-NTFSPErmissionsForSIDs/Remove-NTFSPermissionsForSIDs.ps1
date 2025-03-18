@@ -2,7 +2,7 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:22:00 UTC
+# Last Updated: 2025-03-18 23:37:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.1.13
 # Additional Info: Fixed $displayName variable reference and Write-Progress issues
@@ -366,8 +366,14 @@ function Confirm-SIDRemoval {
         $SID 
     }
     
-    Write-Host "Do you want to remove permissions for ${displayText}? (Y/N)" -ForegroundColor Yellow
-    $confirmation = Read-Host
+    Write-Progress -Activity "Permission Removal Confirmation" -Status "Current SID: $displayText" -PercentComplete (($script:ProcessedFolders / [Math]::Max($script:TotalFolders, 1)) * 100)
+    
+    Write-Host "`n=== Permission Removal Confirmation ===" -ForegroundColor Cyan
+    Write-Host "Progress: $script:ProcessedFolders of $script:TotalFolders folders processed" -ForegroundColor DarkGray
+    Write-Host "Target: $displayText" -ForegroundColor White
+    Write-Host "Do you want to remove these permissions? (Y/N)" -ForegroundColor Yellow -NoNewline
+    
+    $confirmation = Read-Host " "
     $approved = $confirmation -eq 'Y'
     $script:ApprovedSIDRemovals[$SID] = $approved
 
