@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 00:55:00 UTC
+# Last Updated: 2025-03-17 00:57:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.12.0
-# Additional Info: Added owner display and included owner in permission comparisons
+# Version: 1.12.1
+# Additional Info: Added owner SID translation to account name
 # =============================================================================
 
 <#
@@ -198,7 +198,7 @@ function New-LogHeader {
 # Skip AD Resolution: $SkipADResolution
 # Skip Uniqueness Counting: $SkipUniquenessCounting
 # Enable SID Diagnostics: $EnableSIDDiagnostics
-# Script Version: 1.12.0
+# Script Version: 1.12.1
 # =============================================================================
 
 "@
@@ -593,25 +593,28 @@ function Get-FolderPermissions {
     )
     try {
         $acl = Get-Acl -Path $Folder
-        $owner = $acl.Owner
+        # Translate owner SID if needed
+        $translatedOwner = $acl.Owner
+        if ($translatedOwner -match '^S-1-') {
+            $translatedOwner = Convert-SidToName -Sid $translatedOwner
+        }
         $access = $acl.Access
         $isInherited = $acl.AreAccessRulesProtected -eq $false
         $parentPath = Split-Path -Path $Folder -Parent
-        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $owner -IncludeInheritance $true
-
-        # Check if permissions match parent
-        $matchesParent = $false
-        if ($parentPath -and $script:ParentPermissions.ContainsKey($parentPath)) {
-            $matchesParent = $script:ParentPermissions[$parentPath] -eq $permissionHash
-        }
+        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $translatedOwner -IncludeInheritance $true
 
         $permissionData = [PSCustomObject]@{
             Folder = $Folder
-            Owner  = $owner
+            Owner = $translatedOwner  # Use translated owner
             Access = $access
             PermissionHash = $permissionHash
             IsInherited = $isInherited
-            MatchesParent = $matchesParent
+            MatchesParent = $false
+        }
+
+        # Check if permissions match parent
+        if ($parentPath -and $script:ParentPermissions.ContainsKey($parentPath)) {
+            $permissionData.MatchesParent = $script:ParentPermissions[$parentPath] -eq $permissionHash
         }
 
         # Store current folder's permissions for child comparison
