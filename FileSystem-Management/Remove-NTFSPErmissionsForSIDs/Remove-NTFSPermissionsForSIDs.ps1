@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:37:00 UTC
+# Last Updated: 2025-03-18 23:44:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.13
-# Additional Info: Fixed $displayName variable reference and Write-Progress issues
+# Version: 1.1.14
+# Additional Info: Fixed progress bar and folder counting issues
 # =============================================================================
 
 <#
@@ -166,9 +166,12 @@ function Write-ProgressStatus {
     if (-not $EnableProgressBar) { return }
     
     try {
-        $percentComplete = [math]::Min([math]::Round(($Current / [math]::Max($Total, 1)) * 100), 100)
+        $adjustedTotal = [math]::Max($Total, 1)
+        $adjustedCurrent = [math]::Min($Current, $adjustedTotal)
+        $percentComplete = [math]::Min([math]::Round(($adjustedCurrent / $adjustedTotal) * 100), 100)
+        
         Write-Progress -Activity $Activity `
-                      -Status "$Status ($Current of $Total)" `
+                      -Status "$Status ($adjustedCurrent of $adjustedTotal)" `
                       -PercentComplete $percentComplete `
                       -Id $Id
     }
@@ -529,6 +532,23 @@ function Test-AdministratorSID {
     return $SID -match '^S-1-5-21-\d+-\d+-\d+-500$'
 }
 
+# Add this function right after the existing functions, before the main execution block
+function Initialize-FolderCount {
+    param (
+        [string]$StartPath
+    )
+    
+    try {
+        Write-Log "Counting total folders..." -Level 'INFO' -Color "Cyan"
+        $script:TotalFolders = (Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop | Measure-Object).Count + 1
+        Write-Log "Found $script:TotalFolders folders to process" -Level 'INFO' -Color "Cyan"
+    }
+    catch {
+        Write-Log "Error counting folders: $_" -Level 'WARNING' -Color "Yellow"
+        $script:TotalFolders = 1
+    }
+}
+
 # Main script execution
 try {
     # Start transcript with unique name
@@ -564,8 +584,16 @@ try {
         Write-Log "  $_ : $($script:WellKnownSIDs[$_])" -Level 'DEBUG' -NoConsole
     }
 
+    # Initialize folder count before processing
+    Initialize-FolderCount -StartPath $StartPath
+    
+    # Reset processed folders counter
+    $script:ProcessedFolders = 0
+    
     # Process folders with timeout tracking
+    Write-Log "Beginning folder processing..." -Level 'INFO' -Color "Cyan"
     Invoke-FolderRecursively -Path $StartPath
+    
     if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
         Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
     }
