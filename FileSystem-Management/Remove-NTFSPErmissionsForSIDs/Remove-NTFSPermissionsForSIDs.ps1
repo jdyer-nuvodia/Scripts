@@ -19,7 +19,7 @@ Consolidates output into two log files:
 - Main log for permission removal details
 - Debug log for troubleshooting information
 
-.PARAMETER FolderPath
+.PARAMETER StartPath
 The folder path to analyze. Must be a valid NTFS path.
 
 .PARAMETER MaxThreads
@@ -44,7 +44,7 @@ Maximum time in minutes to allow the script to run.
 Enables progress bar display during processing.
 
 .EXAMPLE
-.\Remove-NTFSPermissionsForSIDs.ps1 -FolderPath "C:\Temp"
+.\Remove-NTFSPermissionsForSIDs.ps1 -StartPath "C:\Temp"
 Analyzes permissions on C:\Temp, prompts for SID removal confirmation, and removes confirmed permissions
 #>
 
@@ -56,7 +56,7 @@ using namespace System.Security.Principal
 param (
     [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
     [ValidateScript({Test-Path $_ -PathType Container})]
-    [string]$FolderPath,
+    [string]$StartPath,
 
     [Parameter(Mandatory = $false)]
     [int]$MaxThreads = 10,
@@ -314,10 +314,10 @@ try {
         }
     }
 
-    Write-Log -Message "Starting folder permission analysis and removal for $FolderPath" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Starting folder permission analysis and removal for $StartPath" -Color "Cyan" -Level 'INFO'
 
     # Process folders with timeout tracking
-    Invoke-FolderRecursively -Path $FolderPath
+    Invoke-FolderRecursively -Path $StartPath
 
     if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
         Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
