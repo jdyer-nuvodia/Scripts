@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 22:46:00 UTC
+# Last Updated: 2025-03-18 22:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.4
-# Additional Info: Relocated log files to script directory for simplified management
+# Version: 1.1.5
+# Additional Info: Added system name and timestamp to log file names
 # =============================================================================
 
 <#
@@ -86,9 +86,11 @@ $ErrorActionPreference = 'Stop'
 
 # Script-level variables
 $script:TranscriptStarted = $false
-$script:MainLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs.log"
-$script:DebugLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Debug.log"
-$script:TranscriptFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Transcript.log"
+$script:ComputerName = $env:COMPUTERNAME
+$script:TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$script:MainLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_${script:ComputerName}_${script:TimeStamp}.log"
+$script:DebugLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Debug_${script:ComputerName}_${script:TimeStamp}.log"
+$script:TranscriptFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Transcript_${script:ComputerName}_${script:TimeStamp}.log"
 $script:SidCache = @{}
 $script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
 $script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
@@ -484,14 +486,8 @@ try {
         Start-Transcript -Path $script:TranscriptFile -Force
     }
 
-    # Initialize log files
+    # Initialize log files - no need for archiving since filenames are unique
     foreach ($logFile in @($script:MainLogFile, $script:DebugLogFile)) {
-        if (Test-Path $logFile) {
-            # Archive existing log if it exists
-            $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-            $archivePath = [System.IO.Path]::ChangeExtension($logFile, ".$timestamp.log")
-            Move-Item -Path $logFile -Destination $archivePath -Force
-        }
         $null = New-Item -ItemType File -Path $logFile -Force
     }
 
