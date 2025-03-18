@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-03-18 23:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.12
-# Additional Info: Fixed incorrect variable reference with question mark and added better error handling
+# Version: 1.1.13
+# Additional Info: Fixed $displayName variable reference and Write-Progress issues
 # =============================================================================
 
 <#
@@ -165,9 +165,10 @@ function Write-ProgressStatus {
     if (-not $EnableProgressBar) { return }
     
     try {
+        $percentComplete = [math]::Min([math]::Round(($Current / [math]::Max($Total, 1)) * 100), 100)
         Write-Progress -Activity $Activity `
                       -Status "$Status ($Current of $Total)" `
-                      -PercentComplete ([math]::Min([math]::Round(($Current / $Total) * 100), 100)) `
+                      -PercentComplete $percentComplete `
                       -Id $Id
     }
     catch {
@@ -346,7 +347,7 @@ function Import-TargetSIDs {
     Write-Log "Loaded $($script:TargetSIDs.Count) SIDs from SIDs.txt" -Level 'INFO' -Color "Cyan"
 }
 
-# Fixed Confirm-SIDRemoval function
+# Fixed Confirm-SIDRemoval function with proper variable handling
 function Confirm-SIDRemoval {
     param (
         [Parameter(Mandatory=$true)]
@@ -358,20 +359,20 @@ function Confirm-SIDRemoval {
         return $script:ApprovedSIDRemovals[$SID]
     }
 
-    $displayName = if ($Name -and $Name -ne $SID) { 
+    $displayText = if ($Name -and $Name -ne $SID) { 
         "$Name ($SID)" 
     } else { 
         $SID 
     }
     
-    Write-Host "Do you want to remove permissions for $displayName? (Y/N)" -ForegroundColor Yellow
+    Write-Host "Do you want to remove permissions for $displayText? (Y/N)" -ForegroundColor Yellow
     $confirmation = Read-Host
     $approved = $confirmation -eq 'Y'
     $script:ApprovedSIDRemovals[$SID] = $approved
 
     $logLevel = if ($approved) { 'INFO' } else { 'WARNING' }
     $logMessage = if ($approved) { "approved" } else { "denied" }
-    Write-Log "User $logMessage removal of permissions for $displayName" -Level $logLevel
+    Write-Log "User $logMessage removal of permissions for $displayText" -Level $logLevel
 
     return $approved
 }
