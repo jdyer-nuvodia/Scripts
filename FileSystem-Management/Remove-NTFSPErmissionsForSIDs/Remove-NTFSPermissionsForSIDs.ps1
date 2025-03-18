@@ -267,8 +267,7 @@ function Invoke-FolderProcessing {
         $permissionData = Get-FolderPermissions -Folder $StartPath
 
         if ($permissionData) {
-            # Process permissions as before
-            // ...existing code...
+            # Process permissions as before            
         }
     }
     catch {
@@ -299,7 +298,11 @@ function Test-AdministratorSID {
 # Main script execution
 try {
     # Start transcript
-    // ...existing code...
+    if (-not $script:TranscriptStarted) {
+        $script:TranscriptStarted = $true
+        $script:DebugLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs.log"
+        Start-Transcript -Path $script:DebugLogFile -Append
+    }
 
     # Load target SIDs
     Import-TargetSIDs
@@ -332,13 +335,15 @@ try {
     Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan" -Level 'INFO'
     Write-Log -Message "Permissions removed for: $(@($script:ApprovedSIDRemovals.Keys | Where-Object { $script:ApprovedSIDRemovals[$_] }).Count) SIDs" -Color "Cyan" -Level 'INFO'
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
-
-    // ...existing code...
 }
 catch [System.Exception] {
     Write-Error "An error occurred: $_"
     Write-Error $_.ScriptStackTrace
 }
 finally {
-    // ...existing code...
+    # Stop transcript
+    if ($script:TranscriptStarted) {
+        Stop-Transcript
+    }
+    Write-Log -Message "Script execution completed" -Level 'INFO' -Color "Green"    
 }
