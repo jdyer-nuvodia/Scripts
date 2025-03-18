@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 00:57:00 UTC
+# Last Updated: 2025-03-17 01:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.12.1
-# Additional Info: Added owner SID translation to account name
+# Version: 1.13.0
+# Additional Info: Added multi-domain Administrator SID discovery
 # =============================================================================
 
 <#
@@ -198,7 +198,7 @@ function New-LogHeader {
 # Skip AD Resolution: $SkipADResolution
 # Skip Uniqueness Counting: $SkipUniquenessCounting
 # Enable SID Diagnostics: $EnableSIDDiagnostics
-# Script Version: 1.12.1
+# Script Version: 1.13.0
 # =============================================================================
 
 "@
@@ -293,27 +293,38 @@ function Write-PerformanceMetric {
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
-    # Get all Administrator SIDs from WMI
     $adminAccounts = @()
-    $wmiAdminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue
+    $domains = Get-DomainControllers
+
+    if ($domains.Count -eq 0) {
+        Write-Log -Message "No domains found. Only checking local Administrator accounts." -Level 'WARNING' -Color "Yellow"
+        
+        # Get local Administrator account
+        $wmiAdminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator' AND LocalAccount='True'" -ErrorAction SilentlyContinue
+    }
+    else {
+        Write-Log -Message "Checking Administrator accounts across $(($domains | Measure-Object).Count) domains..." -Level 'INFO' -Color "Cyan"
+        
+        # Get all Administrator accounts (both local and domain)
+        $wmiAdminAccounts = Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue
+    }
 
     if ($wmiAdminAccounts) {
-        # Process each admin account and store structured information
         foreach ($account in $wmiAdminAccounts) {
             $domainType = if ($account.LocalAccount) { "Local" } else { "Domain" }
             $domain = if ($account.Domain) { $account.Domain } else { $env:COMPUTERNAME }
 
-            # Try to get FQDN for domain accounts
+            # Get FQDN for domain accounts
             $fqdn = $domain
             if (-not $account.LocalAccount) {
                 try {
-                    $domainObj = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain(
-                        (New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $domain))
-                    )
-                    $fqdn = $domainObj.Name
+                    $domainObj = $domains | Where-Object { $_.Name -like "*$domain*" } | Select-Object -First 1
+                    if ($domainObj) {
+                        $fqdn = $domainObj.Name
+                    }
                 }
                 catch {
-                    Write-Log -Message "Could not get FQDN for domain $domain" -Color "DarkGray" -NoConsole -Level 'DEBUG'
+                    Write-Log -Message "Could not get FQDN for domain $domain" -Level 'DEBUG' -NoConsole
                 }
             }
 
@@ -325,18 +336,17 @@ function Initialize-WellKnownSIDs {
                 DisplayName = "$($account.SID) [${domainType}: $fqdn]"
             }
         }
+    }
 
-        # Set the first SID for lookups
-        if ($adminAccounts.Count -gt 0) {
-            $script:AdminSID = $adminAccounts[0].SID
-        }
+    if ($adminAccounts.Count -eq 0) {
+        Write-Log -Message "No Administrator accounts found. Using default SID pattern." -Level 'WARNING' -Color "Yellow"
+        $script:AdminSID = "S-1-5-21-domain-500"
     }
     else {
-        # Fallback to default Administrator SID pattern
-        $script:AdminSID = "S-1-5-21-domain-500"
-        Write-Log -Message "Could not retrieve Administrator SIDs, using placeholder" -Color "Yellow" -Level 'WARNING'
+        $script:AdminSID = $adminAccounts[0].SID
     }
 
+    # Initialize well-known SIDs
     $script:WellKnownSIDs = @{
         "Nobody" = "S-1-0-0"
         "Everyone" = "S-1-1-0"
@@ -750,6 +760,40 @@ function Get-HumanReadablePermissions {
         { $_ -band [System.Security.AccessControl.FileSystemRights]::Read } { return "Read Only" }
         { $_ -band [System.Security.AccessControl.FileSystemRights]::Write } { return "Write Only" }
         default { return $Rights.ToString() }
+    }
+}
+
+# Add function to discover domain controllers
+function Get-DomainControllers {
+    try {
+        Write-Log -Message "Discovering domain controllers..." -Level 'INFO' -Color "Cyan"
+        $domains = @()
+        
+        # Get the current domain
+        try {
+            $currentDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+            $domains += $currentDomain
+            Write-Log -Message "Found current domain: $($currentDomain.Name)" -Level 'DEBUG' -NoConsole
+        }
+        catch {
+            Write-Log -Message "Could not get current domain: $_" -Level 'WARNING' -Color "Yellow"
+        }
+
+        # Get trusted domains
+        try {
+            $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
+            $domains += $forest.Domains | Where-Object { $_.Name -ne $currentDomain.Name }
+            Write-Log -Message "Found $(($domains | Measure-Object).Count) total domains" -Level 'DEBUG' -NoConsole
+        }
+        catch {
+            Write-Log -Message "Could not get forest domains: $_" -Level 'WARNING' -Color "Yellow"
+        }
+
+        return $domains
+    }
+    catch {
+        Write-Log -Message "Error discovering domain controllers: $_" -Level 'ERROR' -Color "Red"
+        return @()
     }
 }
 
