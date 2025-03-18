@@ -18,7 +18,7 @@ Consolidates output into two log files:
 - Main log for permission details
 - Debug log for troubleshooting information
 
-.PARAMETER FolderPath
+.PARAMETER StartPath
 The folder path to analyze. Must be a valid NTFS path.
 
 .PARAMETER MaxThreads
@@ -43,7 +43,7 @@ Maximum time in minutes to allow the script to run.
 Enables progress bar display during processing.
 
 .EXAMPLE
-.\Get-NTFSFolderPermissions.ps1 -FolderPath "C:\Temp"
+.\Get-NTFSFolderPermissions.ps1 -StartPath "C:\Temp"
 Analyzes permissions on C:\Temp and outputs to logs
 #>
 
@@ -55,7 +55,7 @@ using namespace System.Security.Principal
 param (
     [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
     [ValidateScript({Test-Path $_ -PathType Container})]
-    [string]$FolderPath,
+    [string]$StartPath,
 
     [Parameter(Mandatory = $false)]
     [int]$MaxThreads = 10,
@@ -171,7 +171,7 @@ function Get-SafeFilename {
 # Consolidated log initialization with enhanced configuration
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $computerName = $env:COMPUTERNAME
-$safePath = Get-SafeFilename -Path $FolderPath
+$safePath = Get-SafeFilename -Path $StartPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
 $script:DebugLogFile = "${logBase}_debug.log"
 $script:TranscriptFile = "${logBase}_transcript.log"
@@ -192,7 +192,7 @@ function New-LogHeader {
 # PowerShell Version: $($PSVersionTable.PSVersion)
 # Executed By: $currentUser
 # Admin Privileges: $isAdmin
-# Analysis Path: $FolderPath
+# Analysis Path: $StartPath
 # Max Threads: $MaxThreads
 # Max Depth: $MaxDepth
 # Skip AD Resolution: $SkipADResolution
@@ -857,10 +857,10 @@ try {
     }
 
     Write-Log ""
-    Write-Log -Message "Starting folder permission analysis for $FolderPath" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Starting folder permission analysis for $StartPath" -Color "Cyan" -Level 'INFO'
 
     # Process folders with timeout tracking
-    Invoke-FolderRecursively -Path $FolderPath
+    Invoke-FolderRecursively -Path $StartPath
 
     if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
         Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
