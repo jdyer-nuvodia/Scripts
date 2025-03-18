@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:52:00 UTC
+# Last Updated: 2025-03-18 23:54:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.16
-# Additional Info: Implemented reliable folder scanning from Get-NTFSFolderPermissions
+# Version: 1.1.17
+# Additional Info: Fixed unused 'modified' variable and added status tracking
 # =============================================================================
 
 <#
@@ -290,7 +290,14 @@ function Invoke-FolderRecursively {
         $currentAcl = Get-Acl -Path $StartPath -ErrorAction Stop
         $modified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $currentAcl
 
-        # Process subfolders only if current folder was processed successfully
+        # Log folder processing status
+        if ($modified) {
+            Write-Log "Modified permissions on: $StartPath" -Level 'SUCCESS' -Color "Green"
+        } else {
+            Write-Log "No permission changes needed for: $StartPath" -Level 'DEBUG' -Color "DarkGray" -NoConsole
+        }
+
+        # Process subfolders only if current folder was accessible
         if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
             $subFolders = @()
             try {
