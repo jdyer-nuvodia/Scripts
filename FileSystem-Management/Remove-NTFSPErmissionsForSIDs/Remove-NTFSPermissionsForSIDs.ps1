@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 18:38:00 UTC
+# Last Updated: 2025-03-18 22:46:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.2
-# Additional Info: Fixed parameter naming inconsistencies, added missing functions, corrected Write-Log parameters
+# Version: 1.1.4
+# Additional Info: Relocated log files to script directory for simplified management
 # =============================================================================
 
 <#
@@ -86,6 +86,9 @@ $ErrorActionPreference = 'Stop'
 
 # Script-level variables
 $script:TranscriptStarted = $false
+$script:MainLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs.log"
+$script:DebugLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Debug.log"
+$script:TranscriptFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs_Transcript.log"
 $script:SidCache = @{}
 $script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
 $script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
@@ -475,11 +478,21 @@ function Test-AdministratorSID {
 
 # Main script execution
 try {
-    # Start transcript
+    # Start transcript with unique name
     if (-not $script:TranscriptStarted) {
         $script:TranscriptStarted = $true
-        $script:DebugLogFile = Join-Path $PSScriptRoot "Remove-NTFSPermissionsForSIDs.log"
-        Start-Transcript -Path $script:DebugLogFile -Append
+        Start-Transcript -Path $script:TranscriptFile -Force
+    }
+
+    # Initialize log files
+    foreach ($logFile in @($script:MainLogFile, $script:DebugLogFile)) {
+        if (Test-Path $logFile) {
+            # Archive existing log if it exists
+            $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+            $archivePath = [System.IO.Path]::ChangeExtension($logFile, ".$timestamp.log")
+            Move-Item -Path $logFile -Destination $archivePath -Force
+        }
+        $null = New-Item -ItemType File -Path $logFile -Force
     }
 
     # Load target SIDs
@@ -519,9 +532,14 @@ catch [System.Exception] {
     Write-Error $_.ScriptStackTrace
 }
 finally {
-    # Stop transcript
+    # Stop transcript safely
     if ($script:TranscriptStarted) {
-        Stop-Transcript
+        try {
+            Stop-Transcript
+        }
+        catch {
+            Write-Error "Failed to stop transcript: $_"
+        }
     }
     Write-Log -Message "Script execution completed" -Level 'INFO' -Color "Green"    
 }
