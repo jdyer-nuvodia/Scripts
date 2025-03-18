@@ -2,9 +2,9 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:03:00 UTC
+# Last Updated: 2025-03-18 23:06:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.9
+# Version: 1.1.10
 # Additional Info: Fixed displayName variable error and progress bar issues
 # =============================================================================
 
@@ -162,7 +162,6 @@ function Write-ProgressStatus {
     if (-not $EnableProgressBar) { return }
     
     $percentComplete = [math]::Min([math]::Round(($Current / $Total) * 100), 100)
-    $remainingItems = $Total - $Current
     
     $progressParams = @{
         Activity = $Activity
