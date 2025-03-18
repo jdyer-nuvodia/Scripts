@@ -197,7 +197,7 @@ function Confirm-SIDRemoval {
 function Remove-TargetSIDPermissions {
     param (
         [Parameter(Mandatory=$true)]
-        [string]$Path,
+        [string]$StartPath,
         [System.Security.AccessControl.FileSystemSecurity]$Acl
     )
 
@@ -223,15 +223,15 @@ function Remove-TargetSIDPermissions {
                 $Acl.RemoveAccessRule($ace) | Out-Null
                 $modified = $true
                 $removedCount++
-                Write-Log "Removed permission for $name from $Path" -Level 'SUCCESS' -Color "Green"
+                Write-Log "Removed permission for $name from $StartPath" -Level 'SUCCESS' -Color "Green"
             }
         }
     }
 
     if ($modified) {
         try {
-            Set-Acl -Path $Path -AclObject $Acl
-            Write-Log "Successfully updated permissions on $Path (Removed $removedCount permissions)" -Level 'SUCCESS' -Color "Green"
+            Set-Acl -Path $StartPath -AclObject $Acl
+            Write-Log "Successfully updated permissions on $StartPath (Removed $removedCount permissions)" -Level 'SUCCESS' -Color "Green"
         } catch {
             Write-Log "Failed to update permissions on ${Path}: $_" -Level 'ERROR' -Color "Red"
         }
@@ -243,28 +243,28 @@ function Remove-TargetSIDPermissions {
 # Modified Invoke-FolderProcessing to include permission removal
 function Invoke-FolderProcessing {
     param(
-        [string]$Path,
+        [string]$StartPath,
         [int]$CurrentCount,
         [int]$TotalCount
     )
 
     $startTime = Get-Date
     try {
-        Write-Log -Message "Processing folder: $Path" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
+        Write-Log -Message "Processing folder: $StartPath" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
 
         # Get current ACL
-        $acl = Get-Acl -Path $Path
+        $acl = Get-Acl -Path $StartPath
         
         # Check and remove target SID permissions
-        $modified = Remove-TargetSIDPermissions -Path $Path -Acl $acl
+        $modified = Remove-TargetSIDPermissions -Path $StartPath -Acl $acl
 
         # Get updated permissions for logging
         if ($modified) {
-            $acl = Get-Acl -Path $Path
+            $acl = Get-Acl -Path $StartPath
         }
 
         # Continue with permission analysis
-        $permissionData = Get-FolderPermissions -Folder $Path
+        $permissionData = Get-FolderPermissions -Folder $StartPath
 
         if ($permissionData) {
             # Process permissions as before
@@ -276,8 +276,8 @@ function Invoke-FolderProcessing {
         Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
     }
     finally {
-        Write-PerformanceMetric -Operation "Folder processing for $Path" -StartTime $startTime
-        Write-ProgressStatus -Activity "Analyzing and Updating Folder Permissions" -Status "Processing: $Path" -Current $CurrentCount -Total $TotalCount
+        Write-PerformanceMetric -Operation "Folder processing for $StartPath" -StartTime $startTime
+        Write-ProgressStatus -Activity "Analyzing and Updating Folder Permissions" -Status "Processing: $StartPath" -Current $CurrentCount -Total $TotalCount
     }
 }
 

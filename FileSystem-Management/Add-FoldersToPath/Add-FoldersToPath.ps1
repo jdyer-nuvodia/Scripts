@@ -89,22 +89,22 @@ begin {
 process {
     # Function to sanitize and validate path
     function Get-SanitizedPath {
-        param([string]$Path)
+        param([string]$StartPath)
         
         try {
-            return (Resolve-Path $Path).Path.TrimEnd('\')
+            return (Resolve-Path $StartPath).Path.TrimEnd('\')
         }
         catch {
-            Write-Warning "Failed to resolve path: $Path"
+            Write-Warning "Failed to resolve path: $StartPath"
             return $null
         }
     }
 
     # Function to add a path if it doesn't exist
     function Add-UniquePathItem {
-        param([string]$Path)
+        param([string]$StartPath)
         
-        $sanitizedPath = Get-SanitizedPath $Path
+        $sanitizedPath = Get-SanitizedPath $StartPath
         if ($null -eq $sanitizedPath) { return $null }
         
         if ($currentPathArray -notcontains $sanitizedPath) {

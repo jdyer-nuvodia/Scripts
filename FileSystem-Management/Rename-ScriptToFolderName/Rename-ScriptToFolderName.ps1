@@ -58,7 +58,7 @@ param(
                Position=0,
                ValueFromPipeline=$true,
                ValueFromPipelineByPropertyName=$true)]
-    [string]$Path,
+    [string]$StartPath,
 
     [Parameter(Mandatory=$false)]
     [switch]$Recursive
@@ -167,26 +167,26 @@ function Rename-ScriptFile {
 
 try {
     # Verify path exists
-    if (!(Test-Path -Path $Path)) {
-        throw "Path '$Path' does not exist."
+    if (!(Test-Path -Path $StartPath)) {
+        throw "Path '$StartPath' does not exist."
     }
     
     Write-Host "Starting script rename process..." -ForegroundColor Cyan
-    Write-Host "Processing path: $Path" -ForegroundColor Gray
+    Write-Host "Processing path: $StartPath" -ForegroundColor Gray
     Write-Host "Recursive mode: $Recursive" -ForegroundColor Gray
     
     # Initialize folders collection
     $folders = @()
     
     # Get the root folder
-    if ((Get-Item -Path $Path).PSIsContainer) {
-        $folders += Get-Item -Path $Path
+    if ((Get-Item -Path $StartPath).PSIsContainer) {
+        $folders += Get-Item -Path $StartPath
     }
     
     # Add subfolders if recursive
     if ($Recursive) {
         Write-Host "Getting all subfolders recursively..." -ForegroundColor Gray
-        $subFolders = Get-ChildItem -Path $Path -Directory -Recurse
+        $subFolders = Get-ChildItem -Path $StartPath -Directory -Recurse
         $folders += $subFolders
         Write-Host "Found $($subFolders.Count) subfolder(s)" -ForegroundColor Gray
     }

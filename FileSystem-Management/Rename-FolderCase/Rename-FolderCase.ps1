@@ -53,7 +53,7 @@ param(
                Position=0,
                ValueFromPipeline=$true,
                ValueFromPipelineByPropertyName=$true)]
-    [string]$Path,
+    [string]$StartPath,
 
     [Parameter(Mandatory=$false)]
     [switch]$Recursive
@@ -62,7 +62,7 @@ param(
 # Enable verbose output
 $VerbosePreference = "Continue"
 
-Write-Host "Script started - Processing path: $Path" -ForegroundColor Cyan
+Write-Host "Script started - Processing path: $StartPath" -ForegroundColor Cyan
 Write-Verbose "Recursive mode: $Recursive"
 
 function Convert-ToPascalCase {
@@ -144,8 +144,8 @@ try {
     Write-Host "`nStarting folder case correction process..." -ForegroundColor Cyan
     
     # Verify path exists
-    if (!(Test-Path -Path $Path)) {
-        throw "Path '$Path' does not exist."
+    if (!(Test-Path -Path $StartPath)) {
+        throw "Path '$StartPath' does not exist."
     }
     
     Write-Host "Getting list of folders to process..." -ForegroundColor Cyan
@@ -153,12 +153,12 @@ try {
     $folders = @()
     if ($Recursive) {
         Write-Verbose "Getting all subfolders recursively..."
-        $folders = Get-ChildItem -Path $Path -Directory -Recurse
+        $folders = Get-ChildItem -Path $StartPath -Directory -Recurse
         Write-Host "Found $($folders.Count) subfolders" -ForegroundColor Cyan
     }
     else {
         Write-Verbose "Getting immediate subfolders only..."
-        $folders = Get-ChildItem -Path $Path -Directory
+        $folders = Get-ChildItem -Path $StartPath -Directory
         Write-Host "Found $($folders.Count) folders" -ForegroundColor Cyan
     }
     
@@ -173,9 +173,9 @@ try {
     }
     
     # Process the root folder if it's a directory
-    if ((Get-Item -Path $Path).PSIsContainer) {
-        Write-Host "`nProcessing root folder: $Path" -ForegroundColor Cyan
-        Rename-FolderWithCase -StartPath $Path
+    if ((Get-Item -Path $StartPath).PSIsContainer) {
+        Write-Host "`nProcessing root folder: $StartPath" -ForegroundColor Cyan
+        Rename-FolderWithCase -StartPath $StartPath
     }
     
     Write-Host "`nFolder case correction process completed successfully." -ForegroundColor Green

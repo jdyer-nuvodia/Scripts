@@ -33,7 +33,7 @@
 #>
 
 # Define paths for installed software
-$paths = @(
+$StartPaths = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
@@ -43,8 +43,8 @@ $paths = @(
 $softwareList = @()
 
 # Loop through each path and retrieve software details
-foreach ($path in $paths) {
-    $installedSoftware = Get-ItemProperty -Path $path\*
+foreach ($StartPath in $StartPaths) {
+    $installedSoftware = Get-ItemProperty -Path $StartPath\*
     
     foreach ($obj in $installedSoftware) {
         if ($obj.DisplayName) {

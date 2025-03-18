@@ -42,28 +42,28 @@ param(
 function Set-Ownership {
     param (
         [Parameter(Mandatory=$true)]
-        [string]$Path
+        [string]$StartPath
     )
     
-    Write-Host "Taking ownership of path: $Path" -ForegroundColor Cyan
+    Write-Host "Taking ownership of path: $StartPath" -ForegroundColor Cyan
     
     try {
         # Take ownership using icacls command
-        $takeOwnResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$Path`" /takeown /T /C /Q" -NoNewWindow -PassThru -Wait
+        $takeOwnResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$StartPath`" /takeown /T /C /Q" -NoNewWindow -PassThru -Wait
         if ($takeOwnResult.ExitCode -ne 0) {
-            Write-Host "Warning: Failed to take ownership of $Path (Exit code: $($takeOwnResult.ExitCode))" -ForegroundColor Yellow
+            Write-Host "Warning: Failed to take ownership of $StartPath (Exit code: $($takeOwnResult.ExitCode))" -ForegroundColor Yellow
         }
         
         # Grant full control to the current user/system
-        $grantResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$Path`" /grant *S-1-5-18:F /T /C /Q" -NoNewWindow -PassThru -Wait
+        $grantResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$StartPath`" /grant *S-1-5-18:F /T /C /Q" -NoNewWindow -PassThru -Wait
         if ($grantResult.ExitCode -ne 0) {
-            Write-Host "Warning: Failed to grant permissions on $Path (Exit code: $($grantResult.ExitCode))" -ForegroundColor Yellow
+            Write-Host "Warning: Failed to grant permissions on $StartPath (Exit code: $($grantResult.ExitCode))" -ForegroundColor Yellow
         }
         
         return $true
     }
     catch {
-        Write-Host "Error taking ownership of $Path`: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "Error taking ownership of $StartPath`: $($_.Exception.Message)" -ForegroundColor Yellow
         return $false
     }
 }

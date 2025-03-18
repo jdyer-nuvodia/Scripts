@@ -47,10 +47,10 @@ $job = Start-Job -ScriptBlock {
             "${env:ProgramFiles(x86)}\Microsoft OneDrive\OneDriveSetup.exe"
         )
 
-        foreach ($path in $oneDrivePaths) {
-            if (Test-Path $path) {
-                Write-Host "Uninstalling OneDrive from $path" -ForegroundColor Cyan
-                Start-Process $path -ArgumentList "/uninstall" -Wait
+        foreach ($StartPath in $oneDrivePaths) {
+            if (Test-Path $StartPath) {
+                Write-Host "Uninstalling OneDrive from $StartPath" -ForegroundColor Cyan
+                Start-Process $StartPath -ArgumentList "/uninstall" -Wait
             }
         }
 

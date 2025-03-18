@@ -213,10 +213,10 @@ function Get-SystemAccessControl {
                 "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
             )
 
-            foreach ($path in $registryPaths) {
-                if (Test-Path $path) {
-                    Write-StatusMessage "Registry Path: $path" -Type "Success"
-                    Get-ItemProperty -Path $path | 
+            foreach ($StartPath in $registryPaths) {
+                if (Test-Path $StartPath) {
+                    Write-StatusMessage "Registry Path: $StartPath" -Type "Success"
+                    Get-ItemProperty -Path $StartPath | 
                         Select-Object -Property * -ExcludeProperty PS* |
                         ForEach-Object {
                             $_.PSObject.Properties | ForEach-Object {
@@ -328,11 +328,11 @@ function Get-AdvancedRegistrySettings {
 
         Write-StatusMessage "`nAdvanced Registry Security Settings:" -Type "Info"
         
-        foreach ($path in $registryPaths) {
-            if (Test-Path $path) {
-                Write-StatusMessage "`nRegistry Path: $path" -Type "Success"
+        foreach ($StartPath in $registryPaths) {
+            if (Test-Path $StartPath) {
+                Write-StatusMessage "`nRegistry Path: $StartPath" -Type "Success"
                 try {
-                    $properties = Get-ItemProperty -Path $path -ErrorAction Stop
+                    $properties = Get-ItemProperty -Path $StartPath -ErrorAction Stop
                     $properties.PSObject.Properties | 
                         Where-Object { $_.Name -notlike 'PS*' } | 
                         ForEach-Object {

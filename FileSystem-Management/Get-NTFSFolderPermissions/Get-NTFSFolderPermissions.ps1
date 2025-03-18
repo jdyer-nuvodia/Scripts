@@ -115,17 +115,17 @@ function Get-SafeFilename {
     param (
         [Parameter(Mandatory=$true, Position=0)]
         [ValidateNotNullOrEmpty()]
-        [string]$Path
+        [string]$StartPath
     )
 
     try {
         # Initial null/empty check
-        if ([string]::IsNullOrEmpty($Path)) {
+        if ([string]::IsNullOrEmpty($StartPath)) {
             throw "Path cannot be null or empty"
         }
 
         # Convert path separators to underscores
-        $safeName = $Path.Replace('\', '_').Replace('/', '_')
+        $safeName = $StartPath.Replace('\', '_').Replace('/', '_')
 
         # Replace invalid characters but preserve dashes and spaces
         $safeName = $safeName -replace '[:<>"|?*]', '_'
@@ -157,9 +157,9 @@ function Get-SafeFilename {
         Write-Log -Message "Error in Get-SafeFilename: $_" -Level 'ERROR' -Color "Red"
         # Return a safe default name that includes part of the original path
         $defaultName = "DefaultLog_" + (Get-Date -Format 'yyyyMMdd_HHmmss')
-        if (-not [string]::IsNullOrEmpty($Path)) {
+        if (-not [string]::IsNullOrEmpty($StartPath)) {
             # Take last part of path if available
-            $lastPart = $Path.Split('\')[-1]
+            $lastPart = $StartPath.Split('\')[-1]
             if (-not [string]::IsNullOrEmpty($lastPart)) {
                 $defaultName = "Log_" + ($lastPart -replace '[^\w\-]', '_')
             }
@@ -642,17 +642,17 @@ function Get-FolderPermissions {
 # Modify Invoke-FolderProcessing to track detailed metrics
 function Invoke-FolderProcessing {
     param(
-        [string]$Path,
+        [string]$StartPath,
         [int]$CurrentCount,
         [int]$TotalCount
     )
 
     $startTime = Get-Date
     try {
-        Write-Log -Message "Processing folder: $Path" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
+        Write-Log -Message "Processing folder: $StartPath" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
 
         # Get permissions for the folder
-        $permissionData = Get-FolderPermissions -Folder $Path
+        $permissionData = Get-FolderPermissions -Folder $StartPath
 
         if ($permissionData) {
             # Track unique permission sets with owner
@@ -670,20 +670,20 @@ function Invoke-FolderProcessing {
             }
 
             # Group by parent path for better organization
-            $currentParent = Split-Path -Path $Path -Parent
+            $currentParent = Split-Path -Path $StartPath -Parent
             if (-not [string]::IsNullOrEmpty($currentParent)) {
                 if (-not $script:PermissionGroups[$permissionHash].ParentPaths.ContainsKey($currentParent)) {
                     $script:PermissionGroups[$permissionHash].ParentPaths[$currentParent] = @()
                 }
-                $script:PermissionGroups[$permissionHash].ParentPaths[$currentParent] += $Path
+                $script:PermissionGroups[$permissionHash].ParentPaths[$currentParent] += $StartPath
             }
 
-            $script:PermissionGroups[$permissionHash].Folders += $Path
-            $script:FolderPermissions[$Path] = $permissionData
+            $script:PermissionGroups[$permissionHash].Folders += $StartPath
+            $script:FolderPermissions[$StartPath] = $permissionData
 
             # Log non-inherited permissions for security analysis
             if (-not $permissionData.IsInherited) {
-                Write-Log -Message "Found explicit permissions on: $Path" -Level 'DEBUG' -Category 'Security' -NoConsole
+                Write-Log -Message "Found explicit permissions on: $StartPath" -Level 'DEBUG' -Category 'Security' -NoConsole
             }
 
             # Update unique permissions count - only write to debug log
@@ -691,14 +691,14 @@ function Invoke-FolderProcessing {
                 $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -Owner $permissionData.Owner -IncludeInheritance:$false
 
                 if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
-                    $script:UniquePermissions[$permissionHash] = @($Path)
+                    $script:UniquePermissions[$permissionHash] = @($StartPath)
                 } else {
-                    $script:UniquePermissions[$permissionHash] += $Path
+                    $script:UniquePermissions[$permissionHash] += $StartPath
                 }
             }
         } else {
-            Write-Log -Message "Could not retrieve permissions for $Path" -Color "Yellow" -Level 'WARNING'
-            Write-Log -Message "Could not retrieve permissions for $Path" -Color "Yellow" -Level 'WARNING' -Category 'AccessDenied'
+            Write-Log -Message "Could not retrieve permissions for $StartPath" -Color "Yellow" -Level 'WARNING'
+            Write-Log -Message "Could not retrieve permissions for $StartPath" -Color "Yellow" -Level 'WARNING' -Category 'AccessDenied'
         }
     }
     catch {
@@ -707,15 +707,15 @@ function Invoke-FolderProcessing {
         Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
     }
     finally {
-        Write-PerformanceMetric -Operation "Folder processing for $Path" -StartTime $startTime
-        Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status "Processing: $Path" -Current $CurrentCount -Total $TotalCount
+        Write-PerformanceMetric -Operation "Folder processing for $StartPath" -StartTime $startTime
+        Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status "Processing: $StartPath" -Current $CurrentCount -Total $TotalCount
     }
 }
 
 # Function to process folders recursively
 function Invoke-FolderRecursively {
     param (
-        [string]$Path,
+        [string]$StartPath,
         [int]$CurrentDepth = 0
     )
 
@@ -734,16 +734,16 @@ function Invoke-FolderRecursively {
         $script:TotalFolders++
         $script:ProcessedFolders++
 
-        Invoke-FolderProcessing -Path $Path -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
+        Invoke-FolderProcessing -Path $StartPath -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
 
         if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
-            Get-ChildItem -Path $Path -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Path $StartPath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                 Invoke-FolderRecursively -Path $_.FullName -CurrentDepth ($CurrentDepth + 1)
             }
         }
     }
     catch {
-        Write-Log "Error processing folder $Path : $_" -Level 'ERROR' -Color "Red"
+        Write-Log "Error processing folder $StartPath : $_" -Level 'ERROR' -Color "Red"
     }
 }
 
