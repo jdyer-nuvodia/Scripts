@@ -488,7 +488,9 @@ function Invoke-FolderProcessing {
 
 # Modified function to use adminAccounts
 function Test-AdministratorSID {
-    param([string]$SID)
+    param(
+        [string]$SID
+    )
     
     if ([string]::IsNullOrEmpty($SID)) { return $false }
     
