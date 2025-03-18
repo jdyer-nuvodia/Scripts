@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 01:07:00 UTC
+# Last Updated: 2025-03-18 16:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.13.1
-# Additional Info: Fixed domain count handling and array initialization
+# Version: 1.14.1
+# Additional Info: Added explicit owner check for subfolder permission comparison
 # =============================================================================
 
 <#
@@ -198,7 +198,7 @@ function New-LogHeader {
 # Skip AD Resolution: $SkipADResolution
 # Skip Uniqueness Counting: $SkipUniquenessCounting
 # Enable SID Diagnostics: $EnableSIDDiagnostics
-# Script Version: 1.13.1
+# Script Version: 1.14.0
 # =============================================================================
 
 "@
@@ -894,24 +894,35 @@ try {
         # Display owner information
         Write-Log -Message "Owner: $($data.Owner)" -Color "White" -Level 'INFO'
 
-        # Find all descendants with identical permissions (including owner)
+        # Find all descendants with identical permissions AND same owner
         $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
             Where-Object { 
                 $_ -and 
                 $_ -ne $folder -and 
-                $script:FolderPermissions[$_].MatchesParent 
+                $script:FolderPermissions[$_].MatchesParent -and
+                $script:FolderPermissions[$_].Owner -eq $data.Owner  # Added explicit owner check
             })
 
         if ($identicalDescendants -and $identicalDescendants.Count -gt 0) {
-            Write-Log -Message "Subfolders with same permissions:" -Color "DarkGray" -Level 'INFO'
-            foreach ($descendant in ($identicalDescendants | Sort-Object)) {
-                if ($descendant -and $folder) {
-                    if ($descendant.Length -gt $folder.Length) {
-                        $relativePath = $descendant.Substring($folder.Length + 1)
-                        Write-Log -Message "  - $relativePath" -Color "DarkGray" -Level 'INFO'
-                    } else {
-                        # Handle case where descendant path is the same or shorter than folder path
-                        Write-Log -Message "  - <root folder>" -Color "DarkGray" -Level 'INFO'
+            # Check if ALL subfolders are identical (permissions AND owner)
+            $allSubfolders = Get-ChildItem -Path $folder -Directory -Recurse | Select-Object -ExpandProperty FullName
+            $nonMatchingSubfolders = $allSubfolders | Where-Object { 
+                $_ -notin $identicalDescendants -and 
+                $script:FolderPermissions[$_] -and 
+                (-not $script:FolderPermissions[$_].MatchesParent -or
+                 $script:FolderPermissions[$_].Owner -ne $data.Owner)  # Added explicit owner check
+            }
+
+            if ($nonMatchingSubfolders.Count -eq 0) {
+                Write-Log -Message "  All Subfolders (Identical Permissions and Owner)" -Color "DarkGray" -Level 'INFO'
+            } else {
+                Write-Log -Message "Subfolders with same permissions and owner:" -Color "DarkGray" -Level 'INFO'
+                foreach ($descendant in ($identicalDescendants | Sort-Object)) {
+                    if ($descendant -and $folder) {
+                        if ($descendant.Length -gt $folder.Length) {
+                            $relativePath = $descendant.Substring($folder.Length + 1)
+                            Write-Log -Message "  - $relativePath" -Color "DarkGray" -Level 'INFO'
+                        }
                     }
                 }
             }
