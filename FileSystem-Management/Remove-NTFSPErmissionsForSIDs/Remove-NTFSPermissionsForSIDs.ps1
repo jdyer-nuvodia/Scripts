@@ -532,18 +532,22 @@ try {
     # Initialize SIDs and get Administrator accounts
     $script:adminAccounts = Initialize-WellKnownSIDs
 
-    # Validate admin accounts and add to well-known SIDs
-    foreach ($admin in $script:adminAccounts) {
+     # Validate admin accounts and add to well-known SIDs
+     foreach ($admin in $script:adminAccounts) {
         if (-not $script:WellKnownSIDs.ContainsValue($admin.SID)) {
             $script:WellKnownSIDs["Administrator_$($admin.Domain)"] = $admin.SID
         }
     }
 
-    Write-Log -Message "Starting folder permission analysis and removal for $StartPath" -Color "Cyan" -Level 'INFO'
+    # Add detailed logging for SID initialization
+    Write-Log "Starting folder permission analysis and removal for $StartPath" -Color Cyan
+    Write-Log "Debug: Current well-known SIDs:" -Level 'DEBUG'
+    $script:WellKnownSIDs.Keys | ForEach-Object {
+        Write-Log "  $_ : $($script:WellKnownSIDs[$_])" -Level 'DEBUG' -NoConsole
+    }
 
     # Process folders with timeout tracking
     Invoke-FolderRecursively -Path $StartPath
-
     if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
         Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
     }
