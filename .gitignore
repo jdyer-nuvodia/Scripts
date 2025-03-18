@@ -42,3 +42,6 @@ CommitHistory/
 
 # CSV files
 *.csv
+
+#.txt files
+*.txt
