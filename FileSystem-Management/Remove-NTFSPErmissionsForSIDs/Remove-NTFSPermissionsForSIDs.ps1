@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:13:00 UTC
+# Last Updated: 2025-03-18 23:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.11
-# Additional Info: Fixed variable reference error in Confirm-SIDRemoval and added Write-Progress error handling
+# Version: 1.1.12
+# Additional Info: Fixed incorrect variable reference with question mark and added better error handling
 # =============================================================================
 
 <#
@@ -395,18 +395,28 @@ function Remove-TargetSIDPermissions {
                 $ntAccount = [System.Security.Principal.NTAccount]$ace.IdentityReference
                 $sid = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
             } catch {
-                Write-Log "Could not translate $($ace.IdentityReference) to SID" -Level 'WARNING'
+                Write-Log "Could not translate $($ace.IdentityReference) to SID" -Level 'WARNING' -NoConsole
                 continue
             }
         }
 
         if ($script:TargetSIDs -contains $sid) {
             $name = Convert-SidToName -Sid $sid
-            if (Confirm-SIDRemoval -SID $sid -Name $name) {
-                $Acl.RemoveAccessRule($ace) | Out-Null
-                $modified = $true
-                $removedCount++
-                Write-Log "Removed permission for $name from $StartPath" -Level 'SUCCESS' -Color "Green"
+            # Make sure we have a valid name before calling Confirm-SIDRemoval
+            if ([string]::IsNullOrEmpty($name)) { $name = $sid }
+            
+            # Use try/catch to help identify any issues
+            try {
+                if (Confirm-SIDRemoval -SID $sid -Name $name) {
+                    $Acl.RemoveAccessRule($ace) | Out-Null
+                    $modified = $true
+                    $removedCount++
+                    Write-Log "Removed permission for $name from $StartPath" -Level 'SUCCESS' -Color "Green"
+                }
+            }
+            catch {
+                Write-Log "Error in permission removal process: $_" -Level 'ERROR' -Color "Red"
+                Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -NoConsole
             }
         }
     }
