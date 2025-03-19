@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 23:54:00 UTC
+# Last Updated: 2025-03-18 00:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.17
-# Additional Info: Fixed unused 'modified' variable and added status tracking
+# Version: 1.1.18
+# Additional Info: Fixed script hanging issue with unused modified variable
 # =============================================================================
 
 <#
@@ -270,11 +270,8 @@ function Invoke-FolderRecursively {
     )
 
     try {
-        # Add debug logging at function start
-        Write-Log "Starting folder processing: $StartPath (Depth: $CurrentDepth)" -Level 'DEBUG' -Color "Magenta" -NoConsole
-
+        # Check cancellation at entry point
         if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
-            Write-Log "Processing cancelled by user" -Level 'WARNING' -Color "Yellow"
             return
         }
 
@@ -287,36 +284,53 @@ function Invoke-FolderRecursively {
         $script:ProcessedFolders++
         
         # Process current folder first
-        Write-Log "Processing folder ($script:ProcessedFolders of $script:TotalFolders): $StartPath" -Level 'INFO' -Color "Cyan" -NoConsole
+        Write-Log "Processing folder ($script:ProcessedFolders): $StartPath" -Level 'INFO' -Color "Cyan" -NoConsole
+        
+        # Update progress more frequently
+        Write-ProgressStatus -Activity "Processing Folders" `
+                           -Status "Current: $StartPath" `
+                           -Current $script:ProcessedFolders `
+                           -Total $script:TotalFolders
         
         # Get and process current folder permissions
-        $currentAcl = Get-Acl -Path $StartPath -ErrorAction Stop
-        $modified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $currentAcl
-
-        # Log folder processing status
-        if ($modified) {
-            Write-Log "Modified permissions on: $StartPath" -Level 'SUCCESS' -Color "Green"
-        } else {
-            Write-Log "No permission changes needed for: $StartPath" -Level 'DEBUG' -Color "DarkGray" -NoConsole
+        try {
+            $currentAcl = Get-Acl -Path $StartPath -ErrorAction Stop
+            $permissionsModified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $currentAcl
+            
+            # Use the modified flag to provide feedback in logs
+            if ($permissionsModified) {
+                Write-Log "Successfully modified permissions on $StartPath" -Level 'INFO' -Color "Green" -NoConsole
+            }
+        }
+        catch {
+            Write-Log "Error processing permissions on ${StartPath}: $_" -Level 'ERROR' -Color "Red"
+            # Continue with subfolder processing even if current folder had errors
         }
 
         # Process subfolders only if current folder was accessible
         if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
             try {
-                $subFolders = Get-ChildItem -Path $StartPath -Directory -ErrorAction Stop
-                Write-Log "Found $($subFolders.Count) subfolders in $StartPath" -Level 'DEBUG' -Color "Magenta" -NoConsole
+                $subFolders = @(Get-ChildItem -Path $StartPath -Directory -ErrorAction Stop)
+                
+                # Dynamically adjust total folder count if needed
+                if ($subFolders.Count -gt 0 -and $CurrentDepth -lt 2) {
+                    $script:TotalFolders += $subFolders.Count
+                    Write-Log "Updated folder count: $script:TotalFolders" -Level 'DEBUG' -Color "Magenta" -NoConsole
+                }
+                
+                foreach ($folder in $subFolders) {
+                    if (-not $script:cancellationTokenSource.Token.IsCancellationRequested) {
+                        # Clear any pending errors before recursive call
+                        $error.Clear()
+                        Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+                    }
+                }
             }
             catch {
                 Write-Log "Error accessing subfolders in ${StartPath}: $_" -Level 'WARNING' -Color "Yellow"
             }
-
-            foreach ($folder in $subFolders) {
-                if (-not $script:cancellationTokenSource.Token.IsCancellationRequested) {
-                    Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
-                }
-            }
         }
-
+        
         # Update progress after processing current folder and its children
         Write-ProgressStatus -Activity "Processing Folders" `
                            -Status "Current: $StartPath" `
@@ -559,19 +573,42 @@ function Initialize-FolderCount {
     )
     
     try {
-        Write-Log "Counting total folders..." -Level 'INFO' -Color "Cyan"
-        $script:TotalFolders = 0
+        Write-Log "Estimating folder count..." -Level 'INFO' -Color "Cyan"
+        $script:TotalFolders = 1  # Start with 1 for the root folder
         
-        # Use straightforward recursive counting
-        $script:TotalFolders = 1  # Count the start folder
-        $folders = Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop
-        $script:TotalFolders += @($folders).Count
+        # Use a more efficient counting approach - sample a subset of folders
+        $firstLevelFolders = @(Get-ChildItem -Path $StartPath -Directory -ErrorAction Stop)
+        $script:TotalFolders += $firstLevelFolders.Count
         
-        Write-Log "Found $script:TotalFolders folders to process" -Level 'INFO' -Color "Cyan"
+        # Sample some subfolders to estimate depth/breadth
+        if ($firstLevelFolders.Count -gt 0) {
+            $sampleSize = [Math]::Min(5, $firstLevelFolders.Count)
+            $sampleFolders = $firstLevelFolders | Select-Object -First $sampleSize
+            
+            $subfolderCount = 0
+            foreach ($folder in $sampleFolders) {
+                try {
+                    $subfolders = @(Get-ChildItem -Path $folder.FullName -Directory -Recurse -Depth 2 -ErrorAction Stop)
+                    $subfolderCount += $subfolders.Count
+                }
+                catch {
+                    Write-Log "Error sampling subfolder count: $_" -Level 'DEBUG' -Color "Magenta" -NoConsole
+                }
+            }
+            
+            # Estimate total based on sample
+            if ($sampleSize -gt 0 -and $subfolderCount -gt 0) {
+                $avgSubfolders = $subfolderCount / $sampleSize
+                $estimatedTotal = $script:TotalFolders + ($avgSubfolders * $firstLevelFolders.Count)
+                $script:TotalFolders = [Math]::Max(100, [int]$estimatedTotal)
+            }
+        }
+        
+        Write-Log "Estimated $script:TotalFolders folders to process" -Level 'INFO' -Color "Cyan"
     }
     catch {
         Write-Log "Error counting folders: $_" -Level 'WARNING' -Color "Yellow"
-        $script:TotalFolders = 1
+        $script:TotalFolders = 100  # Default to a reasonable estimate
     }
 }
 
