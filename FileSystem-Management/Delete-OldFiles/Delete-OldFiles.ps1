@@ -2,7 +2,7 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 18:15:00 UTC
+# Last Updated: 2025-03-19 21:58:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.5.0
 # Additional Info: Added progress bar to show file deletion progress
