@@ -37,8 +37,8 @@
 # .env files
 *.env
 
-# Ignore everything in CommitHistory directory
-CommitHistory/
+# Ignore everything in Development\Git\Generate-GitHistory directory
+Development/Git/Generate-GitHistory
 
 # .csv files
 *.csv
