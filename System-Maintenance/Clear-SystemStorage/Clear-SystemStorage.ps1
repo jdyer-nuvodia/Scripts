@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-12 23:17:00 UTC
+# Last Updated: 2025-03-19 22:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Added drive space monitoring before and after cleanup
+# Version: 1.5.1
+# Additional Info: Fixed drive space monitoring display in console
 # =============================================================================
 
 <#
@@ -412,9 +412,11 @@ try {
             Write-Log "No drives with letters found on the system." -Color Red
             exit 1
         }
-        $lowestVolume = $volumes[0]
-        Write-Log "Initial drive space for $($lowestVolume.DriveLetter):" -Color Yellow
-        Show-DriveInfo -Volume $lowestVolume
+        
+        foreach ($volume in $volumes) {
+            Write-Log "Initial drive space for $($volume.DriveLetter):" -Color Yellow
+            Show-DriveInfo -Volume $volume
+        }
     }
     catch {
         Write-Log "Error accessing initial drive information: $_" -Color Red
@@ -433,9 +435,10 @@ try {
         Write-StatusMessage "`nGetting final drive space information..." -Color Cyan
         $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter
         if ($volumes.Count -gt 0) {
-            $lowestVolume = $volumes[0]
-            Write-Log "Final drive space for $($lowestVolume.DriveLetter):" -Color Yellow
-            Show-DriveInfo -Volume $lowestVolume
+            foreach ($volume in $volumes) {
+                Write-Log "Final drive space for $($volume.DriveLetter):" -Color Yellow
+                Show-DriveInfo -Volume $volume
+            }
         }
     }
     catch {
