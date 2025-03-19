@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 21:58:00 UTC
+# Last Updated: 2024-03-19 22:01:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Added progress bar to show file deletion progress
+# Version: 1.6.0
+# Additional Info: Changed to recursive by default with -NoRecurse switch
 # =============================================================================
 
 <#
@@ -18,24 +18,20 @@
     - Finds all files older than cutoff date
     - Deletes found files and displays volume information
     - Shows drive space comparison before and after deletion
-    - Optional recursive deletion of files and empty directories
+    - Recursive deletion by default
     - Silent operation with error suppression
 .PARAMETER StartPath
     The path to the folder containing files to be cleaned up
 .PARAMETER daysOld
     Number of days old the files must be to be deleted
-.PARAMETER Recurse
-    Optional switch to enable recursive deletion of files and empty directories
+.PARAMETER NoRecurse
+    Optional switch to disable recursive deletion of files and empty directories
 .EXAMPLE
     .\Delete-OldFiles.ps1
-    Deletes files older than 30 days from C:\windows\System32\winevt\logs
+    Recursively deletes files older than 30 days from C:\windows\System32\winevt\logs
 .EXAMPLE
-    .\Delete-OldFiles.ps1 -StartPath "D:\Backups" -daysOld 90 -Recurse
-    Recursively deletes files older than 90 days from D:\Backups and its subdirectories
-.NOTES
-    Security Level: Medium
-    Required Permissions: Administrator rights on target folder
-    Validation Requirements: Verify folder path exists before execution
+    .\Delete-OldFiles.ps1 -StartPath "D:\Backups" -daysOld 90 -NoRecurse
+    Deletes files older than 90 days from D:\Backups without recursing into subdirectories
 #>
 
 param(
@@ -46,7 +42,7 @@ param(
     [int]$daysOld = 30,
 
     [Parameter(Mandatory=$false)]
-    [switch]$Recurse
+    [switch]$NoRecurse
 )
 
 function Show-DriveInfo {
@@ -88,10 +84,10 @@ try {
     # Calculate the cutoff date
     $cutoffDate = $currentDate.AddDays(-$daysOld)
 
-    Write-Host "`nDeleting files$(if($Recurse) { ' and directories' }) older than $daysOld days..." -ForegroundColor Cyan
+    Write-Host "`nDeleting files$(if(!$NoRecurse) { ' and directories' }) older than $daysOld days..." -ForegroundColor Cyan
 
     # Get files to delete based on recursion setting
-    $oldFiles = if ($Recurse) {
+    $oldFiles = if (!$NoRecurse) {
         Get-ChildItem -Path $StartPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
     } else {
         Get-ChildItem -Path $StartPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
@@ -116,8 +112,8 @@ try {
     # Clear the progress bar
     Write-Progress -Activity "Deleting Old Files" -Completed
 
-    # Only process directories if -Recurse is specified
-    if ($Recurse) {
+    # Only process directories if -NoRecurse is not specified
+    if (!$NoRecurse) {
         $oldDirs = Get-ChildItem -Path $StartPath -Directory -Recurse | 
                    Where-Object { $_.LastWriteTime -lt $cutoffDate } |
                    Sort-Object FullName -Descending
