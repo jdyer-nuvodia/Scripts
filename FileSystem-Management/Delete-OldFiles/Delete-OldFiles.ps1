@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-13 17:43:00 UTC
+# Last Updated: 2025-03-13 18:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added logging functionality with timestamped system-specific log files
+# Version: 1.5.0
+# Additional Info: Added progress bar to show file deletion progress
 # =============================================================================
 
 <#
@@ -97,9 +97,24 @@ try {
         Get-ChildItem -Path $StartPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
     }
 
+    # Initialize progress counter
+    $totalFiles = $oldFiles.Count
+    $currentFile = 0
+
     foreach ($file in $oldFiles) {
+        $currentFile++
+        $percentComplete = [math]::Round(($currentFile / $totalFiles) * 100, 2)
+        
+        Write-Progress -Activity "Deleting Old Files" `
+                      -Status "Processing $currentFile of $totalFiles files ($percentComplete%)" `
+                      -PercentComplete $percentComplete `
+                      -CurrentOperation $file.Name
+        
         Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
     }
+
+    # Clear the progress bar
+    Write-Progress -Activity "Deleting Old Files" -Completed
 
     # Only process directories if -Recurse is specified
     if ($Recurse) {
@@ -107,12 +122,26 @@ try {
                    Where-Object { $_.LastWriteTime -lt $cutoffDate } |
                    Sort-Object FullName -Descending
 
+        $totalDirs = $oldDirs.Count
+        $currentDir = 0
+
         foreach ($dir in $oldDirs) {
+            $currentDir++
+            $percentComplete = [math]::Round(($currentDir / $totalDirs) * 100, 2)
+            
+            Write-Progress -Activity "Processing Empty Directories" `
+                          -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
+                          -PercentComplete $percentComplete `
+                          -CurrentOperation $dir.Name
+
             if (!(Get-ChildItem -Path $dir.FullName -Force)) {
                 Remove-Item $dir.FullName -Force -ErrorAction SilentlyContinue
                 Write-Host "Removed empty directory: $($dir.FullName)" -ForegroundColor DarkGray
             }
         }
+
+        # Clear the progress bar
+        Write-Progress -Activity "Processing Empty Directories" -Completed
     }
 
     # Get volume information after deletion
