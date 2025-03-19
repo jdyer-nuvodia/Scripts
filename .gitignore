@@ -28,10 +28,10 @@
 *.tmp
 *.lnk
 
-# Log files
+# .log files
 *.log
 
-# Marker files
+# .marker files
 *.marker
 
 # .env files
@@ -40,8 +40,8 @@
 # Ignore everything in CommitHistory directory
 CommitHistory/
 
-# CSV files
+# .csv files
 *.csv
 
-#.txt files
+# .txt files
 *.txt
