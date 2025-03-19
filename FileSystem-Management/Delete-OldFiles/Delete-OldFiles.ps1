@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-19 22:12:00 UTC
+# Last Updated: 2024-03-19 22:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.1
-# Additional Info: Fixed console output to only show in log file
+# Version: 1.7.2
+# Additional Info: Fixed log file access conflict by using separate files
 # =============================================================================
 
 <#
@@ -66,8 +66,9 @@ function Show-DriveInfo {
 try {
     # Setup logging
     $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-    $logFile = Join-Path $PSScriptRoot "OldFilesDeleted_$($env:COMPUTERNAME)_$timestamp.log"
-    Start-Transcript -Path $logFile -Force
+    $transcriptFile = Join-Path $PSScriptRoot "Transcript_$($env:COMPUTERNAME)_$timestamp.log"
+    $deletionLog = Join-Path $PSScriptRoot "DeletedFiles_$($env:COMPUTERNAME)_$timestamp.log"
+    Start-Transcript -Path $transcriptFile -Force
 
     # Get the drive letter from the folder path
     $driveLetter = $StartPath.Substring(0, 1)
@@ -108,9 +109,9 @@ try {
         
         try {
             Remove-Item $file.FullName -Force -ErrorAction Stop
-            "Deleted file: $($file.FullName)" | Out-File -FilePath $logFile -Append
+            "Deleted file: $($file.FullName)" | Out-File -FilePath $deletionLog -Append
         } catch {
-            "Failed to delete file: $($file.FullName) - Error: $_" | Out-File -FilePath $logFile -Append
+            "Failed to delete file: $($file.FullName) - Error: $_" | Out-File -FilePath $deletionLog -Append
         }
     }
 
@@ -138,9 +139,9 @@ try {
             if (!(Get-ChildItem -Path $dir.FullName -Force)) {
                 try {
                     Remove-Item $dir.FullName -Force -ErrorAction Stop
-                    "Deleted empty directory: $($dir.FullName)" | Out-File -FilePath $logFile -Append
+                    "Deleted empty directory: $($dir.FullName)" | Out-File -FilePath $deletionLog -Append
                 } catch {
-                    "Failed to delete directory: $($dir.FullName) - Error: $_" | Out-File -FilePath $logFile -Append
+                    "Failed to delete directory: $($dir.FullName) - Error: $_" | Out-File -FilePath $deletionLog -Append
                 }
             }
         }
