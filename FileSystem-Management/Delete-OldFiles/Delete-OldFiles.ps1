@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-19 22:01:00 UTC
+# Last Updated: 2024-03-19 22:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.0
-# Additional Info: Changed to recursive by default with -NoRecurse switch
+# Version: 1.7.0
+# Additional Info: Added detailed logging of all deleted files and folders
 # =============================================================================
 
 <#
@@ -106,7 +106,12 @@ try {
                       -PercentComplete $percentComplete `
                       -CurrentOperation $file.Name
         
-        Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
+        try {
+            Remove-Item $file.FullName -Force -ErrorAction Stop
+            Write-Output "Deleted file: $($file.FullName)"
+        } catch {
+            Write-Output "Failed to delete file: $($file.FullName) - Error: $_"
+        }
     }
 
     # Clear the progress bar
@@ -131,8 +136,12 @@ try {
                           -CurrentOperation $dir.Name
 
             if (!(Get-ChildItem -Path $dir.FullName -Force)) {
-                Remove-Item $dir.FullName -Force -ErrorAction SilentlyContinue
-                Write-Host "Removed empty directory: $($dir.FullName)" -ForegroundColor DarkGray
+                try {
+                    Remove-Item $dir.FullName -Force -ErrorAction Stop
+                    Write-Output "Deleted empty directory: $($dir.FullName)"
+                } catch {
+                    Write-Output "Failed to delete directory: $($dir.FullName) - Error: $_"
+                }
             }
         }
 
