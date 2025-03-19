@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-19 22:08:00 UTC
+# Last Updated: 2024-03-19 22:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.0
-# Additional Info: Added detailed logging of all deleted files and folders
+# Version: 1.7.1
+# Additional Info: Fixed console output to only show in log file
 # =============================================================================
 
 <#
@@ -108,9 +108,9 @@ try {
         
         try {
             Remove-Item $file.FullName -Force -ErrorAction Stop
-            Write-Output "Deleted file: $($file.FullName)"
+            "Deleted file: $($file.FullName)" | Out-File -FilePath $logFile -Append
         } catch {
-            Write-Output "Failed to delete file: $($file.FullName) - Error: $_"
+            "Failed to delete file: $($file.FullName) - Error: $_" | Out-File -FilePath $logFile -Append
         }
     }
 
@@ -138,9 +138,9 @@ try {
             if (!(Get-ChildItem -Path $dir.FullName -Force)) {
                 try {
                     Remove-Item $dir.FullName -Force -ErrorAction Stop
-                    Write-Output "Deleted empty directory: $($dir.FullName)"
+                    "Deleted empty directory: $($dir.FullName)" | Out-File -FilePath $logFile -Append
                 } catch {
-                    Write-Output "Failed to delete directory: $($dir.FullName) - Error: $_"
+                    "Failed to delete directory: $($dir.FullName) - Error: $_" | Out-File -FilePath $logFile -Append
                 }
             }
         }
