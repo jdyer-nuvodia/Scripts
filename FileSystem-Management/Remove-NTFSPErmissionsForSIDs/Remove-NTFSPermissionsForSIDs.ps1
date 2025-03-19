@@ -270,6 +270,9 @@ function Invoke-FolderRecursively {
     )
 
     try {
+        # Add debug logging at function start
+        Write-Log "Starting folder processing: $StartPath (Depth: $CurrentDepth)" -Level 'DEBUG' -Color "Magenta" -NoConsole
+
         if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
             Write-Log "Processing cancelled by user" -Level 'WARNING' -Color "Yellow"
             return
@@ -299,9 +302,9 @@ function Invoke-FolderRecursively {
 
         # Process subfolders only if current folder was accessible
         if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
-            $subFolders = @()
             try {
                 $subFolders = Get-ChildItem -Path $StartPath -Directory -ErrorAction Stop
+                Write-Log "Found $($subFolders.Count) subfolders in $StartPath" -Level 'DEBUG' -Color "Magenta" -NoConsole
             }
             catch {
                 Write-Log "Error accessing subfolders in ${StartPath}: $_" -Level 'WARNING' -Color "Yellow"
