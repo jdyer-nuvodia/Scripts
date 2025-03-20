@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-18 16:54:00 UTC
+# Last Updated: 2025-03-20 23:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.2
-# Additional Info: Fixed null reference and Count property errors
+# Version: 1.14.3
+# Additional Info: Fixed parameter binding issues and parameter name consistency
 # =============================================================================
 
 <#
@@ -171,7 +171,7 @@ function Get-SafeFilename {
 # Consolidated log initialization with enhanced configuration
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $computerName = $env:COMPUTERNAME
-$safePath = Get-SafeFilename -Path $StartPath
+$safePath = Get-SafeFilename -StartPath $StartPath
 $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
 $script:DebugLogFile = "${logBase}_debug.log"
 $script:TranscriptFile = "${logBase}_transcript.log"
@@ -639,7 +639,6 @@ function Get-FolderPermissions {
 }
 
 # Function to process each folder
-# Modify Invoke-FolderProcessing to track detailed metrics
 function Invoke-FolderProcessing {
     param(
         [string]$StartPath,
@@ -702,8 +701,8 @@ function Invoke-FolderProcessing {
         }
     }
     catch {
-        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
-        Write-Log -Message "Error processing folder ${Path}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR' -Category 'Exception'
+        Write-Log -Message "Error processing folder ${StartPath}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
+        Write-Log -Message "Error processing folder ${StartPath}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR' -Category 'Exception'
         Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
     }
     finally {
@@ -734,11 +733,11 @@ function Invoke-FolderRecursively {
         $script:TotalFolders++
         $script:ProcessedFolders++
 
-        Invoke-FolderProcessing -Path $StartPath -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
+        Invoke-FolderProcessing -StartPath $StartPath -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
 
         if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
             Get-ChildItem -Path $StartPath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                Invoke-FolderRecursively -Path $_.FullName -CurrentDepth ($CurrentDepth + 1)
+                Invoke-FolderRecursively -StartPath $_.FullName -CurrentDepth ($CurrentDepth + 1)
             }
         }
     }
@@ -860,7 +859,7 @@ try {
     Write-Log -Message "Starting folder permission analysis for $StartPath" -Color "Cyan" -Level 'INFO'
 
     # Process folders with timeout tracking
-    Invoke-FolderRecursively -Path $StartPath
+    Invoke-FolderRecursively -StartPath $StartPath
 
     if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
         Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
