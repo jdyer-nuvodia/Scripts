@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 22:49:00 UTC
+# Last Updated: 2025-03-22 22:51:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Reduced console output for file operations - progress bar only
+# Version: 1.4.1
+# Additional Info: Removed timeout from SID approval prompts
 # =============================================================================
 
 <#
@@ -206,8 +206,7 @@ function Confirm-SIDRemoval {
         [Parameter(Mandatory=$true)]
         [string]$SID,
         [string]$Name = $null,
-        [string]$Path,
-        [int]$TimeoutSeconds = 120
+        [string]$Path
     )
     
     if ($script:ApprovedSIDRemovals.ContainsKey($SID)) {
@@ -225,22 +224,9 @@ function Confirm-SIDRemoval {
     Write-Host "Progress: $($script:ProcessedFolders) of $($script:TotalFolders) folders processed" -ForegroundColor White
     Write-Host "Current Path: $Path" -ForegroundColor White
     Write-Host "Target SID: $displayName" -ForegroundColor Yellow
-    Write-Host "Please respond within $TimeoutSeconds seconds..." -ForegroundColor Cyan
 
-    $job = Start-Job -ScriptBlock {
-        Read-Host "Do you want to remove these permissions? (Y/N)"
-    }
-
-    $completed = Wait-Job $job -Timeout $TimeoutSeconds
-    if ($completed) {
-        $response = Receive-Job $job
-        Remove-Job $job
-        $approved = $response -eq 'Y' -or $response -eq 'y'
-    } else {
-        Remove-Job $job -Force
-        Write-Log "Approval timeout reached for $displayName. Skipping..." -Level 'WARNING' -Color "Yellow"
-        $approved = $false
-    }
+    $response = Read-Host "Do you want to remove these permissions? (Y/N)"
+    $approved = $response -eq 'Y' -or $response -eq 'y'
 
     $script:ApprovedSIDRemovals[$SID] = $approved
     $logLevel = if ($approved) { 'INFO' } else { 'WARNING' }
