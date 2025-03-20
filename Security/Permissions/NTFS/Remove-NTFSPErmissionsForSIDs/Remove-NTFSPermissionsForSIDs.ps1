@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 22:36:00 UTC
+# Last Updated: 2025-03-22 22:44:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.2
-# Additional Info: Added timeout handling for SID approval process and improved queue management
+# Version: 1.3.0
+# Additional Info: Increased SID approval timeout to 120s and fixed job blocking issue
 # =============================================================================
 
 <#
@@ -206,7 +206,7 @@ function Confirm-SIDRemoval {
         [string]$SID,
         [string]$Name = $null,
         [string]$Path,
-        [int]$TimeoutSeconds = 30
+        [int]$TimeoutSeconds = 120
     )
     
     if ($script:ApprovedSIDRemovals.ContainsKey($SID)) {
