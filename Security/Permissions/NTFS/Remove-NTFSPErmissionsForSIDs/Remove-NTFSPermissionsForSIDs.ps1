@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 22:51:00 UTC
+# Last Updated: 2025-03-20 23:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Removed timeout from SID approval prompts
+# Version: 1.4.2
+# Additional Info: Added inheritance handling to ensure complete SID removal
 # =============================================================================
 
 <#
@@ -312,73 +312,124 @@ function Remove-TargetSIDPermissions {
     $modified = $false
     $removedCount = 0
     
-    # Create a copy of access rules to avoid enumeration issues
-    $accessRules = @($Acl.Access)
-    
-    foreach ($rule in $accessRules) {
-        if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
-            Write-Log "Cancellation requested. Stopping permission removal." -Level 'WARNING' -Color "Yellow"
-            break
-        }
+    try {
+        # Create a copy of access rules to avoid enumeration issues
+        $accessRules = @($Acl.Access)
+        
+        foreach ($rule in $accessRules) {
+            if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+                Write-Log "Cancellation requested. Stopping permission removal." -Level 'WARNING' -Color "Yellow"
+                break
+            }
 
-        $sidString = if ($rule.IdentityReference -match '^S-1-') {
-            $rule.IdentityReference.Value
-        } else {
-            try {
-                $ntAccount = [System.Security.Principal.NTAccount]$rule.IdentityReference
-                $sid = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier])
-                $sid.Value
-            } catch {
-                continue
-            }
-        }
-        
-        # Skip inherited permissions
-        if ($rule.IsInherited) { continue }
-        
-        # Check if this is one of our target SIDs
-        if ($script:TargetSIDs -contains $sidString) {
-            # Get display name for confirmation
-            $displayName = Convert-SidToName -Sid $sidString
-            
-            # Check if it's an administrator SID
-            if (Test-AdministratorSID -SID $sidString) {
-                Write-Log "Skipping administrator SID: $displayName ($sidString)" -Level 'WARNING' -Color "Yellow"
-                continue
-            }
-            
-            # Confirm removal
-            if (Confirm-SIDRemoval -SID $sidString -Name $displayName -Path $StartPath) {
+            $sidString = if ($rule.IdentityReference -match '^S-1-') {
+                $rule.IdentityReference.Value
+            } else {
                 try {
-                    $Acl.RemoveAccessRule($rule) | Out-Null
-                    $removedCount++
-                    $modified = $true
-                    Write-Log "Removed permission for $displayName from $StartPath" -Level 'SUCCESS' -Color "Green"
+                    $ntAccount = [System.Security.Principal.NTAccount]$rule.IdentityReference
+                    $sid = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier])
+                    $sid.Value
+                } catch {
+                    Write-Log "Failed to translate identity $($rule.IdentityReference) to SID" -Level 'WARNING' -Color "Yellow"
+                    continue
                 }
-                catch {
-                    Write-Log "Failed to remove permission for ${sidString}: $_" -Level 'ERROR' -Color "Red"
+            }
+            
+            # Check if this is one of our target SIDs
+            if ($script:TargetSIDs -contains $sidString) {
+                # Get display name for confirmation
+                $displayName = Convert-SidToName -Sid $sidString
+                
+                # Check if it is an administrator SID
+                if (Test-AdministratorSID -SID $sidString) {
+                    Write-Log "Skipping administrator SID: $displayName ($sidString)" -Level 'WARNING' -Color "Yellow"
+                    continue
+                }
+
+                # If permission is inherited, trace it to its source
+                if ($rule.IsInherited) {
+                    Write-Log "Permission for $displayName on $StartPath is inherited" -Level 'INFO' -Color "Cyan"
+                    
+                    # Walk up the folder tree to find where this permission is set
+                    $currentPath = $StartPath
+                    $parentPath = Split-Path $currentPath -Parent
+                    $sourceFound = $false
+                    
+                    while ($parentPath -and -not $sourceFound) {
+                        Write-Log "Checking parent folder: $parentPath" -Level 'DEBUG'
+                        
+                        try {
+                            $parentAcl = Get-Acl -Path $parentPath
+                            $parentRules = $parentAcl.Access | Where-Object { 
+                                $_.IdentityReference.Value -eq $rule.IdentityReference.Value -and 
+                                -not $_.IsInherited 
+                            }
+                            
+                            if ($parentRules) {
+                                Write-Log "Found source of inherited permission at: $parentPath" -Level 'INFO' -Color "Cyan"
+                                
+                                # Confirm removal from parent
+                                if (Confirm-SIDRemoval -SID $sidString -Name $displayName -Path $parentPath) {
+                                    foreach ($parentRule in $parentRules) {
+                                        try {
+                                            $parentAcl.RemoveAccessRule($parentRule) | Out-Null
+                                            $modified = $true
+                                            $removedCount++
+                                            Write-Log "Removed permission for $displayName from parent folder: $parentPath" -Level 'SUCCESS' -Color "Green"
+                                        }
+                                        catch {
+                                            Write-Log "Failed to remove permission for ${sidString} from parent: $_" -Level 'ERROR' -Color "Red"
+                                        }
+                                    }
+                                    
+                                    # Apply changes to parent ACL
+                                    Set-Acl -Path $parentPath -AclObject $parentAcl
+                                    $sourceFound = $true
+                                }
+                            }
+                            
+                            $currentPath = $parentPath
+                            $parentPath = Split-Path $currentPath -Parent
+                        }
+                        catch {
+                            Write-Log "Error accessing parent folder ${parentPath}: $_" -Level 'ERROR' -Color "Red"
+                            break
+                        }
+                    }
+                    
+                    if (-not $sourceFound) {
+                        Write-Log "Could not locate source of inherited permission for $displayName" -Level 'WARNING' -Color "Yellow"
+                    }
+                }
+                else {
+                    # Handle direct (non-inherited) permissions as before
+                    if (Confirm-SIDRemoval -SID $sidString -Name $displayName -Path $StartPath) {
+                        try {
+                            $Acl.RemoveAccessRule($rule) | Out-Null
+                            $removedCount++
+                            $modified = $true
+                            Write-Log "Removed direct permission for $displayName from $StartPath" -Level 'SUCCESS' -Color "Green"
+                        }
+                        catch {
+                            Write-Log "Failed to remove direct permission for ${sidString}: $_" -Level 'ERROR' -Color "Red"
+                        }
+                    }
                 }
             }
         }
     }
+    catch {
+        Write-Log "Error processing permissions on ${StartPath}: $_" -Level 'ERROR' -Color "Red"
+        return $false
+    }
 
     if ($modified) {
         try {
-            # Backup ACL for potential rollback
-            $backupAcl = Get-Acl -Path $StartPath
-            
             Set-Acl -Path $StartPath -AclObject $Acl
             Write-Log "Successfully updated permissions on $StartPath (Removed $removedCount permissions)" -Level 'SUCCESS' -Color "Green"
         } catch {
             Write-Log "Failed to update permissions on ${StartPath}: $_" -Level 'ERROR' -Color "Red"
-            
-            # Attempt rollback
-            try {
-                Set-Acl -Path $StartPath -AclObject $backupAcl
-                Write-Log "Rolled back permissions on $StartPath due to error" -Level 'WARNING' -Color "Yellow"
-            } catch {
-                Write-Log "Failed to rollback permissions on ${StartPath}: $_" -Level 'ERROR' -Color "Red"
-            }
+            return $false
         }
     }
 
