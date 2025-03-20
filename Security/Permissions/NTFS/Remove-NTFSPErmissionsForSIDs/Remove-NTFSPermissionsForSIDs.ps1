@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 22:44:00 UTC
+# Last Updated: 2025-03-22 22:49:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Increased SID approval timeout to 120s and fixed job blocking issue
+# Version: 1.4.0
+# Additional Info: Reduced console output for file operations - progress bar only
 # =============================================================================
 
 <#
@@ -70,17 +70,18 @@ function Write-Log {
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $categoryText = if ($Category) { "[$Category] " } else { "" }
-    
-    # Format console output to be more readable
-    $consoleMessage = "$categoryText$Message"
     $debugMessage = "[$timestamp] [$Level] $categoryText$Message"
     
-    # Write to console with color if not suppressed
-    if (-not $NoConsole) {
-        Write-Host $consoleMessage -ForegroundColor $Color
+    # Only write to console if:
+    # 1. NoConsole is not set AND
+    # 2. It's not a file/folder operation message OR it's an error/warning
+    if (-not $NoConsole -and 
+        ($Level -in @('ERROR', 'WARNING', 'SUCCESS') -or
+         -not ($Message -match 'Added|Processed|Removed permission|Successfully updated permissions|No permission changes'))) {
+        Write-Host $categoryText$Message -ForegroundColor $Color
     }
     
-    # Write detailed info to debug log
+    # Always write to debug log
     Add-Content -Path $script:DebugLogFile -Value $debugMessage
 }
 
