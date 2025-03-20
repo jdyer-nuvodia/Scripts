@@ -18,15 +18,15 @@
     and saved to a transcript file, with detailed scanning logged to a debug file.
 .PARAMETER User
     The username to check permissions for. Must include domain name if on a domain (e.g., "DOMAIN\username")
-.PARAMETER RootFolder
+.PARAMETER StartPath
     The starting folder path to begin the recursive permission check
 .PARAMETER SIDFile
     Optional path to a text file containing SIDs to check (one per line)
 .EXAMPLE
-    .\Get-NTFSPermissions.ps1 -User "DOMAIN\jsmith" -RootFolder "D:\"
+    .\Get-NTFSPermissions.ps1 -User "DOMAIN\jsmith" -StartPath "D:\"
     Checks permissions for user DOMAIN\jsmith starting from D:\ drive
 .EXAMPLE
-    .\Get-NTFSPermissions.ps1 -RootFolder "D:\" -SIDFile "C:\SIDS.txt"
+    .\Get-NTFSPermissions.ps1 -StartPath "D:\" -SIDFile "C:\SIDS.txt"
     Checks permissions for all SIDs listed in SIDS.txt starting from D:\ drive
 #>
 
@@ -35,7 +35,7 @@ param(
     [string]$User,
     
     [Parameter(Mandatory=$true)]
-    [string]$RootFolder,
+    [string]$StartPath,
     
     [Parameter(Mandatory=$false)]
     [string]$SIDFile
@@ -84,10 +84,10 @@ if ($identities.Count -eq 0) {
 }
 
 # Get total folder count for progress bar
-$totalFolders = (Get-ChildItem -Directory -Path $RootFolder -Recurse -Force | Measure-Object).Count
+$totalFolders = (Get-ChildItem -Directory -Path $StartPath -Recurse -Force | Measure-Object).Count
 $currentFolder = 0
 
-Get-ChildItem -Directory -Path $RootFolder -Recurse -Force | ForEach-Object {
+Get-ChildItem -Directory -Path $StartPath -Recurse -Force | ForEach-Object {
     $folder = $_.FullName
     $currentFolder++
     
