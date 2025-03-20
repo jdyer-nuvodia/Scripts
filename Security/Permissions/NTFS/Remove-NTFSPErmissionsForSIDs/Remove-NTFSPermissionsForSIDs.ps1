@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-20 23:27:00 UTC
+# Last Updated: 2025-03-20 23:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.2
-# Additional Info: Added inheritance handling to ensure complete SID removal
+# Version: 1.4.3
+# Additional Info: Fixed folder queue processing and progress tracking
 # =============================================================================
 
 <#
@@ -506,10 +506,10 @@ function Invoke-FolderTree {
     # First estimate total folder count for progress
     Write-Host "Estimating folder count..." -ForegroundColor Cyan
     try {
-        $script:TotalFolders = (Get-ChildItem -Path $RootPath -Directory -Recurse -ErrorAction SilentlyContinue | Measure-Object).Count + 1
+        $script:TotalFolders = (Get-ChildItem -Path $RootPath -Directory -Recurse -ErrorAction SilentlyContinue | 
+            Measure-Object).Count + 1
     }
     catch {
-        # If recursion fails, set a default value
         $script:TotalFolders = 1000
         Write-Log "Could not estimate folder count: $_" -Level 'WARNING' -Color "Yellow"
     }
@@ -528,6 +528,7 @@ function Invoke-FolderTree {
         $currentDuration = (Get-Date) - $script:StartTime
         if ($currentDuration -gt $script:processingTimeout) {
             Write-Log "Processing timeout reached ($TimeoutMinutes minutes). Canceling further processing." -Level 'WARNING' -Color "Yellow"
+            $script:cancellationTokenSource.Cancel()
             break
         }
         
@@ -541,46 +542,35 @@ function Invoke-FolderTree {
         
         # Process current folder
         Invoke-FolderProcessing -StartPath $currentFolder -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
-        
-        # Increment the processed folders counter AFTER processing
         $script:ProcessedFolders++
         
-        # Update progress bar to reflect current state
-        Write-ProgressStatus -Activity "Analyzing and Updating Folder Permissions" `
-                           -Status "Processed: $currentFolder" `
-                           -Current $script:ProcessedFolders `
-                           -Total $script:TotalFolders `
-                           -Id 0
-        
-        # Check depth before enqueuing subfolders
-        $currentDepth = ($currentFolder.Split('\').Length - $RootPath.Split('\').Length)
-        if ($MaxDepth -eq 0 -or $currentDepth -lt $MaxDepth) {
-            # Add subfolders to queue
+        # Only process subfolders if we haven't reached max depth
+        if ($MaxDepth -eq 0 -or ($currentFolder.Split([IO.Path]::DirectorySeparatorChar).Length - $RootPath.Split([IO.Path]::DirectorySeparatorChar).Length) -lt $MaxDepth) {
             try {
-                $subFolders = Get-ChildItem -Path $currentFolder -Directory -ErrorAction SilentlyContinue
+                # Get and enqueue subfolders
+                $subFolders = Get-ChildItem -Path $currentFolder -Directory -ErrorAction Stop
                 foreach ($folder in $subFolders) {
-                    $script:FolderQueue.Enqueue($folder.FullName)
-                }
-                
-                # Log number of subfolders added for debugging
-                if ($subFolders.Count -gt 0) {
-                    Write-Log "Added $($subFolders.Count) subfolders from $currentFolder to processing queue" -Level 'DEBUG' -Color "DarkGray" -NoConsole
+                    if (-not $script:cancellationTokenSource.Token.IsCancellationRequested) {
+                        $script:FolderQueue.Enqueue($folder.FullName)
+                    }
+                    else {
+                        break
+                    }
                 }
             }
             catch {
-                Write-Log "Error accessing subfolders of $currentFolder`: $_" -Level 'WARNING' -Color "Yellow"
+                Write-Log "Error accessing subfolders in ${currentFolder}: $_" -Level 'ERROR' -Color "Red"
             }
         }
         
-        # Log queue status periodically
-        if ($script:ProcessedFolders % 100 -eq 0) {
-            Write-Log "Current queue status: $($script:ProcessedFolders) folders processed, $($script:FolderQueue.Count) folders remaining in queue" -Level 'INFO' -Color "Cyan"
-        }
+        # Update progress
+        Write-ProgressStatus -Activity "Processing Folders" `
+                           -Status "Current: $currentFolder" `
+                           -Current $script:ProcessedFolders `
+                           -Total $script:TotalFolders
     }
     
-    # Complete progress bar
-    Write-Progress -Activity "Analyzing and Updating Folder Permissions" -Completed
-    Write-Log "Completed processing $($script:ProcessedFolders) folders" -Level 'INFO' -Color "Green"
+    Write-Log "Completed folder processing. Total folders processed: $($script:ProcessedFolders)" -Level 'SUCCESS' -Color "Green"
 }
 
 # Main script execution
