@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 22:23:00 UTC
+# Last Updated: 2025-03-20 22:05:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.1
-# Additional Info: Fixed drive space monitoring display in console
+# Version: 1.5.2
+# Additional Info: Fixed final drive space display in console output
 # =============================================================================
 
 <#
@@ -436,7 +436,7 @@ try {
         $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter
         if ($volumes.Count -gt 0) {
             foreach ($volume in $volumes) {
-                Write-Log "Final drive space for $($volume.DriveLetter):" -Color Yellow
+                Write-StatusMessage "Final drive space for $($volume.DriveLetter):" -Color Yellow
                 Show-DriveInfo -Volume $volume
             }
         }
