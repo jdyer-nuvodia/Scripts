@@ -2,10 +2,10 @@
 # Script: Remove-NTFSPermissionsForSIDs.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-20 23:45:00 UTC
+# Last Updated: 2025-03-22 22:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Fixed script hanging after SID removal approvals by improving recursion handling
+# Version: 1.2.1
+# Additional Info: Fixed script hanging after SID approvals by improving queue management and tracking
 # =============================================================================
 
 <#
@@ -221,7 +221,8 @@ function Confirm-SIDRemoval {
     
     Write-Host "`n=== Permission Removal Confirmation ===" -ForegroundColor Cyan
     Write-Host "Progress: $($script:ProcessedFolders) of $($script:TotalFolders) folders processed" -ForegroundColor White
-    Write-Host "Target: $SID" -ForegroundColor Yellow
+    Write-Host "Current Path: $Path" -ForegroundColor White
+    Write-Host "Target SID: $displayName" -ForegroundColor Yellow
     $confirmation = Read-Host "Do you want to remove these permissions? (Y/N)"
     $approved = $confirmation -eq 'Y' -or $confirmation -eq 'y'
     $script:ApprovedSIDRemovals[$SID] = $approved
@@ -394,27 +395,38 @@ function Invoke-FolderProcessing {
                            -Total $TotalCount `
                            -Id 0
 
+        # Verify path exists before processing
+        if (-not (Test-Path -Path $StartPath -ErrorAction SilentlyContinue)) {
+            Write-Log "Path does not exist or is inaccessible: $StartPath" -Level 'WARNING' -Color "Yellow"
+            return
+        }
+
         # Verify permissions before attempting changes
         try {
             $testFile = Join-Path $env:TEMP "ACLTest_$(Get-Random).tmp"
-            New-Item -Path $testFile -ItemType File | Out-Null
-            Remove-Item -Path $testFile -Force | Out-Null
+            New-Item -Path $testFile -ItemType File -ErrorAction Stop | Out-Null
+            Remove-Item -Path $testFile -Force -ErrorAction Stop | Out-Null
         } catch {
             Write-Log "Insufficient permissions to make changes to the file system. Run as administrator." -Level 'ERROR' -Color "Red"
             return
         }
 
         # Get current ACL
-        $acl = Get-Acl -Path $StartPath -ErrorAction Stop
-        
-        # Check and remove target SID permissions
-        $modified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $acl
-        
-        # Log whether modifications were made
-        if ($modified) {
-            Write-Log "Permissions were modified on $StartPath" -Level 'INFO' -Color "Cyan"
-        } else {
-            Write-Log "No permission changes needed for $StartPath" -Level 'INFO' -Color "DarkGray" -NoConsole
+        try {
+            $acl = Get-Acl -Path $StartPath -ErrorAction Stop
+            
+            # Check and remove target SID permissions
+            $modified = Remove-TargetSIDPermissions -StartPath $StartPath -Acl $acl
+            
+            # Log whether modifications were made
+            if ($modified) {
+                Write-Log "Permissions were modified on $StartPath" -Level 'INFO' -Color "Cyan"
+            } else {
+                Write-Log "No permission changes needed for $StartPath" -Level 'INFO' -Color "DarkGray" -NoConsole
+            }
+        }
+        catch {
+            Write-Log "Error getting ACL for ${StartPath}: $_" -Level 'ERROR' -Color "Red"
         }
     }
     catch {
@@ -446,6 +458,7 @@ function Invoke-FolderTree {
     Write-Host "Estimated $($script:TotalFolders) folders to process" -ForegroundColor Cyan
     
     # Initialize the queue with the root folder
+    $script:FolderQueue.Clear()
     $script:FolderQueue.Enqueue($RootPath)
     $script:ProcessedFolders = 0
     
@@ -461,10 +474,19 @@ function Invoke-FolderTree {
         }
         
         $currentFolder = $script:FolderQueue.Dequeue()
-        $script:ProcessedFolders++
         
         # Process current folder
         Invoke-FolderProcessing -StartPath $currentFolder -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
+        
+        # Increment the processed folders counter AFTER processing
+        $script:ProcessedFolders++
+        
+        # Update progress bar to reflect current state
+        Write-ProgressStatus -Activity "Analyzing and Updating Folder Permissions" `
+                           -Status "Processed: $currentFolder" `
+                           -Current $script:ProcessedFolders `
+                           -Total $script:TotalFolders `
+                           -Id 0
         
         # Check depth before enqueuing subfolders
         $currentDepth = ($currentFolder.Split('\').Length - $RootPath.Split('\').Length)
@@ -475,10 +497,20 @@ function Invoke-FolderTree {
                 foreach ($folder in $subFolders) {
                     $script:FolderQueue.Enqueue($folder.FullName)
                 }
+                
+                # Log number of subfolders added for debugging
+                if ($subFolders.Count -gt 0) {
+                    Write-Log "Added $($subFolders.Count) subfolders from $currentFolder to processing queue" -Level 'DEBUG' -Color "DarkGray" -NoConsole
+                }
             }
             catch {
                 Write-Log "Error accessing subfolders of $currentFolder`: $_" -Level 'WARNING' -Color "Yellow"
             }
+        }
+        
+        # Log queue status periodically
+        if ($script:ProcessedFolders % 100 -eq 0) {
+            Write-Log "Current queue status: $($script:ProcessedFolders) folders processed, $($script:FolderQueue.Count) folders remaining in queue" -Level 'INFO' -Color "Cyan"
         }
     }
     
