@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissions.ps1
 # Created: 2025-02-25 23:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-20 23:46:00 UTC
+# Last Updated: 2025-03-21 18:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added SID file input support, progress bar, and logging
+# Version: 1.3.0
+# Additional Info: Enhanced log file naming with system name and user information
 # =============================================================================
 
 <#
@@ -43,9 +43,23 @@ param(
 
 # Initialize Logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$systemName = $env:COMPUTERNAME
 $logPath = Join-Path $PSScriptRoot "Logs"
-$debugLogFile = Join-Path $logPath "Debug_$timestamp.log"
-$transcriptFile = Join-Path $logPath "Transcript_$timestamp.txt"
+
+# Determine user string for filename
+$userString = if ($User) {
+    $userParts = $User.Split('\')
+    $userParts[-1]  # Take the last part after splitting on backslash
+} elseif ($SIDFile) {
+    "multiple_users"
+} else {
+    "no_user"
+}
+
+# Construct log file names
+$baseLogName = "NTFSPermissionsForUser_${systemName}_${userString}_${timestamp}"
+$debugLogFile = Join-Path $logPath "${baseLogName}_debug.log"
+$transcriptFile = Join-Path $logPath "${baseLogName}_transcript.log"
 
 # Create Logs directory if it does not exist
 if (-not (Test-Path $logPath)) {
