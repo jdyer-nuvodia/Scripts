@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 16:34:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Changed replacement logic to interactive prompts
+# Author: nunya-nunya
+# Last Updated: 2025-03-22 16:42:00 UTC
+# Updated By: nunya-nunya
+# Version: 1.4.1
+# Additional Info: Modified to ignore log files in script directory
 # =============================================================================
 
 <#
@@ -125,7 +125,10 @@ try {
     Write-ColorOutput "`nSearching in file contents..." -ForegroundColor White
     try {
         $contentMatches = Get-ChildItem -Path $StartPath -Recurse -File |
-            Where-Object { $_.Extension -notmatch '\.(exe|dll|zip|png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx)$' } |
+            Where-Object { 
+                $_.Extension -notmatch '\.(exe|dll|zip|png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx)$' -and
+                -not ($_.DirectoryName -eq $PSScriptRoot -and $_.Extension -eq '.log')
+            } |
             ForEach-Object {
                 $file = $_
                 $lineNumber = 1
