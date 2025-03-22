@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 16:27:00 UTC
+# Last Updated: 2025-03-22 16:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added metadata search capability
+# Version: 1.4.0
+# Additional Info: Changed replacement logic to interactive prompts
 # =============================================================================
 
 <#
@@ -25,7 +25,7 @@ The root directory path where the search should begin.
 
 .EXAMPLE
 .\Search-ContentRecursively.ps1 -Keyword "ConfigMgr" -StartPath "C:\Scripts"
-Searches for "ConfigMgr" in all files and directories under C:\Scripts
+Searches for "ConfigMgr" in the specified directory and all subdirectories
 
 .EXAMPLE
 .\Search-ContentRecursively.ps1 -Keyword "password" -StartPath "."
@@ -156,6 +156,52 @@ try {
     }
 
     Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
+
+    # Offer replacement if matches were found
+    if ($contentMatches -or $nameMatches -or $metadataMatches) {
+        $confirmation = Read-Host "`nWould you like to replace all instances of '$Keyword'? (Y/N)"
+        if ($confirmation -eq 'Y') {
+            $replaceWith = Read-Host "Enter the replacement string"
+            
+            Write-ColorOutput "`nPerforming replacements..." -ForegroundColor Cyan
+            
+            # Replace in file contents
+            if ($contentMatches) {
+                $contentMatches | Select-Object -ExpandProperty File -Unique | ForEach-Object {
+                    $filePath = $_
+                    try {
+                        (Get-Content $filePath) | 
+                            ForEach-Object { $_ -replace [regex]::Escape($Keyword), $replaceWith } |
+                            Set-Content $filePath
+                        Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
+                    }
+                    catch {
+                        Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
+                    }
+                }
+            }
+
+            # Rename files and folders
+            if ($nameMatches) {
+                $nameMatches | ForEach-Object {
+                    try {
+                        $newName = $_.Name -replace [regex]::Escape($Keyword), $replaceWith
+                        $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
+                        Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
+                        Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
+                    }
+                    catch {
+                        Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
+                    }
+                }
+            }
+
+            Write-ColorOutput "`nReplacement operation completed." -ForegroundColor Cyan
+        }
+        else {
+            Write-ColorOutput "`nReplacement operation cancelled." -ForegroundColor Yellow
+        }
+    }
 } catch {
     Write-Host "Error: $_" -ForegroundColor Red
 } finally {
