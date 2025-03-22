@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-17 21:22:00 UTC
+# Last Updated: 2025-03-22 16:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.4
-# Additional Info: Remove duplicate transcript message
+# Version: 1.2.0
+# Additional Info: Added metadata search capability
 # =============================================================================
 
 <#
@@ -73,6 +73,39 @@ try {
     }
 
     Write-ColorOutput "Starting search for keyword '$Keyword' in path '$StartPath'..." -ForegroundColor Cyan
+
+    Write-ColorOutput "`nSearching in metadata..." -ForegroundColor White
+    try {
+        $metadataMatches = Get-ChildItem -Path $StartPath -Recurse | ForEach-Object {
+            $item = $_
+            $metadata = Get-ItemProperty -Path $item.FullName -ErrorAction SilentlyContinue
+            if ($metadata) {
+                $props = $metadata.PSObject.Properties | 
+                    Where-Object { $_.Value -is [string] -and $_.Value -match $Keyword }
+                if ($props) {
+                    foreach ($prop in $props) {
+                        [PSCustomObject]@{
+                            File = $item.FullName
+                            Property = $prop.Name
+                            Value = $prop.Value
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($metadataMatches) {
+            Write-ColorOutput "Found matches in metadata:" -ForegroundColor Green
+            $metadataMatches | ForEach-Object {
+                Write-ColorOutput "`nFile: $($_.File)" -ForegroundColor Yellow
+                Write-ColorOutput "$($_.Property): $($_.Value)" -ForegroundColor White
+            }
+        } else {
+            Write-ColorOutput "No matches found in metadata." -ForegroundColor DarkGray
+        }
+    } catch {
+        Write-ColorOutput "Error occurred while searching metadata: $_" -ForegroundColor Red
+    }
 
     # Search in file and directory names
     Write-ColorOutput "`nSearching in file and directory names..." -ForegroundColor White
