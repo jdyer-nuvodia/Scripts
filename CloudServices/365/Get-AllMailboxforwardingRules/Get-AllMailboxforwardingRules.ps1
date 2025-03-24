@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-AllMailboxforwardingRules.ps1
 # Created: 2024-02-21 10:00:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2024-02-21 11:00:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.1
 # Additional Info: Added error handling, progress tracking, and parameter support
 # =============================================================================

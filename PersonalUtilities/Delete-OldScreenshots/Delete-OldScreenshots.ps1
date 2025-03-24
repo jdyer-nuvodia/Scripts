@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Delete-OldScreenshots.ps1
 # Created: 2024-02-07 13:45:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-26 23:45:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.0
 # Additional Info: Initial script creation with standard header format
 # =============================================================================
@@ -31,7 +31,7 @@
 #>
 
 # Set the folder path
-$StartPath = "C:\Users\jdyer\OneDrive - Nuvodia\Pictures\Screenshots"
+$StartPath = "C:\Users\nunya\OneDrive - nunya\Pictures\Screenshots"
 
 # Set the number of days old for files to be deleted
 $daysOld = 30

@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Rename-FolderCase.ps1
 # Created: 2025-02-05 22:33:29 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-26 23:13:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.4
 # Additional Info: Script for renaming folders to proper PowerShell case convention
 # =============================================================================

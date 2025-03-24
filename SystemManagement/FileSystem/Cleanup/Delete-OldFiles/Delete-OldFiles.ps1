@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Delete-OldFiles.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2024-03-19 22:19:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.8.0
 # Additional Info: Added log file consolidation and cleanup
 # =============================================================================

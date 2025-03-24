@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Reset-MachinePATH.ps1
 # Created: 2025-01-09 15:30:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-25 23:26:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.1
 # Additional Info: Added security considerations and performance impact details
 # =============================================================================
@@ -56,7 +56,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $newPathEntries = @(
     'C:\Program Files\PowerShell\7',
     'C:\AzCopy',
-    'C:\Users\Nuvodialocal\AppData\Local\Microsoft\WindowsApps',
+    'C:\Users\nunyalocal\AppData\Local\Microsoft\WindowsApps',
     'C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin',
     'C:\WINDOWS\system32',
     'C:\WINDOWS',
@@ -66,8 +66,8 @@ $newPathEntries = @(
     'C:\Program Files\dotnet\',
     'C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\',
     'C:\Program Files\PowerShell\7\',
-    'C:\Users\jdyer\AppData\Local\Microsoft\WindowsApps',
-    'C:\Users\jdyer\AppData\Local\GitHubDesktop\bin'
+    'C:\Users\nunya\AppData\Local\Microsoft\WindowsApps',
+    'C:\Users\nunya\AppData\Local\GitHubDesktop\bin'
 )
 
 try {

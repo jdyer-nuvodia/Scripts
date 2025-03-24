@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Delete-Mailboxes.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2024-02-21 17:15:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.1
 # Additional Info: Updated UserList.txt path to use script directory
 # =============================================================================

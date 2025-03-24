@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Create-LocalAccount.ps1
 # Created: 2025-01-23 15:30:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-26 23:30:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.1
 # Additional Info: Added parameterization to script
 # =============================================================================

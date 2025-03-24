@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Reinstall-DotNET.ps1
 # Created: 2024-02-13 19:30:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2024-02-13 19:30:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.0
 # Additional Info: Script to update all installed .NET Framework versions
 # =============================================================================

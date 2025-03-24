@@ -25,4 +25,4 @@ All scripts follow the organization's PowerShell coding standards including:
 
 ## Contributors
 
-- jdyer-nuvodia
+- nunya-nunya

@@ -1,9 +1,9 @@
-﻿# =============================================================================
+# =============================================================================
 # Script: Grant-RMToMailboxEditCalendarPermissions.ps1
 # Created: 2024-02-20 17:30:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2024-02-20 18:00:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.2
 # Additional Info: Added single mailbox parameter option
 # =============================================================================

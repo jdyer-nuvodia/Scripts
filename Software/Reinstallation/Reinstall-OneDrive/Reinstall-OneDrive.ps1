@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Reinstall-OneDrive.ps1
 # Created: 2025-02-27 18:50:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-27 18:50:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.0
 # Additional Info: Script to uninstall and reinstall OneDrive
 # =============================================================================

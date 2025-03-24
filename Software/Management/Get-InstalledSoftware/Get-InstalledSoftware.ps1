@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-InstalledSoftware.ps1
 # Created: 2024-01-18 15:30:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-27 15:45:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.0
 # Additional Info: Initial script creation for software inventory
 # =============================================================================

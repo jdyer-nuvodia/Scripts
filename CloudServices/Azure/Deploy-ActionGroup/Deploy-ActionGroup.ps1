@@ -11,5 +11,5 @@ Connect-AzAccount
 New-AzResourceGroupDeployment `
 -Name AGDeployment `
 -ResourceGroupName JB-TEST-RG2 `
--TemplateFile "C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Deploy-ActionGroup\AGTemplate-JB-TEST-RG2\template.json" `
--TemplateParameterFile "C:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Azure\Deploy-ActionGroup\AGTemplate-JB-TEST-RG2\parameters.json"
+-TemplateFile "C:\Users\nunya\OneDrive - nunya\Documents\GitHub\Scripts\Azure\Deploy-ActionGroup\AGTemplate-JB-TEST-RG2\template.json" `
+-TemplateParameterFile "C:\Users\nunya\OneDrive - nunya\Documents\GitHub\Scripts\Azure\Deploy-ActionGroup\AGTemplate-JB-TEST-RG2\parameters.json"

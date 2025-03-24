@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Change-LocalUserPassword.ps1
 # Created: 2025-01-09 16:45:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-26 23:29:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.1
 # Additional Info: Added parameter support and documentation
 # =============================================================================

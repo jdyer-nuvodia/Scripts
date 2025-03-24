@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-EventLogs.ps1
 # Created: 2025-02-12 18:30:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-21 01:00:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.1.2
 # Additional Info: Improved date parameter validation and error messages
 # =============================================================================

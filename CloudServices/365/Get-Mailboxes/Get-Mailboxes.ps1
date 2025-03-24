@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-Mailboxes.ps1
 # Created: 2025-02-05 21:58:42 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2025-02-21 17:15:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 2.2
 # Additional Info: Added default names.txt file handling
 # =============================================================================

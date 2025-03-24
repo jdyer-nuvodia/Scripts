@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-SecurityConfigurationStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
-# Author: jdyer-nuvodia
+# Author: nunya-nunya
 # Last Updated: 2024-03-17 20:56:00 UTC
-# Updated By: jdyer-nuvodia
+# Updated By: nunya-nunya
 # Version: 1.6.2
 # Additional Info: Fixed secedit export path handling and file cleanup
 # =============================================================================
