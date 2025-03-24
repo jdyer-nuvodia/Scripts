@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Add-FoldersToPath.ps1
 # Created: 2025-02-05 22:15:38 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-02-20 17:15:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 2.1
 # Additional Info: Updated header format to match standardization requirements
 # =============================================================================

@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-03-22 16:42:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.4.1
 # Additional Info: Modified to ignore log files in script directory
 # =============================================================================

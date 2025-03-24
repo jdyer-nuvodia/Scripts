@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Remove-AdobeAcrobatReader.ps1
 # Created: 2025-02-27 18:52:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-02-27 18:52:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.0
 # Additional Info: Initial script with standardized header
 # =============================================================================

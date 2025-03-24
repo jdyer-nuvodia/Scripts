@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Test-NetworkConnectivity.ps1
 # Created: 2025-02-06 21:24:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-02-27 15:37:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 2.15
 # Additional Info: Updated script header format and documentation
 # =============================================================================

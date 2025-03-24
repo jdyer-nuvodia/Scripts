@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-WizTreePortable.ps1
 # Created: 2024-02-08 15:30:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2024-02-27 17:45:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 2.1
 # Additional Info: Updated to version 4.24 and added architecture verification
 # =============================================================================

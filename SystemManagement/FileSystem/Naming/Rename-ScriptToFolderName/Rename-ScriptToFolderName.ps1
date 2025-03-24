@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Rename-ScriptToFolderName.ps1
 # Created: 2025-02-05 23:22:49 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-02-26 23:14:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.3
 # Additional Info: Updated header format to meet new standards
 # =============================================================================

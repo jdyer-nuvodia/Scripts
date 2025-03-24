@@ -1,7 +1,7 @@
 # =============================================================================
 # Script: Create-ADUser.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Version: 1.1
 # Additional Info: Added parameters and secure password handling
 # =============================================================================

@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Remediate-365Account.ps1
 # Created: 2024-02-21 10:00:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2024-02-21 10:00:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.0
 # Additional Info: Initial script for remediating compromised O365 accounts
 # =============================================================================

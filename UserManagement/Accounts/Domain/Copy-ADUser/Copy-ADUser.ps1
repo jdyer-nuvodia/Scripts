@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Copy-ADUser.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2024-02-20 17:30:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.1
 # Additional Info: Updated to use parameters instead of hard-coded values
 # =============================================================================

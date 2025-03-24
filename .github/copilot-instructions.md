@@ -1,9 +1,9 @@
 # =============================================================================
 # File: copilot-instructions.md
 # Created: 2025-02-07 21:21:53 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-03-06 17:30:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 4.0.0
 # Additional Info: Changed to semantic versioning (MAJOR.MINOR.PATCH)
 # =============================================================================

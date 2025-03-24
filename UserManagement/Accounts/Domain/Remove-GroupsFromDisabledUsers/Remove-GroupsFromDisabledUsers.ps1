@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-03-05 23:27:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 3.4
 # Additional Info: Fixed script analyzer warnings about unused variables
 # =============================================================================

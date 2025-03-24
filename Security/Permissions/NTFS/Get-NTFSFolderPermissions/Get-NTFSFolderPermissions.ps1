@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-03-20 23:00:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.14.3
 # Additional Info: Fixed parameter binding issues and parameter name consistency
 # =============================================================================

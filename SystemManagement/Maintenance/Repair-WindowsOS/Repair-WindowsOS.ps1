@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Repair-WindowsOS.ps1
 # Created: 2025-02-06 00:00:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-03-11 23:57:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.1.3
 # Additional Info: Fixed global variable scoping and removed redundant declarations
 # =============================================================================

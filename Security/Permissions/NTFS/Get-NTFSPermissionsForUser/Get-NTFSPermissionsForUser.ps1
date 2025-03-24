@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-NTFSPermissions.ps1
 # Created: 2025-02-25 23:15:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-03-21 18:40:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.3.0
 # Additional Info: Enhanced log file naming with system name and user information
 # =============================================================================

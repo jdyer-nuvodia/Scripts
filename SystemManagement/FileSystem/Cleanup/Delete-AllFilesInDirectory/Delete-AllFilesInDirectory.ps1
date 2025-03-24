@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-06-14 14:30:21 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.2.1
 # Additional Info: Fixed syntax error with missing closing brace
 # =============================================================================

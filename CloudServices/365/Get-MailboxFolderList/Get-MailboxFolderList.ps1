@@ -1,9 +1,11 @@
 # =============================================================================
 # Script: Get-MailboxFolderList.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: nunya-nunya
-# Version: 1.1
-# Additional Info: Updated to use parameters
+# Author: jdyer-nuvodia
+# Last Updated: 2024-03-24 20:18:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.1.1
+# Additional Info: Updated CSV export path to script directory
 # =============================================================================
 
 <#
@@ -33,10 +35,14 @@ try {
     $Folders = Get-MailboxFolderStatistics -Identity $MailboxName | 
                Where-Object {$_.StartPath -like $FolderNameSearch}
 
+    # Get script directory for CSV export
+    $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $ExportPath = Join-Path $ScriptDir "MailboxFolders.csv"
+
     # Get all folders in the mailbox and export to CSV
     $Folders | 
         Select-Object StartPath, FolderType, ItemsInFolder, FolderSize |
-        Export-Csv -Path "C:\Users\nunya\OneDrive - nunya\Documents\WindowsPowerShell\Scripts\getMailboxFolderList\MailboxFolders.csv" -NoTypeInformation
+        Export-Csv -Path $ExportPath -NoTypeInformation
 
     Write-Host "Export completed successfully" -ForegroundColor Green
 } catch {

@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Grant-CalendarPermissions.ps1
 # Created: 2024-02-20 17:15:00 UTC
-# Author: nunya-nunya
-# Last Updated: 2024-02-20 18:00:00 UTC
-# Updated By: nunya-nunya
-# Version: 1.2
-# Additional Info: Added process logging and security notes
+# Author: jdyer-nuvodia
+# Last Updated: 2024-03-24 20:21:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.2.1
+# Additional Info: Updated file paths to use relative paths
 # =============================================================================
 
 <#
@@ -38,7 +38,7 @@ Import-Module ExchangeOnlineManagement
 Connect-ExchangeOnline
 
 # Read the list of mailboxes from a text file
-$mailboxes = Get-Content "C:\Users\nunya\OneDrive - nunya\Documents\GitHub\Scripts\365\Grant-CalendarPermissions\mailboxes.txt"
+$mailboxes = Get-Content "$PSScriptRoot\mailboxes.txt"
 
 foreach ($mailboxEmail in $mailboxes) {
     Write-Host "Processing calendar permissions for $mailboxEmail..." -ForegroundColor Cyan

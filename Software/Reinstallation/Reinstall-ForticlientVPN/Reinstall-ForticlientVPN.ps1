@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Reinstall-ForticlientVPN.ps1
 # Created: 2024-02-13 18:30:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-02-13 18:30:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.1
 # Additional Info: Script to remove and reinstall Forticlient VPN
 # =============================================================================

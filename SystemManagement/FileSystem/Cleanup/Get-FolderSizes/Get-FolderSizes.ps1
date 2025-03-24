@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2025-03-17 15:45:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 2.1.13
 # Additional Info: Added path validation and handling for empty paths
 # =============================================================================
@@ -92,7 +92,7 @@
     - Check available memory (4GB+)
     - Validate write access to log directory
 
-    Author:  nunya-nunya
+    Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
     Updated: 2025-06-04 17:25:00 UTC
 

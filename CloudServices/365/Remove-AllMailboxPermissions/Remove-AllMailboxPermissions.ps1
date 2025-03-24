@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Remove-AllMailboxPermissions.ps1
 # Created: 2024-02-21 12:00:00 UTC
-# Author: nunya-nunya
+# Author: jdyer-nuvodia
 # Last Updated: 2024-02-21 13:00:00 UTC
-# Updated By: nunya-nunya
+# Updated By: jdyer-nuvodia
 # Version: 1.1
 # Additional Info: Added parameter support and relative path for mailboxes.txt
 # =============================================================================
