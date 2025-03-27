@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 21:35:00 UTC 
+# Last Updated: 2025-03-27 21:36:00 UTC 
 # Updated By: jdyer-nuvodia
-# Version: 1.3.7
-# Additional Info: Enhanced output coloring and progress reporting
+# Version: 1.3.8
+# Additional Info: Enhanced permission output formatting
 # =============================================================================
 
 <#
@@ -174,10 +174,15 @@ function Write-PermissionInfo {
     )
     
     try {
-        $message = "$(Get-Date -Format "yyyy-MM-dd HH:mm:ss") - PERMISSION: $Identity has $AccessType $Access access to $Path"
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $permType = if ($AccessType -eq "Allow") { "[ALLOW]" } else { "[DENY]" }
+        $message = "$timestamp - $permType - Identity: $Identity - Access: $Access - Path: $Path"
+        
         # Use Green for Allow and Yellow for Deny permissions
         $color = if ($AccessType -eq "Allow") { "Green" } else { "Yellow" }
         Write-Host $message -ForegroundColor $color
+        
+        # Log with consistent formatting
         Write-DebugLog $message
         Add-Content -Path $transcriptFile -Value $message -ErrorAction Stop
     }
