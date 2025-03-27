@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 22:57:00 UTC
+# Last Updated: 2025-03-27 22:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.1
-# Additional Info: Added detailed example output format to documentation
+# Version: 1.5.2
+# Additional Info: Fixed script hanging by adding progress bar cleanup
 # =============================================================================
 
 <#
@@ -240,4 +240,14 @@ Write-Host "Folders processed: $($processedFolders.Value)/$totalFolders" -Foregr
 Write-Host "Debug log: $debugLogFile" -ForegroundColor DarkGray
 Write-Host "Transcript: $transcriptFile" -ForegroundColor DarkGray
 
-Stop-Transcript
+finally {
+    # Clean up all progress bars
+    Write-Progress -Activity "Analyzing and Updating Folder Permissions" -Id 0 -Completed
+    Write-Progress -Activity "Current Folder Analysis" -Id 1 -Completed
+
+    # Stop transcript
+    if ($script:TranscriptStarted) {
+        Stop-Transcript
+    }
+    Write-Host "`nScript execution completed" -ForegroundColor Green
+}
