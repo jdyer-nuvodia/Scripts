@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 21:44:00 UTC 
+# Last Updated: 2025-03-27 22:57:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added folder ownership checking capabilities
+# Version: 1.5.1
+# Additional Info: Added detailed example output format to documentation
 # =============================================================================
 
 <#
@@ -25,6 +25,14 @@
 .EXAMPLE
     .\Get-NTFSPermissionsForUser.ps1 -User "DOMAIN\jsmith" -StartPath "D:\"
     Checks permissions for user DOMAIN\jsmith starting from D:\ drive
+
+    Example output when a permission is found:
+    Identity: DOMAIN\jsmith
+    Path: D:\Shared\Projects
+    Access: FullControl
+    Type: Allow
+    Owner Status: Owner
+
 .EXAMPLE
     .\Get-NTFSPermissionsForUser.ps1 -StartPath "D:\" -SIDFile "C:\SIDS.txt"
     Checks permissions for all SIDs listed in SIDS.txt starting from D:\ drive
@@ -158,7 +166,6 @@ function Test-FolderPermissions {
         }
         
         if (-not $foundPermissions) {
-            Write-Host "No permissions or ownership found for specified identities in: $FolderPath" -ForegroundColor DarkGray
             Write-DebugLog "No permissions or ownership found for specified identities in: $FolderPath"
         }
         
@@ -179,7 +186,6 @@ function Find-Folder {
         [ref]$ProcessedCount
     )
     try {
-        Write-Host "Scanning: $FolderPath" -ForegroundColor DarkGray
         Write-DebugLog "Scanning folder: $FolderPath"
         Test-FolderPermissions -FolderPath $FolderPath -IdentityList $IdentityList -ProcessedCount $ProcessedCount
 
