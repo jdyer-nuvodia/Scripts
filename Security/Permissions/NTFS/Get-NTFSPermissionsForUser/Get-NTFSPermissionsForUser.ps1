@@ -166,31 +166,44 @@ try {
             $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
             $foundPermissions = $false
             
-            # Check ownership
-            $owner = $acl.Owner
+            # Get owner SID if in SID format, otherwise try to convert from domain\user format
+            $ownerSid = if ($acl.Owner -match '^S-1-') {
+                $acl.Owner
+            } else {
+                try {
+                    $ntAccount = New-Object System.Security.Principal.NTAccount($acl.Owner)
+                    $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                } catch {
+                    $acl.Owner
+                }
+            }
+    
             foreach ($identity in $IdentityList) {
-                $isOwner = $owner -eq $identity
-                $accessRules = $acl.Access | Where-Object { $_.IdentityReference -eq $identity }
+                # Clean up identity string and compare with owner
+                $cleanIdentity = $identity.Trim()
+                $isOwner = $ownerSid -eq $cleanIdentity -or $acl.Owner -eq $cleanIdentity
+                $accessRules = $acl.Access | Where-Object { $_.IdentityReference.Value -eq $cleanIdentity }
                 
-                if ($accessRules -or $isOwner) {
+                if ($isOwner -or $accessRules) {
                     $foundPermissions = $true
                     $ownerStatus = if ($isOwner) { "Owner" } else { "Not Owner" }
                     
+                    # Always output owner information if matched
+                    if ($isOwner) {
+                        Write-PermissionInfo -Identity $cleanIdentity `
+                                           -Path $FolderPath `
+                                           -Access "N/A" `
+                                           -AccessType "N/A" `
+                                           -OwnerStatus $ownerStatus
+                    }
+                    
+                    # Output access rules if any exist
                     if ($accessRules) {
                         foreach ($rule in $accessRules) {
-                            Write-PermissionInfo -Identity $identity `
+                            Write-PermissionInfo -Identity $cleanIdentity `
                                                -Path $FolderPath `
                                                -Access $rule.FileSystemRights `
                                                -AccessType $rule.AccessControlType `
-                                               -OwnerStatus $ownerStatus
-                        }
-                    } else {
-                        # If no access rules but is owner, still report
-                        if ($isOwner) {
-                            Write-PermissionInfo -Identity $identity `
-                                               -Path $FolderPath `
-                                               -Access "N/A" `
-                                               -AccessType "N/A" `
                                                -OwnerStatus $ownerStatus
                         }
                     }
@@ -209,7 +222,7 @@ try {
             Write-DebugLog "Error checking permissions/ownership for $FolderPath : $_" -IsError
         }
     }
-
+    
     # Enhanced folder scanning function with progress tracking
     function Find-Folder {
         param(
