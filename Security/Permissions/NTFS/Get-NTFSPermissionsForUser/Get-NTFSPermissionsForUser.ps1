@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 22:55:00 UTC
+# Last Updated: 2025-03-27 23:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.0
-# Additional Info: Added explicit owner checking and console reporting
+# Version: 1.8.0
+# Additional Info: Enhanced owner reporting and permission display functionality
 # =============================================================================
 
 <#
@@ -89,6 +89,37 @@ try {
         }
         catch {
             Write-Warning "Failed to write to debug log: $_"
+        }
+    }
+
+    # Add enhanced owner resolution function
+    function Get-FolderOwner {
+        param(
+            [string]$FolderPath
+        )
+        try {
+            $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
+            $ownerSid = $acl.Owner
+            
+            # If already in domain\user format, return as is
+            if ($ownerSid -notmatch '^S-1-') {
+                return $ownerSid
+            }
+            
+            # Try to resolve the SID
+            try {
+                $objSID = New-Object System.Security.Principal.SecurityIdentifier($ownerSid)
+                $objOwner = $objSID.Translate([System.Security.Principal.NTAccount])
+                return $objOwner.Value
+            }
+            catch {
+                Write-DebugLog "Could not resolve owner SID: $ownerSid - $_" -IsError
+                return $ownerSid
+            }
+        }
+        catch {
+            Write-DebugLog "Error getting owner for $FolderPath : $_" -IsError
+            return "Unknown"
         }
     }
 
@@ -206,7 +237,7 @@ try {
         }
     }
 
-    # Add permission reporting function
+    # Modify Write-PermissionInfo to properly handle and display owner information
     function Write-PermissionInfo {
         param(
             [string]$Identity,
@@ -216,11 +247,13 @@ try {
             [string]$OwnerStatus = "Not Owner"
         )
         
-        $permissionInfo = "Identity: $Identity`n" +
-                          "Path: $Path`n" +
-                          "Access: $Access`n" +
-                          "Type: $AccessType`n" +
-                          "Owner Status: $OwnerStatus"
+        $owner = Get-FolderOwner -FolderPath $Path
+        $permissionInfo = "`nFolder: $Path`n" +
+                         "Owner: $owner`n" +
+                         "Identity: $Identity`n" +
+                         "Access: $Access`n" +
+                         "Type: $AccessType`n" +
+                         "Owner Status: $OwnerStatus"
         
         Write-Host $permissionInfo -ForegroundColor Cyan
         Write-DebugLog $permissionInfo
