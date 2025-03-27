@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 23:36:00 UTC
+# Last Updated: 2025-03-27 23:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.2
-# Additional Info: Fixed owner access type conversion error
+# Version: 1.8.3
+# Additional Info: Fixed Write-Host formatting error in owner match display
 # =============================================================================
 
 <#
@@ -194,7 +194,7 @@ try {
                 
                 if ($isOwner) {
                     $foundPermissions = $true
-                    Write-Host "`nFound owner match!" -ForegroundColor Yellow
+                    Write-Host "`n[Found owner match!]" -ForegroundColor Yellow
                     Write-PermissionInfo -Identity $cleanIdentity `
                                         -Path $FolderPath `
                                         -Access "FullControl" `
