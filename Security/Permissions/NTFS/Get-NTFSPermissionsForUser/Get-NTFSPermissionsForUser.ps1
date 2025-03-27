@@ -2,9 +2,9 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 23:03:00 UTC
+# Last Updated: 2025-03-27 23:33:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.0
+# Version: 1.8.1
 # Additional Info: Enhanced owner reporting and permission display functionality
 # =============================================================================
 
@@ -131,7 +131,8 @@ try {
         $identities += $User
     }
     if ($SIDFile -and (Test-Path $SIDFile)) {
-        $identities += Get-Content $SIDFile
+        # Load and clean up identities from file
+        $identities += Get-Content $SIDFile | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() }
         Write-Host "Loaded $(($identities | Measure-Object).Count) identities from $SIDFile" -ForegroundColor Cyan
     }
     elseif ($SIDFile) {
@@ -166,52 +167,55 @@ try {
             $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
             $foundPermissions = $false
             
-            # Get owner SID if in SID format, otherwise try to convert from domain\user format
-            $ownerSid = if ($acl.Owner -match '^S-1-') {
-                $acl.Owner
-            } else {
+            # Get owner SID, handling the "O:" prefix
+            $ownerSid = $acl.Owner
+            if ($ownerSid -match '^O:(?<sid>S-1-[0-9-]+)') {
+                $ownerSid = $matches['sid']
+            } elseif ($ownerSid -notmatch '^S-1-') {
                 try {
-                    $ntAccount = New-Object System.Security.Principal.NTAccount($acl.Owner)
-                    $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                    $ntAccount = New-Object System.Security.Principal.NTAccount($ownerSid)
+                    $ownerSid = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
                 } catch {
-                    $acl.Owner
+                    Write-DebugLog "Could not convert owner to SID: $ownerSid - $_" -IsError
                 }
             }
     
-            foreach ($identity in $IdentityList) {
-                # Clean up identity string and compare with owner
-                $cleanIdentity = $identity.Trim()
-                $isOwner = $ownerSid -eq $cleanIdentity -or $acl.Owner -eq $cleanIdentity
-                $accessRules = $acl.Access | Where-Object { $_.IdentityReference.Value -eq $cleanIdentity }
+            # Filter out empty identities and process each valid one
+            $IdentityList | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
+                $cleanIdentity = $_.Trim()
                 
-                if ($isOwner -or $accessRules) {
+                # Compare owner SID with identity
+                $isOwner = $ownerSid -eq $cleanIdentity -or $acl.Owner -eq $cleanIdentity
+                
+                # Get access rules for this identity
+                $accessRules = $acl.Access | Where-Object { 
+                    $_.IdentityReference.Value -eq $cleanIdentity 
+                }
+                
+                if ($isOwner) {
                     $foundPermissions = $true
-                    $ownerStatus = if ($isOwner) { "Owner" } else { "Not Owner" }
-                    
-                    # Always output owner information if matched
-                    if ($isOwner) {
+                    Write-Host "`nFound owner match!" -ForegroundColor Yellow
+                    Write-PermissionInfo -Identity $cleanIdentity `
+                                       -Path $FolderPath `
+                                       -Access "FullControl" `
+                                       -AccessType "Owner" `
+                                       -OwnerStatus "Owner"
+                }
+                
+                if ($accessRules) {
+                    $foundPermissions = $true
+                    foreach ($rule in $accessRules) {
                         Write-PermissionInfo -Identity $cleanIdentity `
                                            -Path $FolderPath `
-                                           -Access "N/A" `
-                                           -AccessType "N/A" `
-                                           -OwnerStatus $ownerStatus
-                    }
-                    
-                    # Output access rules if any exist
-                    if ($accessRules) {
-                        foreach ($rule in $accessRules) {
-                            Write-PermissionInfo -Identity $cleanIdentity `
-                                               -Path $FolderPath `
-                                               -Access $rule.FileSystemRights `
-                                               -AccessType $rule.AccessControlType `
-                                               -OwnerStatus $ownerStatus
-                        }
+                                           -Access $rule.FileSystemRights `
+                                           -AccessType $rule.AccessControlType `
+                                           -OwnerStatus $(if ($isOwner) { "Owner" } else { "Not Owner" })
                     }
                 }
             }
             
-            if (-not $foundPermissions) {
-                Write-DebugLog "No permissions or ownership found for specified identities in: $FolderPath"
+            if ($foundPermissions) {
+                Write-DebugLog "Found permissions/ownership in: $FolderPath"
             }
             
             $ProcessedCount.Value++
