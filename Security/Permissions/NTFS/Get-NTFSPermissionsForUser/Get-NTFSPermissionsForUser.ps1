@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 21:37:00 UTC 
+# Last Updated: 2025-03-27 21:44:00 UTC 
 # Updated By: jdyer-nuvodia
-# Version: 1.3.9
-# Additional Info: Enhanced identity display and progress messaging
+# Version: 1.4.0
+# Additional Info: Added folder ownership checking capabilities
 # =============================================================================
 
 <#
@@ -124,23 +124,50 @@ function Test-FolderPermissions {
     )
     try {
         $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
+        $foundPermissions = $false
+        
+        # Check ownership
+        $owner = $acl.Owner
         foreach ($identity in $IdentityList) {
+            $isOwner = $owner -eq $identity
             $accessRules = $acl.Access | Where-Object { $_.IdentityReference -eq $identity }
-            if ($accessRules) {
-                foreach ($rule in $accessRules) {
-                    Write-PermissionInfo -Identity $identity `
-                                       -Path $FolderPath `
-                                       -Access $rule.FileSystemRights `
-                                       -AccessType $rule.AccessControlType
+            
+            if ($accessRules -or $isOwner) {
+                $foundPermissions = $true
+                $ownerStatus = if ($isOwner) { "Owner" } else { "Not Owner" }
+                
+                if ($accessRules) {
+                    foreach ($rule in $accessRules) {
+                        Write-PermissionInfo -Identity $identity `
+                                           -Path $FolderPath `
+                                           -Access $rule.FileSystemRights `
+                                           -AccessType $rule.AccessControlType `
+                                           -OwnerStatus $ownerStatus
+                    }
+                } else {
+                    # If no access rules but is owner, still report
+                    if ($isOwner) {
+                        Write-PermissionInfo -Identity $identity `
+                                           -Path $FolderPath `
+                                           -Access "N/A" `
+                                           -AccessType "N/A" `
+                                           -OwnerStatus $ownerStatus
+                    }
                 }
             }
         }
+        
+        if (-not $foundPermissions) {
+            Write-Host "No permissions or ownership found for specified identities in: $FolderPath" -ForegroundColor DarkGray
+            Write-DebugLog "No permissions or ownership found for specified identities in: $FolderPath"
+        }
+        
         $ProcessedCount.Value++
         $percentComplete = [math]::Min(($ProcessedCount.Value / $totalFolders) * 100, 100)
-        Write-Progress -Activity "Scanning folders for permissions" -Status "Processing: $FolderPath" -PercentComplete $percentComplete
+        Write-Progress -Activity "Scanning folders for permissions and ownership" -Status "Processing: $FolderPath" -PercentComplete $percentComplete
     }
     catch {
-        Write-DebugLog "Error checking permissions for $FolderPath : $_" -IsError
+        Write-DebugLog "Error checking permissions/ownership for $FolderPath : $_" -IsError
     }
 }
 
@@ -177,26 +204,19 @@ function Write-PermissionInfo {
     param(
         [string]$Identity,
         [string]$Path,
-        [string]$Access,
-        [string]$AccessType
+        [System.Security.AccessControl.FileSystemRights]$Access,
+        [System.Security.AccessControl.AccessControlType]$AccessType,
+        [string]$OwnerStatus = "Not Owner"
     )
     
-    try {
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $permType = if ($AccessType -eq "Allow") { "[ALLOW]" } else { "[DENY]" }
-        $message = "$timestamp - $permType - Identity: $Identity - Access: $Access - Path: $Path"
-        
-        # Use Green for Allow and Yellow for Deny permissions
-        $color = if ($AccessType -eq "Allow") { "Green" } else { "Yellow" }
-        Write-Host $message -ForegroundColor $color
-        
-        # Log with consistent formatting
-        Write-DebugLog $message
-        Add-Content -Path $transcriptFile -Value $message -ErrorAction Stop
-    }
-    catch {
-        Write-Warning "Failed to log permission info: $_"
-    }
+    $permissionInfo = "Identity: $Identity`n" +
+                      "Path: $Path`n" +
+                      "Access: $Access`n" +
+                      "Type: $AccessType`n" +
+                      "Owner Status: $OwnerStatus"
+    
+    Write-Host $permissionInfo -ForegroundColor Cyan
+    Write-DebugLog $permissionInfo
 }
 
 # Initialize progress tracking
