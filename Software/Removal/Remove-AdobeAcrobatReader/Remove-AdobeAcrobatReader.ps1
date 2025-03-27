@@ -51,7 +51,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Function to write log messages
 function Write-Log {
     param([string]$Message)
-    $logPath = "C:\Windows\Logs\AdobeReaderRemoval_$(Get-Date -Format 'yyyyMMdd').log"
+    $logPath = "C:\Temp\AdobeReaderRemoval_$(Get-Date -Format 'yyyyMMdd').log"
     $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
     Add-Content -Path $logPath -Value $logMessage
     Write-Host $logMessage
