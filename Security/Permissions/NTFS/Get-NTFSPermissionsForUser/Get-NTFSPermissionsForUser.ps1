@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 21:36:00 UTC 
+# Last Updated: 2025-03-27 21:37:00 UTC 
 # Updated By: jdyer-nuvodia
-# Version: 1.3.8
-# Additional Info: Enhanced permission output formatting
+# Version: 1.3.9
+# Additional Info: Enhanced identity display and progress messaging
 # =============================================================================
 
 <#
@@ -103,6 +103,14 @@ if ($identities.Count -eq 0) {
     Stop-Transcript
     return
 }
+
+# Display identities being checked
+Write-Host "`nChecking permissions for the following identities:" -ForegroundColor White
+foreach ($identity in $identities) {
+    Write-Host "  - $identity" -ForegroundColor Cyan
+}
+Write-Host "`nStarting path: $StartPath" -ForegroundColor White
+Write-Host "Processing... Please wait...`n" -ForegroundColor DarkGray
 
 # Get total folder count for progress bar
 $totalFolders = (Get-ChildItem -Directory -Path $StartPath -Recurse -Force | Measure-Object).Count
