@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissions.ps1
 # Created: 2025-02-25 23:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-21 18:40:00 UTC
+# Last Updated: 2025-03-21 21:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Enhanced log file naming with system name and user information
+# Version: 1.3.1
+# Additional Info: Changed log file location to script directory instead of Logs subdirectory
 # =============================================================================
 
 <#
@@ -44,7 +44,6 @@ param(
 # Initialize Logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
-$logPath = Join-Path $PSScriptRoot "Logs"
 
 # Determine user string for filename
 $userString = if ($User) {
@@ -58,13 +57,8 @@ $userString = if ($User) {
 
 # Construct log file names
 $baseLogName = "NTFSPermissionsForUser_${systemName}_${userString}_${timestamp}"
-$debugLogFile = Join-Path $logPath "${baseLogName}_debug.log"
-$transcriptFile = Join-Path $logPath "${baseLogName}_transcript.log"
-
-# Create Logs directory if it does not exist
-if (-not (Test-Path $logPath)) {
-    New-Item -ItemType Directory -Path $logPath | Out-Null
-}
+$debugLogFile = Join-Path $PSScriptRoot "${baseLogName}_debug.log"
+$transcriptFile = Join-Path $PSScriptRoot "${baseLogName}_transcript.log"
 
 # Start Transcript
 Start-Transcript -Path $transcriptFile
