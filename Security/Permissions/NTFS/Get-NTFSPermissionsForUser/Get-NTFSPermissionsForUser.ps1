@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSPermissionsForUser.ps1
-# Created: 2025-02-07 21:21:53 UTC
+# Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 22:40:00 UTC
+# Last Updated: 2025-03-27 22:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.0
-# Additional Info: Added explicit owner checking logic to match Get-NTFSFolderPermissions
+# Version: 1.7.0
+# Additional Info: Added explicit owner checking and console reporting
 # =============================================================================
 
 <#
@@ -268,6 +268,63 @@ try {
             }
         } catch {
             Write-Warning "Could not access $Path"
+        }
+    }
+
+    # Function to get folder permissions and owner information
+    function Get-FolderPermissions {
+        param (
+            [Parameter(Mandatory=$true)]
+            [string]$Folder,
+            [string[]]$TargetIdentities
+        )
+        
+        try {
+            $acl = Get-Acl -Path $Folder
+            $ownerSID = $acl.Owner
+            if ($ownerSID -match '^O:(?<sid>S-1-[0-9-]+)') {
+                $ownerSID = $matches['sid']
+            } elseif ($ownerSID -match '^S-1-[0-9-]+') {
+                $ownerSID = $ownerSID
+            } else {
+                try {
+                    $ntAccount = [System.Security.Principal.NTAccount]$acl.Owner
+                    $ownerSID = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                } catch {
+                    $ownerSID = "Unknown"
+                }
+            }
+
+            # Check if owner is in target identities
+            if ($TargetIdentities -contains $ownerSID) {
+                Write-Host "`n$Folder"
+                Write-Host "Owner: O:$ownerSID" -ForegroundColor Cyan
+            }
+
+            $permissions = @()
+            foreach ($ace in $acl.Access) {
+                if ($ace.IdentityReference.Value -in $TargetIdentities) {
+                    $permissions += [PSCustomObject]@{
+                        Path = $Folder
+                        Identity = $ace.IdentityReference.Value
+                        Type = $ace.AccessControlType
+                        Rights = $ace.FileSystemRights
+                        IsInherited = $ace.IsInherited
+                    }
+                }
+            }
+            
+            if ($permissions.Count -gt 0) {
+                foreach ($perm in $permissions) {
+                    Write-Host "$($perm.Identity) has $($perm.Type) $($perm.Rights) $(if($perm.IsInherited){'(Inherited)'})"
+                }
+            }
+            
+            return $permissions
+        }
+        catch {
+            Write-Log "Error getting permissions for ${Folder}: $_" -Level 'ERROR' -Color "Red"
+            return $null
         }
     }
 
