@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 22:19:00 UTC
+# Last Updated: 2025-03-27 22:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.3
-# Additional Info: Fixed finally block by adding proper try-catch structure
+# Version: 1.6.0
+# Additional Info: Added explicit owner checking logic to match Get-NTFSFolderPermissions
 # =============================================================================
 
 <#
@@ -224,6 +224,51 @@ try {
         
         Write-Host $permissionInfo -ForegroundColor Cyan
         Write-DebugLog $permissionInfo
+    }
+
+    # Function to check ownership and permissions
+    function Test-FolderAccess {
+        param(
+            [string]$Path,
+            [string[]]$Identities
+        )
+        
+        try {
+            $Acl = Get-Acl -Path $Path -ErrorAction Stop
+            $Owner = $Acl.Owner
+            
+            foreach($Identity in $Identities) {
+                # Convert username to SID if it's not already a SID
+                $Sid = if($Identity -match '^S-1-') {
+                    $Identity
+                } else {
+                    try {
+                        $NTAccount = New-Object System.Security.Principal.NTAccount($Identity)
+                        $NTAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                    } catch {
+                        Write-Warning "Could not convert $Identity to SID"
+                        continue
+                    }
+                }
+                
+                # Check ownership - comparing both SID forms and string forms
+                $OwnerSid = try {
+                    $NTAccount = New-Object System.Security.Principal.NTAccount($Owner)
+                    $NTAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                } catch {
+                    $Owner
+                }
+                
+                if($OwnerSid -eq $Sid -or $Owner -eq $Identity) {
+                    Write-Output "Owner Status: Owner"
+                    Write-Output "Path: $Path"
+                    Write-Output "Identity: $Identity"
+                    Write-Output "---"
+                }
+            }
+        } catch {
+            Write-Warning "Could not access $Path"
+        }
     }
 
     # Initialize progress tracking
