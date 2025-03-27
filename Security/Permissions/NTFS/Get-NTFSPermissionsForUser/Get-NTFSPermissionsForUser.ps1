@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSPermissionsForUser.ps1
-# Created: 2025-02-25 23:15:00 UTC
+# Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 21:19:33 UTC
+# Last Updated: 2025-03-27 21:35:00 UTC 
 # Updated By: jdyer-nuvodia
-# Version: 1.3.3
-# Additional Info: Added error handling and progress tracking for folder scanning
+# Version: 1.3.7
+# Additional Info: Enhanced output coloring and progress reporting
 # =============================================================================
 
 <#
@@ -106,10 +106,9 @@ if ($identities.Count -eq 0) {
 
 # Get total folder count for progress bar
 $totalFolders = (Get-ChildItem -Directory -Path $StartPath -Recurse -Force | Measure-Object).Count
-$currentFolder = 0
 
 # Function to check and report folder permissions
-function Check-FolderPermissions {
+function Test-FolderPermissions {
     param(
         [string]$FolderPath,
         [array]$IdentityList,
@@ -121,9 +120,10 @@ function Check-FolderPermissions {
             $accessRules = $acl.Access | Where-Object { $_.IdentityReference -eq $identity }
             if ($accessRules) {
                 foreach ($rule in $accessRules) {
-                    Write-Host "Found permission for $identity on $FolderPath" -ForegroundColor White
-                    Write-Host "  Rights: $($rule.FileSystemRights)" -ForegroundColor DarkGray
-                    Write-Host "  Type: $($rule.AccessControlType)" -ForegroundColor DarkGray
+                    Write-PermissionInfo -Identity $identity `
+                                       -Path $FolderPath `
+                                       -Access $rule.FileSystemRights `
+                                       -AccessType $rule.AccessControlType
                 }
             }
         }
@@ -137,27 +137,52 @@ function Check-FolderPermissions {
 }
 
 # Enhanced folder scanning function with progress tracking
-function Scan-Folder {
+function Find-Folder {
     param(
         [string]$FolderPath,
         [array]$IdentityList,
         [ref]$ProcessedCount
     )
     try {
+        Write-Host "Scanning: $FolderPath" -ForegroundColor DarkGray
         Write-DebugLog "Scanning folder: $FolderPath"
-        Check-FolderPermissions -FolderPath $FolderPath -IdentityList $IdentityList -ProcessedCount $ProcessedCount
+        Test-FolderPermissions -FolderPath $FolderPath -IdentityList $IdentityList -ProcessedCount $ProcessedCount
 
         Get-ChildItem -Path $FolderPath -Directory -ErrorAction Stop | ForEach-Object {
             try {
-                Scan-Folder -FolderPath $_.FullName -IdentityList $IdentityList -ProcessedCount $ProcessedCount
+                Find-Folder -FolderPath $_.FullName -IdentityList $IdentityList -ProcessedCount $ProcessedCount
             }
             catch {
+                Write-Host "Error scanning subfolder $($_.FullName)" -ForegroundColor Red
                 Write-DebugLog "Error scanning subfolder $($_.FullName): $_" -IsError
             }
         }
     }
     catch {
+        Write-Host "Error accessing folder $FolderPath" -ForegroundColor Red
         Write-DebugLog "Error accessing folder $FolderPath : $_" -IsError
+    }
+}
+
+# Add permission reporting function
+function Write-PermissionInfo {
+    param(
+        [string]$Identity,
+        [string]$Path,
+        [string]$Access,
+        [string]$AccessType
+    )
+    
+    try {
+        $message = "$(Get-Date -Format "yyyy-MM-dd HH:mm:ss") - PERMISSION: $Identity has $AccessType $Access access to $Path"
+        # Use Green for Allow and Yellow for Deny permissions
+        $color = if ($AccessType -eq "Allow") { "Green" } else { "Yellow" }
+        Write-Host $message -ForegroundColor $color
+        Write-DebugLog $message
+        Add-Content -Path $transcriptFile -Value $message -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Failed to log permission info: $_"
     }
 }
 
@@ -166,13 +191,14 @@ $processedFolders = [ref]0
 
 # Start the scan with progress tracking
 Write-Host "Beginning folder scan from $StartPath" -ForegroundColor Cyan
-Scan-Folder -FolderPath $StartPath -IdentityList $identities -ProcessedCount $processedFolders
+Find-Folder -FolderPath $StartPath -IdentityList $identities -ProcessedCount $processedFolders
 
 # Output final statistics
 Write-Progress -Activity "Scanning folders for permissions" -Completed
-Write-Host "`nScan Statistics:" -ForegroundColor Cyan
-Write-Host "Folders processed: $($processedFolders.Value)/$totalFolders" -ForegroundColor White
-Write-Host "Debug log: $debugLogFile" -ForegroundColor White
-Write-Host "Transcript: $transcriptFile" -ForegroundColor White
+Write-Host "`nScan Complete" -ForegroundColor Green
+Write-Host "Scan Statistics:" -ForegroundColor White
+Write-Host "Folders processed: $($processedFolders.Value)/$totalFolders" -ForegroundColor Cyan
+Write-Host "Debug log: $debugLogFile" -ForegroundColor DarkGray
+Write-Host "Transcript: $transcriptFile" -ForegroundColor DarkGray
 
 Stop-Transcript
