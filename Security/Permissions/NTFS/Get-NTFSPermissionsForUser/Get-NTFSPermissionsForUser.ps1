@@ -1,11 +1,11 @@
 # =============================================================================
-# Script: Get-NTFSPermissions.ps1
+# Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-02-25 23:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-21 21:10:00 UTC
+# Last Updated: 2025-03-27 21:19:33 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Changed log file location to script directory instead of Logs subdirectory
+# Version: 1.3.3
+# Additional Info: Added error handling and progress tracking for folder scanning
 # =============================================================================
 
 <#
@@ -23,10 +23,10 @@
 .PARAMETER SIDFile
     Optional path to a text file containing SIDs to check (one per line)
 .EXAMPLE
-    .\Get-NTFSPermissions.ps1 -User "DOMAIN\jsmith" -StartPath "D:\"
+    .\Get-NTFSPermissionsForUser.ps1 -User "DOMAIN\jsmith" -StartPath "D:\"
     Checks permissions for user DOMAIN\jsmith starting from D:\ drive
 .EXAMPLE
-    .\Get-NTFSPermissions.ps1 -StartPath "D:\" -SIDFile "C:\SIDS.txt"
+    .\Get-NTFSPermissionsForUser.ps1 -StartPath "D:\" -SIDFile "C:\SIDS.txt"
     Checks permissions for all SIDs listed in SIDS.txt starting from D:\ drive
 #>
 
@@ -63,11 +63,24 @@ $transcriptFile = Join-Path $PSScriptRoot "${baseLogName}_transcript.log"
 # Start Transcript
 Start-Transcript -Path $transcriptFile
 
-# Function to write debug log
+# Function to write debug log with error handling
 function Write-DebugLog {
-    param([string]$Message)
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$timestamp - $Message" | Out-File -FilePath $debugLogFile -Append
+    param(
+        [string]$Message,
+        [switch]$IsError
+    )
+    try {
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $logEntry = "$timestamp - $Message"
+        if ($IsError) {
+            $logEntry = "$logEntry [ERROR]"
+            Write-Warning $Message
+        }
+        $logEntry | Out-File -FilePath $debugLogFile -Append -ErrorAction Stop
+    }
+    catch {
+        Write-Warning "Failed to write to debug log: $_"
+    }
 }
 
 Write-Host "Initializing permission scan..." -ForegroundColor Cyan
@@ -95,45 +108,71 @@ if ($identities.Count -eq 0) {
 $totalFolders = (Get-ChildItem -Directory -Path $StartPath -Recurse -Force | Measure-Object).Count
 $currentFolder = 0
 
-Get-ChildItem -Directory -Path $StartPath -Recurse -Force | ForEach-Object {
-    $folder = $_.FullName
-    $currentFolder++
-    
-    # Update progress bar
-    $percentComplete = ($currentFolder / $totalFolders) * 100
-    Write-Progress -Activity "Scanning folders for permissions" -Status "Checking $folder" -PercentComplete $percentComplete
-    
-    # Log detailed scanning info to debug file
-    Write-DebugLog "Scanning folder: $folder"
-    
+# Function to check and report folder permissions
+function Check-FolderPermissions {
+    param(
+        [string]$FolderPath,
+        [array]$IdentityList,
+        [ref]$ProcessedCount
+    )
     try {
-        $acl = Get-Acl $folder
-        foreach ($identity in $identities) {
-            $userAccess = $acl.Access | Where-Object { $_.IdentityReference -eq $identity }
-            
-            if ($userAccess) {
-                Write-DebugLog "Found permissions for $identity in $folder"
-                [PSCustomObject]@{
-                    Folder = $folder
-                    Identity = $identity
-                    Permissions = $userAccess.FileSystemRights
-                    IsInherited = $userAccess.IsInherited
+        $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
+        foreach ($identity in $IdentityList) {
+            $accessRules = $acl.Access | Where-Object { $_.IdentityReference -eq $identity }
+            if ($accessRules) {
+                foreach ($rule in $accessRules) {
+                    Write-Host "Found permission for $identity on $FolderPath" -ForegroundColor White
+                    Write-Host "  Rights: $($rule.FileSystemRights)" -ForegroundColor DarkGray
+                    Write-Host "  Type: $($rule.AccessControlType)" -ForegroundColor DarkGray
                 }
+            }
+        }
+        $ProcessedCount.Value++
+        $percentComplete = [math]::Min(($ProcessedCount.Value / $totalFolders) * 100, 100)
+        Write-Progress -Activity "Scanning folders for permissions" -Status "Processing: $FolderPath" -PercentComplete $percentComplete
+    }
+    catch {
+        Write-DebugLog "Error checking permissions for $FolderPath : $_" -IsError
+    }
+}
+
+# Enhanced folder scanning function with progress tracking
+function Scan-Folder {
+    param(
+        [string]$FolderPath,
+        [array]$IdentityList,
+        [ref]$ProcessedCount
+    )
+    try {
+        Write-DebugLog "Scanning folder: $FolderPath"
+        Check-FolderPermissions -FolderPath $FolderPath -IdentityList $IdentityList -ProcessedCount $ProcessedCount
+
+        Get-ChildItem -Path $FolderPath -Directory -ErrorAction Stop | ForEach-Object {
+            try {
+                Scan-Folder -FolderPath $_.FullName -IdentityList $IdentityList -ProcessedCount $ProcessedCount
+            }
+            catch {
+                Write-DebugLog "Error scanning subfolder $($_.FullName): $_" -IsError
             }
         }
     }
     catch {
-        Write-DebugLog "Error accessing $folder : $_"
-        Write-Warning "Could not access $folder"
+        Write-DebugLog "Error accessing folder $FolderPath : $_" -IsError
     }
-} | Tee-Object -Variable results | Format-Table -AutoSize
+}
 
+# Initialize progress tracking
+$processedFolders = [ref]0
+
+# Start the scan with progress tracking
+Write-Host "Beginning folder scan from $StartPath" -ForegroundColor Cyan
+Scan-Folder -FolderPath $StartPath -IdentityList $identities -ProcessedCount $processedFolders
+
+# Output final statistics
 Write-Progress -Activity "Scanning folders for permissions" -Completed
-
-# Output summary
-Write-Host "`nScan Complete" -ForegroundColor Green
-Write-Host "Total folders scanned: $totalFolders" -ForegroundColor White
-Write-Host "Results saved to: $transcriptFile" -ForegroundColor White
-Write-Host "Debug log saved to: $debugLogFile" -ForegroundColor White
+Write-Host "`nScan Statistics:" -ForegroundColor Cyan
+Write-Host "Folders processed: $($processedFolders.Value)/$totalFolders" -ForegroundColor White
+Write-Host "Debug log: $debugLogFile" -ForegroundColor White
+Write-Host "Transcript: $transcriptFile" -ForegroundColor White
 
 Stop-Transcript
