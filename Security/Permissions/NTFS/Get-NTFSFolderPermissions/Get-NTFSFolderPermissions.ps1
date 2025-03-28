@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 20:31:00 UTC
+# Last Updated: 2025-03-28 20:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.12
-# Additional Info: Improved hierarchical output formatting with better structure
+# Version: 3.3.13
+# Additional Info: Fixed hierarchical output display and data collection
 # =============================================================================
 
 <#
@@ -993,30 +993,51 @@ try {
     $script:ProcessedFolders = 0
     $script:lastProgressUpdate = $null  # Initialize progress tracking
 
-    # Process folders with timeout tracking
-    Write-Log -Message "Starting folder permission analysis..." -Color "Cyan" -Level 'INFO'
-    Invoke-FolderRecursively -StartPath $StartPath
-
-    if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
-        Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
-    }
-
-    # Calculate elapsed time
-    $script:EndTime = Get-Date
-    $script:ElapsedTime = $script:EndTime - $script:StartTime
-
-    # Display summary
-    Write-Log -Message "`nAnalysis Complete" -Color "Green" -Level 'SUCCESS'
-    Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan" -Level 'INFO'
-    Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
-    Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
+        # Process folders with timeout tracking
+        Write-Log -Message "Starting folder permission analysis..." -Color "Cyan" -Level 'INFO'
+        Invoke-FolderRecursively -StartPath $StartPath
     
-    if ($script:FolderPermissions.Count -gt 0) {
-        # Convert to hierarchy and write output
-        $hierarchy = Format-Hierarchy -FolderPermissions $script:FolderPermissions
-        Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
+        if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+            Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
+        }
+    
+        # Calculate elapsed time
+        $script:EndTime = Get-Date
+        $script:ElapsedTime = $script:EndTime - $script:StartTime
+    
+        # Display summary
+        Write-Log -Message "`nAnalysis Complete" -Color "Green" -Level 'SUCCESS'
+        Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan" -Level 'INFO'
+        Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
+        Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
+        Write-Log -Message "" -Level 'INFO'
+    
+        # Create hierarchy structure
+        $hierarchy = @()
+        $hierarchy += [PSCustomObject]@{
+            Path = $StartPath
+            ParentPath = ""
+        }
+    
+        # Add all processed folders to hierarchy
+        foreach ($path in $script:FolderPermissions.Keys | Where-Object { $_ -ne $StartPath }) {
+            $hierarchy += [PSCustomObject]@{
+                Path = $path
+                ParentPath = Split-Path -Parent $path
+            }
+        }
+    
+        # Sort hierarchy by path for consistent output
+        $hierarchy = $hierarchy | Sort-Object Path
+    
+        # Write the hierarchical output
+        if ($script:FolderPermissions.Count -gt 0) {
+            Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
+        }
+        else {
+            Write-Log -Message "No permissions data collected!" -Level 'WARNING' -Color "Yellow"
+        }
     }
-} 
 catch [System.Exception] {
     Write-Error "An error occurred: $_"
     Write-Error $_.ScriptStackTrace
