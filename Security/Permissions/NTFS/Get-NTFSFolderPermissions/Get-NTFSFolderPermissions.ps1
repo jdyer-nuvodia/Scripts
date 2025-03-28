@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:54:00 UTC
+# Last Updated: 2025-03-28 23:57:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.39
-# Additional Info: Fixed comparison logic for folder permissions to correctly identify identical permissions
+# Version: 3.3.40
+# Additional Info: Enhanced permission comparison to properly handle special permission flags
 # =============================================================================
 
 <#
@@ -249,27 +249,70 @@ function Compare-PermissionSets {
         return $false
     }
     
-    # Create sorted string representations of all permission entries for exact comparison
-    $parentRulesKeys = @($parentRules | ForEach-Object {
-        if ($null -ne $_.IdentityReference -and $null -ne $_.FileSystemRights) {
-            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.IsInherited)"
-        }
-    } | Sort-Object)
+    # Create normalized hashtables for comparison
+    $parentRulesMap = @{}
+    $childRulesMap = @{}
     
-    $childRulesKeys = @($childRules | ForEach-Object {
-        if ($null -ne $_.IdentityReference -and $null -ne $_.FileSystemRights) {
-            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.IsInherited)"
+    # Process parent rules
+    foreach ($rule in $parentRules) {
+        if ($null -ne $rule.IdentityReference) {
+            $key = "$($rule.IdentityReference)|$($rule.IsInherited)"
+            
+            # Handle both string and enum FileSystemRights
+            $fsRights = $rule.FileSystemRights
+            
+            # If this identity already has an entry, append to it
+            if ($parentRulesMap.ContainsKey($key)) {
+                $parentRulesMap[$key] += @($fsRights)
+            } else {
+                $parentRulesMap[$key] = @($fsRights)
+            }
         }
-    } | Sort-Object)
+    }
     
-    # Compare the sorted arrays exactly
-    if ($parentRulesKeys.Count -ne $childRulesKeys.Count) {
+    # Process child rules
+    foreach ($rule in $childRules) {
+        if ($null -ne $rule.IdentityReference) {
+            $key = "$($rule.IdentityReference)|$($rule.IsInherited)"
+            
+            # Handle both string and enum FileSystemRights
+            $fsRights = $rule.FileSystemRights
+            
+            # If this identity already has an entry, append to it
+            if ($childRulesMap.ContainsKey($key)) {
+                $childRulesMap[$key] += @($fsRights)
+            } else {
+                $childRulesMap[$key] = @($fsRights)
+            }
+        }
+    }
+    
+    # Now compare the maps
+    
+    # First check if they have the same keys (identities + inheritance)
+    if (($parentRulesMap.Keys | Sort-Object) -join ',' -ne ($childRulesMap.Keys | Sort-Object) -join ',') {
         return $false
     }
     
-    for ($i = 0; $i -lt $parentRulesKeys.Count; $i++) {
-        if ($parentRulesKeys[$i] -ne $childRulesKeys[$i]) {
+    # Then for each identity, compare their permissions
+    foreach ($key in $parentRulesMap.Keys) {
+        $parentPerms = $parentRulesMap[$key] | Sort-Object
+        $childPerms = $childRulesMap[$key] | Sort-Object
+        
+        # Compare the sorted permission arrays
+        if ($parentPerms.Count -ne $childPerms.Count) {
             return $false
+        }
+        
+        for ($i = 0; $i -lt $parentPerms.Count; $i++) {
+            # When comparing special permissions or flags, convert to a normalized string
+            $parentPerm = "$($parentPerms[$i])"
+            $childPerm = "$($childPerms[$i])"
+            
+            # If any permission doesn't match, folders are different
+            if ($parentPerm -ne $childPerm) {
+                return $false
+            }
         }
     }
     
