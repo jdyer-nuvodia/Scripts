@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 20:23:00 UTC
+# Last Updated: 2025-03-28 20:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.10
-# Additional Info: add Compare-PermissionSets function to enhance permission comparison logic
+# Version: 3.3.11
+# Additional Info: Modified Write-HierarchicalOutput to show all permissions without truncation
 # =============================================================================
 
 <#
@@ -460,22 +460,14 @@ function Write-HierarchicalOutput {
             # Output folder name with indentation to show hierarchy
             Write-Log -Message "$indent$folderName" -Color "Cyan" -Level 'INFO'
             
-            # Output owner and permissions only if different from parent
+            # Output owner and permissions
             $owner = $currentPerms.Owner
             Write-Log -Message "$indent  Owner: $owner" -Color "White" -Level 'INFO'
             
-            # Show first 3 permissions
-            $accessCount = $currentPerms.Access.Count
-            $showCount = [Math]::Min(3, $accessCount)
-            
-            for ($i = 0; $i -lt $showCount; $i++) {
-                $access = $currentPerms.Access[$i]
+            # Show all permissions, no truncation
+            foreach ($access in $currentPerms.Access) {
                 $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
                 Write-Log -Message "$indent  $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level 'INFO'
-            }
-            
-            if ($accessCount -gt $showCount) {
-                Write-Log -Message "$indent  ... and $($accessCount - $showCount) more permissions" -Color "DarkGray" -Level 'INFO'
             }
             
             # If this folder has matching subfolders, list them
