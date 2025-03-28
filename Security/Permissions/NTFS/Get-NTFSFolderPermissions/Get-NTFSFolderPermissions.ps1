@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 21:54:00 UTC
+# Last Updated: 2025-03-28 21:56:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.19
-# Additional Info: Fixed indentation consistency in hierarchical display
+# Version: 3.3.20
+# Additional Info: Fixed folder entry indentation while maintaining content alignment
 # =============================================================================
 
 <#
@@ -464,8 +464,9 @@ function Write-HierarchicalOutput {
         # Output folder name
         if ($Level -eq 0) {
             Write-Log -Message "$folderName" -Color "Cyan" -Level "INFO"
+            $indent = ""  # Reset indent for root level
         } else {
-            Write-Log -Message "$indent|---+ $folderName" -Color "Cyan" -Level "INFO"
+            Write-Log -Message "|---+ $folderName" -Color "Cyan" -Level "INFO"
         }
         
         # Output Owner and Permissions with vertical lines
