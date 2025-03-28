@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 22:33:00 UTC
+# Last Updated: 2025-03-28 23:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.23
-# Additional Info: Fixed hierarchy indentation for nested folder display
+# Version: 3.3.24
+# Additional Info: Fixed Templates folder indentation level in hierarchy display
 # =============================================================================
 
 <#
@@ -521,8 +521,9 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|" -Level "INFO"
                 
                 foreach ($child in $children) {
+                    # Pass the current path as ParentPath for proper hierarchy
                     Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
-                                           -Level ($Level + 1) -ParentPath $child.ParentPath `
+                                           -Level ($Level + 1) -ParentPath $path `
                                            -ProcessedPaths $ProcessedPaths
                 }
             }
