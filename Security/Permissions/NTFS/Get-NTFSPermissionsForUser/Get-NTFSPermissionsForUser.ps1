@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 15:40:00 UTC
+# Last Updated: 2025-03-28 15:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.4
-# Additional Info: Fixed PSUseDeclaredVarsMoreThanAssignments warning for foundPermissions variable
+# Version: 1.8.5
+# Additional Info: ensure permissions flag is returned in error handling
 # =============================================================================
 
 <#
@@ -223,9 +223,12 @@ try {
             $ProcessedCount.Value++
             $percentComplete = [math]::Min(($ProcessedCount.Value / $totalFolders) * 100, 100)
             Write-Progress -Activity "Scanning folders for permissions and ownership" -Status "Processing: $FolderPath" -PercentComplete $percentComplete
+
+            return $foundPermissions  # Return the flag indicating if permissions were found
         }
         catch {
             Write-DebugLog "Error checking permissions/ownership for $FolderPath : $_" -IsError
+            return $false
         }
     }
     
