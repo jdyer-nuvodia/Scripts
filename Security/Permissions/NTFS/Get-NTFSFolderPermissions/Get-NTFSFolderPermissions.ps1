@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 20:02:00 UTC
+# Last Updated: 2025-03-28 20:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.5
+# Version: 3.3.6
 # Additional Info: resolve the type conversion error and properly display the hierarchical output
 # =============================================================================
 
@@ -195,7 +195,10 @@ function Invoke-FolderRecursively {
         [string]$StartPath,
         
         [Parameter(Mandatory=$false)]
-        [int]$CurrentDepth = 0
+        [int]$CurrentDepth = 0,
+
+        [Parameter(Mandatory=$false)]
+        [bool]$IsLeafNode = $false
     )
     
     try {
@@ -208,13 +211,19 @@ function Invoke-FolderRecursively {
         # Get folder permissions
         $acl = Get-Acl -Path $StartPath -ErrorAction Stop
         $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $acl.Owner
+
+        # Get subfolders before storing permissions
+        $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
+        $IsLeafNode = ($folders.Count -eq 0)
         
-        # Store permissions
+        # Store permissions with leaf node status
         $script:FolderPermissions[$StartPath] = @{
             Owner = $acl.Owner
             Access = $acl.Access
             IsInherited = $true
             UniqueHash = $permissionHash
+            IsLeafNode = $IsLeafNode
+            ChildCount = $folders.Count
         }
         
         # Track unique permissions
@@ -235,14 +244,15 @@ function Invoke-FolderRecursively {
             return
         }
         
-        # Process subfolders
-        $folders = Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop
-        foreach ($folder in $folders) {
-            try {
-                Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
-            }
-            catch {
-                Write-Log -Message "Error processing subfolder $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
+        # Process subfolders only if not a leaf node
+        if (-not $IsLeafNode) {
+            foreach ($folder in $folders) {
+                try {
+                    Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+                }
+                catch {
+                    Write-Log -Message "Error processing subfolder $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
+                }
             }
         }
     }
@@ -363,7 +373,7 @@ function Format-Hierarchy {
 function Write-HierarchicalOutput {
     param (
         [Parameter(Mandatory=$true)]
-        [array]$Hierarchy,  # Changed from hashtable to array
+        [array]$Hierarchy,
         
         [Parameter(Mandatory=$true)]
         [hashtable]$Permissions,
@@ -378,43 +388,42 @@ function Write-HierarchicalOutput {
     foreach ($item in $Hierarchy) {
         $path = $item.Path
         $indent = "  " * $Level
+        $isLeaf = $Permissions[$path].IsLeafNode
+        
+        # Use different branch characters based on whether it's a leaf node
+        $branchChar = if ($isLeaf) { "└─" } else { "├─" }
         
         # Output folder name with indentation to show hierarchy
-        Write-Log -Message "$indent├─ $(Split-Path -Leaf $path)" -Color "Cyan" -Level 'INFO'
+        Write-Log -Message "$indent$branchChar $(Split-Path -Leaf $path)" -Color "Cyan" -Level 'INFO'
         
-        # Check if we have permissions for this path
         if ($Permissions.ContainsKey($path)) {
             $perm = $Permissions[$path]
             $owner = $perm.Owner
             
             # Output permissions with increased indentation
-            Write-Log -Message "$indent│  Owner: $owner" -Color "White" -Level 'INFO'
+            $connectorChar = if ($isLeaf) { " " } else { "│" }
+            Write-Log -Message "$indent$connectorChar  Owner: $owner" -Color "White" -Level 'INFO'
             
-            # Show first 3 permissions (to avoid excessive output)
+            # Show first 3 permissions
             $accessCount = $perm.Access.Count
             $showCount = [Math]::Min(3, $accessCount)
             
             for ($i = 0; $i -lt $showCount; $i++) {
                 $access = $perm.Access[$i]
                 $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-                Write-Log -Message "$indent│  $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level 'INFO'
+                Write-Log -Message "$indent$connectorChar  $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level 'INFO'
             }
             
             # Show count if there are more
             if ($accessCount -gt $showCount) {
-                Write-Log -Message "$indent│  ... and $($accessCount - $showCount) more permissions" -Color "DarkGray" -Level 'INFO'
-            }
-
-            # Process matching subfolders if any
-            if ($perm.ContainsKey('MatchingSubfolders') -and $perm.MatchingSubfolders.Count -gt 0) {
-                Write-Log -Message "$indent│  Identical permissions in subfolders: $($perm.MatchingSubfolders.Count)" -Color "DarkGray" -Level 'INFO'
+                Write-Log -Message "$indent$connectorChar  ... and $($accessCount - $showCount) more permissions" -Color "DarkGray" -Level 'INFO'
             }
         }
         
-        # Process children if they exist
-        $children = $Hierarchy | Where-Object { $_.ParentPath -eq $path }
-        if ($children) {
-            foreach ($child in $children) {
+        # Process children only if not a leaf node
+        if (-not $isLeaf) {
+            $children = $Hierarchy | Where-Object { $_.ParentPath -eq $path }
+            if ($children) {
                 Write-HierarchicalOutput -Hierarchy $children -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
             }
         }
