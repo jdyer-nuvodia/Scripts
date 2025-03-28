@@ -930,8 +930,8 @@ try {
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
     
     if ($script:FolderPermissions.Count -gt 0) {
-        $hierarchyItems = Format-Hierarchy -FolderPermissions $script:FolderPermissions
-        Write-HierarchicalOutput -Hierarchy $script:FolderPermissions -Permissions $script:FolderPermissions
+        # Convert to hierarchy and write output in one step
+        Write-HierarchicalOutput -Hierarchy (Format-Hierarchy -FolderPermissions $script:FolderPermissions) -Permissions $script:FolderPermissions
     }
 } 
 catch [System.Exception] {
