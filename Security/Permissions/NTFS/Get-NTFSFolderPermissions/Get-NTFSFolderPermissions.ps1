@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:26:00 UTC
+# Last Updated: 2025-03-28 23:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.33
-# Additional Info: Fixed indentation in hierarchical display for subfolders
+# Version: 3.3.34
+# Additional Info: Fixed indentation of Template folder and its children in hierarchical display
 # =============================================================================
 
 <#
@@ -189,61 +189,6 @@ function Get-TotalFolderCount {
     catch {
         Write-Log -Message "Error counting folders in $StartPath : $_" -Level 'ERROR' -Color "Red"
         return 0
-    }
-}
-function Compare-PermissionSets {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)]
-        [object]$Parent,
-        
-        [Parameter(Mandatory = $true)]
-        [object]$Child
-    )
-    
-    try {
-        # Check for null parameters
-        if ($null -eq $Parent -or $null -eq $Child) {
-            Write-Log -Message "Null permission set detected" -Level 'WARNING' -Color "Yellow"
-            return $false
-        }
-
-        # Compare owners first
-        if ($Parent.Owner -ne $Child.Owner) {
-            return $false
-        }
-
-        # Check Access rules
-        if ($null -eq $Parent.Access -or $null -eq $Child.Access) {
-            Write-Log -Message "Null Access rules detected" -Level 'WARNING' -Color "Yellow"
-            return $false
-        }
-
-        # Compare access rule counts
-        if ($Parent.Access.Count -ne $Child.Access.Count) {
-            return $false
-        }
-
-        # Create hashtables for comparison
-        $parentRules = @{}
-        foreach ($rule in $Parent.Access) {
-            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
-            $parentRules[$key] = $true
-        }
-
-        # Check child rules against parent
-        foreach ($rule in $Child.Access) {
-            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
-            if (-not $parentRules.ContainsKey($key)) {
-                return $false
-            }
-        }
-
-        return $true
-    }
-    catch {
-        Write-Log -Message "Error comparing permission sets: $_" -Level 'ERROR' -Color "Red"
-        return $false
     }
 }
 
@@ -520,27 +465,28 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
                 
-                # Fixed: Directly process child folders here with proper indentation
+                # Process each child folder
                 foreach ($child in $children) {
                     $childPath = $child.Path
                     $childName = Split-Path -Leaf $childPath
                     
-                    # Write the child folder name with proper indentation
+                    # Write the child folder name with correct indent
                     Write-Log -Message "$indent|---+ $childName" -Color "Cyan" -Level "INFO"
                     
-                    # Mark path as processed
+                    # Mark child path as processed
                     $ProcessedPaths.Add($childPath) | Out-Null
                     
-                    # Get and display child permissions
+                    # Get child permissions
                     $childPerms = $Permissions[$childPath]
                     if ($childPerms) {
+                        # Calculate the next level indent
                         $childIndent = "    " * ($Level + 1)
                         
-                        # Output Owner
+                        # Output Owner for child
                         Write-Log -Message "$childIndent|   Owner: $($childPerms.Owner)" -Color "White" -Level "INFO"
                         Write-Log -Message "$childIndent|" -Level "INFO"
                         
-                        # Output Permissions
+                        # Output Permissions for child
                         Write-Log -Message "$childIndent|   Permissions:" -Color "White" -Level "INFO"
                         foreach ($access in @($childPerms.Access)) {
                             $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
@@ -560,7 +506,7 @@ function Write-HierarchicalOutput {
                             Write-Log -Message "$childIndent|" -Level "INFO"
                         }
                         
-                        # Recursively process child's children
+                        # Find grand-children with different permissions
                         $grandChildren = @($Hierarchy | Where-Object { 
                             $_.ParentPath -eq $childPath -and 
                             -not $ProcessedPaths.Contains($_.Path) -and
@@ -571,10 +517,35 @@ function Write-HierarchicalOutput {
                             Write-Log -Message "$childIndent|   Subfolders with different permissions ($($grandChildren.Count)):" -Color "DarkGray" -Level "INFO"
                             Write-Log -Message "$childIndent|" -Level "INFO"
                             
-                            # Recursive call for grand-children
-                            Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
-                                                   -Level ($Level + 2) -ParentPath $childPath `
-                                                   -ProcessedPaths $ProcessedPaths
+                            # Process each grand-child directly instead of using recursion
+                            foreach ($grandChild in $grandChildren) {
+                                $grandChildPath = $grandChild.Path
+                                $grandChildName = Split-Path -Leaf $grandChildPath
+                                
+                                # Write grand-child with proper indentation
+                                Write-Log -Message "$childIndent|---+ $grandChildName" -Color "Cyan" -Level "INFO"
+                                
+                                # Mark as processed
+                                $ProcessedPaths.Add($grandChildPath) | Out-Null
+                                
+                                # Get and display grand-child permissions
+                                $grandChildPerms = $Permissions[$grandChildPath]
+                                if ($grandChildPerms) {
+                                    $grandChildIndent = "    " * ($Level + 2)
+                                    
+                                    # Output Owner
+                                    Write-Log -Message "$grandChildIndent|   Owner: $($grandChildPerms.Owner)" -Color "White" -Level "INFO"
+                                    Write-Log -Message "$grandChildIndent|" -Level "INFO"
+                                    
+                                    # Output Permissions
+                                    Write-Log -Message "$grandChildIndent|   Permissions:" -Color "White" -Level "INFO"
+                                    foreach ($access in @($grandChildPerms.Access)) {
+                                        $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                                        Write-Log -Message "$grandChildIndent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+                                    }
+                                    Write-Log -Message "$grandChildIndent|" -Level "INFO"
+                                }
+                            }
                         }
                     }
                 }
