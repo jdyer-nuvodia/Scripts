@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-28 16:10:00 UTC
+# Last Updated: 2024-03-28 16:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.1
+# Version: 2.1.2
 # Additional Info: Fixed hierarchical folder output formatting and indentation
 # =============================================================================
 
@@ -874,78 +874,60 @@ try {
     function Format-FolderHierarchy {
         param (
             [string]$BasePath,
-            [string[]]$Folders,
-            [int]$IndentLevel = 0
+            [string[]]$Folders
         )
-
-        $indent = "    " * $IndentLevel
+        
         $hierarchy = @{}
         
-        foreach ($folder in ($Folders | Sort-Object)) {
-            if ($folder.StartsWith($BasePath)) {
-                $relativePath = $folder.Substring($BasePath.Length).TrimStart('\')
-                $parts = $relativePath -split '\\'
-                
-                $current = $hierarchy
-                $currentPath = $BasePath
-                
-                foreach ($part in $parts) {
-                    $currentPath = Join-Path $currentPath $part
-                    if (-not $current.ContainsKey($part)) {
-                        $current[$part] = @{
-                            'Path' = $currentPath
-                            'Children' = @{}
-                        }
+        foreach ($folder in $Folders) {
+            $relativePath = $folder.Substring($BasePath.Length).TrimStart('\')
+            $parts = $relativePath -split '\\'
+            $current = $hierarchy
+            
+            $partialPath = $BasePath
+            foreach ($part in $parts) {
+                $partialPath = Join-Path $partialPath $part
+                if (-not $current.ContainsKey($part)) {
+                    $current[$part] = @{
+                        '_path' = $partialPath
+                        '_children' = @{}
+                        '_permissions' = $script:FolderPermissions[$partialPath]
                     }
-                    $current = $current[$part].Children
                 }
+                $current = $current[$part]['_children']
             }
         }
         
         return $hierarchy
     }
 
-    function Write-FolderHierarchy {
+    function Write-HierarchicalOutput {
         param (
+            [Parameter(Mandatory=$true)]
             [hashtable]$Hierarchy,
-            [int]$IndentLevel = 0,
-            [hashtable]$Permissions
+            [hashtable]$Permissions,
+            [int]$Level = 0
         )
         
-        $indent = "    " * $IndentLevel
-        
         foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
-            $item = $Hierarchy[$key]
-            $fullPath = $item.Path
+            $node = $Hierarchy[$key]
+            $indent = "    " * $Level
             
-            $data = $Permissions[$fullPath]
-            if ($data) {
-                $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
-                Write-Log -Message "$indent├─ $key $inheritanceStatus" -Color "Cyan" -Level 'INFO'
-                Write-Log -Message "$indent│  Owner: $($data.Owner)" -Color "White" -Level 'INFO'
-                
-                Write-Log -Message "$indent│  Access Rights:" -Color "White" -Level 'INFO'
-                $uniqueAccessRules = @{}
-                
-                $data.Access | ForEach-Object {
-                    $identity = $_.IdentityReference.Value
-                    if ($identity -match '^S-1-') {
-                        $identity = Convert-SidToName -Sid $identity
-                    }
-                    
-                    $key = "$identity|$($_.FileSystemRights)|$($_.AccessControlType)"
-                    if (-not $uniqueAccessRules.ContainsKey($key)) {
-                        $uniqueAccessRules[$key] = $_
-                        
-                        $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
-                        $accessType = if ($_.AccessControlType -eq 'Allow') { '+' } else { '-' }
-                        Write-Log -Message "$indent│    $accessType $identity - $permission" -Color "Gray" -Level 'INFO'
-                    }
+            # Display current folder with indentation
+            Write-Log -Message "$indent$key\" -Color "White" -Level 'INFO'
+            
+            # Display permissions if they exist
+            if ($node['_permissions']) {
+                $perms = $node['_permissions']
+                Write-Log -Message "$indent    Owner: $($perms.Owner)" -Color "Cyan" -Level 'INFO'
+                if (-not $perms.IsInherited) {
+                    Write-Log -Message "$indent    [Unique permissions]" -Color "Yellow" -Level 'INFO'
                 }
             }
             
-            if ($item.Children.Count -gt 0) {
-                Write-FolderHierarchy -Hierarchy $item.Children -IndentLevel ($IndentLevel + 1) -Permissions $Permissions
+            # Recursively process children
+            if ($node['_children'].Count -gt 0) {
+                Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1)
             }
         }
     }
@@ -954,7 +936,7 @@ try {
     # Replace the existing results display code with:
     Write-Log -Message "`nFolder Access Permissions Hierarchy:" -Color "Yellow" -Level 'INFO'
     $hierarchy = Format-FolderHierarchy -BasePath $StartPath -Folders $script:FolderPermissions.Keys
-    Write-FolderHierarchy -Hierarchy $hierarchy -Permissions $script:FolderPermissions
+    Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
 
     # Display SID resolution errors if any
     if ($EnableSIDDiagnostics -and $script:ADResolutionErrors.Count -gt 0) {
