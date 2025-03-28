@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:05:00 UTC
+# Last Updated: 2025-03-28 23:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.29
-# Additional Info: Fixed recursive folder hierarchy indentation for nested child folders
+# Version: 3.3.30
+# Additional Info: Fixed recursive hierarchy indentation for proper folder nesting
 # =============================================================================
 
 <#
@@ -521,40 +521,17 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
                 
-            # Process each child individually - this is the key change to fix indentation
-            foreach ($child in $children) {
-                # First, display this specific child with its own path correctly
-                $childPath = $child.Path
-                $childName = Split-Path -Leaf $childPath 
-                
-                # Output folder name with proper indentation at the next level
-                $childIndent = "    " * ($Level + 1)
-                Write-Log -Message "$childIndent|---+ $childName" -Color "Cyan" -Level "INFO"
-                
-                # Process this specific child's permissions
-                $childPerms = $Permissions[$childPath]
-                if ($childPerms) {
-                    # Output Owner with correct indentation
-                    Write-Log -Message "$childIndent|   Owner: $($childPerms.Owner)" -Color "White" -Level "INFO"
-                    Write-Log -Message "$childIndent|" -Level "INFO"
-                    
-                    # Output Permissions with correct indentation
-                    Write-Log -Message "$childIndent|   Permissions:" -Color "White" -Level "INFO"
-                    foreach ($access in @($childPerms.Access)) {
-                        $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-                        Write-Log -Message "$childIndent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
-                    }
-                    Write-Log -Message "$childIndent|" -Level "INFO"
-                    
-                    # Now call recursively to process this child's children
-                    # Set ParentPath to this child's path to find its children
+                # Process each child individually - this is the key change to fix indentation
+                foreach ($child in $children) {
+                    # KEY FIX: Pass the child's path as ParentPath instead of $path
+                    # This ensures proper nesting of the hierarchy levels
                     Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
-                                            -Level ($Level + 1) -ParentPath $childPath `
-                                            -ProcessedPaths $ProcessedPaths
+                                           -Level ($Level + 1) -ParentPath $child.Path `
+                                           -ProcessedPaths $ProcessedPaths
                 }
             }
+        }
     }
-}
     
     # Add spacing between root-level items
     if ($Level -eq 0) {
