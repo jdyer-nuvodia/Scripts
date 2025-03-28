@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 18:40:22 UTC
+# Last Updated: 2025-03-28 18:43:42 UTC
 # Updated By: jdyer-nuvodia
 # Version: 3.2.3
-# Additional Info: Fixed missing Format-FolderHierarchy function and completed Try-Catch block
+# Additional Info: Added missing Format-HierarchicalOutput function to fix runtime errors
 # =============================================================================
 
 <#
@@ -842,7 +842,7 @@ try {
     
     # Create folder hierarchy if needed
     if ($script:FolderPermissions.Count -gt 0) {
-        $hierarchy = Format-FolderHierarchy -BasePath $StartPath -Folders $script:FolderPermissions.Keys
+        $hierarchy = Format-Hierarchy -BasePath $StartPath -Folders $script:FolderPermissions.Keys
         Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
     }
 } 
