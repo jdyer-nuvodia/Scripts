@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 17:40:00 UTC
+# Last Updated: 2025-03-28 18:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.1.0
-# Additional Info: Major feature update - Restored security permission display to output
+# Version: 3.2.1
+# Additional Info: Restored enhanced security permission analysis and display functionality
 # =============================================================================
 
 <#
@@ -864,6 +864,10 @@ try {
             [string]$ParentOwner = $null
         )
         
+        # Track unique permission patterns
+        $script:UniquePermissionPatterns = @{}
+        $script:SecurityRiskPatterns = @{}
+        
         foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
             $node = $Hierarchy[$key]
             $indent = "    " * $Level
@@ -871,7 +875,6 @@ try {
             # Display current folder with indentation
             Write-Log -Message "$indent$key\" -Color "White" -Level 'INFO'
             
-            # Check if current folder has permissions
             if ($node['_permissions']) {
                 $currentOwner = $node['_permissions'].Owner
                 $currentPerms = $node['_permissions'].AccessRules
@@ -881,52 +884,500 @@ try {
                     Write-Log -Message "$indent    Owner: $currentOwner" -Color "Cyan" -Level 'INFO'
                 }
                 
-                # Display security permissions
+                # Generate permission hash for uniqueness tracking
+                $permissionHash = Get-PermissionHash -AccessRules $currentPerms -Owner $currentOwner
+                if (-not $script:UniquePermissionPatterns.ContainsKey($permissionHash)) {
+                    $script:UniquePermissionPatterns[$permissionHash] = @()
+                }
+                $script:UniquePermissionPatterns[$permissionHash] += $node['_path']
+                
+                # Enhanced security analysis
+                $securityFlags = @()
+                
+                # Display security permissions with enhanced analysis
                 Write-Log -Message "$indent    Permissions:" -Color "White" -Level 'INFO'
                 foreach ($perm in $currentPerms) {
                     $identity = $perm.IdentityReference
                     $rights = $perm.FileSystemRights
                     $type = $perm.AccessControlType
-                    $inheritance = if ($perm.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                    $inheritance = if ($perm.IsInherited) { "(Inherited)" } else { "(Direct)"} 
                     
-                    # Use different colors based on access type
+                    # Security analysis
+                    if ($type -eq "Allow" -and $rights -match "FullControl") {
+                        $securityFlags += "FullControl"
+                    }
+                    if (-not $perm.IsInherited) {
+                        $securityFlags += "DirectPermission"
+                    }
+                    if ($rights -match "WriteData|CreateFiles|WriteExtendedAttributes|WriteAttributes") {
+                        $securityFlags += "Write"
+                    }
+                    
+                    # Color code based on security impact
                     $permColor = switch ($type) {
-                        "Allow" { "Green" }
+                        "Allow" { 
+                            if ($rights -match "FullControl") { "Yellow" }
+                            elseif ($rights -match "Write") { "DarkYellow" }
+                            else { "Green" }
+                        }
                         "Deny" { "Red" }
-                        default { "Yellow" }
+                        default { "White" }
                     }
                     
                     Write-Log -Message "$indent        $identity - $rights ($type) $inheritance" -Color $permColor -Level 'INFO'
                 }
                 
-                # Process children, passing current permissions as parent
+                # Track security patterns
+                if ($securityFlags.Count -gt 0) {
+                    $securityPattern = $securityFlags -join ";"
+                    if (-not $script:SecurityRiskPatterns.ContainsKey($securityPattern)) {
+                        $script:SecurityRiskPatterns[$securityPattern] = @()
+                    }
+                    $script:SecurityRiskPatterns[$securityPattern] += $node['_path']
+                }
+                
+                # Process children with enhanced analysis
                 if ($node['_children'].Count -gt 0) {
                     Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $currentOwner
                 }
             }
-            else {
-                # If no permissions found, continue with parent's permissions for children
-                if ($node['_children'].Count -gt 0) {
-                    Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $ParentOwner
-                }
+        }
+        
+        # Display security analysis summary at the end of root level
+        if ($Level -eq 0) {
+            Write-Log -Message "`nSecurity Analysis Summary:" -Color "Yellow" -Level 'INFO'
+            
+            Write-Log -Message "Unique Permission Patterns:" -Color "Cyan" -Level 'INFO'
+            foreach ($pattern in $script:UniquePermissionPatterns.Keys) {
+                $count = $script:UniquePermissionPatterns[$pattern].Count
+                Write-Log -Message "Pattern found in $count location(s)" -Color "White" -Level 'INFO'
+            }
+            
+            Write-Log -Message "`nSecurity Risk Patterns:" -Color "Yellow" -Level 'WARNING'
+            foreach ($pattern in $script:SecurityRiskPatterns.Keys) {
+                $count = $script:SecurityRiskPatterns[$pattern].Count
+                $risks = $pattern -split ";"
+                Write-Log -Message "Risk Pattern: $($risks -join ', ') - Found in $count location(s)" -Color "Yellow" -Level 'WARNING'
             }
         }
     }
+}
 
-    # Update the results display section in the main try block
-    # Replace the existing results display code with:
-    Write-Log -Message "`nFolder Access Permissions Hierarchy:" -Color "Yellow" -Level 'INFO'
-    $hierarchy = Format-FolderHierarchy -BasePath $StartPath -Folders $script:FolderPermissions.Keys
-    Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
+# Stop duplicate code section - remove previous incomplete try block
+catch {
+    Write-Error "An error occurred: $_"
+    Write-Error $_.ScriptStackTrace
+}
+finally {
+    # Empty finally block to complete the try structure
+}
 
-    # Display SID resolution errors if any
-    if ($EnableSIDDiagnostics -and $script:ADResolutionErrors.Count -gt 0) {
-        Write-Log -Message "`nSID Resolution Errors:" -Color "Yellow" -Level 'WARNING'
-        $script:ADResolutionErrors.GetEnumerator() | ForEach-Object {
-            Write-Log -Message "SID: $($_.Key)" -Color "White" -Level 'INFO'
-            Write-Log -Message "Error: $($_.Value)" -Color "Red" -Level 'ERROR'
+# Update Write-HierarchicalOutput function to include enhanced security analysis
+function Write-HierarchicalOutput {
+    param (
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Hierarchy,
+        [hashtable]$Permissions,
+        [int]$Level = 0,
+        [string]$ParentOwner = $null
+    )
+    
+    # Track unique permission patterns
+    $script:UniquePermissionPatterns = @{}
+    $script:SecurityRiskPatterns = @{}
+    
+    foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
+        $node = $Hierarchy[$key]
+        $indent = "    " * $Level
+        
+        # Display current folder with indentation
+        Write-Log -Message "$indent$key\" -Color "White" -Level 'INFO'
+        
+        if ($node['_permissions']) {
+            $currentOwner = $node['_permissions'].Owner
+            $currentPerms = $node['_permissions'].AccessRules
+            
+            # Display owner if it differs from parent OR if this is a top-level folder
+            if ($Level -eq 0 -or $ParentOwner -ne $currentOwner) {
+                Write-Log -Message "$indent    Owner: $currentOwner" -Color "Cyan" -Level 'INFO'
+            }
+            
+            # Generate permission hash for uniqueness tracking
+            $permissionHash = Get-PermissionHash -AccessRules $currentPerms -Owner $currentOwner
+            if (-not $script:UniquePermissionPatterns.ContainsKey($permissionHash)) {
+                $script:UniquePermissionPatterns[$permissionHash] = @()
+            }
+            $script:UniquePermissionPatterns[$permissionHash] += $node['_path']
+            
+            # Enhanced security analysis
+            $securityFlags = @()
+            
+            # Display security permissions with enhanced analysis
+            Write-Log -Message "$indent    Permissions:" -Color "White" -Level 'INFO'
+            foreach ($perm in $currentPerms) {
+                $identity = $perm.IdentityReference
+                $rights = $perm.FileSystemRights
+                $type = $perm.AccessControlType
+                $inheritance = if ($perm.IsInherited) { "(Inherited)" } else { "(Direct)"} 
+                
+                # Security analysis
+                if ($type -eq "Allow" -and $rights -match "FullControl") {
+                    $securityFlags += "FullControl"
+                }
+                if (-not $perm.IsInherited) {
+                    $securityFlags += "DirectPermission"
+                }
+                if ($rights -match "WriteData|CreateFiles|WriteExtendedAttributes|WriteAttributes") {
+                    $securityFlags += "Write"
+                }
+                
+                # Color code based on security impact
+                $permColor = switch ($type) {
+                    "Allow" { 
+                        if ($rights -match "FullControl") { "Yellow" }
+                        elseif ($rights -match "Write") { "DarkYellow" }
+                        else { "Green" }
+                    }
+                    "Deny" { "Red" }
+                    default { "White" }
+                }
+                
+                Write-Log -Message "$indent        $identity - $rights ($type) $inheritance" -Color $permColor -Level 'INFO'
+            }
+            
+            # Track security patterns
+            if ($securityFlags.Count -gt 0) {
+                $securityPattern = $securityFlags -join ";"
+                if (-not $script:SecurityRiskPatterns.ContainsKey($securityPattern)) {
+                    $script:SecurityRiskPatterns[$securityPattern] = @()
+                }
+                $script:SecurityRiskPatterns[$securityPattern] += $node['_path']
+            }
+            
+            # Process children with enhanced analysis
+            if ($node['_children'].Count -gt 0) {
+                Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $currentOwner
+            }
         }
     }
+    
+    # Display security analysis summary at the end of root level
+    if ($Level -eq 0) {
+        Write-Log -Message "`nSecurity Analysis Summary:" -Color "Yellow" -Level 'INFO'
+        
+        Write-Log -Message "Unique Permission Patterns:" -Color "Cyan" -Level 'INFO'
+        foreach ($pattern in $script:UniquePermissionPatterns.Keys) {
+            $count = $script:UniquePermissionPatterns[$pattern].Count
+            Write-Log -Message "Pattern found in $count location(s)" -Color "White" -Level 'INFO'
+        }
+        
+        Write-Log -Message "`nSecurity Risk Patterns:" -Color "Yellow" -Level 'WARNING'
+        foreach ($pattern in $script:SecurityRiskPatterns.Keys) {
+            $count = $script:SecurityRiskPatterns[$pattern].Count
+            $risks = $pattern -split ";"
+            Write-Log -Message "Risk Pattern: $($risks -join ', ') - Found in $count location(s)" -Color "Yellow" -Level 'WARNING'
+        }
+    }
+}
+
+# Modify main script execution section
+try {
+    # Start transcript first thing
+    try {
+        # Suppress default transcript message by redirecting to null
+        Start-Transcript -Path $script:TranscriptFile -Force | Out-Null
+        $script:TranscriptStarted = $true
+        Write-Host "Initializing transcript at: $script:TranscriptFile" -ForegroundColor Cyan
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        $script:TranscriptStarted = $false
+    }
+
+    # Register ctrl+c handler
+    $null = [Console]::TreatControlCAsInput = $true
+    Register-ObjectEvent -InputObject ([Console]) -EventName CancelKeyPress -Action {
+        $script:cancellationTokenSource.Cancel()
+        Write-Log "Cancellation requested by user (Ctrl+C)" -Level 'WARNING' -Color "Yellow"
+    } | Out-Null
+
+    # Output initial messages in correct order
+    Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
+    Write-Log ""
+
+    # Initialize SIDs and get Administrator accounts
+    $adminAccounts = Initialize-WellKnownSIDs
+
+    # Always ensure $adminAccounts is an array for consistent behavior
+    if ($null -eq $adminAccounts) {
+        $adminAccounts = @()
+    }
+    elseif ($adminAccounts -isnot [Array] -and $adminAccounts -isnot [System.Collections.ICollection]) {
+        # Convert single item to array
+        $adminAccounts = @($adminAccounts)
+    }
+
+    # Display warning about multiple accounts if needed
+    if ($adminAccounts.Count -gt 1) {
+        Write-Log -Message "Multiple Administrator accounts found ($($adminAccounts.Count))" -Color "Yellow" -Level 'WARNING'
+    }
+
+    # Display each Administrator SID individually
+    if ($adminAccounts.Count -gt 0) {
+        foreach ($admin in $adminAccounts) {
+            $domainName = if ($admin.DomainType -eq "Local") { "LOCAL" } else { $admin.FQDN }
+            Write-Log -Message "The Administrator SID for $domainName is $($admin.SID)" -Color "White" -Level 'INFO'
+        }
+    } else {
+        Write-Log -Message "No Administrator accounts found. Using default SID patterns." -Color "Yellow" -Level 'WARNING'
+    }
+
+    Write-Log ""
+    Write-Log -Message "Starting folder permission analysis for $StartPath" -Color "Cyan" -Level 'INFO'
+
+    # Count total folders first (near the beginning of the try block)
+    Write-Log -Message "Counting total folders in $StartPath..." -Color "Cyan" -Level 'INFO'
+    $script:TotalFolders = Get-TotalFolderCount -StartPath $StartPath
+    Write-Log -Message "Found $script:TotalFolders folders to process" -Color "Cyan" -Level 'INFO'
+    $script:ProcessedFolders = 0
+    $script:lastProgressUpdate = $null  # Initialize progress tracking
+
+    # Process folders with timeout tracking
+    Write-Log -Message "Starting folder permission analysis..." -Color "Cyan" -Level 'INFO'
+    Invoke-FolderRecursively -StartPath $StartPath
+
+    if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+        Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
+    }
+
+    # Calculate elapsed time
+    $script:EndTime = Get-Date
+    $script:ElapsedTime = $script:EndTime - $script:StartTime
+
+    # Display summary
+    Write-Log -Message "`nAnalysis Complete" -Color "Green" -Level 'SUCCESS'
+    Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
+
+    # Add new function to format hierarchical output
+    function Format-FolderHierarchy {
+        param (
+            [string]$BasePath,
+            [string[]]$Folders
+        )
+        
+        $hierarchy = @{}
+        
+        foreach ($folder in $Folders) {
+            $relativePath = $folder.Substring($BasePath.Length).TrimStart('\')
+            $parts = $relativePath -split '\\'
+            $current = $hierarchy
+            
+            $partialPath = $BasePath
+            foreach ($part in $parts) {
+                $partialPath = Join-Path $partialPath $part
+                if (-not $current.ContainsKey($part)) {
+                    $current[$part] = @{
+                        '_path' = $partialPath
+                        '_children' = @{}
+                        '_permissions' = $script:FolderPermissions[$partialPath]
+                    }
+                }
+                $current = $current[$part]['_children']
+            }
+        }
+        
+        return $hierarchy
+    }
+
+    function Write-HierarchicalOutput {
+        param (
+            [Parameter(Mandatory=$true)]
+            [hashtable]$Hierarchy,
+            [hashtable]$Permissions,
+            [int]$Level = 0,
+            [string]$ParentOwner = $null
+        )
+        
+        # Track unique permission patterns
+        $script:UniquePermissionPatterns = @{}
+        $script:SecurityRiskPatterns = @{}
+        
+        foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
+            $node = $Hierarchy[$key]
+            $indent = "    " * $Level
+            
+            # Display current folder with indentation
+            Write-Log -Message "$indent$key\" -Color "White" -Level 'INFO'
+            
+            if ($node['_permissions']) {
+                $currentOwner = $node['_permissions'].Owner
+                $currentPerms = $node['_permissions'].AccessRules
+                
+                # Display owner if it differs from parent OR if this is a top-level folder
+                if ($Level -eq 0 -or $ParentOwner -ne $currentOwner) {
+                    Write-Log -Message "$indent    Owner: $currentOwner" -Color "Cyan" -Level 'INFO'
+                }
+                
+                # Generate permission hash for uniqueness tracking
+                $permissionHash = Get-PermissionHash -AccessRules $currentPerms -Owner $currentOwner
+                if (-not $script:UniquePermissionPatterns.ContainsKey($permissionHash)) {
+                    $script:UniquePermissionPatterns[$permissionHash] = @()
+                }
+                $script:UniquePermissionPatterns[$permissionHash] += $node['_path']
+                
+                # Enhanced security analysis
+                $securityFlags = @()
+                
+                # Display security permissions with enhanced analysis
+                Write-Log -Message "$indent    Permissions:" -Color "White" -Level 'INFO'
+                foreach ($perm in $currentPerms) {
+                    $identity = $perm.IdentityReference
+                    $rights = $perm.FileSystemRights
+                    $type = $perm.AccessControlType
+                    $inheritance = if ($perm.IsInherited) { "(Inherited)" } else { "(Direct)"} 
+                    
+                    # Security analysis
+                    if ($type -eq "Allow" -and $rights -match "FullControl") {
+                        $securityFlags += "FullControl"
+                    }
+                    if (-not $perm.IsInherited) {
+                        $securityFlags += "DirectPermission"
+                    }
+                    if ($rights -match "WriteData|CreateFiles|WriteExtendedAttributes|WriteAttributes") {
+                        $securityFlags += "Write"
+                    }
+                    
+                    # Color code based on security impact
+                    $permColor = switch ($type) {
+                        "Allow" { 
+                            if ($rights -match "FullControl") { "Yellow" }
+                            elseif ($rights -match "Write") { "DarkYellow" }
+                            else { "Green" }
+                        }
+                        "Deny" { "Red" }
+                        default { "White" }
+                    }
+                    
+                    Write-Log -Message "$indent        $identity - $rights ($type) $inheritance" -Color $permColor -Level 'INFO'
+                }
+                
+                # Track security patterns
+                if ($securityFlags.Count -gt 0) {
+                    $securityPattern = $securityFlags -join ";"
+                    if (-not $script:SecurityRiskPatterns.ContainsKey($securityPattern)) {
+                        $script:SecurityRiskPatterns[$securityPattern] = @()
+                    }
+                    $script:SecurityRiskPatterns[$securityPattern] += $node['_path']
+                }
+                
+                # Process children with enhanced analysis
+                if ($node['_children'].Count -gt 0) {
+                    Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $currentOwner
+                }
+            }
+        }
+        
+        # Display security analysis summary at the end of root level
+        if ($Level -eq 0) {
+            Write-Log -Message "`nSecurity Analysis Summary:" -Color "Yellow" -Level 'INFO'
+            
+            Write-Log -Message "Unique Permission Patterns:" -Color "Cyan" -Level 'INFO'
+            foreach ($pattern in $script:UniquePermissionPatterns.Keys) {
+                $count = $script:UniquePermissionPatterns[$pattern].Count
+                Write-Log -Message "Pattern found in $count location(s)" -Color "White" -Level 'INFO'
+            }
+            
+            Write-Log -Message "`nSecurity Risk Patterns:" -Color "Yellow" -Level 'WARNING'
+            foreach ($pattern in $script:SecurityRiskPatterns.Keys) {
+                $count = $script:SecurityRiskPatterns[$pattern].Count
+                $risks = $pattern -split ";"
+                Write-Log -Message "Risk Pattern: $($risks -join ', ') - Found in $count location(s)" -Color "Yellow" -Level 'WARNING'
+            }
+        }
+    }
+}
+
+# Modify main script execution section
+try {
+    # Start transcript first thing
+    try {
+        # Suppress default transcript message by redirecting to null
+        Start-Transcript -Path $script:TranscriptFile -Force | Out-Null
+        $script:TranscriptStarted = $true
+        Write-Host "Initializing transcript at: $script:TranscriptFile" -ForegroundColor Cyan
+    }
+    catch {
+        Write-Warning "Failed to start transcript: $_"
+        $script:TranscriptStarted = $false
+    }
+
+    # Register ctrl+c handler
+    $null = [Console]::TreatControlCAsInput = $true
+    Register-ObjectEvent -InputObject ([Console]) -EventName CancelKeyPress -Action {
+        $script:cancellationTokenSource.Cancel()
+        Write-Log "Cancellation requested by user (Ctrl+C)" -Level 'WARNING' -Color "Yellow"
+    } | Out-Null
+
+    # Output initial messages in correct order
+    Write-Log -Message "Debug information will be written to: $script:DebugLogFile" -Level 'DEBUG'
+    Write-Log ""
+
+    # Initialize SIDs and get Administrator accounts
+    $adminAccounts = Initialize-WellKnownSIDs
+
+    # Always ensure $adminAccounts is an array for consistent behavior
+    if ($null -eq $adminAccounts) {
+        $adminAccounts = @()
+    }
+    elseif ($adminAccounts -isnot [Array] -and $adminAccounts -isnot [System.Collections.ICollection]) {
+        # Convert single item to array
+        $adminAccounts = @($adminAccounts)
+    }
+
+    # Display warning about multiple accounts if needed
+    if ($adminAccounts.Count -gt 1) {
+        Write-Log -Message "Multiple Administrator accounts found ($($adminAccounts.Count))" -Color "Yellow" -Level 'WARNING'
+    }
+
+    # Display each Administrator SID individually
+    if ($adminAccounts.Count -gt 0) {
+        foreach ($admin in $adminAccounts) {
+            $domainName = if ($admin.DomainType -eq "Local") { "LOCAL" } else { $admin.FQDN }
+            Write-Log -Message "The Administrator SID for $domainName is $($admin.SID)" -Color "White" -Level 'INFO'
+        }
+    } else {
+        Write-Log -Message "No Administrator accounts found. Using default SID patterns." -Color "Yellow" -Level 'WARNING'
+    }
+
+    Write-Log ""
+    Write-Log -Message "Starting folder permission analysis for $StartPath" -Color "Cyan" -Level 'INFO'
+
+    # Count total folders first (near the beginning of the try block)
+    Write-Log -Message "Counting total folders in $StartPath..." -Color "Cyan" -Level 'INFO'
+    $script:TotalFolders = Get-TotalFolderCount -StartPath $StartPath
+    Write-Log -Message "Found $script:TotalFolders folders to process" -Color "Cyan" -Level 'INFO'
+    $script:ProcessedFolders = 0
+    $script:lastProgressUpdate = $null  # Initialize progress tracking
+
+    # Process folders with timeout tracking
+    Write-Log -Message "Starting folder permission analysis..." -Color "Cyan" -Level 'INFO'
+    Invoke-FolderRecursively -StartPath $StartPath
+
+    if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
+        Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
+    }
+
+    # Calculate elapsed time
+    $script:EndTime = Get-Date
+    $script:ElapsedTime = $script:EndTime - $script:StartTime
+
+    # Display summary
+    Write-Log -Message "`nAnalysis Complete" -Color "Green" -Level 'SUCCESS'
+    Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
+    Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
 } # End of main try block
 catch [System.Exception] {
     Write-Error "An error occurred: $_"
