@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-29 22:54:00 UTC
+# Last Updated: 2025-03-28 23:01:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.27
-# Additional Info: Fixed indentation in hierarchical display to match expected format
+# Version: 3.3.28
+# Additional Info: Fixed recursive folder hierarchy indentation
 # =============================================================================
 
 <#
@@ -526,8 +526,8 @@ function Write-HierarchicalOutput {
                     # Call recursively with the child's path as the new path to process
                     # and increment the level for proper indentation
                     Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
-                                           -Level ($Level + 1) -ParentPath $path `
-                                           -ProcessedPaths $ProcessedPaths
+                                        -Level ($Level + 1) -ParentPath $child.Path `
+                                        -ProcessedPaths $ProcessedPaths
                 }
             }
         }
