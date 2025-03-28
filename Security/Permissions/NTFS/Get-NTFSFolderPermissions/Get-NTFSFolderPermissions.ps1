@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 22:03:00 UTC
+# Last Updated: 2025-03-28 22:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.20
-# Additional Info: Enhanced hierarchical display with vertical lines and consistent formatting
+# Version: 3.3.21
+# Additional Info: Fixed Count property error in Write-HierarchicalOutput function
 # =============================================================================
 
 <#
@@ -446,7 +446,7 @@ function Write-HierarchicalOutput {
     )
     
     # Get items at current level
-    $items = $Hierarchy | Where-Object { $_.ParentPath -eq $ParentPath } | Sort-Object Path
+    $items = @($Hierarchy | Where-Object { $_.ParentPath -eq $ParentPath } | Sort-Object Path)
     $totalItems = $items.Count
     
     # Process each item at this level
@@ -461,8 +461,11 @@ function Write-HierarchicalOutput {
         # Get current folder's permissions and ensure MatchingSubfolders exists
         $currentPerms = $Permissions[$path]
         if (-not $currentPerms.ContainsKey('MatchingSubfolders')) {
-            $currentPerms.MatchingSubfolders = @()
+            $currentPerms['MatchingSubfolders'] = @()
         }
+        
+        # Force array type for MatchingSubfolders
+        $matchingSubfolders = @($currentPerms['MatchingSubfolders'])
         
         # Output folder name
         if ($Level -eq 0) {
@@ -476,18 +479,20 @@ function Write-HierarchicalOutput {
         Write-Log -Message "$indent|" -Level "INFO"
         Write-Log -Message "$indent|   Permissions:" -Color "White" -Level "INFO"
         
-        foreach ($access in $currentPerms.Access) {
-            $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-            Write-Log -Message "$indent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+        if ($currentPerms.Access) {
+            foreach ($access in @($currentPerms.Access)) {
+                $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                Write-Log -Message "$indent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+            }
         }
         Write-Log -Message "$indent|" -Level "INFO"
         
         # Handle matching subfolders
-        if ($currentPerms.MatchingSubfolders.Count -gt 0) {
-            Write-Log -Message "$indent|   Subfolders with identical permissions ($($currentPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
+        if ($matchingSubfolders.Count -gt 0) {
+            Write-Log -Message "$indent|   Subfolders with identical permissions ($($matchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
             Write-Log -Message "$indent|" -Level "INFO"
             
-            foreach ($subfolder in ($currentPerms.MatchingSubfolders | Sort-Object)) {
+            foreach ($subfolder in ($matchingSubfolders | Sort-Object)) {
                 $subName = Split-Path -Leaf $subfolder
                 Write-Log -Message "$indent|---+ $subName" -Color "DarkGray" -Level "INFO"
             }
@@ -495,14 +500,13 @@ function Write-HierarchicalOutput {
         }
         
         # Handle different permission subfolders
-        $children = $Hierarchy | Where-Object { 
+        $children = @($Hierarchy | Where-Object { 
             $_.ParentPath -eq $path -and 
-            $currentPerms.MatchingSubfolders -notcontains $_.Path
-        }
+            $matchingSubfolders -notcontains $_.Path
+        })
         
-        if ($children) {
-            $childCount = $children.Count
-            Write-Log -Message "$indent|   Subfolders with different permissions ($childCount):" -Color "DarkGray" -Level "INFO"
+        if ($children.Count -gt 0) {
+            Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
             Write-Log -Message "$indent|" -Level "INFO"
             
             # Write child folders without recursion here
@@ -517,16 +521,20 @@ function Write-HierarchicalOutput {
                 $childPath = $child.Path
                 $childPerms = $Permissions[$childPath]
                 
-                # Output Owner and Permissions with vertical lines
-                Write-Log -Message "$indent    |   Owner: $($childPerms.Owner)" -Color "White" -Level "INFO"
-                Write-Log -Message "$indent    |" -Level "INFO"
-                Write-Log -Message "$indent    |   Permissions:" -Color "White" -Level "INFO"
-                
-                foreach ($access in $childPerms.Access) {
-                    $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-                    Write-Log -Message "$indent    |       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+                if ($childPerms) {
+                    # Output Owner and Permissions with vertical lines
+                    Write-Log -Message "$indent    |   Owner: $($childPerms.Owner)" -Color "White" -Level "INFO"
+                    Write-Log -Message "$indent    |" -Level "INFO"
+                    Write-Log -Message "$indent    |   Permissions:" -Color "White" -Level "INFO"
+                    
+                    if ($childPerms.Access) {
+                        foreach ($access in @($childPerms.Access)) {
+                            $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                            Write-Log -Message "$indent    |       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+                        }
+                    }
+                    Write-Log -Message "$indent    |" -Level "INFO"
                 }
-                Write-Log -Message "$indent    |" -Level "INFO"
                 
                 # Continue recursive processing for this child's subfolders
                 Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions -Level ($Level + 1) -ParentPath $childPath
