@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-28 16:12:00 UTC
+# Last Updated: 2024-03-28 16:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.2
-# Additional Info: Fixed hierarchical folder output formatting and indentation
+# Version: 2.2.2
+# Additional Info: Fixed progress display and folder counting accuracy
 # =============================================================================
 
 <#
@@ -577,7 +577,7 @@ function Get-PermissionHash {
     }
 }
 
-# Write progress function for consistent progress reporting (no longer optional)
+# Update Write-ProgressStatus to prevent duplicate progress messages
 function Write-ProgressStatus {
     param (
         [string]$Activity,
@@ -586,219 +586,18 @@ function Write-ProgressStatus {
         [int]$Total
     )
 
-    $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
-    $currentFile = Split-Path $Status -Leaf
-    Write-Progress -Activity "Analyzing Folder Permissions ($Current of $Total folders found)" -Status "Scanning: $currentFile" -PercentComplete $percentComplete
-}
-
-# Modify Get-FolderPermissions to use standardized hash generation
-function Get-FolderPermissions {
-    param (
-        [string]$Folder
-    )
-    try {
-        $acl = Get-Acl -Path $Folder
-        # Translate owner SID if needed
-        $translatedOwner = $acl.Owner
-        if ($translatedOwner -match '^S-1-') {
-            $translatedOwner = Convert-SidToName -Sid $translatedOwner
-        }
-        $access = $acl.Access
-        $isInherited = $acl.AreAccessRulesProtected -eq $false
-        $parentPath = Split-Path -Path $Folder -Parent
-        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $translatedOwner -IncludeInheritance $true
-
-        $permissionData = [PSCustomObject]@{
-            Folder = $Folder
-            Owner = $translatedOwner  # Use translated owner
-            Access = $access
-            PermissionHash = $permissionHash
-            IsInherited = $isInherited
-            MatchesParent = $false
-        }
-
-        # Check if permissions match parent
-        if ($parentPath -and $script:ParentPermissions.ContainsKey($parentPath)) {
-            $permissionData.MatchesParent = $script:ParentPermissions[$parentPath] -eq $permissionHash
-        }
-
-        # Store current folder's permissions for child comparison
-        $script:ParentPermissions[$Folder] = $permissionHash
-
-        return $permissionData
-    }
-    catch {
-        Write-Log -Message "Error getting permissions for ${Folder}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
-        return $null
-    }
-}
-
-# Function to process each folder
-function Invoke-FolderProcessing {
-    param(
-        [string]$StartPath,
-        [int]$CurrentCount,
-        [int]$TotalCount
-    )
-
-    $startTime = Get-Date
-    try {
-        Write-Log -Message "Processing folder: $StartPath" -Level 'VERBOSE' -Category 'FolderProcess' -NoConsole
-
-        # Get permissions for the folder
-        $permissionData = Get-FolderPermissions -Folder $StartPath
-
-        if ($permissionData) {
-            # Track unique permission sets with owner
-            $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -Owner $permissionData.Owner -IncludeInheritance $true
-            
-            if (-not $script:PermissionGroups.ContainsKey($permissionHash)) {
-                $script:PermissionGroups[$permissionHash] = @{
-                    Folders = @()
-                    Permissions = $permissionData.Access
-                    Owner = $permissionData.Owner
-                    IsInherited = $permissionData.IsInherited
-                    ParentPaths = @{}
-                }
-                Write-Log -Message "Found new permission set with owner (hash: $($permissionHash.Substring(0,20))...)" -Level 'DEBUG' -Category 'Permissions' -NoConsole
-            }
-
-            # Group by parent path for better organization
-            $currentParent = Split-Path -Path $StartPath -Parent
-            if (-not [string]::IsNullOrEmpty($currentParent)) {
-                if (-not $script:PermissionGroups[$permissionHash].ParentPaths.ContainsKey($currentParent)) {
-                    $script:PermissionGroups[$permissionHash].ParentPaths[$currentParent] = @()
-                }
-                $script:PermissionGroups[$permissionHash].ParentPaths[$currentParent] += $StartPath
-            }
-
-            $script:PermissionGroups[$permissionHash].Folders += $StartPath
-            $script:FolderPermissions[$StartPath] = $permissionData
-
-            # Log non-inherited permissions for security analysis
-            if (-not $permissionData.IsInherited) {
-                Write-Log -Message "Found explicit permissions on: $StartPath" -Level 'DEBUG' -Category 'Security' -NoConsole
-            }
-
-            # Update unique permissions count - only write to debug log
-            if (-not $SkipUniquenessCounting) {
-                $permissionHash = Get-PermissionHash -AccessRules $permissionData.Access -Owner $permissionData.Owner -IncludeInheritance:$false
-
-                if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
-                    $script:UniquePermissions[$permissionHash] = @($StartPath)
-                } else {
-                    $script:UniquePermissions[$permissionHash] += $StartPath
-                }
-            }
-        } else {
-            Write-Log -Message "Could not retrieve permissions for $StartPath" -Color "Yellow" -Level 'WARNING'
-            Write-Log -Message "Could not retrieve permissions for $StartPath" -Color "Yellow" -Level 'WARNING' -Category 'AccessDenied'
-        }
-    }
-    catch {
-        Write-Log -Message "Error processing folder ${StartPath}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR'
-        Write-Log -Message "Error processing folder ${StartPath}: $($_.Exception.Message)" -Color "Red" -Level 'ERROR' -Category 'Exception'
-        Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level 'DEBUG' -Category 'Exception' -NoConsole
-    }
-    finally {
-        Write-PerformanceMetric -Operation "Folder processing for $StartPath" -StartTime $startTime
-        Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status "Processing: $StartPath" -Current $CurrentCount -Total $TotalCount
-    }
-}
-
-# Function to process folders recursively
-function Invoke-FolderRecursively {
-    param (
-        [string]$StartPath,
-        [int]$CurrentDepth = 0
-    )
-
-    try {
-        if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
-            Write-Log "Processing cancelled by user" -Level 'WARNING' -Color "Yellow"
-            return
-        }
-
-        if ((Get-Date) - $script:StartTime -gt $script:processingTimeout) {
-            $script:cancellationTokenSource.Cancel()
-            Write-Log "Processing timeout reached ($TimeoutMinutes minutes)" -Level 'WARNING' -Color "Yellow"
-            return
-        }
-
-        $script:TotalFolders++
-        $script:ProcessedFolders++
-
-        Invoke-FolderProcessing -StartPath $StartPath -CurrentCount $script:ProcessedFolders -TotalCount $script:TotalFolders
-
-        if ($MaxDepth -eq 0 -or $CurrentDepth -lt $MaxDepth) {
-            Get-ChildItem -Path $StartPath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                Invoke-FolderRecursively -StartPath $_.FullName -CurrentDepth ($CurrentDepth + 1)
-            }
-        }
-    }
-    catch {
-        Write-Log "Error processing folder $StartPath : $_" -Level 'ERROR' -Color "Red"
-    }
-}
-
-# Add function to translate permissions to human-readable format
-function Get-HumanReadablePermissions {
-    param (
-        [System.Security.AccessControl.FileSystemRights]$Rights
-    )
-
-    switch ($Rights) {
-        { $_ -band [System.Security.AccessControl.FileSystemRights]::FullControl } { return "Full Control" }
-        { $_ -band [System.Security.AccessControl.FileSystemRights]::Modify } { return "Modify" }
-        { $_ -band [System.Security.AccessControl.FileSystemRights]::ReadAndExecute } { return "Read & Execute" }
-        { $_ -band [System.Security.AccessControl.FileSystemRights]::Read } { return "Read Only" }
-        { $_ -band [System.Security.AccessControl.FileSystemRights]::Write } { return "Write Only" }
-        default { return $Rights.ToString() }
-    }
-}
-
-# Add function to discover domain controllers
-function Get-DomainControllers {
-    try {
-        Write-Log -Message "Discovering domain controllers..." -Level 'INFO' -Color "Cyan"
-        [array]$domains = @()  # Explicitly declare as array
+    # Use script-level variables to track last progress update
+    if (-not $script:lastProgressUpdate -or 
+        (Get-Date) - $script:lastProgressUpdate -gt [TimeSpan]::FromSeconds(1)) {
         
-        # Get the current domain
-        try {
-            $currentDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-            if ($currentDomain) {
-                $domains += $currentDomain
-                Write-Log -Message "Found current domain: $($currentDomain.Name)" -Level 'DEBUG' -NoConsole
-            }
-        }
-        catch {
-            Write-Log -Message "Could not get current domain: $_" -Level 'WARNING' -Color "Yellow"
-        }
-
-        # Get trusted domains
-        try {
-            $forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
-            if ($forest) {
-                $forestDomains = @($forest.Domains | Where-Object { $_.Name -ne $currentDomain.Name })
-                if ($forestDomains) {
-                    $domains += $forestDomains
-                }
-            }
-            Write-Log -Message "Found $($domains.Count) total domain(s)" -Level 'DEBUG' -NoConsole
-        }
-        catch {
-            Write-Log -Message "Could not get forest domains: $_" -Level 'WARNING' -Color "Yellow"
-        }
-
-        return @($domains)  # Force array return
-    }
-    catch {
-        Write-Log -Message "Error discovering domain controllers: $_" -Level 'ERROR' -Color "Red"
-        return @()
+        $percentComplete = if ($Total -gt 0) { [math]::Round(($Current / $Total) * 100, 2) } else { 0 }
+        $currentFile = Split-Path $Status -Leaf
+        Write-Progress -Activity "Analyzing Folder Permissions ($Current of $Total folders found)" -Status "Scanning: $currentFile" -PercentComplete $percentComplete
+        $script:lastProgressUpdate = Get-Date
     }
 }
 
-# Main script execution
+# Modify main script execution section
 try {
     # Start transcript first thing
     try {
@@ -853,7 +652,15 @@ try {
     Write-Log ""
     Write-Log -Message "Starting folder permission analysis for $StartPath" -Color "Cyan" -Level 'INFO'
 
+    # Count total folders first (near the beginning of the try block)
+    Write-Log -Message "Counting total folders in $StartPath..." -Color "Cyan" -Level 'INFO'
+    $script:TotalFolders = Get-TotalFolderCount -StartPath $StartPath
+    Write-Log -Message "Found $script:TotalFolders folders to process" -Color "Cyan" -Level 'INFO'
+    $script:ProcessedFolders = 0
+    $script:lastProgressUpdate = $null  # Initialize progress tracking
+
     # Process folders with timeout tracking
+    Write-Log -Message "Starting folder permission analysis..." -Color "Cyan" -Level 'INFO'
     Invoke-FolderRecursively -StartPath $StartPath
 
     if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
