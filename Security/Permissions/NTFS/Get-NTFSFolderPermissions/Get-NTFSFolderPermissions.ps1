@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 17:23:00 UTC
+# Last Updated: 2025-03-28 17:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.7
-# Additional Info: Enhanced permission display and reduced redundant owner information
+# Version: 2.2.9
+# Additional Info: Fixed redundant owner display in folder hierarchy
 # =============================================================================
 
 <#
@@ -871,20 +871,22 @@ try {
             # Display current folder with indentation
             Write-Log -Message "$indent$key\" -Color "White" -Level 'INFO'
             
-            # Display owner only if it differs from parent
+            # Check if current folder has permissions
             if ($node['_permissions']) {
                 $currentOwner = $node['_permissions'].Owner
-                if ($ParentOwner -ne $currentOwner) {
+                
+                # Only display owner if it differs from parent OR if this is a top-level folder
+                if ($Level -eq 0 -or $ParentOwner -ne $currentOwner) {
                     Write-Log -Message "$indent    Owner: $currentOwner" -Color "Cyan" -Level 'INFO'
                 }
                 
-                # Pass current owner as parent for next level
+                # Process children, passing current owner as parent
                 if ($node['_children'].Count -gt 0) {
                     Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $currentOwner
                 }
             }
             else {
-                # If no permissions found, continue with parent's owner
+                # If no permissions found, continue with parent's owner for children
                 if ($node['_children'].Count -gt 0) {
                     Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $ParentOwner
                 }
