@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:40:00 UTC
+# Last Updated: 2025-03-28 23:47:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.37
-# Additional Info: Fixed invalid permission object structure detection in Compare-PermissionSets
+# Version: 3.3.38
+# Additional Info: Fixed display of identical permissions in subfolders
 # =============================================================================
 
 <#
@@ -519,15 +519,16 @@ function Write-HierarchicalOutput {
         # Get permissions for current folder
         $currentPerms = $Permissions[$path]
         if ($currentPerms) {
-            # Only display owner and permissions details if not same as parent
+            # Only display owner and permissions details if not same as parent or level 0
             $parentPerms = if ($ParentPath) { $Permissions[$ParentPath] } else { $null }
             $hasSamePermissions = $false
             
-            if ($parentPerms -and $currentPerms) {
+            if ($parentPerms -and $currentPerms -and $Level -gt 0) {
                 $hasSamePermissions = Compare-PermissionSets -Parent $parentPerms -Child $currentPerms
             }
             
-            if (-not $hasSamePermissions) {
+            # Only show permissions if this is the root level or has different permissions from parent
+            if ($Level -eq 0 -or -not $hasSamePermissions) {
                 # Output Owner with correct indentation
                 Write-Log -Message "$indent|   Owner: $($currentPerms.Owner)" -Color "White" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
