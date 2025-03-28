@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 18:55:45 UTC
+# Last Updated: 2025-03-28 18:57:45 UTC
 # Updated By: jdyer-nuvodia
 # Version: 3.3.0
 # Additional Info: Added grouping of subfolders with identical permissions and owners
@@ -988,5 +988,46 @@ finally {
     if ($script:cancellationTokenSource) {
         $script:cancellationTokenSource.Dispose()
     }
+}
+
+function Compare-PermissionSets {
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$Parent,
+        
+        [Parameter(Mandatory = $true)]
+        [object]$Child
+    )
+    
+    # Compare owners
+    if ($Parent.Owner -ne $Child.Owner) {
+        Write-Log -Message "Owner mismatch: $($Parent.Owner) vs $($Child.Owner)" -Level 'DEBUG' -NoConsole
+        return $false
+    }
+    
+    # Check if they have same number of permissions
+    if ($Parent.AccessRules.Count -ne $Child.AccessRules.Count) {
+        Write-Log -Message "AccessRules count mismatch: $($Parent.AccessRules.Count) vs $($Child.AccessRules.Count)" -Level 'DEBUG' -NoConsole
+        return $false
+    }
+    
+    # Create hashtables for easier comparison
+    $parentRules = @{}
+    foreach ($rule in $Parent.AccessRules) {
+        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
+        $parentRules[$key] = $true
+    }
+    
+    # Check if all child rules exist in parent
+    foreach ($rule in $Child.AccessRules) {
+        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
+        if (-not $parentRules.ContainsKey($key)) {
+            Write-Log -Message "Rule mismatch: $key not found in parent" -Level 'DEBUG' -NoConsole
+            return $false
+        }
+    }
+    
+    Write-Log -Message "Permission sets are identical" -Level 'DEBUG' -NoConsole
+    return $true
 }
 
