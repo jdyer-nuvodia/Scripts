@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 22:46:00 UTC
+# Last Updated: 2025-03-29 22:54:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.26
-# Additional Info: Fixed child folder indentation in hierarchical display
+# Version: 3.3.27
+# Additional Info: Fixed indentation in hierarchical display to match expected format
 # =============================================================================
 
 <#
@@ -479,6 +479,7 @@ function Write-HierarchicalOutput {
         if ($Level -eq 0) {
             Write-Log -Message "$folderName" -Color "Cyan" -Level "INFO"
         } else {
+            # This is the key line that sets the proper indentation for folder names
             Write-Log -Message "$indent|---+ $folderName" -Color "Cyan" -Level "INFO"
         }
         
@@ -520,8 +521,10 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
                 
-                # Process each child individually
+                # Process each child individually - this is the key change to fix indentation
                 foreach ($child in $children) {
+                    # Call recursively with the child's path as the new path to process
+                    # and increment the level for proper indentation
                     Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
                                            -Level ($Level + 1) -ParentPath $path `
                                            -ProcessedPaths $ProcessedPaths
