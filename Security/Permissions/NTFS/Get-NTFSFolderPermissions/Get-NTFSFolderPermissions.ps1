@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 17:28:00 UTC
+# Last Updated: 2025-03-28 17:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.9
-# Additional Info: Fixed redundant owner display in folder hierarchy
+# Version: 3.1.0
+# Additional Info: Major feature update - Restored security permission display to output
 # =============================================================================
 
 <#
@@ -874,19 +874,38 @@ try {
             # Check if current folder has permissions
             if ($node['_permissions']) {
                 $currentOwner = $node['_permissions'].Owner
+                $currentPerms = $node['_permissions'].AccessRules
                 
-                # Only display owner if it differs from parent OR if this is a top-level folder
+                # Display owner if it differs from parent OR if this is a top-level folder
                 if ($Level -eq 0 -or $ParentOwner -ne $currentOwner) {
                     Write-Log -Message "$indent    Owner: $currentOwner" -Color "Cyan" -Level 'INFO'
                 }
                 
-                # Process children, passing current owner as parent
+                # Display security permissions
+                Write-Log -Message "$indent    Permissions:" -Color "White" -Level 'INFO'
+                foreach ($perm in $currentPerms) {
+                    $identity = $perm.IdentityReference
+                    $rights = $perm.FileSystemRights
+                    $type = $perm.AccessControlType
+                    $inheritance = if ($perm.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                    
+                    # Use different colors based on access type
+                    $permColor = switch ($type) {
+                        "Allow" { "Green" }
+                        "Deny" { "Red" }
+                        default { "Yellow" }
+                    }
+                    
+                    Write-Log -Message "$indent        $identity - $rights ($type) $inheritance" -Color $permColor -Level 'INFO'
+                }
+                
+                # Process children, passing current permissions as parent
                 if ($node['_children'].Count -gt 0) {
                     Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $currentOwner
                 }
             }
             else {
-                # If no permissions found, continue with parent's owner for children
+                # If no permissions found, continue with parent's permissions for children
                 if ($node['_children'].Count -gt 0) {
                     Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $ParentOwner
                 }
