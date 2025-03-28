@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 18:48:20 UTC
+# Last Updated: 2025-03-28 18:55:45 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.2.4
-# Additional Info: Added missing Format-Hierarchy function to fix runtime errors
+# Version: 3.3.0
+# Additional Info: Added grouping of subfolders with identical permissions and owners
 # =============================================================================
 
 <#
@@ -17,6 +17,7 @@ Analyzes and reports NTFS permissions for specified folder path and its subfolde
 Consolidates output into two log files:
 - Main log for permission details
 - Debug log for troubleshooting information
+Subfolders with identical permissions and owners as their parent are grouped together.
 
 .PARAMETER StartPath
 The folder path to analyze. Must be a valid NTFS path.
@@ -70,7 +71,10 @@ param (
     [bool]$EnableSIDDiagnostics = $true,
 
     [Parameter(Mandatory = $false)]
-    [int]$TimeoutMinutes = 120
+    [int]$TimeoutMinutes = 120,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$GroupIdenticalSubfolders = $true
 )
 
 # Enable strict mode and error handling
