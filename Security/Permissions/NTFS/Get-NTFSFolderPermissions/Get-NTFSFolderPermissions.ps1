@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-28 16:02:00 UTC
+# Last Updated: 2024-03-28 16:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.15.0
-# Additional Info: Enhanced progress bar to show overall scan progress
+# Version: 2.1.1
+# Additional Info: Fixed hierarchical folder output formatting and indentation
 # =============================================================================
 
 <#
@@ -39,9 +39,6 @@ Enables detailed diagnostics for SID resolution issues.
 .PARAMETER TimeoutMinutes
 Maximum time in minutes to allow the script to run.
 
-.PARAMETER EnableProgressBar
-Enables progress bar display during processing.
-
 .EXAMPLE
 .\Get-NTFSFolderPermissions.ps1 -StartPath "C:\Temp"
 Analyzes permissions on C:\Temp and outputs to logs
@@ -73,10 +70,7 @@ param (
     [bool]$EnableSIDDiagnostics = $true,
 
     [Parameter(Mandatory = $false)]
-    [int]$TimeoutMinutes = 120,
-
-    [Parameter(Mandatory = $false)]
-    [switch]$EnableProgressBar
+    [int]$TimeoutMinutes = 120
 )
 
 # Enable strict mode and error handling
@@ -583,7 +577,7 @@ function Get-PermissionHash {
     }
 }
 
-# Write progress function for consistent progress reporting
+# Write progress function for consistent progress reporting (no longer optional)
 function Write-ProgressStatus {
     param (
         [string]$Activity,
@@ -876,82 +870,91 @@ try {
     Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
 
-    # Display results in hierarchy mode
-    Write-Log -Message "`nFolder Access Permissions:" -Color "Yellow" -Level 'INFO'
-    $sortedFolders = $script:FolderPermissions.Keys | Sort-Object
+    # Add new function to format hierarchical output
+    function Format-FolderHierarchy {
+        param (
+            [string]$BasePath,
+            [string[]]$Folders,
+            [int]$IndentLevel = 0
+        )
 
-    foreach ($folder in $sortedFolders) {
-        $data = $script:FolderPermissions[$folder]
-
-        # Skip folders with identical permissions as parent (including owner)
-        if ($data.MatchesParent) {
-            continue
-        }
-
-        $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
-        Write-Log -Message "$folder $inheritanceStatus" -Color "Cyan" -Level 'INFO'
+        $indent = "    " * $IndentLevel
+        $hierarchy = @{}
         
-        # Display owner information
-        Write-Log -Message "Owner: $($data.Owner)" -Color "White" -Level 'INFO'
-
-        # Find all descendants with identical permissions AND same owner
-        $identicalDescendants = @($script:PermissionGroups[$data.PermissionHash].Folders | 
-            Where-Object { 
-                $_ -and 
-                $_ -ne $folder -and 
-                $script:FolderPermissions[$_].MatchesParent -and
-                $script:FolderPermissions[$_].Owner -eq $data.Owner
-            })
-
-        if ($identicalDescendants -and @($identicalDescendants).Count -gt 0) {
-            # Check if ALL subfolders are identical (permissions AND owner)
-            $allSubfolders = @(Get-ChildItem -Path $folder -Directory -Recurse | Select-Object -ExpandProperty FullName)
-            
-            # Safe check for non-matching subfolders
-            $nonMatchingSubfolders = @($allSubfolders | Where-Object { 
-                $_ -notin $identicalDescendants -and 
-                $script:FolderPermissions[$_] -and 
-                (-not $script:FolderPermissions[$_].MatchesParent -or
-                 $script:FolderPermissions[$_].Owner -ne $data.Owner)
-            })
-
-            if ($allSubfolders.Count -gt 0 -and $nonMatchingSubfolders.Count -eq 0) {
-                Write-Log -Message "  All Subfolders (Identical Permissions and Owner)" -Color "DarkGray" -Level 'INFO'
-            } else {
-                Write-Log -Message "Subfolders with same permissions and owner:" -Color "DarkGray" -Level 'INFO'
-                foreach ($descendant in ($identicalDescendants | Sort-Object)) {
-                    if ($descendant -and $folder) {
-                        if ($descendant.Length -gt $folder.Length) {
-                            $relativePath = $descendant.Substring($folder.Length + 1)
-                            Write-Log -Message "  - $relativePath" -Color "DarkGray" -Level 'INFO'
+        foreach ($folder in ($Folders | Sort-Object)) {
+            if ($folder.StartsWith($BasePath)) {
+                $relativePath = $folder.Substring($BasePath.Length).TrimStart('\')
+                $parts = $relativePath -split '\\'
+                
+                $current = $hierarchy
+                $currentPath = $BasePath
+                
+                foreach ($part in $parts) {
+                    $currentPath = Join-Path $currentPath $part
+                    if (-not $current.ContainsKey($part)) {
+                        $current[$part] = @{
+                            'Path' = $currentPath
+                            'Children' = @{}
                         }
                     }
+                    $current = $current[$part].Children
                 }
             }
         }
+        
+        return $hierarchy
+    }
 
-        Write-Log -Message "Access Rights:" -Color "White" -Level 'INFO'
-        # Remove duplicate entries by using a hashtable to track unique permissions
-        $uniqueAccessRules = @{}
-
-        $data.Access | ForEach-Object {
-            $identity = $_.IdentityReference.Value
-            if ($identity -match '^S-1-') {
-                $identity = Convert-SidToName -Sid $identity
+    function Write-FolderHierarchy {
+        param (
+            [hashtable]$Hierarchy,
+            [int]$IndentLevel = 0,
+            [hashtable]$Permissions
+        )
+        
+        $indent = "    " * $IndentLevel
+        
+        foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
+            $item = $Hierarchy[$key]
+            $fullPath = $item.Path
+            
+            $data = $Permissions[$fullPath]
+            if ($data) {
+                $inheritanceStatus = if ($data.IsInherited) { "(Inherits parent permissions)" } else { "(Custom permissions)" }
+                Write-Log -Message "$indent├─ $key $inheritanceStatus" -Color "Cyan" -Level 'INFO'
+                Write-Log -Message "$indent│  Owner: $($data.Owner)" -Color "White" -Level 'INFO'
+                
+                Write-Log -Message "$indent│  Access Rights:" -Color "White" -Level 'INFO'
+                $uniqueAccessRules = @{}
+                
+                $data.Access | ForEach-Object {
+                    $identity = $_.IdentityReference.Value
+                    if ($identity -match '^S-1-') {
+                        $identity = Convert-SidToName -Sid $identity
+                    }
+                    
+                    $key = "$identity|$($_.FileSystemRights)|$($_.AccessControlType)"
+                    if (-not $uniqueAccessRules.ContainsKey($key)) {
+                        $uniqueAccessRules[$key] = $_
+                        
+                        $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
+                        $accessType = if ($_.AccessControlType -eq 'Allow') { '+' } else { '-' }
+                        Write-Log -Message "$indent│    $accessType $identity - $permission" -Color "Gray" -Level 'INFO'
+                    }
+                }
             }
-
-            $key = "$identity|$($_.FileSystemRights)|$($_.AccessControlType)"
-            if (-not $uniqueAccessRules.ContainsKey($key)) {
-                $uniqueAccessRules[$key] = $_
-
-                $permission = Get-HumanReadablePermissions -Rights $_.FileSystemRights
-                $accessType = if ($_.AccessControlType -eq 'Allow') { '+' } else { '-' }
-                Write-Log -Message "  $accessType $identity - $permission" -Color "Gray" -Level 'INFO'
+            
+            if ($item.Children.Count -gt 0) {
+                Write-FolderHierarchy -Hierarchy $item.Children -IndentLevel ($IndentLevel + 1) -Permissions $Permissions
             }
         }
-
-        Write-Log -Message "-" * 80 -Color "DarkGray" -Level 'INFO'
     }
+
+    # Update the results display section in the main try block
+    # Replace the existing results display code with:
+    Write-Log -Message "`nFolder Access Permissions Hierarchy:" -Color "Yellow" -Level 'INFO'
+    $hierarchy = Format-FolderHierarchy -BasePath $StartPath -Folders $script:FolderPermissions.Keys
+    Write-FolderHierarchy -Hierarchy $hierarchy -Permissions $script:FolderPermissions
 
     # Display SID resolution errors if any
     if ($EnableSIDDiagnostics -and $script:ADResolutionErrors.Count -gt 0) {
@@ -989,5 +992,66 @@ finally {
     # Cleanup cancellation token
     if ($script:cancellationTokenSource) {
         $script:cancellationTokenSource.Dispose()
+    }
+}
+
+function Format-HierarchicalOutput {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$BasePath,
+        [Parameter(Mandatory=$true)]
+        [hashtable]$FolderData
+    )
+    
+    $hierarchy = @{}
+    $allFolders = $FolderData.Keys | Sort-Object
+    
+    foreach ($folder in $allFolders) {
+        $relativePath = $folder.Replace($BasePath, '').TrimStart('\')
+        $current = $hierarchy
+        $parts = $relativePath -split '\\'
+        
+        for ($i = 0; $i -lt $parts.Count; $i++) {
+            $part = $parts[$i]
+            if (-not $current.ContainsKey($part)) {
+                $current[$part] = @{
+                    '_permissions' = if ($i -eq $parts.Count - 1) { $FolderData[$folder] } else { $null }
+                    '_children' = @{}
+                }
+            }
+            $current = $current[$part]['_children']
+        }
+    }
+    
+    return $hierarchy
+}
+
+function Write-HierarchicalOutput {
+    param (
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Hierarchy,
+        [int]$IndentLevel = 0
+    )
+    
+    foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
+        $node = $Hierarchy[$key]
+        $indentSpaces = "    " * $IndentLevel
+        
+        # Display folder name with proper indentation
+        if ($node['_permissions']) {
+            $perms = $node['_permissions']
+            Write-Log -Message "$indentSpaces$key" -Color "White" -Level 'INFO'
+            Write-Log -Message "$indentSpaces    Owner: $($perms.Owner)" -Color "Cyan" -Level 'INFO'
+            if (-not $perms.IsInherited) {
+                Write-Log -Message "$indentSpaces    [Unique permissions]" -Color "Yellow" -Level 'INFO'
+            }
+        } else {
+            Write-Log -Message "$indentSpaces$key\" -Color "White" -Level 'INFO'
+        }
+        
+        # Process child nodes recursively
+        if ($node['_children'].Count -gt 0) {
+            Write-HierarchicalOutput -Hierarchy $node['_children'] -IndentLevel ($IndentLevel + 1)
+        }
     }
 }
