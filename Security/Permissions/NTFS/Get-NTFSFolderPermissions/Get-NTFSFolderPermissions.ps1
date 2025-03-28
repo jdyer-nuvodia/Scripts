@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 22:43:00 UTC
+# Last Updated: 2025-03-28 22:46:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.25
-# Additional Info: Fixed recursive indentation in hierarchical display
+# Version: 3.3.26
+# Additional Info: Fixed child folder indentation in hierarchical display
 # =============================================================================
 
 <#
@@ -520,8 +520,8 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
                 
+                # Process each child individually
                 foreach ($child in $children) {
-                    # Process each child with its own hierarchy level
                     Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
                                            -Level ($Level + 1) -ParentPath $path `
                                            -ProcessedPaths $ProcessedPaths
