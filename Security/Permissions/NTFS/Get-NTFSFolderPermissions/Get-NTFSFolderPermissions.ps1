@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 21:24:00 UTC
+# Last Updated: 2025-03-28 21:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.14
-# Additional Info: Fixed hierarchical output display and data collection
+# Version: 3.3.15
+# Additional Info: Fixed tree structure character encoding issues
 # =============================================================================
 
 <#
@@ -452,7 +452,7 @@ function Write-HierarchicalOutput {
     # Display total items at this level if not root
     if ($Level -gt 0 -and $totalItems -gt 0) {
         $indent = "    " * ($Level - 1)
-        Write-Log -Message "$indent└── Found $totalItems item(s) at this level" -Color "DarkGray" -Level 'INFO'
+        Write-Log -Message "$indent+--- Found $totalItems item(s) at this level" -Color "DarkGray" -Level 'INFO'
     }
     
     for ($i = 0; $i -lt $totalItems; $i++) {
@@ -465,9 +465,9 @@ function Write-HierarchicalOutput {
         $prefix = if ($Level -eq 0) { 
             "" 
         } elseif ($isLast) { 
-            "└── " 
+            "+--- " 
         } else { 
-            "├── " 
+            "|--- " 
         }
         
         $folderName = if ($Level -eq 0) { $path } else { Split-Path -Leaf $path }
@@ -477,6 +477,7 @@ function Write-HierarchicalOutput {
         
         # Output folder name with tree structure
         Write-Log -Message "$indent$prefix$folderName" -Color "Cyan" -Level 'INFO'
+        
         
         # Indent all subsequent content
         $contentIndent = "    " * ($Level + 1)
