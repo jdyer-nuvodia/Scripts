@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 19:34:00 UTC
+# Last Updated: 2025-03-28 19:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.2
-# Additional Info: Removed GroupIdenticalSubfolders switch parameter as it is now default behavior
+# Version: 3.3.3
+# Additional Info: Fixed parameter mismatch in Write-HierarchicalOutput function call
 # =============================================================================
 
 <#
@@ -931,7 +931,7 @@ try {
     
     if ($script:FolderPermissions.Count -gt 0) {
         $hierarchyItems = Format-Hierarchy -FolderPermissions $script:FolderPermissions
-        Write-HierarchicalOutput -Items $hierarchyItems -Permissions $script:FolderPermissions
+        Write-HierarchicalOutput -Hierarchy $script:FolderPermissions -Permissions $script:FolderPermissions
     }
 } 
 catch [System.Exception] {
