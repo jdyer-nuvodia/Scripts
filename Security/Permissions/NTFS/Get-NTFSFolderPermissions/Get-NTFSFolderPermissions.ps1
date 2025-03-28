@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:34:00 UTC
+# Last Updated: 2025-03-28 23:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.35
-# Additional Info: Fixed indentation of Template folder and its children in hierarchical display
+# Version: 3.3.36
+# Additional Info: Added indicator for subfolders with same owner and permissions as parent
 # =============================================================================
 
 <#
@@ -479,23 +479,46 @@ function Write-HierarchicalOutput {
         if ($Level -eq 0) {
             Write-Log -Message "$folderName" -Color "Cyan" -Level "INFO"
         } else {
-            Write-Log -Message "$indent|---+ $folderName" -Color "Cyan" -Level "INFO"
+            # Check if permissions are same as parent
+            $parentPerms = $Permissions[$ParentPath]
+            $currentPerms = $Permissions[$path]
+            $hasSamePermissions = $false
+            
+            if ($parentPerms -and $currentPerms) {
+                $hasSamePermissions = Compare-PermissionSets -Parent $parentPerms -Child $currentPerms
+            }
+            
+            if ($hasSamePermissions) {
+                Write-Log -Message "$indent|---+ $folderName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
+            } else {
+                Write-Log -Message "$indent|---+ $folderName" -Color "Cyan" -Level "INFO"
+            }
         }
         
         # Get permissions for current folder
         $currentPerms = $Permissions[$path]
         if ($currentPerms) {
-            # Output Owner with correct indentation
-            Write-Log -Message "$indent|   Owner: $($currentPerms.Owner)" -Color "White" -Level "INFO"
-            Write-Log -Message "$indent|" -Level "INFO"
+            # Only display owner and permissions details if not same as parent
+            $parentPerms = if ($ParentPath) { $Permissions[$ParentPath] } else { $null }
+            $hasSamePermissions = $false
             
-            # Output Permissions with correct indentation
-            Write-Log -Message "$indent|   Permissions:" -Color "White" -Level "INFO"
-            foreach ($access in @($currentPerms.Access)) {
-                $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-                Write-Log -Message "$indent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+            if ($parentPerms -and $currentPerms) {
+                $hasSamePermissions = Compare-PermissionSets -Parent $parentPerms -Child $currentPerms
             }
-            Write-Log -Message "$indent|" -Level "INFO"
+            
+            if (-not $hasSamePermissions) {
+                # Output Owner with correct indentation
+                Write-Log -Message "$indent|   Owner: $($currentPerms.Owner)" -Color "White" -Level "INFO"
+                Write-Log -Message "$indent|" -Level "INFO"
+                
+                # Output Permissions with correct indentation
+                Write-Log -Message "$indent|   Permissions:" -Color "White" -Level "INFO"
+                foreach ($access in @($currentPerms.Access)) {
+                    $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                    Write-Log -Message "$indent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+                }
+                Write-Log -Message "$indent|" -Level "INFO"
+            }
             
             # Handle matching subfolders
             if ($currentPerms.MatchingSubfolders -and $currentPerms.MatchingSubfolders.Count -gt 0) {
@@ -503,7 +526,7 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|" -Level "INFO"
                 foreach ($subfolder in ($currentPerms.MatchingSubfolders | Sort-Object)) {
                     $subName = Split-Path -Leaf $subfolder
-                    Write-Log -Message "$indent|---+ $subName" -Color "DarkGray" -Level "INFO"
+                    Write-Log -Message "$indent|---+ $subName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
                     $ProcessedPaths.Add($subfolder) | Out-Null
                 }
                 Write-Log -Message "$indent|" -Level "INFO"
@@ -525,15 +548,26 @@ function Write-HierarchicalOutput {
                     $childPath = $child.Path
                     $childName = Split-Path -Leaf $childPath
                     
+                    # Check if child permissions are same as current folder
+                    $childPerms = $Permissions[$childPath]
+                    $childHasSamePermissions = $false
+                    
+                    if ($childPerms) {
+                        $childHasSamePermissions = Compare-PermissionSets -Parent $currentPerms -Child $childPerms
+                    }
+                    
                     # Write the child folder name with correct indent
-                    Write-Log -Message "$indent|---+ $childName" -Color "Cyan" -Level "INFO"
+                    if ($childHasSamePermissions) {
+                        Write-Log -Message "$indent|---+ $childName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
+                    } else {
+                        Write-Log -Message "$indent|---+ $childName" -Color "Cyan" -Level "INFO"
+                    }
                     
                     # Mark child path as processed
                     $ProcessedPaths.Add($childPath) | Out-Null
                     
-                    # Get child permissions
-                    $childPerms = $Permissions[$childPath]
-                    if ($childPerms) {
+                    # Only display permissions if different from parent
+                    if (-not $childHasSamePermissions) {
                         # Calculate the next level indent
                         $childIndent = "    " * ($Level + 1)
                         
@@ -548,58 +582,70 @@ function Write-HierarchicalOutput {
                             Write-Log -Message "$childIndent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
                         }
                         Write-Log -Message "$childIndent|" -Level "INFO"
-                        
-                        # Handle matching subfolders for child
-                        if ($childPerms.MatchingSubfolders -and $childPerms.MatchingSubfolders.Count -gt 0) {
-                            Write-Log -Message "$childIndent|   Subfolders with identical permissions ($($childPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
-                            Write-Log -Message "$childIndent|" -Level "INFO"
-                            foreach ($subfolder in ($childPerms.MatchingSubfolders | Sort-Object)) {
-                                $subName = Split-Path -Leaf $subfolder
-                                Write-Log -Message "$childIndent|---+ $subName" -Color "DarkGray" -Level "INFO"
-                                $ProcessedPaths.Add($subfolder) | Out-Null
-                            }
-                            Write-Log -Message "$childIndent|" -Level "INFO"
+                    }
+                    
+                    # Handle matching subfolders for child
+                    if ($childPerms.MatchingSubfolders -and $childPerms.MatchingSubfolders.Count -gt 0) {
+                        Write-Log -Message "$childIndent|   Subfolders with identical permissions ($($childPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
+                        Write-Log -Message "$childIndent|" -Level "INFO"
+                        foreach ($subfolder in ($childPerms.MatchingSubfolders | Sort-Object)) {
+                            $subName = Split-Path -Leaf $subfolder
+                            Write-Log -Message "$childIndent|---+ $subName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
+                            $ProcessedPaths.Add($subfolder) | Out-Null
                         }
+                        Write-Log -Message "$childIndent|" -Level "INFO"
+                    }
+                    
+                    # Find grand-children with different permissions
+                    $grandChildren = @($Hierarchy | Where-Object { 
+                        $_.ParentPath -eq $childPath -and 
+                        -not $ProcessedPaths.Contains($_.Path) -and
+                        $childPerms.MatchingSubfolders -notcontains $_.Path
+                    } | Sort-Object Path)
+                    
+                    if ($grandChildren.Count -gt 0) {
+                        Write-Log -Message "$childIndent|   Subfolders with different permissions ($($grandChildren.Count)):" -Color "DarkGray" -Level "INFO"
+                        Write-Log -Message "$childIndent|" -Level "INFO"
                         
-                        # Find grand-children with different permissions
-                        $grandChildren = @($Hierarchy | Where-Object { 
-                            $_.ParentPath -eq $childPath -and 
-                            -not $ProcessedPaths.Contains($_.Path) -and
-                            $childPerms.MatchingSubfolders -notcontains $_.Path
-                        } | Sort-Object Path)
-                        
-                        if ($grandChildren.Count -gt 0) {
-                            Write-Log -Message "$childIndent|   Subfolders with different permissions ($($grandChildren.Count)):" -Color "DarkGray" -Level "INFO"
-                            Write-Log -Message "$childIndent|" -Level "INFO"
+                        # Process each grand-child directly instead of using recursion
+                        foreach ($grandChild in $grandChildren) {
+                            $grandChildPath = $grandChild.Path
+                            $grandChildName = Split-Path -Leaf $grandChildPath
                             
-                            # Process each grand-child directly instead of using recursion
-                            foreach ($grandChild in $grandChildren) {
-                                $grandChildPath = $grandChild.Path
-                                $grandChildName = Split-Path -Leaf $grandChildPath
-                                
-                                # Write grand-child with proper indentation
+                            # Check if grand-child permissions are same as child folder
+                            $grandChildPerms = $Permissions[$grandChildPath]
+                            $grandChildHasSamePermissions = $false
+                            
+                            if ($grandChildPerms) {
+                                $grandChildHasSamePermissions = Compare-PermissionSets -Parent $childPerms -Child $grandChildPerms
+                            }
+                            
+                            # Write grand-child with proper indentation
+                            if ($grandChildHasSamePermissions) {
+                                Write-Log -Message "$childIndent|---+ $grandChildName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
+                            } else {
                                 Write-Log -Message "$childIndent|---+ $grandChildName" -Color "Cyan" -Level "INFO"
-                                
-                                # Mark as processed
-                                $ProcessedPaths.Add($grandChildPath) | Out-Null
-                                
+                            }
+                            
+                            # Mark as processed
+                            $ProcessedPaths.Add($grandChildPath) | Out-Null
+                            
+                            # Only display permissions if different from parent
+                            if (-not $grandChildHasSamePermissions) {
                                 # Get and display grand-child permissions
-                                $grandChildPerms = $Permissions[$grandChildPath]
-                                if ($grandChildPerms) {
-                                    $grandChildIndent = "    " * ($Level + 2)
-                                    
-                                    # Output Owner
-                                    Write-Log -Message "$grandChildIndent|   Owner: $($grandChildPerms.Owner)" -Color "White" -Level "INFO"
-                                    Write-Log -Message "$grandChildIndent|" -Level "INFO"
-                                    
-                                    # Output Permissions
-                                    Write-Log -Message "$grandChildIndent|   Permissions:" -Color "White" -Level "INFO"
-                                    foreach ($access in @($grandChildPerms.Access)) {
-                                        $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-                                        Write-Log -Message "$grandChildIndent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
-                                    }
-                                    Write-Log -Message "$grandChildIndent|" -Level "INFO"
+                                $grandChildIndent = "    " * ($Level + 2)
+                                
+                                # Output Owner
+                                Write-Log -Message "$grandChildIndent|   Owner: $($grandChildPerms.Owner)" -Color "White" -Level "INFO"
+                                Write-Log -Message "$grandChildIndent|" -Level "INFO"
+                                
+                                # Output Permissions
+                                Write-Log -Message "$grandChildIndent|   Permissions:" -Color "White" -Level "INFO"
+                                foreach ($access in @($grandChildPerms.Access)) {
+                                    $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                                    Write-Log -Message "$grandChildIndent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
                                 }
+                                Write-Log -Message "$grandChildIndent|" -Level "INFO"
                             }
                         }
                     }
