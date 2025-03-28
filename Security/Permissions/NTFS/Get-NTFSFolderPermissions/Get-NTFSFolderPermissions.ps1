@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:38:00 UTC
+# Last Updated: 2025-03-28 23:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.36
-# Additional Info: Added indicator for subfolders with same owner and permissions as parent
+# Version: 3.3.37
+# Additional Info: Fixed invalid permission object structure detection in Compare-PermissionSets
 # =============================================================================
 
 <#
@@ -203,12 +203,39 @@ function Compare-PermissionSets {
         [object]$Child
     )
     
-    # Ensure both objects have required properties
-    if (-not ($Parent.PSObject.Properties.Name -contains "Owner") -or 
-        -not ($Parent.PSObject.Properties.Name -contains "AccessRules") -or
-        -not ($Child.PSObject.Properties.Name -contains "Owner") -or
-        -not ($Child.PSObject.Properties.Name -contains "AccessRules")) {
-        Write-Log -Message "Invalid permission object structure detected" -Level 'WARNING' -Color "Yellow"
+    # First check if any parameters are null
+    if ($null -eq $Parent -or $null -eq $Child) {
+        Write-Log -Message "Null permission object detected" -Level 'WARNING' -Color "Yellow" -NoConsole
+        return $false
+    }
+    
+    # Ensure both objects have required properties using safer HasProperty method
+    if (-not (Get-Member -InputObject $Parent -Name "Owner" -MemberType Properties) -or 
+        -not (Get-Member -InputObject $Parent -Name "Access" -MemberType Properties -ErrorAction SilentlyContinue) -or
+        -not (Get-Member -InputObject $Parent -Name "AccessRules" -MemberType Properties -ErrorAction SilentlyContinue) -or
+        -not (Get-Member -InputObject $Child -Name "Owner" -MemberType Properties) -or
+        -not (Get-Member -InputObject $Child -Name "Access" -MemberType Properties -ErrorAction SilentlyContinue) -or
+        -not (Get-Member -InputObject $Child -Name "AccessRules" -MemberType Properties -ErrorAction SilentlyContinue)) {
+        Write-Log -Message "Invalid permission object structure detected" -Level 'WARNING' -Color "Yellow" -NoConsole
+        return $false
+    }
+    
+    # Determine which property to use for access rules (Access or AccessRules)
+    $parentRules = if (Get-Member -InputObject $Parent -Name "AccessRules" -MemberType Properties) {
+        $Parent.AccessRules
+    } else {
+        $Parent.Access
+    }
+    
+    $childRules = if (Get-Member -InputObject $Child -Name "AccessRules" -MemberType Properties) {
+        $Child.AccessRules
+    } else {
+        $Child.Access
+    }
+    
+    # Validate AccessRules/Access is not null
+    if ($null -eq $parentRules -or $null -eq $childRules) {
+        Write-Log -Message "Null AccessRules detected" -Level 'WARNING' -Color "Yellow" -NoConsole
         return $false
     }
     
@@ -217,31 +244,25 @@ function Compare-PermissionSets {
         return $false
     }
     
-    # Check if AccessRules is null or empty
-    if ($null -eq $Parent.AccessRules -or $null -eq $Child.AccessRules) {
-        Write-Log -Message "Null AccessRules detected" -Level 'WARNING' -Color "Yellow"
-        return $false
-    }
-    
     # Check if they have same number of permissions
-    if ($Parent.AccessRules.Count -ne $Child.AccessRules.Count) {
+    if ($parentRules.Count -ne $childRules.Count) {
         return $false
     }
     
     # Create hashtables for easier comparison
-    $parentRules = @{}
-    foreach ($rule in $Parent.AccessRules) {
+    $parentRulesHash = @{}
+    foreach ($rule in $parentRules) {
         if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
             $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
-            $parentRules[$key] = $true
+            $parentRulesHash[$key] = $true
         }
     }
     
     # Check if all child rules exist in parent
-    foreach ($rule in $Child.AccessRules) {
+    foreach ($rule in $childRules) {
         if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
             $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
-            if (-not $parentRules.ContainsKey($key)) {
+            if (-not $parentRulesHash.ContainsKey($key)) {
                 return $false
             }
         }
