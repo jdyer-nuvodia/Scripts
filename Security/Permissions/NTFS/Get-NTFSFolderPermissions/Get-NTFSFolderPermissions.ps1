@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 17:14:16 UTC
+# Last Updated: 2025-03-28 17:17:16 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.5
+# Version: 2.2.6
 # Additional Info: Fixed Get-TotalFolderCount function placement and script execution order
 # =============================================================================
 
@@ -76,35 +76,6 @@ param (
 # Enable strict mode and error handling
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-# Function to count total folders recursively
-function Get-TotalFolderCount {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$StartPath
-    )
-    
-    try {
-        $folderCount = 0
-        $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
-        $folderCount += $folders.Count
-        
-        foreach ($folder in $folders) {
-            try {
-                $folderCount += Get-TotalFolderCount -StartPath $folder.FullName
-            }
-            catch {
-                Write-Log -Message "Error counting subfolders in $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
-            }
-        }
-        
-        return $folderCount
-    }
-    catch {
-        Write-Log -Message "Error counting folders in $StartPath : $_" -Level 'ERROR' -Color "Red"
-        return 0
-    }
-}
 
 # Script-level variables - consolidated to avoid duplication
 $script:TranscriptStarted = $false
@@ -185,6 +156,98 @@ function Get-DomainControllers {
     
     # Return empty array if all methods fail
     return @()
+}
+
+# Function to count total folders recursively
+function Get-TotalFolderCount {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$StartPath
+    )
+    
+    try {
+        $folderCount = 0
+        $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
+        $folderCount += $folders.Count
+        
+        foreach ($folder in $folders) {
+            try {
+                $folderCount += Get-TotalFolderCount -StartPath $folder.FullName
+            }
+            catch {
+                Write-Log -Message "Error counting subfolders in $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
+            }
+        }
+        
+        return $folderCount
+    }
+    catch {
+        Write-Log -Message "Error counting folders in $StartPath : $_" -Level 'ERROR' -Color "Red"
+        return 0
+    }
+}
+
+# Function to process folders recursively
+function Invoke-FolderRecursively {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$StartPath,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$CurrentDepth = 0
+    )
+    
+    try {
+        # Check for timeout or cancellation
+        if ($script:cancellationTokenSource.Token.IsCancellationRequested -or 
+            ((Get-Date) - $script:StartTime) -gt $script:processingTimeout) {
+            return
+        }
+
+        # Get folder permissions
+        $acl = Get-Acl -Path $StartPath -ErrorAction Stop
+        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $acl.Owner
+        
+        # Store permissions
+        $script:FolderPermissions[$StartPath] = @{
+            Owner = $acl.Owner
+            Access = $acl.Access
+            IsInherited = $true
+            UniqueHash = $permissionHash
+        }
+        
+        # Track unique permissions
+        if (-not $SkipUniquenessCounting) {
+            if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
+                $script:UniquePermissions[$permissionHash] = @()
+            }
+            $script:UniquePermissions[$permissionHash] += $StartPath
+        }
+        
+        # Update progress
+        $script:ProcessedFolders++
+        Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status $StartPath -Current $script:ProcessedFolders -Total $script:TotalFolders
+        
+        # Check depth limit
+        if ($MaxDepth -gt 0 -and $CurrentDepth -ge $MaxDepth) {
+            Write-Log -Message "Reached maximum depth ($MaxDepth) at: $StartPath" -Level 'DEBUG' -NoConsole
+            return
+        }
+        
+        # Process subfolders
+        $folders = Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop
+        foreach ($folder in $folders) {
+            try {
+                Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+            }
+            catch {
+                Write-Log -Message "Error processing subfolder $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
+            }
+        }
+    }
+    catch {
+        Write-Log -Message "Error processing folder $StartPath : $_" -Level 'ERROR' -Color "Red"
+    }
 }
 
 # Add function for sanitizing path for filename
@@ -868,65 +931,3 @@ finally {
     }
 }
 
-# Function to process folders recursively
-function Invoke-FolderRecursively {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$StartPath,
-        
-        [Parameter(Mandatory=$false)]
-        [int]$CurrentDepth = 0
-    )
-    
-    try {
-        # Check for timeout or cancellation
-        if ($script:cancellationTokenSource.Token.IsCancellationRequested -or 
-            ((Get-Date) - $script:StartTime) -gt $script:processingTimeout) {
-            return
-        }
-
-        # Get folder permissions
-        $acl = Get-Acl -Path $StartPath -ErrorAction Stop
-        $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $acl.Owner
-        
-        # Store permissions
-        $script:FolderPermissions[$StartPath] = @{
-            Owner = $acl.Owner
-            Access = $acl.Access
-            IsInherited = $true
-            UniqueHash = $permissionHash
-        }
-        
-        # Track unique permissions
-        if (-not $SkipUniquenessCounting) {
-            if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
-                $script:UniquePermissions[$permissionHash] = @()
-            }
-            $script:UniquePermissions[$permissionHash] += $StartPath
-        }
-        
-        # Update progress
-        $script:ProcessedFolders++
-        Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status $StartPath -Current $script:ProcessedFolders -Total $script:TotalFolders
-        
-        # Check depth limit
-        if ($MaxDepth -gt 0 -and $CurrentDepth -ge $MaxDepth) {
-            Write-Log -Message "Reached maximum depth ($MaxDepth) at: $StartPath" -Level 'DEBUG' -NoConsole
-            return
-        }
-        
-        # Process subfolders
-        $folders = Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop
-        foreach ($folder in $folders) {
-            try {
-                Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
-            }
-            catch {
-                Write-Log -Message "Error processing subfolder $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
-            }
-        }
-    }
-    catch {
-        Write-Log -Message "Error processing folder $StartPath : $_" -Level 'ERROR' -Color "Red"
-    }
-}
