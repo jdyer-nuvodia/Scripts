@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 20:08:00 UTC
+# Last Updated: 2025-03-28 20:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.6
+# Version: 3.3.7
 # Additional Info: resolve the type conversion error and properly display the hierarchical output
 # =============================================================================
 
@@ -168,15 +168,19 @@ function Get-TotalFolderCount {
     
     try {
         $folderCount = 0
-        $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
-        $folderCount += $folders.Count
+        $processedPaths = @{}
         
+        $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
         foreach ($folder in $folders) {
-            try {
-                $folderCount += Get-TotalFolderCount -StartPath $folder.FullName
-            }
-            catch {
-                Write-Log -Message "Error counting subfolders in $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
+            if (-not $processedPaths.ContainsKey($folder.FullName)) {
+                $processedPaths[$folder.FullName] = $true
+                $folderCount++
+                try {
+                    $folderCount += Get-TotalFolderCount -StartPath $folder.FullName
+                }
+                catch {
+                    Write-Log -Message "Error counting subfolders in $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
+                }
             }
         }
         
@@ -188,7 +192,10 @@ function Get-TotalFolderCount {
     }
 }
 
-# Function to process folders recursively
+# Add a script-level hashtable to track processed folders
+$script:ProcessedFolderPaths = @{}
+
+# Modify the Invoke-FolderRecursively function
 function Invoke-FolderRecursively {
     param (
         [Parameter(Mandatory=$true)]
@@ -202,21 +209,22 @@ function Invoke-FolderRecursively {
     )
     
     try {
-        # Check for timeout or cancellation
-        if ($script:cancellationTokenSource.Token.IsCancellationRequested -or 
-            ((Get-Date) - $script:StartTime) -gt $script:processingTimeout) {
+        # Check if we've already processed this path
+        if ($script:ProcessedFolderPaths.ContainsKey($StartPath)) {
+            Write-Log -Message "Skipping already processed path: $StartPath" -Level 'DEBUG' -NoConsole
             return
         }
 
-        # Get folder permissions
+        # Mark this path as processed
+        $script:ProcessedFolderPaths[$StartPath] = $true
+
+        # Rest of your existing function code...
         $acl = Get-Acl -Path $StartPath -ErrorAction Stop
         $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $acl.Owner
 
-        # Get subfolders before storing permissions
         $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
         $IsLeafNode = ($folders.Count -eq 0)
         
-        # Store permissions with leaf node status
         $script:FolderPermissions[$StartPath] = @{
             Owner = $acl.Owner
             Access = $acl.Access
@@ -225,33 +233,15 @@ function Invoke-FolderRecursively {
             IsLeafNode = $IsLeafNode
             ChildCount = $folders.Count
         }
-        
-        # Track unique permissions
-        if (-not $SkipUniquenessCounting) {
-            if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
-                $script:UniquePermissions[$permissionHash] = @()
-            }
-            $script:UniquePermissions[$permissionHash] += $StartPath
-        }
-        
-        # Update progress
+
+        # Update progress and process subfolders
         $script:ProcessedFolders++
         Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status $StartPath -Current $script:ProcessedFolders -Total $script:TotalFolders
-        
-        # Check depth limit
-        if ($MaxDepth -gt 0 -and $CurrentDepth -ge $MaxDepth) {
-            Write-Log -Message "Reached maximum depth ($MaxDepth) at: $StartPath" -Level 'DEBUG' -NoConsole
-            return
-        }
-        
-        # Process subfolders only if not a leaf node
+
         if (-not $IsLeafNode) {
             foreach ($folder in $folders) {
-                try {
+                if (-not $script:ProcessedFolderPaths.ContainsKey($folder.FullName)) {
                     Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
-                }
-                catch {
-                    Write-Log -Message "Error processing subfolder $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
                 }
             }
         }
