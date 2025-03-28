@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:32:00 UTC
+# Last Updated: 2025-03-28 23:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.34
+# Version: 3.3.35
 # Additional Info: Fixed indentation of Template folder and its children in hierarchical display
 # =============================================================================
 
@@ -194,6 +194,61 @@ function Get-TotalFolderCount {
 
 # Add a script-level hashtable to track processed folders
 $script:ProcessedFolderPaths = @{}
+function Compare-PermissionSets {
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$Parent,
+        
+        [Parameter(Mandatory = $true)]
+        [object]$Child
+    )
+    
+    # Ensure both objects have required properties
+    if (-not ($Parent.PSObject.Properties.Name -contains "Owner") -or 
+        -not ($Parent.PSObject.Properties.Name -contains "AccessRules") -or
+        -not ($Child.PSObject.Properties.Name -contains "Owner") -or
+        -not ($Child.PSObject.Properties.Name -contains "AccessRules")) {
+        Write-Log -Message "Invalid permission object structure detected" -Level 'WARNING' -Color "Yellow"
+        return $false
+    }
+    
+    # Compare owners
+    if ($Parent.Owner -ne $Child.Owner) {
+        return $false
+    }
+    
+    # Check if AccessRules is null or empty
+    if ($null -eq $Parent.AccessRules -or $null -eq $Child.AccessRules) {
+        Write-Log -Message "Null AccessRules detected" -Level 'WARNING' -Color "Yellow"
+        return $false
+    }
+    
+    # Check if they have same number of permissions
+    if ($Parent.AccessRules.Count -ne $Child.AccessRules.Count) {
+        return $false
+    }
+    
+    # Create hashtables for easier comparison
+    $parentRules = @{}
+    foreach ($rule in $Parent.AccessRules) {
+        if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
+            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
+            $parentRules[$key] = $true
+        }
+    }
+    
+    # Check if all child rules exist in parent
+    foreach ($rule in $Child.AccessRules) {
+        if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
+            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
+            if (-not $parentRules.ContainsKey($key)) {
+                return $false
+            }
+        }
+    }
+    
+    return $true
+}
 
 # Modify the Invoke-FolderRecursively function
 function Invoke-FolderRecursively {
@@ -1129,62 +1184,6 @@ finally {
     if ($script:cancellationTokenSource) {
         $script:cancellationTokenSource.Dispose()
     }
-}
-
-function Compare-PermissionSets {
-    param (
-        [Parameter(Mandatory = $true)]
-        [object]$Parent,
-        
-        [Parameter(Mandatory = $true)]
-        [object]$Child
-    )
-    
-    # Ensure both objects have required properties
-    if (-not ($Parent.PSObject.Properties.Name -contains "Owner") -or 
-        -not ($Parent.PSObject.Properties.Name -contains "AccessRules") -or
-        -not ($Child.PSObject.Properties.Name -contains "Owner") -or
-        -not ($Child.PSObject.Properties.Name -contains "AccessRules")) {
-        Write-Log -Message "Invalid permission object structure detected" -Level 'WARNING' -Color "Yellow"
-        return $false
-    }
-    
-    # Compare owners
-    if ($Parent.Owner -ne $Child.Owner) {
-        return $false
-    }
-    
-    # Check if AccessRules is null or empty
-    if ($null -eq $Parent.AccessRules -or $null -eq $Child.AccessRules) {
-        Write-Log -Message "Null AccessRules detected" -Level 'WARNING' -Color "Yellow"
-        return $false
-    }
-    
-    # Check if they have same number of permissions
-    if ($Parent.AccessRules.Count -ne $Child.AccessRules.Count) {
-        return $false
-    }
-    
-    # Create hashtables for easier comparison
-    $parentRules = @{}
-    foreach ($rule in $Parent.AccessRules) {
-        if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
-            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
-            $parentRules[$key] = $true
-        }
-    }
-    
-    # Check if all child rules exist in parent
-    foreach ($rule in $Child.AccessRules) {
-        if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
-            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
-            if (-not $parentRules.ContainsKey($key)) {
-                return $false
-            }
-        }
-    }
-    
-    return $true
 }
 
 function Get-FolderPermissions {
