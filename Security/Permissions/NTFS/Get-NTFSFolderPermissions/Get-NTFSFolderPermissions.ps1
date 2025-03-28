@@ -458,8 +458,11 @@ function Write-HierarchicalOutput {
         # Get folder name
         $folderName = if ($Level -eq 0) { $path } else { Split-Path -Leaf $path }
         
-        # Get current folder's permissions
+        # Get current folder's permissions and ensure MatchingSubfolders exists
         $currentPerms = $Permissions[$path]
+        if (-not $currentPerms.ContainsKey('MatchingSubfolders')) {
+            $currentPerms.MatchingSubfolders = @()
+        }
         
         # Output folder name
         if ($Level -eq 0) {
@@ -509,7 +512,7 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "|---+ $childName" -Color "Cyan" -Level "INFO"
             }
             
-            # Process each child's details and their children separately
+            # Process each child's details without duplicating the folder name
             foreach ($child in ($children | Sort-Object Path)) {
                 $childPath = $child.Path
                 $childPerms = $Permissions[$childPath]
