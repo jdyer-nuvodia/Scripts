@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 21:31:00 UTC
+# Last Updated: 2025-03-28 21:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.16
-# Additional Info: Fixed encoding issues in tree structure characters, replaced with ASCII alternatives
+# Version: 3.3.17
+# Additional Info: Standardized tree structure display using consistent |---+ format
 # =============================================================================
 
 <#
@@ -452,7 +452,7 @@ function Write-HierarchicalOutput {
     # Display total items at this level if not root
     if ($Level -gt 0 -and $totalItems -gt 0) {
         $indent = "    " * ($Level - 1)
-        Write-Log -Message "$indent\---+ Found $totalItems item(s) at this level" -Color "DarkGray" -Level "INFO"
+        Write-Log -Message "$indent|---+ Found $totalItems item(s) at this level" -Color "DarkGray" -Level "INFO"
     }
     
     for ($i = 0; $i -lt $totalItems; $i++) {
@@ -460,14 +460,11 @@ function Write-HierarchicalOutput {
         $path = $item.Path
         $indent = "    " * $Level
         
-        # Use different prefix for last item
-        $isLast = ($i -eq $totalItems - 1)
+        # Use consistent prefix for all items
         $prefix = if ($Level -eq 0) { 
             "" 
-        } elseif ($isLast) { 
-            "\---+" 
         } else { 
-            "|---+" 
+            "|---+ " 
         }
         
         $folderName = if ($Level -eq 0) { $path } else { Split-Path -Leaf $path }
@@ -497,12 +494,9 @@ function Write-HierarchicalOutput {
             Write-Log -Message "$contentIndent`Subfolders with identical permissions ($($currentPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
             Write-Log -Message "" -Level "INFO"
             
-            $lastIndex = $currentPerms.MatchingSubfolders.Count - 1
-            for ($j = 0; $j -lt $currentPerms.MatchingSubfolders.Count; $j++) {
-                $subfolder = $currentPerms.MatchingSubfolders[$j]
+            foreach ($subfolder in ($currentPerms.MatchingSubfolders | Sort-Object)) {
                 $subName = Split-Path -Leaf $subfolder
-                $subPrefix = if ($j -eq $lastIndex) { "\---+ " } else { "|---+ " }
-                Write-Log -Message "$contentIndent$subPrefix$subName" -Color "DarkGray" -Level "INFO"
+                Write-Log -Message "$contentIndent|---+ $subName" -Color "DarkGray" -Level "INFO"
             }
             Write-Log -Message "" -Level "INFO"
         }
