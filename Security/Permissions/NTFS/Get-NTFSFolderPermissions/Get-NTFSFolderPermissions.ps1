@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 22:00:00 UTC
+# Last Updated: 2025-03-28 22:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.19
+# Version: 3.3.20
 # Additional Info: Enhanced hierarchical display with vertical lines and consistent formatting
 # =============================================================================
 
@@ -502,15 +502,32 @@ function Write-HierarchicalOutput {
             Write-Log -Message "$indent|   Subfolders with different permissions ($childCount):" -Color "DarkGray" -Level "INFO"
             Write-Log -Message "$indent|" -Level "INFO"
             
-            # Modified section - use base indent for immediate child folders
+            # Write child folders without recursion here
             foreach ($child in ($children | Sort-Object Path)) {
                 $childPath = $child.Path
                 $childName = Split-Path -Leaf $childPath
                 Write-Log -Message "|---+ $childName" -Color "Cyan" -Level "INFO"
             }
             
-            # Continue with normal recursive processing
-            Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
+            # Process each child's details and their children separately
+            foreach ($child in ($children | Sort-Object Path)) {
+                $childPath = $child.Path
+                $childPerms = $Permissions[$childPath]
+                
+                # Output Owner and Permissions with vertical lines
+                Write-Log -Message "$indent    |   Owner: $($childPerms.Owner)" -Color "White" -Level "INFO"
+                Write-Log -Message "$indent    |" -Level "INFO"
+                Write-Log -Message "$indent    |   Permissions:" -Color "White" -Level "INFO"
+                
+                foreach ($access in $childPerms.Access) {
+                    $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                    Write-Log -Message "$indent    |       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+                }
+                Write-Log -Message "$indent    |" -Level "INFO"
+                
+                # Continue recursive processing for this child's subfolders
+                Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions -Level ($Level + 1) -ParentPath $childPath
+            }
         }
         
         # Add extra spacing between root-level items
