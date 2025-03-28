@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:47:00 UTC
+# Last Updated: 2025-03-28 23:54:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.38
-# Additional Info: Fixed display of identical permissions in subfolders
+# Version: 3.3.39
+# Additional Info: Fixed comparison logic for folder permissions to correctly identify identical permissions
 # =============================================================================
 
 <#
@@ -249,25 +249,31 @@ function Compare-PermissionSets {
         return $false
     }
     
-    # Create hashtables for easier comparison
-    $parentRulesHash = @{}
-    foreach ($rule in $parentRules) {
-        if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
-            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
-            $parentRulesHash[$key] = $true
+    # Create sorted string representations of all permission entries for exact comparison
+    $parentRulesKeys = @($parentRules | ForEach-Object {
+        if ($null -ne $_.IdentityReference -and $null -ne $_.FileSystemRights) {
+            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.IsInherited)"
+        }
+    } | Sort-Object)
+    
+    $childRulesKeys = @($childRules | ForEach-Object {
+        if ($null -ne $_.IdentityReference -and $null -ne $_.FileSystemRights) {
+            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.IsInherited)"
+        }
+    } | Sort-Object)
+    
+    # Compare the sorted arrays exactly
+    if ($parentRulesKeys.Count -ne $childRulesKeys.Count) {
+        return $false
+    }
+    
+    for ($i = 0; $i -lt $parentRulesKeys.Count; $i++) {
+        if ($parentRulesKeys[$i] -ne $childRulesKeys[$i]) {
+            return $false
         }
     }
     
-    # Check if all child rules exist in parent
-    foreach ($rule in $childRules) {
-        if ($null -ne $rule.IdentityReference -and $null -ne $rule.FileSystemRights) {
-            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
-            if (-not $parentRulesHash.ContainsKey($key)) {
-                return $false
-            }
-        }
-    }
-    
+    # If we got here, all rules match
     return $true
 }
 
