@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:22:00 UTC
+# Last Updated: 2025-03-28 23:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.32
-# Additional Info: Fixed hierarchical display for different permission folders
+# Version: 3.3.33
+# Additional Info: Fixed indentation in hierarchical display for subfolders
 # =============================================================================
 
 <#
@@ -429,7 +429,7 @@ function Format-Hierarchy {
     return $results | Sort-Object Path
 }
 
-# Function to write hierarchical output with grouped permissions
+# Format hierarchical output for folder structure
 function Write-HierarchicalOutput {
     param (
         [Parameter(Mandatory=$true)]
@@ -479,7 +479,6 @@ function Write-HierarchicalOutput {
         if ($Level -eq 0) {
             Write-Log -Message "$folderName" -Color "Cyan" -Level "INFO"
         } else {
-            # This is the key line that sets the proper indentation for folder names
             Write-Log -Message "$indent|---+ $folderName" -Color "Cyan" -Level "INFO"
         }
         
@@ -521,18 +520,63 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
                 
-                # Process each child folder directly - THIS IS THE KEY FIX
+                # Fixed: Directly process child folders here with proper indentation
                 foreach ($child in $children) {
                     $childPath = $child.Path
+                    $childName = Split-Path -Leaf $childPath
                     
-                    # IMPORTANT CHANGE: We don't mark this path as processed yet
-                    # Because we need to process it in the recursive call
+                    # Write the child folder name with proper indentation
+                    Write-Log -Message "$indent|---+ $childName" -Color "Cyan" -Level "INFO"
                     
-                    # Recursively call with the CHILD PATH as the focus, not just as a filter
-                    # This ensures the child node is actually displayed
-                    Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
-                                           -Level ($Level + 1) -ParentPath $childPath.Substring(0, $childPath.LastIndexOf('\')) `
-                                           -ProcessedPaths $ProcessedPaths
+                    # Mark path as processed
+                    $ProcessedPaths.Add($childPath) | Out-Null
+                    
+                    # Get and display child permissions
+                    $childPerms = $Permissions[$childPath]
+                    if ($childPerms) {
+                        $childIndent = "    " * ($Level + 1)
+                        
+                        # Output Owner
+                        Write-Log -Message "$childIndent|   Owner: $($childPerms.Owner)" -Color "White" -Level "INFO"
+                        Write-Log -Message "$childIndent|" -Level "INFO"
+                        
+                        # Output Permissions
+                        Write-Log -Message "$childIndent|   Permissions:" -Color "White" -Level "INFO"
+                        foreach ($access in @($childPerms.Access)) {
+                            $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                            Write-Log -Message "$childIndent|       $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
+                        }
+                        Write-Log -Message "$childIndent|" -Level "INFO"
+                        
+                        # Handle matching subfolders for child
+                        if ($childPerms.MatchingSubfolders -and $childPerms.MatchingSubfolders.Count -gt 0) {
+                            Write-Log -Message "$childIndent|   Subfolders with identical permissions ($($childPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
+                            Write-Log -Message "$childIndent|" -Level "INFO"
+                            foreach ($subfolder in ($childPerms.MatchingSubfolders | Sort-Object)) {
+                                $subName = Split-Path -Leaf $subfolder
+                                Write-Log -Message "$childIndent|---+ $subName" -Color "DarkGray" -Level "INFO"
+                                $ProcessedPaths.Add($subfolder) | Out-Null
+                            }
+                            Write-Log -Message "$childIndent|" -Level "INFO"
+                        }
+                        
+                        # Recursively process child's children
+                        $grandChildren = @($Hierarchy | Where-Object { 
+                            $_.ParentPath -eq $childPath -and 
+                            -not $ProcessedPaths.Contains($_.Path) -and
+                            $childPerms.MatchingSubfolders -notcontains $_.Path
+                        } | Sort-Object Path)
+                        
+                        if ($grandChildren.Count -gt 0) {
+                            Write-Log -Message "$childIndent|   Subfolders with different permissions ($($grandChildren.Count)):" -Color "DarkGray" -Level "INFO"
+                            Write-Log -Message "$childIndent|" -Level "INFO"
+                            
+                            # Recursive call for grand-children
+                            Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
+                                                   -Level ($Level + 2) -ParentPath $childPath `
+                                                   -ProcessedPaths $ProcessedPaths
+                        }
+                    }
                 }
             }
         }
