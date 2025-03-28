@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 18:43:42 UTC
+# Last Updated: 2025-03-28 18:48:20 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.2.3
-# Additional Info: Added missing Format-HierarchicalOutput function to fix runtime errors
+# Version: 3.2.4
+# Additional Info: Added missing Format-Hierarchy function to fix runtime errors
 # =============================================================================
 
 <#
@@ -323,6 +323,116 @@ Function Format-FolderHierarchy {
     $indent = "  " * $IndentLevel
     
     return "$indent$folderName"
+}
+
+# Format hierarchical output for folder structure
+function Format-Hierarchy {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$BasePath,
+        
+        [Parameter(Mandatory=$true)]
+        [System.Collections.IEnumerable]$Folders
+    )
+    
+    $hierarchy = @{}
+    $sortedFolders = $Folders | Sort-Object
+    
+    foreach ($folder in $sortedFolders) {
+        # Skip base path itself
+        if ($folder -eq $BasePath) {
+            continue
+        }
+        
+        # Calculate relative path from base
+        $relativePath = $folder
+        if ($folder.StartsWith($BasePath)) {
+            $relativePath = $folder.Substring($BasePath.Length).Trim('\')
+        }
+        
+        # Skip empty paths
+        if ([string]::IsNullOrEmpty($relativePath)) {
+            continue
+        }
+        
+        # Split into path segments
+        $segments = $relativePath -split '\\'
+        
+        # Start with root hierarchy
+        $current = $hierarchy
+        $currentPath = $BasePath
+        
+        # Build hierarchy
+        foreach ($segment in $segments) {
+            $currentPath = Join-Path $currentPath $segment
+            
+            if (-not $current.ContainsKey($segment)) {
+                $current[$segment] = @{
+                    'Path' = $currentPath
+                    'Children' = @{}
+                }
+            }
+            
+            $current = $current[$segment].Children
+        }
+    }
+    
+    return $hierarchy
+}
+
+# Function to write hierarchical output
+function Write-HierarchicalOutput {
+    param (
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Hierarchy,
+        
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Permissions,
+        
+        [Parameter(Mandatory=$false)]
+        [int]$Level = 0,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$ParentPath = ""
+    )
+    
+    foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
+        $item = $Hierarchy[$key]
+        $path = $item.Path
+        $indent = "  " * $Level
+        
+        # Output folder name with indentation to show hierarchy
+        Write-Log -Message "$indent├─ $key" -Color "Cyan" -Level 'INFO'
+        
+        # Check if we have permissions for this path
+        if ($Permissions.ContainsKey($path)) {
+            $perm = $Permissions[$path]
+            $owner = $perm.Owner
+            
+            # Output permissions with increased indentation
+            Write-Log -Message "$indent│  Owner: $owner" -Color "White" -Level 'INFO'
+            
+            # Show first 3 permissions (to avoid excessive output)
+            $accessCount = $perm.Access.Count
+            $showCount = [Math]::Min(3, $accessCount)
+            
+            for ($i = 0; $i -lt $showCount; $i++) {
+                $access = $perm.Access[$i]
+                $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
+                Write-Log -Message "$indent│  $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level 'INFO'
+            }
+            
+            # Show count if there are more
+            if ($accessCount -gt $showCount) {
+                Write-Log -Message "$indent│  ... and $($accessCount - $showCount) more permissions" -Color "DarkGray" -Level 'INFO'
+            }
+        }
+        
+        # Process children recursively
+        if ($item.Children.Count -gt 0) {
+            Write-HierarchicalOutput -Hierarchy $item.Children -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
+        }
+    }
 }
 
 # Consolidated log initialization with enhanced configuration
