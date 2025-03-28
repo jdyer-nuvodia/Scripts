@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 21:28:00 UTC
+# Last Updated: 2025-03-28 21:31:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.15
-# Additional Info: Fixed tree structure character encoding issues
+# Version: 3.3.16
+# Additional Info: Fixed encoding issues in tree structure characters, replaced with ASCII alternatives
 # =============================================================================
 
 <#
@@ -452,7 +452,7 @@ function Write-HierarchicalOutput {
     # Display total items at this level if not root
     if ($Level -gt 0 -and $totalItems -gt 0) {
         $indent = "    " * ($Level - 1)
-        Write-Log -Message "$indent+--- Found $totalItems item(s) at this level" -Color "DarkGray" -Level 'INFO'
+        Write-Log -Message "$indent\---+ Found $totalItems item(s) at this level" -Color "DarkGray" -Level "INFO"
     }
     
     for ($i = 0; $i -lt $totalItems; $i++) {
@@ -465,9 +465,9 @@ function Write-HierarchicalOutput {
         $prefix = if ($Level -eq 0) { 
             "" 
         } elseif ($isLast) { 
-            "+--- " 
+            "\---+" 
         } else { 
-            "|--- " 
+            "|---+" 
         }
         
         $folderName = if ($Level -eq 0) { $path } else { Split-Path -Leaf $path }
@@ -476,36 +476,35 @@ function Write-HierarchicalOutput {
         $currentPerms = $Permissions[$path]
         
         # Output folder name with tree structure
-        Write-Log -Message "$indent$prefix$folderName" -Color "Cyan" -Level 'INFO'
-        
+        Write-Log -Message "$indent$prefix$folderName" -Color "Cyan" -Level "INFO"
         
         # Indent all subsequent content
         $contentIndent = "    " * ($Level + 1)
         
         # Output Owner and Permissions
-        Write-Log -Message "$contentIndent`Owner: $($currentPerms.Owner)" -Color "White" -Level 'INFO'
-        Write-Log -Message "" -Level 'INFO'
-        Write-Log -Message "$contentIndent`Permissions:" -Color "White" -Level 'INFO'
+        Write-Log -Message "$contentIndent`Owner: $($currentPerms.Owner)" -Color "White" -Level "INFO"
+        Write-Log -Message "" -Level "INFO"
+        Write-Log -Message "$contentIndent`Permissions:" -Color "White" -Level "INFO"
         
         foreach ($access in $currentPerms.Access) {
             $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-            Write-Log -Message "$contentIndent    $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level 'INFO'
+            Write-Log -Message "$contentIndent    $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level "INFO"
         }
-        Write-Log -Message "" -Level 'INFO'
+        Write-Log -Message "" -Level "INFO"
         
         # Handle matching subfolders
         if ($currentPerms.MatchingSubfolders.Count -gt 0) {
-            Write-Log -Message "$contentIndent`Subfolders with identical permissions ($($currentPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level 'INFO'
-            Write-Log -Message "" -Level 'INFO'
+            Write-Log -Message "$contentIndent`Subfolders with identical permissions ($($currentPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
+            Write-Log -Message "" -Level "INFO"
             
             $lastIndex = $currentPerms.MatchingSubfolders.Count - 1
             for ($j = 0; $j -lt $currentPerms.MatchingSubfolders.Count; $j++) {
                 $subfolder = $currentPerms.MatchingSubfolders[$j]
                 $subName = Split-Path -Leaf $subfolder
-                $subPrefix = if ($j -eq $lastIndex) { "└── " } else { "├── " }
-                Write-Log -Message "$contentIndent$subPrefix$subName" -Color "DarkGray" -Level 'INFO'
+                $subPrefix = if ($j -eq $lastIndex) { "\---+ " } else { "|---+ " }
+                Write-Log -Message "$contentIndent$subPrefix$subName" -Color "DarkGray" -Level "INFO"
             }
-            Write-Log -Message "" -Level 'INFO'
+            Write-Log -Message "" -Level "INFO"
         }
         
         # Handle different permission subfolders
@@ -516,14 +515,14 @@ function Write-HierarchicalOutput {
         
         if ($children) {
             $childCount = $children.Count
-            Write-Log -Message "$contentIndent`Subfolders with different permissions ($childCount):" -Color "DarkGray" -Level 'INFO'
-            Write-Log -Message "" -Level 'INFO'
+            Write-Log -Message "$contentIndent`Subfolders with different permissions ($childCount):" -Color "DarkGray" -Level "INFO"
+            Write-Log -Message "" -Level "INFO"
             Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
         }
         
         # Add extra spacing between root-level items
         if ($Level -eq 0) {
-            Write-Log -Message "" -Level 'INFO'
+            Write-Log -Message "" -Level "INFO"
         }
     }
 }
