@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 20:21:00 UTC
+# Last Updated: 2025-03-28 20:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.9
-# Additional Info: enhance folder processing by adding matching subfolders detection and updating permissions comparison
+# Version: 3.3.10
+# Additional Info: add Compare-PermissionSets function to enhance permission comparison logic
 # =============================================================================
 
 <#
@@ -189,6 +189,61 @@ function Get-TotalFolderCount {
     catch {
         Write-Log -Message "Error counting folders in $StartPath : $_" -Level 'ERROR' -Color "Red"
         return 0
+    }
+}
+function Compare-PermissionSets {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [object]$Parent,
+        
+        [Parameter(Mandatory = $true)]
+        [object]$Child
+    )
+    
+    try {
+        # Check for null parameters
+        if ($null -eq $Parent -or $null -eq $Child) {
+            Write-Log -Message "Null permission set detected" -Level 'WARNING' -Color "Yellow"
+            return $false
+        }
+
+        # Compare owners first
+        if ($Parent.Owner -ne $Child.Owner) {
+            return $false
+        }
+
+        # Check Access rules
+        if ($null -eq $Parent.Access -or $null -eq $Child.Access) {
+            Write-Log -Message "Null Access rules detected" -Level 'WARNING' -Color "Yellow"
+            return $false
+        }
+
+        # Compare access rule counts
+        if ($Parent.Access.Count -ne $Child.Access.Count) {
+            return $false
+        }
+
+        # Create hashtables for comparison
+        $parentRules = @{}
+        foreach ($rule in $Parent.Access) {
+            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
+            $parentRules[$key] = $true
+        }
+
+        # Check child rules against parent
+        foreach ($rule in $Child.Access) {
+            $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
+            if (-not $parentRules.ContainsKey($key)) {
+                return $false
+            }
+        }
+
+        return $true
+    }
+    catch {
+        Write-Log -Message "Error comparing permission sets: $_" -Level 'ERROR' -Color "Red"
+        return $false
     }
 }
 
