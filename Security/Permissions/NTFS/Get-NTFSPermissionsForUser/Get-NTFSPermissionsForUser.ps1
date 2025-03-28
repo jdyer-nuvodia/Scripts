@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-27 23:38:00 UTC
+# Last Updated: 2025-03-28 15:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.3
-# Additional Info: Fixed Write-Host formatting error in owner match display
+# Version: 1.8.4
+# Additional Info: Fixed PSUseDeclaredVarsMoreThanAssignments warning for foundPermissions variable
 # =============================================================================
 
 <#
@@ -216,6 +216,8 @@ try {
             
             if ($foundPermissions) {
                 Write-DebugLog "Found permissions/ownership in: $FolderPath"
+            } else {
+                Write-DebugLog "No matching permissions found in: $FolderPath"
             }
             
             $ProcessedCount.Value++
