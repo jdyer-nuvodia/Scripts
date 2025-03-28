@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 21:56:00 UTC
+# Last Updated: 2025-03-28 21:48:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.20
-# Additional Info: Fixed folder entry indentation while maintaining content alignment
+# Version: 3.3.18
+# Additional Info: Enhanced hierarchical display with vertical lines and consistent formatting
 # =============================================================================
 
 <#
@@ -464,9 +464,8 @@ function Write-HierarchicalOutput {
         # Output folder name
         if ($Level -eq 0) {
             Write-Log -Message "$folderName" -Color "Cyan" -Level "INFO"
-            $indent = ""  # Reset indent for root level
         } else {
-            Write-Log -Message "|---+ $folderName" -Color "Cyan" -Level "INFO"
+            Write-Log -Message "$indent|---+ $folderName" -Color "Cyan" -Level "INFO"
         }
         
         # Output Owner and Permissions with vertical lines
@@ -502,10 +501,7 @@ function Write-HierarchicalOutput {
             $childCount = $children.Count
             Write-Log -Message "$indent|   Subfolders with different permissions ($childCount):" -Color "DarkGray" -Level "INFO"
             Write-Log -Message "$indent|" -Level "INFO"
-            # Pass the same indentation level for different permission subfolders
-            $children | ForEach-Object {
-                Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions -Level $Level -ParentPath $path
-            }
+            Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
         }
         
         # Add extra spacing between root-level items
