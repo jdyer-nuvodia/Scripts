@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 20:19:00 UTC
+# Last Updated: 2025-03-28 20:21:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.8
-# Additional Info: enhance hierarchical output by grouping permissions and listing matching subfolders
+# Version: 3.3.9
+# Additional Info: enhance folder processing by adding matching subfolders detection and updating permissions comparison
 # =============================================================================
 
 <#
@@ -218,13 +218,15 @@ function Invoke-FolderRecursively {
         # Mark this path as processed
         $script:ProcessedFolderPaths[$StartPath] = $true
 
-        # Rest of your existing function code...
+        # Get ACL and generate permission hash
         $acl = Get-Acl -Path $StartPath -ErrorAction Stop
         $permissionHash = Get-PermissionHash -AccessRules $acl.Access -Owner $acl.Owner
 
+        # Get subfolders
         $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
         $IsLeafNode = ($folders.Count -eq 0)
         
+        # Create folder permissions entry with MatchingSubfolders property
         $script:FolderPermissions[$StartPath] = @{
             Owner = $acl.Owner
             Access = $acl.Access
@@ -232,16 +234,29 @@ function Invoke-FolderRecursively {
             UniqueHash = $permissionHash
             IsLeafNode = $IsLeafNode
             ChildCount = $folders.Count
+            MatchingSubfolders = [System.Collections.Generic.List[string]]::new()  # Initialize empty list
         }
 
-        # Update progress and process subfolders
+        # Update progress
         $script:ProcessedFolders++
         Write-ProgressStatus -Activity "Analyzing Folder Permissions" -Status $StartPath -Current $script:ProcessedFolders -Total $script:TotalFolders
 
         if (-not $IsLeafNode) {
             foreach ($folder in $folders) {
                 if (-not $script:ProcessedFolderPaths.ContainsKey($folder.FullName)) {
-                    Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+                    $subAcl = Get-Acl -Path $folder.FullName -ErrorAction Stop
+                    
+                    # Compare permissions with parent
+                    if (Compare-PermissionSets -Parent $script:FolderPermissions[$StartPath] -Child @{
+                        Owner = $subAcl.Owner
+                        Access = $subAcl.Access
+                    }) {
+                        # Add to matching subfolders if permissions are identical
+                        $script:FolderPermissions[$StartPath].MatchingSubfolders.Add($folder.FullName)
+                    } else {
+                        # Process subfolder recursively if permissions differ
+                        Invoke-FolderRecursively -StartPath $folder.FullName -CurrentDepth ($CurrentDepth + 1)
+                    }
                 }
             }
         }
