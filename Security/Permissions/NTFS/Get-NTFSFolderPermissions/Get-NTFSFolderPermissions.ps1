@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 18:57:45 UTC
+# Last Updated: 2025-03-28 18:58:45 UTC
 # Updated By: jdyer-nuvodia
 # Version: 3.3.0
 # Additional Info: Added grouping of subfolders with identical permissions and owners
@@ -332,56 +332,65 @@ Function Format-FolderHierarchy {
 # Format hierarchical output for folder structure
 function Format-Hierarchy {
     param (
-        [Parameter(Mandatory=$true)]
-        [string]$BasePath,
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [System.Collections.Generic.List[PSObject]]$Items,
         
-        [Parameter(Mandatory=$true)]
-        [System.Collections.IEnumerable]$Folders
+        [Parameter()]
+        [string]$ParentPath = "",
+        
+        [Parameter()]
+        [int]$CurrentDepth = 0,
+        
+        [Parameter()]
+        [bool]$IsLast = $true,
+        
+        [Parameter()]
+        [string]$Prefix = "",
+        
+        [Parameter()]
+        [int]$MaxDepth = [int]::MaxValue
     )
     
-    $hierarchy = @{}
-    $sortedFolders = $Folders | Sort-Object
-    
-    foreach ($folder in $sortedFolders) {
-        # Skip base path itself
-        if ($folder -eq $BasePath) {
-            continue
-        }
-        
-        # Calculate relative path from base
-        $relativePath = $folder
-        if ($folder.StartsWith($BasePath)) {
-            $relativePath = $folder.Substring($BasePath.Length).Trim('\')
-        }
-        
-        # Skip empty paths
-        if ([string]::IsNullOrEmpty($relativePath)) {
-            continue
-        }
-        
-        # Split into path segments
-        $segments = $relativePath -split '\\'
-        
-        # Start with root hierarchy
-        $current = $hierarchy
-        $currentPath = $BasePath
-        
-        # Build hierarchy
-        foreach ($segment in $segments) {
-            $currentPath = Join-Path $currentPath $segment
-            
-            if (-not $current.ContainsKey($segment)) {
-                $current[$segment] = @{
-                    'Path' = $currentPath
-                    'Children' = @{}
-                }
-            }
-            
-            $current = $current[$segment].Children
-        }
+    if ($CurrentDepth -gt $MaxDepth) {
+        return
     }
     
-    return $hierarchy
+    $currentItems = $Items | Where-Object { $_.ParentPath -eq $ParentPath }
+    
+    $count = $currentItems.Count
+    $i = 0
+    
+    foreach ($item in $currentItems) {
+        $i++
+        $isLastItem = ($i -eq $count)
+        
+        $itemName = Split-Path -Leaf $item.Path
+        $marker = if ($isLastItem) { "└─ " } else { "├─ " }
+        $childPrefix = if ($isLastItem) { "   " } else { "│  " }
+        
+        Write-Host "$Prefix$marker$itemName" -ForegroundColor Cyan
+        
+        # Display owner and permissions
+        Write-Host "$Prefix$childPrefix`Owner: $($item.Owner)" -ForegroundColor White
+        
+        foreach ($ace in $item.AccessRules) {
+            $inheritedText = if ($ace.IsInherited) { " (Inherited)" } else { "" }
+            Write-Host "$Prefix$childPrefix$($ace.IdentityReference) - $($ace.FileSystemRights)$inheritedText" -ForegroundColor White
+        }
+        
+        # Display matching subfolders if any
+        if ($item.MatchingSubfolders -and $item.MatchingSubfolders.Count -gt 0) {
+            Write-Host "$Prefix$childPrefix`Matching subfolders with identical permissions:" -ForegroundColor Yellow
+            foreach ($subfolder in $item.MatchingSubfolders) {
+                $subfolderName = Split-Path -Leaf $subfolder
+                Write-Host "$Prefix$childPrefix  - $subfolderName" -ForegroundColor DarkGray
+            }
+        }
+        
+        # Process children for this item
+        Format-Hierarchy -Items $Items -ParentPath $item.Path -CurrentDepth ($CurrentDepth + 1) `
+                         -IsLast $isLastItem -Prefix "$Prefix$childPrefix" -MaxDepth $MaxDepth
+    }
 }
 
 # Function to write hierarchical output
@@ -1001,33 +1010,103 @@ function Compare-PermissionSets {
     
     # Compare owners
     if ($Parent.Owner -ne $Child.Owner) {
-        Write-Log -Message "Owner mismatch: $($Parent.Owner) vs $($Child.Owner)" -Level 'DEBUG' -NoConsole
         return $false
     }
     
     # Check if they have same number of permissions
     if ($Parent.AccessRules.Count -ne $Child.AccessRules.Count) {
-        Write-Log -Message "AccessRules count mismatch: $($Parent.AccessRules.Count) vs $($Child.AccessRules.Count)" -Level 'DEBUG' -NoConsole
         return $false
     }
     
     # Create hashtables for easier comparison
     $parentRules = @{}
     foreach ($rule in $Parent.AccessRules) {
-        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
+        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
         $parentRules[$key] = $true
     }
     
     # Check if all child rules exist in parent
     foreach ($rule in $Child.AccessRules) {
-        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)"
+        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.IsInherited)"
         if (-not $parentRules.ContainsKey($key)) {
-            Write-Log -Message "Rule mismatch: $key not found in parent" -Level 'DEBUG' -NoConsole
             return $false
         }
     }
     
-    Write-Log -Message "Permission sets are identical" -Level 'DEBUG' -NoConsole
     return $true
+}
+
+function Get-FolderPermissions {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$FolderPath,
+        
+        [Parameter()]
+        [int]$MaxDepth = [int]::MaxValue,
+        
+        [Parameter()]
+        [int]$CurrentDepth = 0,
+        
+        [Parameter()]
+        [string]$ParentPath = "",
+
+        [Parameter()]
+        [System.Collections.Generic.List[PSObject]]$Results = $null
+    )
+    
+    if ($null -eq $Results) {
+        $Results = New-Object System.Collections.Generic.List[PSObject]
+    }
+    
+    if ($CurrentDepth -gt $MaxDepth) {
+        return $Results
+    }
+    
+    try {
+        $folder = Get-Item -Path $FolderPath -ErrorAction Stop
+        $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
+        
+        $folderInfo = [PSCustomObject]@{
+            Path = $folder.FullName
+            ParentPath = $ParentPath
+            Owner = $acl.Owner
+            AccessRules = @($acl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
+            MatchingSubfolders = @()
+        }
+        
+        $Results.Add($folderInfo)
+        
+        if ($CurrentDepth -lt $MaxDepth) {
+            $subfolders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
+            
+            foreach ($subfolder in $subfolders) {
+                try {
+                    $subAcl = Get-Acl -Path $subfolder.FullName -ErrorAction Stop
+                    
+                    $subfolderId = [PSCustomObject]@{
+                        Path = $subfolder.FullName
+                        Owner = $subAcl.Owner
+                        AccessRules = @($subAcl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
+                    }
+                    
+                    # Check if this subfolder has identical permissions to its parent
+                    if (Compare-PermissionSets -Parent $folderInfo -Child $subfolderId) {
+                        # Add to matching subfolders list instead of processing independently
+                        $folderInfo.MatchingSubfolders += $subfolder.FullName
+                    } else {
+                        # Process this subfolder recursively
+                        Get-FolderPermissions -FolderPath $subfolder.FullName -MaxDepth $MaxDepth `
+                                             -CurrentDepth ($CurrentDepth + 1) -ParentPath $folder.FullName -Results $Results
+                    }
+                } catch {
+                    Write-Warning "Unable to access permissions for $($subfolder.FullName): $_"
+                }
+            }
+        }
+    } catch {
+        Write-Error "An error occurred: $_"
+    }
+    
+    return $Results
 }
 
