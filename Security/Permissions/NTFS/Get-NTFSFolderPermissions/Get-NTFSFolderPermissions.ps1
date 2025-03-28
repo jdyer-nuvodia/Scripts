@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 17:17:16 UTC
+# Last Updated: 2025-03-28 17:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.6
-# Additional Info: Fixed Get-TotalFolderCount function placement and script execution order
+# Version: 2.2.7
+# Additional Info: Enhanced permission display and reduced redundant owner information
 # =============================================================================
 
 <#
@@ -860,7 +860,8 @@ try {
             [Parameter(Mandatory=$true)]
             [hashtable]$Hierarchy,
             [hashtable]$Permissions,
-            [int]$Level = 0
+            [int]$Level = 0,
+            [string]$ParentOwner = $null
         )
         
         foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
@@ -870,18 +871,23 @@ try {
             # Display current folder with indentation
             Write-Log -Message "$indent$key\" -Color "White" -Level 'INFO'
             
-            # Display permissions if they exist
+            # Display owner only if it differs from parent
             if ($node['_permissions']) {
-                $perms = $node['_permissions']
-                Write-Log -Message "$indent    Owner: $($perms.Owner)" -Color "Cyan" -Level 'INFO'
-                if (-not $perms.IsInherited) {
-                    Write-Log -Message "$indent    [Unique permissions]" -Color "Yellow" -Level 'INFO'
+                $currentOwner = $node['_permissions'].Owner
+                if ($ParentOwner -ne $currentOwner) {
+                    Write-Log -Message "$indent    Owner: $currentOwner" -Color "Cyan" -Level 'INFO'
+                }
+                
+                # Pass current owner as parent for next level
+                if ($node['_children'].Count -gt 0) {
+                    Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $currentOwner
                 }
             }
-            
-            # Recursively process children
-            if ($node['_children'].Count -gt 0) {
-                Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1)
+            else {
+                # If no permissions found, continue with parent's owner
+                if ($node['_children'].Count -gt 0) {
+                    Write-HierarchicalOutput -Hierarchy $node['_children'] -Permissions $Permissions -Level ($Level + 1) -ParentOwner $ParentOwner
+                }
             }
         }
     }
