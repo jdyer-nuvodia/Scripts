@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 19:25:45 UTC
+# Last Updated: 2025-03-28 19:33:45 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.1
+# Version: 3.3.2
 # Additional Info: Fixed hash table syntax error in administrator accounts handling
 # =============================================================================
 
@@ -347,12 +347,13 @@ function Format-Hierarchy {
             ParentPath = $parentPath
             Owner = $permissions.Owner
             AccessRules = $permissions.Access
-            MatchingSubfolders = @()
-            
-            # Add any identical subfolders if they exist
-            if ($permissions.ContainsKey('MatchingSubfolders')) {
-                MatchingSubfolders = $permissions.MatchingSubfolders
-            }
+            MatchingSubfolders = $(
+                if ($permissions.ContainsKey('MatchingSubfolders')) {
+                    $permissions.MatchingSubfolders
+                } else {
+                    @()
+                }
+            )
         }
         
         $results.Add($item)
