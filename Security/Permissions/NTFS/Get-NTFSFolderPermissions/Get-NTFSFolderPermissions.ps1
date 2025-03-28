@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 20:14:00 UTC
+# Last Updated: 2025-03-28 20:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.7
-# Additional Info: resolve the type conversion error and properly display the hierarchical output
+# Version: 3.3.8
+# Additional Info: enhance hierarchical output by grouping permissions and listing matching subfolders
 # =============================================================================
 
 <#
@@ -360,6 +360,7 @@ function Format-Hierarchy {
 }
 
 # Function to write hierarchical output
+# Function to write hierarchical output with grouped permissions
 function Write-HierarchicalOutput {
     param (
         [Parameter(Mandatory=$true)]
@@ -378,44 +379,53 @@ function Write-HierarchicalOutput {
     foreach ($item in $Hierarchy) {
         $path = $item.Path
         $indent = "  " * $Level
-        $isLeaf = $Permissions[$path].IsLeafNode
+        $folderName = Split-Path -Leaf $path
         
-        # Use different branch characters based on whether it's a leaf node
-        $branchChar = if ($isLeaf) { "└─" } else { "├─" }
+        # Get current folder's permissions
+        $currentPerms = $Permissions[$path]
         
-        # Output folder name with indentation to show hierarchy
-        Write-Log -Message "$indent$branchChar $(Split-Path -Leaf $path)" -Color "Cyan" -Level 'INFO'
-        
-        if ($Permissions.ContainsKey($path)) {
-            $perm = $Permissions[$path]
-            $owner = $perm.Owner
+        if ($Level -eq 0 -or 
+            -not (Compare-PermissionSets -Parent $Permissions[$ParentPath] -Child $currentPerms)) {
             
-            # Output permissions with increased indentation
-            $connectorChar = if ($isLeaf) { " " } else { "│" }
-            Write-Log -Message "$indent$connectorChar  Owner: $owner" -Color "White" -Level 'INFO'
+            # Output folder name with indentation to show hierarchy
+            Write-Log -Message "$indent$folderName" -Color "Cyan" -Level 'INFO'
+            
+            # Output owner and permissions only if different from parent
+            $owner = $currentPerms.Owner
+            Write-Log -Message "$indent  Owner: $owner" -Color "White" -Level 'INFO'
             
             # Show first 3 permissions
-            $accessCount = $perm.Access.Count
+            $accessCount = $currentPerms.Access.Count
             $showCount = [Math]::Min(3, $accessCount)
             
             for ($i = 0; $i -lt $showCount; $i++) {
-                $access = $perm.Access[$i]
+                $access = $currentPerms.Access[$i]
                 $inherited = if ($access.IsInherited) { "(Inherited)" } else { "(Direct)" }
-                Write-Log -Message "$indent$connectorChar  $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level 'INFO'
+                Write-Log -Message "$indent  $($access.IdentityReference) - $($access.FileSystemRights) $inherited" -Color "White" -Level 'INFO'
             }
             
-            # Show count if there are more
             if ($accessCount -gt $showCount) {
-                Write-Log -Message "$indent$connectorChar  ... and $($accessCount - $showCount) more permissions" -Color "DarkGray" -Level 'INFO'
+                Write-Log -Message "$indent  ... and $($accessCount - $showCount) more permissions" -Color "DarkGray" -Level 'INFO'
+            }
+            
+            # If this folder has matching subfolders, list them
+            if ($currentPerms.MatchingSubfolders.Count -gt 0) {
+                Write-Log -Message "$indent  Subfolders with identical permissions:" -Color "DarkGray" -Level 'INFO'
+                foreach ($subfolder in $currentPerms.MatchingSubfolders | Sort-Object) {
+                    $relPath = $subfolder.Replace("$path\", "")
+                    Write-Log -Message "$indent    - $relPath" -Color "DarkGray" -Level 'INFO'
+                }
             }
         }
         
-        # Process children only if not a leaf node
-        if (-not $isLeaf) {
-            $children = $Hierarchy | Where-Object { $_.ParentPath -eq $path }
-            if ($children) {
-                Write-HierarchicalOutput -Hierarchy $children -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
-            }
+        # Process children only if not already listed in matching subfolders
+        $children = $Hierarchy | Where-Object { 
+            $_.ParentPath -eq $path -and 
+            $currentPerms.MatchingSubfolders -notcontains $_.Path
+        }
+        
+        if ($children) {
+            Write-HierarchicalOutput -Hierarchy $children -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
         }
     }
 }
