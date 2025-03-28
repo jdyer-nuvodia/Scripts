@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 19:38:00 UTC
+# Last Updated: 2025-03-28 20:02:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.4
-# Additional Info: Added property validation and null checks to Compare-PermissionSets
+# Version: 3.3.5
+# Additional Info: resolve the type conversion error and properly display the hierarchical output
 # =============================================================================
 
 <#
@@ -363,7 +363,7 @@ function Format-Hierarchy {
 function Write-HierarchicalOutput {
     param (
         [Parameter(Mandatory=$true)]
-        [hashtable]$Hierarchy,
+        [array]$Hierarchy,  # Changed from hashtable to array
         
         [Parameter(Mandatory=$true)]
         [hashtable]$Permissions,
@@ -375,13 +375,12 @@ function Write-HierarchicalOutput {
         [string]$ParentPath = ""
     )
     
-    foreach ($key in ($Hierarchy.Keys | Sort-Object)) {
-        $item = $Hierarchy[$key]
+    foreach ($item in $Hierarchy) {
         $path = $item.Path
         $indent = "  " * $Level
         
         # Output folder name with indentation to show hierarchy
-        Write-Log -Message "$indent├─ $key" -Color "Cyan" -Level 'INFO'
+        Write-Log -Message "$indent├─ $(Split-Path -Leaf $path)" -Color "Cyan" -Level 'INFO'
         
         # Check if we have permissions for this path
         if ($Permissions.ContainsKey($path)) {
@@ -405,11 +404,19 @@ function Write-HierarchicalOutput {
             if ($accessCount -gt $showCount) {
                 Write-Log -Message "$indent│  ... and $($accessCount - $showCount) more permissions" -Color "DarkGray" -Level 'INFO'
             }
+
+            # Process matching subfolders if any
+            if ($perm.ContainsKey('MatchingSubfolders') -and $perm.MatchingSubfolders.Count -gt 0) {
+                Write-Log -Message "$indent│  Identical permissions in subfolders: $($perm.MatchingSubfolders.Count)" -Color "DarkGray" -Level 'INFO'
+            }
         }
         
-        # Process children recursively
-        if ($item.Children.Count -gt 0) {
-            Write-HierarchicalOutput -Hierarchy $item.Children -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
+        # Process children if they exist
+        $children = $Hierarchy | Where-Object { $_.ParentPath -eq $path }
+        if ($children) {
+            foreach ($child in $children) {
+                Write-HierarchicalOutput -Hierarchy $children -Permissions $Permissions -Level ($Level + 1) -ParentPath $path
+            }
         }
     }
 }
@@ -930,8 +937,9 @@ try {
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
     
     if ($script:FolderPermissions.Count -gt 0) {
-        # Convert to hierarchy and write output in one step
-        Write-HierarchicalOutput -Hierarchy (Format-Hierarchy -FolderPermissions $script:FolderPermissions) -Permissions $script:FolderPermissions
+        # Convert to hierarchy and write output
+        $hierarchy = Format-Hierarchy -FolderPermissions $script:FolderPermissions
+        Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
     }
 } 
 catch [System.Exception] {
