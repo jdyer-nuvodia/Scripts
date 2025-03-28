@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:20:00 UTC
+# Last Updated: 2025-03-28 23:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.31
-# Additional Info: Fixed recursive hierarchy for nested folder structures
+# Version: 3.3.32
+# Additional Info: Fixed hierarchical display for different permission folders
 # =============================================================================
 
 <#
@@ -521,17 +521,17 @@ function Write-HierarchicalOutput {
                 Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
                 
-                # Process each child folder directly
+                # Process each child folder directly - THIS IS THE KEY FIX
                 foreach ($child in $children) {
                     $childPath = $child.Path
-                    $childName = Split-Path -Leaf $childPath
                     
-                    # Mark this child as processed so it won't be processed again
-                    $ProcessedPaths.Add($childPath) | Out-Null
+                    # IMPORTANT CHANGE: We don't mark this path as processed yet
+                    # Because we need to process it in the recursive call
                     
-                    # Call recursive function for this specific child
+                    # Recursively call with the CHILD PATH as the focus, not just as a filter
+                    # This ensures the child node is actually displayed
                     Write-HierarchicalOutput -Hierarchy $Hierarchy -Permissions $Permissions `
-                                           -Level ($Level + 1) -ParentPath $path `
+                                           -Level ($Level + 1) -ParentPath $childPath.Substring(0, $childPath.LastIndexOf('\')) `
                                            -ProcessedPaths $ProcessedPaths
                 }
             }
