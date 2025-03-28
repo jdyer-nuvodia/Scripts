@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-28 16:23:00 UTC
+# Last Updated: 2025-03-28 16:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.2
-# Additional Info: Fixed progress display and folder counting accuracy
+# Version: 2.2.3
+# Additional Info: Added Get-DomainControllers function for domain enumeration
 # =============================================================================
 
 <#
@@ -47,6 +47,60 @@ Analyzes permissions on C:\Temp and outputs to logs
 using namespace System.Security.AccessControl
 using namespace System.IO
 using namespace System.Security.Principal
+
+# Function to get domain controllers and domain information
+function Get-DomainControllers {
+    try {
+        # Try to get domain information using .NET first
+        $domainInfo = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+        return @($domainInfo.DomainControllers | ForEach-Object {
+            [PSCustomObject]@{
+                Name = $_.Name
+                Domain = $domainInfo.Name
+                Forest = $domainInfo.Forest.Name
+                IsGlobalCatalog = $_.IsGlobalCatalog
+            }
+        })
+    }
+    catch {
+        Write-Log -Message "Failed to get domain controllers using .NET: $_" -Level 'WARNING' -Color "Yellow"
+        try {
+            # Fallback to using AD cmdlets if available
+            if (Get-Command Get-ADDomainController -ErrorAction SilentlyContinue) {
+                return @(Get-ADDomainController -Filter * | ForEach-Object {
+                    [PSCustomObject]@{
+                        Name = $_.HostName
+                        Domain = $_.Domain
+                        Forest = $_.Forest
+                        IsGlobalCatalog = $_.IsGlobalCatalog
+                    }
+                })
+            }
+        }
+        catch {
+            Write-Log -Message "Failed to get domain controllers using AD cmdlets: $_" -Level 'WARNING' -Color "Yellow"
+        }
+        
+        # If both methods fail, return computer domain info
+        try {
+            $computerDomain = (Get-WmiObject Win32_ComputerSystem).Domain
+            if ($computerDomain) {
+                return @([PSCustomObject]@{
+                    Name = $env:COMPUTERNAME
+                    Domain = $computerDomain
+                    Forest = $computerDomain
+                    IsGlobalCatalog = $false
+                })
+            }
+        }
+        catch {
+            Write-Log -Message "Failed to get computer domain info: $_" -Level 'WARNING' -Color "Yellow"
+        }
+    }
+    
+    # Return empty array if all methods fail
+    return @()
+}
 
 [CmdletBinding()]
 param (
