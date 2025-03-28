@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 2025-02-07 21:21:53 UTC
+# Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 18:34:00 UTC
+# Last Updated: 2025-03-28 18:40:22 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.2.2
-# Additional Info: Fixed incomplete try/catch blocks and code structure
+# Version: 3.2.3
+# Additional Info: Fixed missing Format-FolderHierarchy function and completed Try-Catch block
 # =============================================================================
 
 <#
@@ -307,6 +307,22 @@ function Get-SafeFilename {
         }
         return $defaultName
     }
+}
+
+# Format folder hierarchy for better readability
+Function Format-FolderHierarchy {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$FolderPath,
+        
+        [Parameter(Mandatory = $false)]
+        [int]$IndentLevel = 0
+    )
+    
+    $folderName = Split-Path -Leaf $FolderPath
+    $indent = "  " * $IndentLevel
+    
+    return "$indent$folderName"
 }
 
 # Consolidated log initialization with enhanced configuration
