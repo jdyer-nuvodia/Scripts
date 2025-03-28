@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 19:04:45 UTC
+# Last Updated: 2025-03-28 19:25:45 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.0
-# Additional Info: Added grouping of subfolders with identical permissions and owners
+# Version: 3.3.1
+# Additional Info: Fixed hash table syntax error in administrator accounts handling
 # =============================================================================
 
 <#
@@ -332,65 +332,33 @@ Function Format-FolderHierarchy {
 # Format hierarchical output for folder structure
 function Format-Hierarchy {
     param (
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [System.Collections.Generic.List[PSObject]]$Items,
-        
-        [Parameter()]
-        [string]$ParentPath = "",
-        
-        [Parameter()]
-        [int]$CurrentDepth = 0,
-        
-        [Parameter()]
-        [bool]$IsLast = $true,
-        
-        [Parameter()]
-        [string]$Prefix = "",
-        
-        [Parameter()]
-        [int]$MaxDepth = [int]::MaxValue
+        [Parameter(Mandatory = $true)]
+        [hashtable]$FolderPermissions
     )
     
-    if ($CurrentDepth -gt $MaxDepth) {
-        return
-    }
+    $results = New-Object System.Collections.Generic.List[PSObject]
     
-    $currentItems = $Items | Where-Object { $_.ParentPath -eq $ParentPath }
-    
-    $count = $currentItems.Count
-    $i = 0
-    
-    foreach ($item in $currentItems) {
-        $i++
-        $isLastItem = ($i -eq $count)
+    foreach ($path in ($FolderPermissions.Keys | Sort-Object)) {
+        $permissions = $FolderPermissions[$path]
+        $parentPath = Split-Path -Path $path -Parent
         
-        $itemName = Split-Path -Leaf $item.Path
-        $marker = if ($isLastItem) { "└─ " } else { "├─ " }
-        $childPrefix = if ($isLastItem) { "   " } else { "│  " }
-        
-        Write-Host "$Prefix$marker$itemName" -ForegroundColor Cyan
-        
-        # Display owner and permissions
-        Write-Host "$Prefix$childPrefix`Owner: $($item.Owner)" -ForegroundColor White
-        
-        foreach ($ace in $item.AccessRules) {
-            $inheritedText = if ($ace.IsInherited) { " (Inherited)" } else { "" }
-            Write-Host "$Prefix$childPrefix$($ace.IdentityReference) - $($ace.FileSystemRights)$inheritedText" -ForegroundColor White
-        }
-        
-        # Display matching subfolders if any
-        if ($item.MatchingSubfolders -and $item.MatchingSubfolders.Count -gt 0) {
-            Write-Host "$Prefix$childPrefix`Matching subfolders with identical permissions:" -ForegroundColor Yellow
-            foreach ($subfolder in $item.MatchingSubfolders) {
-                $subfolderName = Split-Path -Leaf $subfolder
-                Write-Host "$Prefix$childPrefix  - $subfolderName" -ForegroundColor DarkGray
+        $item = [PSCustomObject]@{
+            Path = $path
+            ParentPath = $parentPath
+            Owner = $permissions.Owner
+            AccessRules = $permissions.Access
+            MatchingSubfolders = @()
+            
+            # Add any identical subfolders if they exist
+            if ($permissions.ContainsKey('MatchingSubfolders')) {
+                MatchingSubfolders = $permissions.MatchingSubfolders
             }
         }
         
-        # Process children for this item
-        Format-Hierarchy -Items $Items -ParentPath $item.Path -CurrentDepth ($CurrentDepth + 1) `
-                         -IsLast $isLastItem -Prefix "$Prefix$childPrefix" -MaxDepth $MaxDepth
+        $results.Add($item)
     }
+    
+    return $results | Sort-Object Path
 }
 
 # Function to write hierarchical output
@@ -919,7 +887,7 @@ try {
         # Convert single item to array
         $adminAccounts = @($adminAccounts)
     }
-
+    
     # Display warning about multiple accounts if needed
     if ($adminAccounts.Count -gt 1) {
         Write-Log -Message "Multiple Administrator accounts found ($($adminAccounts.Count))" -Color "Yellow" -Level 'WARNING'
@@ -963,10 +931,9 @@ try {
     Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
     Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
     
-    # Create folder hierarchy if needed
     if ($script:FolderPermissions.Count -gt 0) {
-        $hierarchy = Format-Hierarchy -Items $script:FolderPermissions.Keys
-        Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
+        $hierarchyItems = Format-Hierarchy -FolderPermissions $script:FolderPermissions
+        Write-HierarchicalOutput -Items $hierarchyItems -Permissions $script:FolderPermissions
     }
 } 
 catch [System.Exception] {
