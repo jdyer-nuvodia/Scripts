@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-20 23:00:00 UTC
+# Last Updated: 2024-03-28 16:02:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.14.3
-# Additional Info: Fixed parameter binding issues and parameter name consistency
+# Version: 1.15.0
+# Additional Info: Enhanced progress bar to show overall scan progress
 # =============================================================================
 
 <#
@@ -593,7 +593,8 @@ function Write-ProgressStatus {
     )
 
     $percentComplete = [math]::Round(($Current / $Total) * 100, 2)
-    Write-Progress -Activity $Activity -Status $Status -PercentComplete $percentComplete
+    $currentFile = Split-Path $Status -Leaf
+    Write-Progress -Activity "Analyzing Folder Permissions ($Current of $Total folders found)" -Status "Scanning: $currentFile" -PercentComplete $percentComplete
 }
 
 # Modify Get-FolderPermissions to use standardized hash generation
