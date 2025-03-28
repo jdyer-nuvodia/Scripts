@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 17:11:00 UTC
+# Last Updated: 2025-03-28 17:14:16 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.4
-# Additional Info: Added missing Get-TotalFolderCount function
+# Version: 2.2.5
+# Additional Info: Fixed Get-TotalFolderCount function placement and script execution order
 # =============================================================================
 
 <#
@@ -76,6 +76,35 @@ param (
 # Enable strict mode and error handling
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Function to count total folders recursively
+function Get-TotalFolderCount {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$StartPath
+    )
+    
+    try {
+        $folderCount = 0
+        $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
+        $folderCount += $folders.Count
+        
+        foreach ($folder in $folders) {
+            try {
+                $folderCount += Get-TotalFolderCount -StartPath $folder.FullName
+            }
+            catch {
+                Write-Log -Message "Error counting subfolders in $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
+            }
+        }
+        
+        return $folderCount
+    }
+    catch {
+        Write-Log -Message "Error counting folders in $StartPath : $_" -Level 'ERROR' -Color "Red"
+        return 0
+    }
+}
 
 # Script-level variables - consolidated to avoid duplication
 $script:TranscriptStarted = $false
@@ -836,35 +865,6 @@ finally {
     # Cleanup cancellation token
     if ($script:cancellationTokenSource) {
         $script:cancellationTokenSource.Dispose()
-    }
-}
-
-# Function to count total folders recursively
-function Get-TotalFolderCount {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$StartPath
-    )
-    
-    try {
-        $folderCount = 0
-        $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
-        $folderCount += $folders.Count
-        
-        foreach ($folder in $folders) {
-            try {
-                $folderCount += Get-TotalFolderCount -StartPath $folder.FullName
-            }
-            catch {
-                Write-Log -Message "Error counting subfolders in $($folder.FullName): $_" -Level 'WARNING' -Color "Yellow"
-            }
-        }
-        
-        return $folderCount
-    }
-    catch {
-        Write-Log -Message "Error counting folders in $StartPath : $_" -Level 'ERROR' -Color "Red"
-        return 0
     }
 }
 
