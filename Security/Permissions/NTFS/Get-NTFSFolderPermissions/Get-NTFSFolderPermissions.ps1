@@ -2,7 +2,7 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 18:58:45 UTC
+# Last Updated: 2025-03-28 19:04:45 UTC
 # Updated By: jdyer-nuvodia
 # Version: 3.3.0
 # Additional Info: Added grouping of subfolders with identical permissions and owners
@@ -965,7 +965,7 @@ try {
     
     # Create folder hierarchy if needed
     if ($script:FolderPermissions.Count -gt 0) {
-        $hierarchy = Format-Hierarchy -BasePath $StartPath -Folders $script:FolderPermissions.Keys
+        $hierarchy = Format-Hierarchy -Items $script:FolderPermissions.Keys
         Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
     }
 } 
