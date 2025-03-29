@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 23:57:00 UTC
+# Last Updated: 2025-03-29 00:05:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.40
-# Additional Info: Enhanced permission comparison to properly handle special permission flags
+# Version: 3.3.41
+# Additional Info: Fixed comparison of permissions to correctly identify identical permission sets
 # =============================================================================
 
 <#
@@ -258,14 +258,16 @@ function Compare-PermissionSets {
         if ($null -ne $rule.IdentityReference) {
             $key = "$($rule.IdentityReference)|$($rule.IsInherited)"
             
-            # Handle both string and enum FileSystemRights
-            $fsRights = $rule.FileSystemRights
+            # Create a standardized representation of the rights
+            $fsRights = "$($rule.FileSystemRights)"
+            $accessType = "$($rule.AccessControlType)"
+            $ruleKey = "$fsRights|$accessType"
             
             # If this identity already has an entry, append to it
             if ($parentRulesMap.ContainsKey($key)) {
-                $parentRulesMap[$key] += @($fsRights)
+                $parentRulesMap[$key] += @($ruleKey)
             } else {
-                $parentRulesMap[$key] = @($fsRights)
+                $parentRulesMap[$key] = @($ruleKey)
             }
         }
     }
@@ -275,23 +277,34 @@ function Compare-PermissionSets {
         if ($null -ne $rule.IdentityReference) {
             $key = "$($rule.IdentityReference)|$($rule.IsInherited)"
             
-            # Handle both string and enum FileSystemRights
-            $fsRights = $rule.FileSystemRights
+            # Create a standardized representation of the rights
+            $fsRights = "$($rule.FileSystemRights)"
+            $accessType = "$($rule.AccessControlType)"
+            $ruleKey = "$fsRights|$accessType"
             
             # If this identity already has an entry, append to it
             if ($childRulesMap.ContainsKey($key)) {
-                $childRulesMap[$key] += @($fsRights)
+                $childRulesMap[$key] += @($ruleKey)
             } else {
-                $childRulesMap[$key] = @($fsRights)
+                $childRulesMap[$key] = @($ruleKey)
             }
         }
     }
     
-    # Now compare the maps
+    # Compare the maps
     
     # First check if they have the same keys (identities + inheritance)
-    if (($parentRulesMap.Keys | Sort-Object) -join ',' -ne ($childRulesMap.Keys | Sort-Object) -join ',') {
+    $parentKeys = $parentRulesMap.Keys | Sort-Object
+    $childKeys = $childRulesMap.Keys | Sort-Object
+    
+    if ($parentKeys.Count -ne $childKeys.Count) {
         return $false
+    }
+    
+    for ($i = 0; $i -lt $parentKeys.Count; $i++) {
+        if ($parentKeys[$i] -ne $childKeys[$i]) {
+            return $false
+        }
     }
     
     # Then for each identity, compare their permissions
@@ -305,12 +318,8 @@ function Compare-PermissionSets {
         }
         
         for ($i = 0; $i -lt $parentPerms.Count; $i++) {
-            # When comparing special permissions or flags, convert to a normalized string
-            $parentPerm = "$($parentPerms[$i])"
-            $childPerm = "$($childPerms[$i])"
-            
             # If any permission doesn't match, folders are different
-            if ($parentPerm -ne $childPerm) {
+            if ($parentPerms[$i] -ne $childPerms[$i]) {
                 return $false
             }
         }
