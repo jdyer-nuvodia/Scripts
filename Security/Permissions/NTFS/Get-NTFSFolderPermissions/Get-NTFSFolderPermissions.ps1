@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-29 00:05:00 UTC
+# Last Updated: 2025-03-29 00:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.41
-# Additional Info: Fixed comparison of permissions to correctly identify identical permission sets
+# Version: 3.3.42
+# Additional Info: Fixed permission comparison logic to correctly identify and group identical permissions
 # =============================================================================
 
 <#
@@ -209,124 +209,47 @@ function Compare-PermissionSets {
         return $false
     }
     
-    # Ensure both objects have required properties using safer HasProperty method
-    if (-not (Get-Member -InputObject $Parent -Name "Owner" -MemberType Properties) -or 
-        -not (Get-Member -InputObject $Parent -Name "Access" -MemberType Properties -ErrorAction SilentlyContinue) -or
-        -not (Get-Member -InputObject $Parent -Name "AccessRules" -MemberType Properties -ErrorAction SilentlyContinue) -or
-        -not (Get-Member -InputObject $Child -Name "Owner" -MemberType Properties) -or
-        -not (Get-Member -InputObject $Child -Name "Access" -MemberType Properties -ErrorAction SilentlyContinue) -or
-        -not (Get-Member -InputObject $Child -Name "AccessRules" -MemberType Properties -ErrorAction SilentlyContinue)) {
-        Write-Log -Message "Invalid permission object structure detected" -Level 'WARNING' -Color "Yellow" -NoConsole
-        return $false
-    }
-    
-    # Determine which property to use for access rules (Access or AccessRules)
-    $parentRules = if (Get-Member -InputObject $Parent -Name "AccessRules" -MemberType Properties) {
-        $Parent.AccessRules
-    } else {
-        $Parent.Access
-    }
-    
-    $childRules = if (Get-Member -InputObject $Child -Name "AccessRules" -MemberType Properties) {
-        $Child.AccessRules
-    } else {
-        $Child.Access
-    }
-    
-    # Validate AccessRules/Access is not null
-    if ($null -eq $parentRules -or $null -eq $childRules) {
-        Write-Log -Message "Null AccessRules detected" -Level 'WARNING' -Color "Yellow" -NoConsole
-        return $false
-    }
-    
-    # Compare owners
+    # Compare owners first
     if ($Parent.Owner -ne $Child.Owner) {
         return $false
     }
     
-    # Check if they have same number of permissions
+    # Get the access rules to compare
+    $parentRules = if ($Parent.AccessRules) { $Parent.AccessRules } else { $Parent.Access }
+    $childRules = if ($Child.AccessRules) { $Child.AccessRules } else { $Child.Access }
+    
+    # Validate access rules
+    if ($null -eq $parentRules -or $null -eq $childRules) {
+        Write-Log -Message "Null access rules detected" -Level 'WARNING' -Color "Yellow" -NoConsole
+        return $false
+    }
+    
+    # Check if they have the same number of permissions
     if ($parentRules.Count -ne $childRules.Count) {
         return $false
     }
     
     # Create normalized hashtables for comparison
-    $parentRulesMap = @{}
-    $childRulesMap = @{}
+    $parentHash = @{}
+    $childHash = @{}
     
-    # Process parent rules
+    # Convert parent rules to comparable format
     foreach ($rule in $parentRules) {
-        if ($null -ne $rule.IdentityReference) {
-            $key = "$($rule.IdentityReference)|$($rule.IsInherited)"
-            
-            # Create a standardized representation of the rights
-            $fsRights = "$($rule.FileSystemRights)"
-            $accessType = "$($rule.AccessControlType)"
-            $ruleKey = "$fsRights|$accessType"
-            
-            # If this identity already has an entry, append to it
-            if ($parentRulesMap.ContainsKey($key)) {
-                $parentRulesMap[$key] += @($ruleKey)
-            } else {
-                $parentRulesMap[$key] = @($ruleKey)
-            }
-        }
+        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)|$($rule.InheritanceFlags)|$($rule.PropagationFlags)"
+        $parentHash[$key] = $true
     }
     
-    # Process child rules
+    # Compare child rules against parent
     foreach ($rule in $childRules) {
-        if ($null -ne $rule.IdentityReference) {
-            $key = "$($rule.IdentityReference)|$($rule.IsInherited)"
-            
-            # Create a standardized representation of the rights
-            $fsRights = "$($rule.FileSystemRights)"
-            $accessType = "$($rule.AccessControlType)"
-            $ruleKey = "$fsRights|$accessType"
-            
-            # If this identity already has an entry, append to it
-            if ($childRulesMap.ContainsKey($key)) {
-                $childRulesMap[$key] += @($ruleKey)
-            } else {
-                $childRulesMap[$key] = @($ruleKey)
-            }
-        }
-    }
-    
-    # Compare the maps
-    
-    # First check if they have the same keys (identities + inheritance)
-    $parentKeys = $parentRulesMap.Keys | Sort-Object
-    $childKeys = $childRulesMap.Keys | Sort-Object
-    
-    if ($parentKeys.Count -ne $childKeys.Count) {
-        return $false
-    }
-    
-    for ($i = 0; $i -lt $parentKeys.Count; $i++) {
-        if ($parentKeys[$i] -ne $childKeys[$i]) {
+        $key = "$($rule.IdentityReference)|$($rule.FileSystemRights)|$($rule.AccessControlType)|$($rule.IsInherited)|$($rule.InheritanceFlags)|$($rule.PropagationFlags)"
+        if (-not $parentHash.ContainsKey($key)) {
             return $false
         }
+        $childHash[$key] = $true
     }
     
-    # Then for each identity, compare their permissions
-    foreach ($key in $parentRulesMap.Keys) {
-        $parentPerms = $parentRulesMap[$key] | Sort-Object
-        $childPerms = $childRulesMap[$key] | Sort-Object
-        
-        # Compare the sorted permission arrays
-        if ($parentPerms.Count -ne $childPerms.Count) {
-            return $false
-        }
-        
-        for ($i = 0; $i -lt $parentPerms.Count; $i++) {
-            # If any permission doesn't match, folders are different
-            if ($parentPerms[$i] -ne $childPerms[$i]) {
-                return $false
-            }
-        }
-    }
-    
-    # If we got here, all rules match
-    return $true
+    # Ensure all parent rules were found in child
+    return $parentHash.Count -eq $childHash.Count
 }
 
 # Modify the Invoke-FolderRecursively function
