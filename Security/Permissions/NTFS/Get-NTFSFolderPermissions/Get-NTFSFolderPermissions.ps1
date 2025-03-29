@@ -2,9 +2,9 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-29 00:13:00 UTC
+# Last Updated: 2025-03-29 00:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.43
+# Version: 3.3.44
 # Additional Info: Enhanced permission comparison logic for identical permissions handling
 # =============================================================================
 
@@ -205,27 +205,53 @@ function Compare-PermissionSets {
     
     # First check if any parameters are null
     if ($null -eq $Parent -or $null -eq $Child) {
-        Write-Log -Message "Null permission object detected" -Level 'WARNING' -Color "Yellow" -NoConsole
+        Write-Log -Message "Compare-PermissionSets: Null object detected" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
     
-    # Compare owners first
-    if ($Parent.Owner -ne $Child.Owner) {
+    # Compare owners first - handle both direct owner and object property
+    $parentOwner = if ($Parent.Owner) { $Parent.Owner } elseif ($Parent.PSObject.Properties['Owner']) { $Parent.Owner } else { $null }
+    $childOwner = if ($Child.Owner) { $Child.Owner } elseif ($Child.PSObject.Properties['Owner']) { $Child.Owner } else { $null }
+    
+    if ([string]::IsNullOrEmpty($parentOwner) -or [string]::IsNullOrEmpty($childOwner) -or $parentOwner -ne $childOwner) {
+        Write-Log -Message "Compare-PermissionSets: Owner mismatch or missing" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
     
-    # Get the access rules to compare
-    $parentRules = if ($Parent.AccessRules) { $Parent.AccessRules } else { $Parent.Access }
-    $childRules = if ($Child.AccessRules) { $Child.AccessRules } else { $Child.Access }
+    # Get the access rules, handling different property names
+    $parentRules = if ($Parent.AccessRules) { 
+        $Parent.AccessRules 
+    } elseif ($Parent.Access) { 
+        $Parent.Access 
+    } elseif ($Parent.PSObject.Properties['Access']) { 
+        $Parent.Access 
+    } else { 
+        $null 
+    }
+    
+    $childRules = if ($Child.AccessRules) { 
+        $Child.AccessRules 
+    } elseif ($Child.Access) { 
+        $Child.Access 
+    } elseif ($Child.PSObject.Properties['Access']) { 
+        $Child.Access 
+    } else { 
+        $null 
+    }
     
     # Validate access rules
     if ($null -eq $parentRules -or $null -eq $childRules) {
-        Write-Log -Message "Null access rules detected" -Level 'WARNING' -Color "Yellow" -NoConsole
+        Write-Log -Message "Compare-PermissionSets: Missing access rules" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
     
+    # Ensure we're working with arrays
+    $parentRules = @($parentRules)
+    $childRules = @($childRules)
+    
     # Check if they have the same number of permissions
     if ($parentRules.Count -ne $childRules.Count) {
+        Write-Log -Message "Compare-PermissionSets: Rule count mismatch Parent:$($parentRules.Count) Child:$($childRules.Count)" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
     
@@ -233,33 +259,51 @@ function Compare-PermissionSets {
     $parentHash = @{}
     $childHash = @{}
     
-    # Convert parent rules to comparable format, excluding the numerical flags
+    # Convert parent rules to comparable format
     foreach ($rule in $parentRules) {
-        $rights = $rule.FileSystemRights
-        # Convert numerical rights to string representation
-        if ($rights -match '^\-?\d+$') {
-            $rights = [System.Security.AccessControl.FileSystemRights]$rights
+        try {
+            $rights = $rule.FileSystemRights
+            # Convert numerical rights to string representation
+            if ($rights -match '^\-?\d+$') {
+                $rights = [System.Security.AccessControl.FileSystemRights]$rights
+            }
+            $key = "$($rule.IdentityReference)|$rights|$($rule.AccessControlType)|$($rule.IsInherited)"
+            $parentHash[$key] = $true
         }
-        $key = "$($rule.IdentityReference)|$rights|$($rule.AccessControlType)|$($rule.IsInherited)"
-        $parentHash[$key] = $true
+        catch {
+            Write-Log -Message "Compare-PermissionSets: Error processing parent rule - $_" -Level 'DEBUG' -Color "Yellow" -NoConsole
+            return $false
+        }
     }
     
     # Compare child rules against parent
     foreach ($rule in $childRules) {
-        $rights = $rule.FileSystemRights
-        # Convert numerical rights to string representation
-        if ($rights -match '^\-?\d+$') {
-            $rights = [System.Security.AccessControl.FileSystemRights]$rights
+        try {
+            $rights = $rule.FileSystemRights
+            # Convert numerical rights to string representation
+            if ($rights -match '^\-?\d+$') {
+                $rights = [System.Security.AccessControl.FileSystemRights]$rights
+            }
+            $key = "$($rule.IdentityReference)|$rights|$($rule.AccessControlType)|$($rule.IsInherited)"
+            if (-not $parentHash.ContainsKey($key)) {
+                Write-Log -Message "Compare-PermissionSets: Child rule not found in parent" -Level 'DEBUG' -Color "Yellow" -NoConsole
+                return $false
+            }
+            $childHash[$key] = $true
         }
-        $key = "$($rule.IdentityReference)|$rights|$($rule.AccessControlType)|$($rule.IsInherited)"
-        if (-not $parentHash.ContainsKey($key)) {
+        catch {
+            Write-Log -Message "Compare-PermissionSets: Error processing child rule - $_" -Level 'DEBUG' -Color "Yellow" -NoConsole
             return $false
         }
-        $childHash[$key] = $true
     }
     
-    # Ensure all parent rules were found in child
-    return $parentHash.Count -eq $childHash.Count
+    # Final validation that all rules were matched
+    if ($parentHash.Count -ne $childHash.Count) {
+        Write-Log -Message "Compare-PermissionSets: Hash count mismatch after comparison" -Level 'DEBUG' -Color "Yellow" -NoConsole
+        return $false
+    }
+    
+    return $true
 }
 
 # Modify the Invoke-FolderRecursively function
