@@ -2,10 +2,10 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-29 00:15:00 UTC
+# Last Updated: 2025-03-29 00:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.44
-# Additional Info: Enhanced permission comparison logic for identical permissions handling
+# Version: 3.3.45
+# Additional Info: Fixed AccessRules property reference in Compare-PermissionSets
 # =============================================================================
 
 <#
@@ -218,21 +218,21 @@ function Compare-PermissionSets {
         return $false
     }
     
-    # Get the access rules, handling different property names
-    $parentRules = if ($Parent.AccessRules) { 
-        $Parent.AccessRules 
-    } elseif ($Parent.Access) { 
+    # Get the access rules, handling different property names and types
+    $parentRules = if ($Parent.Access) { 
         $Parent.Access 
+    } elseif ($Parent.AccessRules) { 
+        $Parent.AccessRules 
     } elseif ($Parent.PSObject.Properties['Access']) { 
         $Parent.Access 
     } else { 
         $null 
     }
     
-    $childRules = if ($Child.AccessRules) { 
-        $Child.AccessRules 
-    } elseif ($Child.Access) { 
+    $childRules = if ($Child.Access) { 
         $Child.Access 
+    } elseif ($Child.AccessRules) { 
+        $Child.AccessRules 
     } elseif ($Child.PSObject.Properties['Access']) { 
         $Child.Access 
     } else { 
