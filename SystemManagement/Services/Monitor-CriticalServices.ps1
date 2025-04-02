@@ -2,10 +2,10 @@
 # Script: Monitor-CriticalServices.ps1
 # Created: 2025-04-02 17:18:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 17:27:00 UTC
+# Last Updated: 2025-04-02 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Fixed function name to use approved PowerShell verb
+# Version: 1.1.0
+# Additional Info: Enhanced logging functionality with system name and timestamps
 # =============================================================================
 
 <#
@@ -58,18 +58,31 @@ function Write-ServiceStatus {
 }
 
 function Watch-Services {
+    # Create log file with system name and timestamp
+    $systemName = $env:COMPUTERNAME
+    $dateStamp = Get-Date -Format "yyyyMMdd"
+    $logPath = Join-Path $PSScriptRoot "ServiceMonitor_${systemName}_${dateStamp}.log"
+    
     do {
         Clear-Host
+        $currentTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
         Write-Host "=== Critical Services Monitor ===" -ForegroundColor Cyan
-        Write-Host "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor DarkGray
+        Write-Host "Timestamp: $currentTimestamp" -ForegroundColor DarkGray
         Write-Host "================================`n" -ForegroundColor Cyan
+
+        # Log start of monitoring session
+        "[$currentTimestamp] Starting service monitoring session on $systemName" | Out-File -FilePath $logPath -Append
 
         foreach ($service in $criticalServices) {
             $svc = Get-Service -Name $service -ErrorAction SilentlyContinue
             if ($svc) {
                 Write-ServiceStatus -ServiceName $svc.Name -Status $svc.Status -DisplayName $svc.DisplayName
+                # Log each service status
+                "[$currentTimestamp] Service: $($svc.DisplayName) - Status: $($svc.Status)" | Out-File -FilePath $logPath -Append
             } else {
                 Write-Host "Service $service not found!" -ForegroundColor Red
+                # Log missing service
+                "[$currentTimestamp] ERROR: Service $service not found" | Out-File -FilePath $logPath -Append
             }
         }
 
@@ -77,12 +90,10 @@ function Watch-Services {
         $continue = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
         
     } while ($continue.Character -eq 'y' -or $continue.Character -eq 'Y')
+
+    # Log end of monitoring session
+    "[$currentTimestamp] Service monitoring session completed on $systemName" | Out-File -FilePath $logPath -Append
 }
 
 # Start monitoring
 Watch-Services
-
-# Create log entry
-$logPath = ".\ServiceMonitor.log"
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
-"[$timestamp] Service monitoring session completed" | Out-File -FilePath $logPath -Append
