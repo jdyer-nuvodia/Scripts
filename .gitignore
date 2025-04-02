@@ -45,3 +45,6 @@ Development/Git/Generate-GitHistory
 
 # .txt files
 *.txt
+
+# html files
+*.html
