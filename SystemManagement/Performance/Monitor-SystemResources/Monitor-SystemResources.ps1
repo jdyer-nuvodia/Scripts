@@ -2,10 +2,10 @@
 # Script: Monitor-SystemResources.ps1
 # Created: 2025-04-02 15:18:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 15:18:00 UTC
+# Last Updated: 2025-04-02 17:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial creation - System resource monitoring script
+# Version: 1.0.1
+# Additional Info: Fixed Get-WmiObject deprecation and division by zero error
 # =============================================================================
 
 <#
@@ -71,15 +71,20 @@ function Get-SystemMetrics {
     $cpu = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
 
     # Get Memory Usage
-    $os = Get-Ciminstance Win32_OperatingSystem
+    $os = Get-CimInstance Win32_OperatingSystem
     $memoryUsed = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize * 100, 2)
 
     # Get Disk Space
-    $disks = Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 }
+    $disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType = 3"
     $diskMetrics = $disks | ForEach-Object {
+        $freeSpacePercent = if ($_.Size -gt 0) {
+            [math]::Round($_.FreeSpace / $_.Size * 100, 2)
+        } else {
+            0
+        }
         @{
             Drive = $_.DeviceID
-            FreeSpace = [math]::Round($_.FreeSpace / $_.Size * 100, 2)
+            FreeSpace = $freeSpacePercent
         }
     }
 
