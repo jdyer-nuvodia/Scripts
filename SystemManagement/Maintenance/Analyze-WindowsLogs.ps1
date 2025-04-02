@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-02 21:49:00 UTC
+# Last Updated: 2025-04-02 21:54:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.2
-# Additional Info: Enhanced error handling for log access
+# Version: 1.0.3
+# Additional Info: Fixed invalid query issue by implementing FilterHashTable approach
 # =============================================================================
 
 <#
@@ -120,17 +120,20 @@ function Get-LogStatistics {
             return $null
         }
 
-        # Use a more specific filter for better performance and reliability
-        $FilterXPath = "*[System[TimeCreated[timediff(@SystemTime) <= $($DaysToAnalyze * 24 * 60 * 60 * 1000)]]"
+        # Use FilterHashTable instead of XPath for better reliability
+        $FilterHash = @{
+            LogName = $LogName
+            StartTime = $StartTime
+        }
         
-        $Log = Get-WinEvent -LogName $LogName -FilterXPath $FilterXPath -ErrorAction Stop
+        $Log = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop
         
         # If we get here, log access was successful
         Write-Log "Successfully accessed $LogName log" -Level Success
         
         # Get basic statistics
         $TotalEntries = $Log.Count
-        $RecentEntries = ($Log | Where-Object { $_.TimeCreated -gt $StartTime }).Count
+        $RecentEntries = $Log.Count  # All entries are already filtered by start time
         $ErrorEntries = ($Log | Where-Object { $_.Level -eq 2 }).Count  # Level 2 is Error
         $WarningEntries = ($Log | Where-Object { $_.Level -eq 3 }).Count  # Level 3 is Warning
         
@@ -153,6 +156,11 @@ function Get-LogStatistics {
             DailyRate = $DailyRate
             TopErrorSources = $TopErrors
         }
+    }
+    catch [System.Diagnostics.Eventing.Reader.EventLogException] {
+        Write-Log "Error accessing $LogName log: Invalid query or access denied" -Level Error
+        Write-Log "Exception details: $($_.Exception.GetType().FullName)" -Level Debug
+        return $null
     }
     catch [System.UnauthorizedAccessException] {
         Write-Log "Access denied while analyzing $LogName log. Please run as administrator." -Level Error
