@@ -2,10 +2,10 @@
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-02 21:06:00 UTC
+# Last Updated: 2025-04-02 21:11:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.1.0
-# Additional Info: Updated to use Get-CimInstance and enhanced error handling
+# Version: 1.1.1
+# Additional Info: Fixed variable naming conflict with reserved $Error variable
 # =============================================================================
 
 <#
@@ -208,9 +208,9 @@ function Get-EventLogAnalysis {
                 $TopErrors = $Events | Group-Object -Property Id | 
                             Sort-Object -Property Count -Descending | 
                             Select-Object -First 3
-                foreach ($Error in $TopErrors) {
-                    $Sample = $Events | Where-Object Id -eq $Error.Name | Select-Object -First 1
-                    Write-LogMessage "  Top Error (ID $($Error.Name)): $($Sample.Message.Split([Environment]::NewLine)[0]) - Count: $($Error.Count)" -Level "Info"
+                foreach ($ErrorItem in $TopErrors) {
+                    $Sample = $Events | Where-Object Id -eq $ErrorItem.Name | Select-Object -First 1
+                    Write-LogMessage "  Top Error (ID $($ErrorItem.Name)): $($Sample.Message.Split([Environment]::NewLine)[0]) - Count: $($ErrorItem.Count)" -Level "Info"
                 }
             }
         }
