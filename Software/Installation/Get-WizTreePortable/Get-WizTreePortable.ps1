@@ -1,19 +1,20 @@
 # =============================================================================
 # Script: Get-WizTreePortable.ps1
-# Created: 2024-02-08 15:30:00 UTC
+# Created: 2025-02-08 15:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-27 17:45:00 UTC
+# Last Updated: 2025-04-02 15:07:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1
-# Additional Info: Updated to version 4.24 and added architecture verification
+# Version: 2.2.1
+# Additional Info: Modified to start WizTree with visible window
 # =============================================================================
 
 <#
 .SYNOPSIS
-    Downloads and runs the latest version of WizTree Portable silently.
+    Downloads and runs the latest version of WizTree Portable.
 .DESCRIPTION
     This script automatically fetches the latest version of WizTree Portable,
-    downloads it, and runs it silently in administrator mode.
+    downloads it, and runs it in administrator mode with a visible window.
+    Automatically detects the latest version from the WizTree website.
 .EXAMPLE
     .\Get-WizTreePortable.ps1
 #>
@@ -22,14 +23,17 @@ function Get-LatestWizTreeUrl {
     try {
         Write-Host "Checking for latest WizTree version..." -ForegroundColor Cyan
         $webResponse = Invoke-WebRequest -Uri "https://wiztree.co.uk/download/" -UseBasicParsing
-        if ($webResponse.Content -match 'href="([^"]*wiztree_4_24.*portable\.zip)"') {
+        $pattern = 'href="([^"]*wiztree_\d+_\d+.*portable\.zip)"'
+        if ($webResponse.Content -match $pattern) {
+            Write-Host "Found latest version URL" -ForegroundColor Green
             return $Matches[1]
         }
         throw "Could not find download URL"
     }
     catch {
-        Write-Warning "Failed to get latest version URL. Using fallback URL..."
-        return "https://wiztree.co.uk/wp-content/uploads/2024/02/wiztree_4_24_portable.zip"
+        Write-Warning "Failed to get latest version URL: $_"
+        Write-Warning "Please check https://wiztree.co.uk/download/ for the latest version"
+        exit 1
     }
 }
 
@@ -65,9 +69,9 @@ try {
     Write-Host "Extracting files..." -ForegroundColor Cyan
     Expand-Archive -Path $zipFilePath -DestinationPath $extractPath -Force
 
-    # Run WizTree silently as Administrator (ensuring x64 version)
+    # Run WizTree as Administrator (ensuring x64 version)
     Write-Host "Starting WizTree x64..." -ForegroundColor Cyan
-    Start-Process -FilePath $exePath -Verb RunAs -ArgumentList "/quiet" -WindowStyle Hidden
+    Start-Process -FilePath $exePath -Verb RunAs
 
     Write-Host "WizTree has been successfully launched!" -ForegroundColor Green
 }
