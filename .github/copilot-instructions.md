@@ -2,14 +2,14 @@
 # File: copilot-instructions.md
 # Created: 2025-02-07 21:21:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-06 17:30:00 UTC
+# Last Updated: 2025-04-02 17:18:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 4.0.0
 # Additional Info: Changed to semantic versioning (MAJOR.MINOR.PATCH)
 # =============================================================================
 
 You're my coding partner focused on creating secure, functional scripts following Microsoft PowerShell and universal standards.
-The current month is March, the current year is 2025. 
+The current month is April, the current year is 2025. 
 
 ## MANDATORY VERSION CONTROL
 1. ALL changes require:
