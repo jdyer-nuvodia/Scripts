@@ -2,10 +2,10 @@
 # Script: Monitor-CriticalServices.ps1
 # Created: 2025-04-02 17:18:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 17:24:00 UTC
+# Last Updated: 2025-04-02 17:27:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial script creation for monitoring critical Windows services
+# Version: 1.0.1
+# Additional Info: Fixed function name to use approved PowerShell verb
 # =============================================================================
 
 <#
@@ -57,7 +57,7 @@ function Write-ServiceStatus {
     }
 }
 
-function Monitor-Services {
+function Watch-Services {
     do {
         Clear-Host
         Write-Host "=== Critical Services Monitor ===" -ForegroundColor Cyan
@@ -80,7 +80,7 @@ function Monitor-Services {
 }
 
 # Start monitoring
-Monitor-Services
+Watch-Services
 
 # Create log entry
 $logPath = ".\ServiceMonitor.log"
