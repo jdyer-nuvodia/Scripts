@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-02 21:42:00 UTC
+# Last Updated: 2025-04-02 21:49:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.1
-# Additional Info: Added error handling and elevation check
+# Version: 1.0.2
+# Additional Info: Enhanced error handling for log access
 # =============================================================================
 
 <#
@@ -112,25 +112,32 @@ function Get-LogStatistics {
     try {
         $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
         
-        # Use Get-WinEvent with FilterHashTable for better performance and error handling
-        $FilterHash = @{
-            LogName = $LogName
-            StartTime = $StartTime
-        }
+        # First try to verify the log exists and is accessible
+        $LogExists = Get-WinEvent -ListLog $LogName -ErrorAction Stop
         
-        $Log = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop
+        if (-not $LogExists.IsEnabled) {
+            Write-Log "Log '$LogName' exists but is not enabled" -Level Warning
+            return $null
+        }
+
+        # Use a more specific filter for better performance and reliability
+        $FilterXPath = "*[System[TimeCreated[timediff(@SystemTime) <= $($DaysToAnalyze * 24 * 60 * 60 * 1000)]]"
+        
+        $Log = Get-WinEvent -LogName $LogName -FilterXPath $FilterXPath -ErrorAction Stop
         
         # If we get here, log access was successful
+        Write-Log "Successfully accessed $LogName log" -Level Success
+        
         # Get basic statistics
         $TotalEntries = $Log.Count
         $RecentEntries = ($Log | Where-Object { $_.TimeCreated -gt $StartTime }).Count
-        $ErrorEntries = ($Log | Where-Object { $_.LevelDisplayName -eq "Error" -and $_.TimeCreated -gt $StartTime }).Count
-        $WarningEntries = ($Log | Where-Object { $_.LevelDisplayName -eq "Warning" -and $_.TimeCreated -gt $StartTime }).Count
+        $ErrorEntries = ($Log | Where-Object { $_.Level -eq 2 }).Count  # Level 2 is Error
+        $WarningEntries = ($Log | Where-Object { $_.Level -eq 3 }).Count  # Level 3 is Warning
         
-        # Get top error sources
+        # Get top error sources with proper error handling
         $TopErrors = $Log | 
-            Where-Object { $_.LevelDisplayName -eq "Error" -and $_.TimeCreated -gt $StartTime } |
-            Group-Object Source |
+            Where-Object { $_.Level -eq 2 } |
+            Group-Object { try { $_.ProviderName } catch { "Unknown Provider" } } |
             Sort-Object Count -Descending |
             Select-Object -First 5
         
@@ -152,20 +159,12 @@ function Get-LogStatistics {
         return $null
     }
     catch [System.InvalidOperationException] {
-        # Handle case where log is empty or doesn't exist
-        Write-Log "No entries found in $LogName log or log does not exist" -Level Warning
-        return @{
-            Name = $LogName
-            TotalEntries = 0
-            RecentEntries = 0
-            ErrorCount = 0
-            WarningCount = 0
-            DailyRate = 0
-            TopErrorSources = @()
-        }
+        Write-Log "The $LogName log is empty or does not exist" -Level Warning
+        return $null
     }
     catch {
-        Write-Log "Error analyzing $LogName log: $_" -Level Error
+        Write-Log "Error analyzing $LogName log: $($_.Exception.Message)" -Level Error
+        Write-Log "Exception details: $($_.Exception.GetType().FullName)" -Level Debug
         return $null
     }
 }
