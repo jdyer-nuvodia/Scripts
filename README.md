@@ -1,3 +1,15 @@
+<!--
+=============================================================================
+File: README.md
+Created: 2025-02-07 21:21:53 UTC
+Author: jdyer-nuvodia
+Last Updated: 2025-04-02 21:15:00 UTC
+Updated By: jdyer-nuvodia
+Version: 1.0.0
+Additional Info: Added standardized header and version control
+=============================================================================
+-->
+
 # PowerShell Scripts Collection
 
 This repository contains a collection of PowerShell scripts for various system administration tasks, cloud management, and maintenance operations.
@@ -48,7 +60,7 @@ This repository contains a collection of PowerShell scripts for various system a
 
 ## Getting Started
 
-Most scripts include detailed help information accessible via:
+All scripts include detailed help information accessible via:
 
 ```powershell
 Get-Help .\ScriptName.ps1 -Full
@@ -82,7 +94,7 @@ All scripts in this repository follow these standards:
 ### Version Control
 
 - Semantic versioning (MAJOR.MINOR.PATCH)
-- Commit message format: <type>(<scope>): <description>
+- Commit message format: [type](scope): description
 - UTC timestamp format: YYYY-MM-DD HH:MM:SS UTC
 - Change documentation in file headers
 
