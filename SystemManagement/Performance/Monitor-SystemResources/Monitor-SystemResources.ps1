@@ -18,7 +18,7 @@ Logs the data to a file and provides real-time console output with color-coding.
 Supports configurable monitoring intervals and thresholds.
 
 .PARAMETER IntervalSeconds
-The interval between measurements in seconds. Default is 60.
+The interval between measurements in seconds. Default is 15.
 
 .PARAMETER LogPath
 The path where log files will be stored. Default is "./logs"
@@ -43,8 +43,8 @@ Monitors with 30-second intervals and 90% CPU threshold
 
 [CmdletBinding()]
 param(
-    [int]$IntervalSeconds = 60,
-    [string]$LogPath = ".\logs",
+    [int]$IntervalSeconds = 15,
+    [string]$LogPath = ".\",
     [int]$ThresholdCPU = 80,
     [int]$ThresholdMemory = 85,
     [int]$ThresholdDisk = 15
