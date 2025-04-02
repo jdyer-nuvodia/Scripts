@@ -2,42 +2,91 @@
 # Script: Get-SecurityConfigurationStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-17 20:56:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 1.6.2
-# Additional Info: Fixed secedit export path handling and file cleanup
+# Last Updated: 2025-04-02 20:49:00 UTC
+# Updated By: GitHub-Copilot
+# Version: 1.7.0
+# Additional Info: Enhanced documentation and added function-level help
 # =============================================================================
 
 <#
 .SYNOPSIS
-Retrieves and displays active Group Policy settings for both computer and user configurations.
-
+    Comprehensive analysis of system security settings and Group Policy configurations.
 .DESCRIPTION
-This script analyzes the current Group Policy settings applied to the local computer
-and all users. It shows which policies are active and their current values. The script
-uses native PowerShell commands and the GroupPolicy module to gather this information.
-
+    This script performs a detailed analysis of security configurations including:
+    - Group Policy settings (computer and user)
+    - Security policy settings
+    - Audit policies
+    - System access controls
+    - Security templates
+    - Security database settings
+    - Advanced registry security settings
+    
+    Dependencies:
+    - Administrative privileges
+    - GroupPolicy PowerShell module (optional)
+    - secedit.exe
+    - auditpol.exe
+    - Access to system registry
+    
+    The script generates both console output and a detailed log file
+    with color-coded status indicators for different types of information.
+.PARAMETER OutputFormat
+    The format for the GPResult report output
+    Valid values: 'HTML', 'Text'
+    Default: 'HTML'
 .EXAMPLE
-.\Get-GroupPolicyStatus.ps1
-Returns a detailed report of all active Group Policy settings
-
+    .\Get-SecurityConfigurationStatus.ps1
+    Runs the analysis with default HTML output format
+.EXAMPLE
+    .\Get-SecurityConfigurationStatus.ps1 -OutputFormat Text
+    Runs the analysis and outputs results in text format
 .NOTES
-Requires administrative privileges to run
-Requires GroupPolicy module
+    Security Level: High
+    Required Permissions: Local Administrator
+    Validation Requirements:
+    - Must run with administrative privileges
+    - Requires access to system security settings
+    - Domain connection for Group Policy analysis
 #>
 
 #Requires -RunAsAdministrator
 
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory=$false)]
     [ValidateSet('HTML', 'Text')]
     [string]$OutputFormat = 'HTML'
 )
 
-# Function to format output with colors based on status
+<#
+.SYNOPSIS
+    Writes a formatted status message with color coding.
+.DESCRIPTION
+    Outputs messages with consistent color coding based on message type:
+    - Info: White (standard information)
+    - Process: Cyan (processing updates)
+    - Success: Green (successful operations)
+    - Warning: Yellow (warning messages)
+    - Error: Red (error messages)
+    - Debug: Magenta (debug information)
+    - Detail: DarkGray (detailed/verbose information)
+.PARAMETER Message
+    The message text to display
+.PARAMETER Type
+    The type of message determining color coding
+    Valid values: Info, Process, Success, Warning, Error, Debug, Detail
+.EXAMPLE
+    Write-StatusMessage "Operation completed" "Success"
+    Displays "Operation completed" in green
+#>
 function Write-StatusMessage {
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
         [string]$Message,
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("Info", "Process", "Success", "Warning", "Error", "Debug", "Detail")]
         [string]$Type = "Info"
     )
     
@@ -52,15 +101,50 @@ function Write-StatusMessage {
     }
 }
 
-# Function to check if running on a Domain Controller
+<#
+.SYNOPSIS
+    Checks if the current system is a Domain Controller.
+.DESCRIPTION
+    Determines if the current system is a Domain Controller by checking
+    the system's domain role value. Domain Controllers have a role
+    value of 4 or 5.
+.EXAMPLE
+    if (Test-IsDomainController) { Write-Host "Running on DC" }
+.OUTPUTS
+    System.Boolean
+    Returns True if running on a Domain Controller, False otherwise
+#>
 function Test-IsDomainController {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    
     return (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
 }
 
-# Function to get GP status using gpresult
+<#
+.SYNOPSIS
+    Generates a Group Policy status report.
+.DESCRIPTION
+    Generates a detailed Group Policy report using gpresult.
+    Can output in either HTML or text format.
+.PARAMETER ReportType
+    Type of report to generate (User, Computer, or Both)
+.PARAMETER OutputFormat
+    Format of the report (HTML or Text)
+.EXAMPLE
+    Get-GPStatusWithGpresult -ReportType Both -OutputFormat HTML
+    Generates an HTML report for both user and computer policies
+#>
 function Get-GPStatusWithGpresult {
+    [CmdletBinding()]
     param (
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("User", "Computer", "Both")]
         [string]$ReportType = "Both",
+        
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("HTML", "Text")]
         [string]$OutputFormat = $script:OutputFormat
     )
     
@@ -152,7 +236,6 @@ function Get-SecurityPolicySettings {
                         $_ -match "SeSecurityPrivilege|SeBackupPrivilege|SeRestorePrivilege" 
                     }
                     Remove-Item $userRightsPath -Force
-                    
                     foreach ($right in $rightsSettings) {
                         $name = ($right -split '=')[0].Trim()
                         $value = ($right -split '=')[1].Trim()
@@ -421,13 +504,13 @@ try {
     }
 }
 catch {
-    Write-StatusMessage "An error occurred while analyzing Group Policy settings" -Type "Error"
-    Write-StatusMessage $_.Exception.Message -Type "Error"
+    Write-StatusMessage "An error occurred while analyzing Group Policy settings" "Error"
+    Write-StatusMessage $_.Exception.Message "Error"
 }
 finally {
-    Write-StatusMessage "`nAnalysis Summary:" -Type "Info"
-    Write-StatusMessage "System Name: $computerName" -Type "Detail"
-    Write-StatusMessage "Domain: $domainName" -Type "Detail"
-    Write-StatusMessage "Log file saved to: $LogPath" -Type "Success"
+    Write-StatusMessage "`nAnalysis Summary:" "Info"
+    Write-StatusMessage "System Name: $computerName" "Detail"
+    Write-StatusMessage "Domain: $domainName" "Detail"
+    Write-StatusMessage "Log file saved to: $LogPath" "Success"
     Stop-Transcript
 }

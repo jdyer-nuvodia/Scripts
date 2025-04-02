@@ -2,10 +2,10 @@
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-02 20:23:00 UTC
+# Last Updated: 2025-04-02 21:06:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.1
-# Additional Info: Removed unused HTML report variable
+# Version: 1.1.0
+# Additional Info: Updated to use Get-CimInstance and enhanced error handling
 # =============================================================================
 
 <#
@@ -39,9 +39,16 @@
 [CmdletBinding()]
 param(
     [Parameter()]
+    [ValidateScript({
+        if (-not (Test-Path $_)) {
+            New-Item -ItemType Directory -Path $_ -Force | Out-Null
+        }
+        return $true
+    })]
     [string]$ReportPath = $PSScriptRoot,
     
     [Parameter()]
+    [ValidateRange(1, 30)]
     [int]$DaysToAnalyze = 7,
     
     [Parameter()]
@@ -57,14 +64,23 @@ param(
     )
 )
 
+# Initialize error handling
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
 # Initialize logging
 $SystemName = $env:COMPUTERNAME
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $LogFile = Join-Path $ReportPath "SystemHealth_${SystemName}_${Timestamp}.log"
 
 function Write-LogMessage {
+    [CmdletBinding()]
     param(
+        [Parameter(Mandatory=$true)]
         [string]$Message,
+        
+        [Parameter()]
+        [ValidateSet("Info", "Process", "Success", "Warning", "Error", "Debug")]
         [string]$Level = "Info"
     )
     
@@ -84,11 +100,14 @@ function Write-LogMessage {
 }
 
 function Get-SystemResourceStatus {
+    [CmdletBinding()]
+    param()
+    
     Write-LogMessage "Checking system resources..." -Level "Process"
     
     try {
         # CPU Usage
-        $CpuUsage = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
+        $CpuUsage = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
         $CpuStatus = switch ($CpuUsage) {
             {$_ -ge 90} { "Error" }
             {$_ -ge 80} { "Warning" }
@@ -97,32 +116,47 @@ function Get-SystemResourceStatus {
         Write-LogMessage "CPU Usage: $([math]::Round($CpuUsage, 2))%" -Level $CpuStatus
         
         # Memory Usage
-        $OS = Get-WmiObject Win32_OperatingSystem
-        $MemoryUsage = [math]::Round(($OS.TotalVisibleMemorySize - $OS.FreePhysicalMemory) / $OS.TotalVisibleMemorySize * 100, 2)
-        $MemoryStatus = switch ($MemoryUsage) {
-            {$_ -ge 90} { "Error" }
-            {$_ -ge 80} { "Warning" }
-            Default { "Success" }
-        }
-        Write-LogMessage "Memory Usage: ${MemoryUsage}%" -Level $MemoryStatus
-        
-        # Disk Space
-        Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
-            $FreeSpace = [math]::Round(($_.FreeSpace / $_.Size) * 100, 2)
-            $Status = switch ($FreeSpace) {
-                {$_ -le 10} { "Error" }
-                {$_ -le 20} { "Warning" }
+        $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        if ($OS.TotalVisibleMemorySize -gt 0) {
+            $MemoryUsage = [math]::Round(($OS.TotalVisibleMemorySize - $OS.FreePhysicalMemory) / $OS.TotalVisibleMemorySize * 100, 2)
+            $MemoryStatus = switch ($MemoryUsage) {
+                {$_ -ge 90} { "Error" }
+                {$_ -ge 80} { "Warning" }
                 Default { "Success" }
             }
-            Write-LogMessage "Drive $($_.DeviceID) - Free Space: ${FreeSpace}%" -Level $Status
+            Write-LogMessage "Memory Usage: ${MemoryUsage}%" -Level $MemoryStatus
+        }
+        else {
+            Write-LogMessage "Invalid memory size reported by system" -Level "Error"
+        }
+        
+        # Disk Space
+        $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+        foreach ($Disk in $Disks) {
+            if ($Disk.Size -gt 0) {
+                $FreeSpace = [math]::Round(($Disk.FreeSpace / $Disk.Size) * 100, 2)
+                $Status = switch ($FreeSpace) {
+                    {$_ -le 10} { "Error" }
+                    {$_ -le 20} { "Warning" }
+                    Default { "Success" }
+                }
+                Write-LogMessage "Drive $($Disk.DeviceID) - Free Space: ${FreeSpace}% ($(([math]::Round($Disk.FreeSpace / 1GB, 2)))GB free)" -Level $Status
+            }
+            else {
+                Write-LogMessage "Invalid disk size reported for drive $($Disk.DeviceID)" -Level "Error"
+            }
         }
     }
     catch {
-        Write-LogMessage "Error checking system resources: $_" -Level "Error"
+        Write-LogMessage "Error checking system resources: $($_.Exception.Message)" -Level "Error"
+        Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level "Debug"
     }
 }
 
 function Get-CriticalServicesStatus {
+    [CmdletBinding()]
+    param()
+    
     Write-LogMessage "Checking critical services..." -Level "Process"
     
     foreach ($Service in $CriticalServices) {
@@ -142,6 +176,9 @@ function Get-CriticalServicesStatus {
 }
 
 function Get-EventLogAnalysis {
+    [CmdletBinding()]
+    param()
+    
     Write-LogMessage "Analyzing event logs..." -Level "Process"
     
     $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
@@ -166,73 +203,114 @@ function Get-EventLogAnalysis {
                 Default { "Success" }
             }
             Write-LogMessage "$($EventType.Name) in last $DaysToAnalyze days: $Count" -Level $Status
+            
+            if ($Count -gt 0) {
+                $TopErrors = $Events | Group-Object -Property Id | 
+                            Sort-Object -Property Count -Descending | 
+                            Select-Object -First 3
+                foreach ($Error in $TopErrors) {
+                    $Sample = $Events | Where-Object Id -eq $Error.Name | Select-Object -First 1
+                    Write-LogMessage "  Top Error (ID $($Error.Name)): $($Sample.Message.Split([Environment]::NewLine)[0]) - Count: $($Error.Count)" -Level "Info"
+                }
+            }
         }
         catch {
             if ($_.Exception.Message -notlike "*No events were found*") {
-                Write-LogMessage "Error checking $($EventType.Name): $_" -Level "Error"
+                Write-LogMessage "Error checking $($EventType.Name): $($_.Exception.Message)" -Level "Error"
             }
         }
     }
 }
 
 function Get-WindowsUpdateStatus {
+    [CmdletBinding()]
+    param()
+    
     Write-LogMessage "Checking Windows Update status..." -Level "Process"
     
     try {
         $UpdateSession = New-Object -ComObject Microsoft.Update.Session
         $UpdateSearcher = $UpdateSession.CreateUpdateSearcher()
-        $PendingUpdates = $UpdateSearcher.Search("IsInstalled=0").Updates
+        $SearchResult = $UpdateSearcher.Search("IsInstalled=0")
         
-        $Count = $PendingUpdates.Count
+        $Count = $SearchResult.Updates.Count
         $Status = switch ($Count) {
             {$_ -ge 10} { "Error" }
             {$_ -ge 5} { "Warning" }
             Default { "Success" }
         }
         Write-LogMessage "Pending Windows Updates: $Count" -Level $Status
+        
+        if ($Count -gt 0) {
+            $CriticalUpdates = $SearchResult.Updates | Where-Object { $_.MsrcSeverity -eq "Critical" }
+            if ($CriticalUpdates.Count -gt 0) {
+                Write-LogMessage "Critical updates pending: $($CriticalUpdates.Count)" -Level "Warning"
+                $CriticalUpdates | ForEach-Object {
+                    Write-LogMessage "  - $($_.Title)" -Level "Info"
+                }
+            }
+        }
     }
     catch {
-        Write-LogMessage "Error checking Windows Updates: $_" -Level "Error"
+        Write-LogMessage "Error checking Windows Updates: $($_.Exception.Message)" -Level "Error"
     }
 }
 
 function Get-NetworkStatus {
+    [CmdletBinding()]
+    param()
+    
     Write-LogMessage "Checking network connectivity..." -Level "Process"
     
     $Targets = @(
-        "8.8.8.8",           # Google DNS
-        "1.1.1.1",           # Cloudflare DNS
-        "www.microsoft.com"
+        @{Host="8.8.8.8"; Name="Google DNS"},
+        @{Host="1.1.1.1"; Name="Cloudflare DNS"},
+        @{Host="www.microsoft.com"; Name="Microsoft"}
     )
     
     foreach ($Target in $Targets) {
         try {
-            $Result = Test-Connection -ComputerName $Target -Count 1 -ErrorAction Stop
-            $LatencyMs = $Result.ResponseTime
+            $Result = Test-Connection -TargetName $Target.Host -Count 1 -ErrorAction Stop
+            $LatencyMs = $Result.Latency
             $Status = switch ($LatencyMs) {
                 {$_ -ge 200} { "Warning" }
                 {$_ -ge 500} { "Error" }
                 Default { "Success" }
             }
-            Write-LogMessage "Network latency to $Target : ${LatencyMs}ms" -Level $Status
+            Write-LogMessage "Network latency to $($Target.Name) ($($Target.Host)): ${LatencyMs}ms" -Level $Status
         }
         catch {
-            Write-LogMessage "Failed to reach $Target" -Level "Error"
+            Write-LogMessage "Failed to reach $($Target.Name) ($($Target.Host)): $($_.Exception.Message)" -Level "Error"
         }
     }
 }
 
 function Get-SecurityStatus {
+    [CmdletBinding()]
+    param()
+    
     Write-LogMessage "Checking security features..." -Level "Process"
     
     try {
         # Windows Defender Status
-        $DefenderStatus = Get-MpComputerStatus
+        $DefenderStatus = Get-MpComputerStatus -ErrorAction Stop
         $Status = if ($DefenderStatus.AntivirusEnabled) { "Success" } else { "Error" }
         Write-LogMessage "Windows Defender Status: $($DefenderStatus.AntivirusEnabled)" -Level $Status
         
+        if ($DefenderStatus.AntivirusEnabled) {
+            Write-LogMessage "  Last Scan: $($DefenderStatus.LastFullScanTime)" -Level "Info"
+            Write-LogMessage "  Definitions: $($DefenderStatus.AntivirusSignatureLastUpdated)" -Level "Info"
+            
+            if ($DefenderStatus.LastFullScanTime -lt (Get-Date).AddDays(-7)) {
+                Write-LogMessage "  Warning: Last full scan was more than 7 days ago" -Level "Warning"
+            }
+            if ($DefenderStatus.AntivirusSignatureLastUpdated -lt (Get-Date).AddDays(-3)) {
+                Write-LogMessage "  Warning: Virus definitions are more than 3 days old" -Level "Warning"
+            }
+        }
+        
         # Firewall Status
-        $FirewallProfiles = Get-NetFirewallProfile
+        $FirewallProfiles = Get-NetFirewallProfile -ErrorAction Stop
         foreach ($FwProfile in $FirewallProfiles) {
             $Status = if ($FwProfile.Enabled) { "Success" } else { "Error" }
             Write-LogMessage "Firewall Profile $($FwProfile.Name): $($FwProfile.Enabled)" -Level $Status
@@ -248,6 +326,9 @@ function Get-SecurityStatus {
                     Default { "Warning" }
                 }
                 Write-LogMessage "BitLocker on $($Volume.MountPoint): $($Volume.ProtectionStatus)" -Level $Status
+                if ($Volume.ProtectionStatus -eq 'On') {
+                    Write-LogMessage "  Encryption Method: $($Volume.EncryptionMethod)" -Level "Info"
+                }
             }
         }
         else {
@@ -256,20 +337,28 @@ function Get-SecurityStatus {
     }
     catch {
         Write-LogMessage "Error checking security status: $($_.Exception.Message)" -Level "Error"
+        Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level "Debug"
     }
 }
 
 # Main execution
-Write-LogMessage "=== System Health Check Started ===" -Level "Process"
-Write-LogMessage "System: $SystemName" -Level "Info"
-Write-LogMessage "Timestamp: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))" -Level "Info"
+try {
+    Write-LogMessage "=== System Health Check Started ===" -Level "Process"
+    Write-LogMessage "System: $SystemName" -Level "Info"
+    Write-LogMessage "Timestamp: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))" -Level "Info"
 
-Get-SystemResourceStatus
-Get-CriticalServicesStatus
-Get-EventLogAnalysis
-Get-WindowsUpdateStatus
-Get-NetworkStatus
-Get-SecurityStatus
+    Get-SystemResourceStatus
+    Get-CriticalServicesStatus
+    Get-EventLogAnalysis
+    Get-WindowsUpdateStatus
+    Get-NetworkStatus
+    Get-SecurityStatus
 
-Write-LogMessage "=== System Health Check Completed ===" -Level "Process"
-Write-LogMessage "Log file saved to: $LogFile" -Level "Success"
+    Write-LogMessage "=== System Health Check Completed ===" -Level "Process"
+    Write-LogMessage "Log file saved to: $LogFile" -Level "Success"
+}
+catch {
+    Write-LogMessage "Script execution failed: $($_.Exception.Message)" -Level "Error"
+    Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level "Error"
+    throw
+}
