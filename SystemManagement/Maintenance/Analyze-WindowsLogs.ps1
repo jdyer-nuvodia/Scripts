@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-02 21:54:00 UTC
+# Last Updated: 2025-04-02 21:58:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.3
-# Additional Info: Fixed invalid query issue by implementing FilterHashTable approach
+# Version: 1.0.4
+# Additional Info: Enhanced log access reliability and added better error handling
 # =============================================================================
 
 <#
@@ -120,32 +120,46 @@ function Get-LogStatistics {
             return $null
         }
 
-        # Use FilterHashTable instead of XPath for better reliability
+        # Enhanced FilterHashTable with more specific criteria
         $FilterHash = @{
             LogName = $LogName
             StartTime = $StartTime
+            Level = @(1,2,3,4,5)  # Include all severity levels
         }
         
-        $Log = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop
+        # Add MaxEvents parameter to prevent memory issues with large logs
+        $Log = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop -MaxEvents 10000
         
         # If we get here, log access was successful
         Write-Log "Successfully accessed $LogName log" -Level Success
         
-        # Get basic statistics
-        $TotalEntries = $Log.Count
-        $RecentEntries = $Log.Count  # All entries are already filtered by start time
-        $ErrorEntries = ($Log | Where-Object { $_.Level -eq 2 }).Count  # Level 2 is Error
-        $WarningEntries = ($Log | Where-Object { $_.Level -eq 3 }).Count  # Level 3 is Warning
+        # Get basic statistics with error handling for each property access
+        $TotalEntries = ($Log | Measure-Object).Count
+        $RecentEntries = $TotalEntries  # All entries are already filtered by start time
+        $ErrorEntries = ($Log | Where-Object { $_.Level -eq 2 } | Measure-Object).Count
+        $WarningEntries = ($Log | Where-Object { $_.Level -eq 3 } | Measure-Object).Count
         
-        # Get top error sources with proper error handling
+        # Get top error sources with enhanced error handling
         $TopErrors = $Log | 
             Where-Object { $_.Level -eq 2 } |
-            Group-Object { try { $_.ProviderName } catch { "Unknown Provider" } } |
+            Group-Object {
+                try {
+                    if ($_.ProviderName) { $_.ProviderName }
+                    else { "Unknown Provider" }
+                }
+                catch {
+                    "Unknown Provider"
+                }
+            } |
             Sort-Object Count -Descending |
             Select-Object -First 5
         
-        # Calculate daily entry rate
-        $DailyRate = [math]::Round($RecentEntries / $DaysToAnalyze, 2)
+        # Calculate daily entry rate with protection against division by zero
+        $DailyRate = if ($DaysToAnalyze -gt 0) {
+            [math]::Round($RecentEntries / $DaysToAnalyze, 2)
+        } else {
+            0
+        }
         
         return @{
             Name = $LogName
@@ -157,17 +171,17 @@ function Get-LogStatistics {
             TopErrorSources = $TopErrors
         }
     }
+    catch [System.Diagnostics.Eventing.Reader.EventLogNotFoundException] {
+        Write-Log "The specified log '$LogName' was not found" -Level Error
+        return $null
+    }
     catch [System.Diagnostics.Eventing.Reader.EventLogException] {
-        Write-Log "Error accessing $LogName log: Invalid query or access denied" -Level Error
+        Write-Log "Error accessing $LogName log: $($_.Exception.Message)" -Level Error
         Write-Log "Exception details: $($_.Exception.GetType().FullName)" -Level Debug
         return $null
     }
     catch [System.UnauthorizedAccessException] {
         Write-Log "Access denied while analyzing $LogName log. Please run as administrator." -Level Error
-        return $null
-    }
-    catch [System.InvalidOperationException] {
-        Write-Log "The $LogName log is empty or does not exist" -Level Warning
         return $null
     }
     catch {
