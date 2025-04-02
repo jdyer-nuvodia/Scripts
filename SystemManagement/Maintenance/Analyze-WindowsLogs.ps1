@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-02 21:27:00 UTC
+# Last Updated: 2025-04-02 21:42:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.0
-# Additional Info: Initial creation - Windows log analysis tool
+# Version: 1.0.1
+# Additional Info: Added error handling and elevation check
 # =============================================================================
 
 <#
@@ -96,6 +96,13 @@ function Write-Log {
     }
 }
 
+# Check for admin privileges
+function Test-AdminPrivileges {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Get-LogStatistics {
     param(
         [Parameter(Mandatory=$true)]
@@ -104,8 +111,16 @@ function Get-LogStatistics {
     
     try {
         $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
-        $Log = Get-WinEvent -LogName $LogName -ErrorAction Stop
         
+        # Use Get-WinEvent with FilterHashTable for better performance and error handling
+        $FilterHash = @{
+            LogName = $LogName
+            StartTime = $StartTime
+        }
+        
+        $Log = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop
+        
+        # If we get here, log access was successful
         # Get basic statistics
         $TotalEntries = $Log.Count
         $RecentEntries = ($Log | Where-Object { $_.TimeCreated -gt $StartTime }).Count
@@ -132,6 +147,23 @@ function Get-LogStatistics {
             TopErrorSources = $TopErrors
         }
     }
+    catch [System.UnauthorizedAccessException] {
+        Write-Log "Access denied while analyzing $LogName log. Please run as administrator." -Level Error
+        return $null
+    }
+    catch [System.InvalidOperationException] {
+        # Handle case where log is empty or doesn't exist
+        Write-Log "No entries found in $LogName log or log does not exist" -Level Warning
+        return @{
+            Name = $LogName
+            TotalEntries = 0
+            RecentEntries = 0
+            ErrorCount = 0
+            WarningCount = 0
+            DailyRate = 0
+            TopErrorSources = @()
+        }
+    }
     catch {
         Write-Log "Error analyzing $LogName log: $_" -Level Error
         return $null
@@ -145,8 +177,12 @@ function Get-SecurityEvents {
     )
     
     try {
-        $SecurityEvents = Get-WinEvent -LogName Security -ErrorAction Stop |
-            Where-Object { $_.TimeCreated -gt $StartTime }
+        $FilterHash = @{
+            LogName = 'Security'
+            StartTime = $StartTime
+        }
+        
+        $SecurityEvents = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop
         
         # Analyze login attempts
         $FailedLogins = $SecurityEvents | 
@@ -166,6 +202,17 @@ function Get-SecurityEvents {
             AccountChanges = $AccountChanges
         }
     }
+    catch [System.UnauthorizedAccessException] {
+        Write-Log "Access denied while analyzing security events. Please run as administrator." -Level Error
+        return $null
+    }
+    catch [System.InvalidOperationException] {
+        Write-Log "No security events found in specified time range" -Level Warning
+        return @{
+            FailedLogins = @()
+            AccountChanges = @()
+        }
+    }
     catch {
         Write-Log "Error analyzing security events: $_" -Level Error
         return $null
@@ -179,6 +226,11 @@ function New-HTMLReport {
         [Parameter(Mandatory=$true)]
         [object]$SecurityStats
     )
+    
+    # Validate input parameters
+    if ($null -eq $LogStats -or $LogStats.Count -eq 0) {
+        throw "No log statistics available for report generation"
+    }
     
     $HTMLHeader = @"
 <!DOCTYPE html>
@@ -276,23 +328,37 @@ function New-HTMLReport {
 # Main execution
 try {
     Write-Log "Starting Windows log analysis..." -Level Process
+    
+    # Check for admin privileges
+    if (-not (Test-AdminPrivileges)) {
+        Write-Log "This script requires administrator privileges. Please run as administrator." -Level Error
+        exit 1
+    }
+    
     Write-Log "System: $SystemName" -Level Info
     Write-Log "Analysis period: $DaysToAnalyze days" -Level Info
     
     $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
     $LogStatistics = @()
+    $hasValidData = $false
     
     foreach ($LogName in $LogNames) {
         Write-Log "Analyzing $LogName log..." -Level Process
         $Stats = Get-LogStatistics -LogName $LogName
         if ($null -ne $Stats) {
             $LogStatistics += $Stats
+            $hasValidData = $true
             Write-Log "Completed analysis of $LogName log" -Level Success
         }
     }
     
     Write-Log "Analyzing security events..." -Level Process
     $SecurityStats = Get-SecurityEvents -StartTime $StartTime
+    
+    if (-not $hasValidData) {
+        Write-Log "No valid log data could be collected. Please check permissions and try again." -Level Error
+        exit 1
+    }
     
     Write-Log "Generating HTML report..." -Level Process
     New-HTMLReport -LogStats $LogStatistics -SecurityStats $SecurityStats
