@@ -2,10 +2,10 @@
 # Script: Remove-AdobeAcrobatReader.ps1
 # Created: 2025-02-27 18:52:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-27 18:52:00 UTC
+# Last Updated: 2025-04-08 19:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script with standardized header
+# Version: 1.1.0
+# Additional Info: Added SupportsShouldProcess for safer software removal
 # =============================================================================
 
 <#
@@ -17,6 +17,8 @@
      - Removing associated directories
      - Cleaning registry entries
      - Removing Creative Cloud Files shortcuts
+     
+    Supports -WhatIf parameter to preview changes without making them.
      
     Dependencies:
      - Must be run with administrative privileges
@@ -40,6 +42,9 @@
     - Check for removal of specified directories
     - Validate registry cleanup
 #>
+
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+param()
 
 # Run this script as an administrator
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))  
@@ -84,15 +89,17 @@ foreach ($key in $uninstallKeys) {
             $productCode = $entry.PSChildName
             $displayName = $entry.DisplayName
             Write-Log "Found installation: $displayName with product code: $productCode"
-            try {
-                $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn" -Wait -NoNewWindow -PassThru
-                if ($process.ExitCode -eq 0) {
-                    Write-Log "Successfully uninstalled $displayName"
-                } else {
-                    Write-Log "Failed to uninstall $displayName. Exit code: $($process.ExitCode)"
+            if ($PSCmdlet.ShouldProcess($displayName, "Uninstall using MSI")) {
+                try {
+                    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn" -Wait -NoNewWindow -PassThru
+                    if ($process.ExitCode -eq 0) {
+                        Write-Log "Successfully uninstalled $displayName"
+                    } else {
+                        Write-Log "Failed to uninstall $displayName. Exit code: $($process.ExitCode)"
+                    }
+                } catch {
+                    Write-Log "Error occurred while uninstalling $displayName. Error: $_"
                 }
-            } catch {
-                Write-Log "Error occurred while uninstalling $displayName. Error: $_"
             }
         }
     } else {
@@ -114,11 +121,13 @@ $directories = @(
 
 foreach ($dir in $directories) {
     if (Test-Path $dir) {
-        try {
-            Remove-Item -Path $dir -Recurse -Force
-            Write-Log "Removed directory: $dir"
-        } catch {
-            Write-Log "Failed to remove directory $dir. Error: $_"
+        if ($PSCmdlet.ShouldProcess($dir, "Remove directory")) {
+            try {
+                Remove-Item -Path $dir -Recurse -Force
+                Write-Log "Removed directory: $dir"
+            } catch {
+                Write-Log "Failed to remove directory $dir. Error: $_"
+            }
         }
     } else {
         Write-Log "Directory not found: $dir"
@@ -143,19 +152,13 @@ foreach ($key in $adobeKeys) {
             $versionNumber = $version.PSChildName
             Write-Log "Found Adobe Reader/Acrobat version: $versionNumber in $key"
             
-            $subKeys = Get-ChildItem -Path $version.PSPath -Recurse -ErrorAction SilentlyContinue
-            foreach ($subKey in $subKeys) {
-                $values = Get-ItemProperty -Path $subKey.PSPath -ErrorAction SilentlyContinue
-                foreach ($value in $values.PSObject.Properties) {
-                    Write-Log "  $($subKey.Name)\$($value.Name): $($value.Value)"
+            if ($PSCmdlet.ShouldProcess("$key\$versionNumber", "Remove registry key")) {
+                try {
+                    Remove-Item -Path $version.PSPath -Recurse -Force
+                    Write-Log "Removed registry key: $($version.PSPath)"
+                } catch {
+                    Write-Log "Failed to remove registry key $($version.PSPath). Error: $_"
                 }
-            }
-            
-            try {
-                Remove-Item -Path $version.PSPath -Recurse -Force
-                Write-Log "Removed registry key: $($version.PSPath)"
-            } catch {
-                Write-Log "Failed to remove registry key $($version.PSPath). Error: $_"
             }
         }
     } else {
@@ -166,11 +169,13 @@ foreach ($key in $adobeKeys) {
 # Remove Creative Cloud Files shortcut from Explorer
 $ccfPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{0E270DAA-1BE6-48F2-AC49-5CE0DBECC398}"
 if (Test-Path $ccfPath) {
-    try {
-        Remove-Item -Path $ccfPath -Recurse -Force
-        Write-Log "Removed Creative Cloud Files shortcut from Explorer"
-    } catch {
-        Write-Log "Failed to remove Creative Cloud Files shortcut. Error: $_"
+    if ($PSCmdlet.ShouldProcess("Creative Cloud Files shortcut", "Remove from Explorer")) {
+        try {
+            Remove-Item -Path $ccfPath -Recurse -Force
+            Write-Log "Removed Creative Cloud Files shortcut from Explorer"
+        } catch {
+            Write-Log "Failed to remove Creative Cloud Files shortcut. Error: $_"
+        }
     }
 } else {
     Write-Log "Creative Cloud Files shortcut not found"

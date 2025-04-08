@@ -2,10 +2,10 @@
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-14 14:30:21 UTC
+# Last Updated: 2025-04-08 19:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Fixed syntax error with missing closing brace
+# Version: 1.3.0
+# Additional Info: Added SupportsShouldProcess for safer file deletion
 # =============================================================================
 
 <#
@@ -18,6 +18,8 @@
     2. Removes all files recursively
     3. Removes all folders in descending order to handle nested directories
     
+    Supports -WhatIf parameter to preview changes without making them.
+    
     Dependencies:
     - PowerShell 5.1 or higher
     - Appropriate permissions on target directory
@@ -27,12 +29,16 @@
 .EXAMPLE
     .\Delete-AllFilesInDirectory.ps1 -TargetPath "C:\TempFiles"
     Deletes all contents in the specified directory "C:\TempFiles"
+.EXAMPLE
+    .\Delete-AllFilesInDirectory.ps1 -TargetPath "C:\TempFiles" -WhatIf
+    Shows what files and folders would be deleted without actually deleting them
 .NOTES
     Security Level: High
     Required Permissions: Write access to target directory, Administrative rights
     Validation Requirements: Verify target directory before execution
 #>
 
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
 param(
     [Parameter(Mandatory=$true)]
     [string]$TargetPath
@@ -84,8 +90,10 @@ try {
     Write-Host "Removing files..." -ForegroundColor Cyan
     Get-ChildItem -Path $TargetPath -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
         try {
-            Write-Host "Deleting file: $($_.FullName)" -ForegroundColor Yellow
-            Remove-Item -Path $_.FullName -Force -ErrorAction Stop
+            if ($PSCmdlet.ShouldProcess($_.FullName, "Delete file")) {
+                Write-Host "Deleting file: $($_.FullName)" -ForegroundColor Yellow
+                Remove-Item -Path $_.FullName -Force -ErrorAction Stop
+            }
         }
         catch {
             Write-Host "Failed to delete file $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
@@ -98,42 +106,44 @@ try {
         Sort-Object -Property FullName -Descending | 
         ForEach-Object {
             $StartPath = $_.FullName
-            Write-Host "Attempting to delete folder: $StartPath" -ForegroundColor Yellow
-            try {
-                # Enable long path support if needed
-                if ($StartPath.Length -ge 260) {
-                    $StartPath = "\\?\$StartPath"
-                    Write-Host "Using long path format: $StartPath" -ForegroundColor Yellow
-                }
-                
-                # Try up to 3 times with a small delay between attempts
-                $maxAttempts = 3
-                $attempt = 1
-                $success = $false
-                
-                while (-not $success -and $attempt -le $maxAttempts) {
-                    try {
-                        Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
-                        $success = $true
-                        Write-Host "Successfully deleted folder: $($_.FullName)" -ForegroundColor Green
+            if ($PSCmdlet.ShouldProcess($StartPath, "Delete folder")) {
+                Write-Host "Attempting to delete folder: $StartPath" -ForegroundColor Yellow
+                try {
+                    # Enable long path support if needed
+                    if ($StartPath.Length -ge 260) {
+                        $StartPath = "\\?\$StartPath"
+                        Write-Host "Using long path format: $StartPath" -ForegroundColor Yellow
                     }
-                    catch {
-                        if ($attempt -lt $maxAttempts) {
-                            Write-Host "Attempt $attempt failed, retrying in 2 seconds..." -ForegroundColor Yellow
-                            Start-Sleep -Seconds 2
-                            $attempt++
+                    
+                    # Try up to 3 times with a small delay between attempts
+                    $maxAttempts = 3
+                    $attempt = 1
+                    $success = $false
+                    
+                    while (-not $success -and $attempt -le $maxAttempts) {
+                        try {
+                            Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
+                            $success = $true
+                            Write-Host "Successfully deleted folder: $($_.FullName)" -ForegroundColor Green
                         }
-                        else {
-                            Write-Host "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -ForegroundColor Yellow
-                            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Yellow
-                            # Continue with other folders instead of stopping
+                        catch {
+                            if ($attempt -lt $maxAttempts) {
+                                Write-Host "Attempt $attempt failed, retrying in 2 seconds..." -ForegroundColor Yellow
+                                Start-Sleep -Seconds 2
+                                $attempt++
+                            }
+                            else {
+                                Write-Host "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -ForegroundColor Yellow
+                                Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Yellow
+                                # Continue with other folders instead of stopping
+                            }
                         }
                     }
                 }
-            }
-            catch {
-                Write-Host "Error processing folder $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
-                # Continue with other folders
+                catch {
+                    Write-Host "Error processing folder $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
+                    # Continue with other folders
+                }
             }
         }
 

@@ -2,10 +2,10 @@
 # Script: Remove-AllMailboxPermissions.ps1
 # Created: 2024-02-21 12:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 21:00:00 UTC
+# Last Updated: 2025-04-08 19:21:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Enhanced documentation, added logging and error handling
+# Version: 1.3.0
+# Additional Info: Added SupportsShouldProcess for safer permission removal
 # =============================================================================
 
 <#
@@ -19,6 +19,8 @@
     - Removes Calendar permissions (except Default and Anonymous)
     - Validates changes after removal
     - Creates detailed operation logs
+    
+    Supports -WhatIf parameter to preview changes without making them.
     
     Key Features:
     - Batch or single mailbox processing
@@ -66,7 +68,9 @@
     - Verify ExchangeOnlineManagement module is installed
 #>
 
-[CmdletBinding(DefaultParameterSetName='File')]
+[CmdletBinding(DefaultParameterSetName='File', 
+               SupportsShouldProcess=$true,
+               ConfirmImpact='High')]
 param(
     [Parameter(ParameterSetName='Single',
                Position=0,
@@ -121,6 +125,7 @@ function Test-ExchangeConnection {
 }
 
 function Remove-MailboxDelegates {
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param([string]$Identity)
     
     try {
@@ -131,8 +136,10 @@ function Remove-MailboxDelegates {
         }
         
         foreach ($delegate in $delegates) {
-            Remove-MailboxPermission -Identity $Identity -User $delegate.User -AccessRights FullAccess -Confirm:$false -ErrorAction Stop
-            Write-Log "Removed FullAccess permission for $($delegate.User) on $Identity" "Success"
+            if ($PSCmdlet.ShouldProcess($Identity, "Remove FullAccess permission for $($delegate.User)")) {
+                Remove-MailboxPermission -Identity $Identity -User $delegate.User -AccessRights FullAccess -Confirm:$false -ErrorAction Stop
+                Write-Log "Removed FullAccess permission for $($delegate.User) on $Identity" "Success"
+            }
         }
         return $true
     }
@@ -143,6 +150,7 @@ function Remove-MailboxDelegates {
 }
 
 function Remove-SendAsPermissions {
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param([string]$Identity)
     
     try {
@@ -150,8 +158,10 @@ function Remove-SendAsPermissions {
             Where-Object { $_.IsInherited -eq $false -and $_.Trustee -ne "NT AUTHORITY\SELF" }
         
         foreach ($permission in $sendAsPermissions) {
-            Remove-RecipientPermission -Identity $Identity -Trustee $permission.Trustee -AccessRights SendAs -Confirm:$false -ErrorAction Stop
-            Write-Log "Removed SendAs permission for $($permission.Trustee) on $Identity" "Success"
+            if ($PSCmdlet.ShouldProcess($Identity, "Remove SendAs permission for $($permission.Trustee)")) {
+                Remove-RecipientPermission -Identity $Identity -Trustee $permission.Trustee -AccessRights SendAs -Confirm:$false -ErrorAction Stop
+                Write-Log "Removed SendAs permission for $($permission.Trustee) on $Identity" "Success"
+            }
         }
         return $true
     }
@@ -162,11 +172,14 @@ function Remove-SendAsPermissions {
 }
 
 function Remove-SendOnBehalfPermissions {
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param([string]$Identity)
     
     try {
-        Set-Mailbox -Identity $Identity -GrantSendOnBehalfTo $null -ErrorAction Stop
-        Write-Log "Removed all Send on Behalf permissions for $Identity" "Success"
+        if ($PSCmdlet.ShouldProcess($Identity, "Remove all Send on Behalf permissions")) {
+            Set-Mailbox -Identity $Identity -GrantSendOnBehalfTo $null -ErrorAction Stop
+            Write-Log "Removed all Send on Behalf permissions for $Identity" "Success"
+        }
         return $true
     }
     catch {
@@ -176,6 +189,7 @@ function Remove-SendOnBehalfPermissions {
 }
 
 function Remove-CalendarPermissions {
+    [CmdletBinding(SupportsShouldProcess=$true)]
     param([string]$Identity)
     
     try {
@@ -184,8 +198,10 @@ function Remove-CalendarPermissions {
         
         foreach ($permission in $calendarPermissions) {
             if ($permission.User.DisplayName -notin @("Default", "Anonymous")) {
-                Remove-MailboxFolderPermission -Identity $calendarPath -User $permission.User.DisplayName -Confirm:$false -ErrorAction Stop
-                Write-Log "Removed calendar permission for $($permission.User.DisplayName) on $Identity" "Success"
+                if ($PSCmdlet.ShouldProcess($calendarPath, "Remove calendar permission for $($permission.User.DisplayName)")) {
+                    Remove-MailboxFolderPermission -Identity $calendarPath -User $permission.User.DisplayName -Confirm:$false -ErrorAction Stop
+                    Write-Log "Removed calendar permission for $($permission.User.DisplayName) on $Identity" "Success"
+                }
             }
         }
         return $true

@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-05 23:27:00 UTC
+# Last Updated: 2025-04-08 19:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.4
-# Additional Info: Fixed script analyzer warnings about unused variables
+# Version: 3.5.1
+# Additional Info: Fixed unapproved verb warning in function name
 # =============================================================================
 
 <#
@@ -19,12 +19,14 @@
      - Automatically opens the log file upon completion
      - Keeps the PowerShell window open until user interaction
      
+    Supports -WhatIf parameter to preview changes without making them.
+     
     Dependencies:
      - Active Directory PowerShell module
      - Appropriate AD permissions to modify users and groups
      - Windows Forms assembly for completion notification
 
-    IMPORTANT: This script always runs in live mode and will make immediate changes to Active Directory.
+    IMPORTANT: This script always runs in live mode and will make immediate changes to Active Directory unless -WhatIf is specified.
 .PARAMETER None
     This script does not accept parameters. Configuration is done via variables.
 .EXAMPLE
@@ -37,6 +39,9 @@
     - Review log file after completion
     - Verify users have appropriate group membership
 #>
+
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+param()
 
 # Import required assembly for MessageBox
 Add-Type -AssemblyName System.Windows.Forms
@@ -111,11 +116,15 @@ Try {
                     try {
                         # Add to Domain Users if not already a member
                         if (-not ($UserGroups | Where-Object { $_.Name -eq $DomainUsersGroup })) {
-                            Add-ADGroupMember -Identity $DomainUsersGroup -Members $User
+                            if ($PSCmdlet.ShouldProcess($User, "Add to Domain Users group")) {
+                                Add-ADGroupMember -Identity $DomainUsersGroup -Members $User
+                            }
                         }
                         # Set Domain Users as primary group
-                        Set-ADUser -Identity $User -Replace @{primaryGroupID = $DomainUsersPGID}
-                        Write-Host "Reset primary group to Domain Users" -ForegroundColor Green
+                        if ($PSCmdlet.ShouldProcess($User, "Set Domain Users as primary group")) {
+                            Set-ADUser -Identity $User -Replace @{primaryGroupID = $DomainUsersPGID}
+                            Write-Host "Reset primary group to Domain Users" -ForegroundColor Green
+                        }
                     } catch {
                         Write-Host "Error setting Domain Users as primary group: $($_.Exception.Message)" -ForegroundColor Red
                     }
@@ -126,9 +135,11 @@ Try {
                     # Skip if it's Domain Users and it's now the primary group
                     if ($Group.Name -ne $DomainUsersGroup -or $UserInfo.PrimaryGroupID -ne $DomainUsersPGID) {
                         try {
-                            Remove-ADGroupMember -Identity $Group.Name -Members $User -Confirm:$false
-                            Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
-                            $GroupsRemovedCounter++
+                            if ($PSCmdlet.ShouldProcess($User, "Remove from group '$($Group.Name)'")) {
+                                Remove-ADGroupMember -Identity $Group.Name -Members $User -Confirm:$false
+                                Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
+                                $GroupsRemovedCounter++
+                            }
                         } catch {
                             Write-Host "Error removing from group $($Group.Name) - $($_.Exception.Message)" -ForegroundColor Red
                         }
@@ -142,8 +153,10 @@ Try {
             $DisabledDate = Get-Date
             if ($null -eq $UserInfo.Description -or -not $UserInfo.Description.StartsWith("User disabled")) {
                 try {
-                    Set-ADUser -Identity $User -Description "User disabled $DisabledDate"
-                    Write-Host "Updated user description" -ForegroundColor Green
+                    if ($PSCmdlet.ShouldProcess($User, "Update description to 'User disabled $DisabledDate'")) {
+                        Set-ADUser -Identity $User -Description "User disabled $DisabledDate"
+                        Write-Host "Updated user description" -ForegroundColor Green
+                    }
                 } catch {
                     Write-Host "Error updating description: $($_.Exception.Message)" -ForegroundColor Red
                 }
@@ -186,7 +199,7 @@ Write-Host "Window will remain open for your review." -ForegroundColor Cyan
 Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 
 # This technique works better with "Run with PowerShell" than Read-Host
-function Pause-Script {
+function Wait-ForKey {
     if ($psISE) {
         # Running in PowerShell ISE
         $null = Read-Host "Press Enter to continue..."
@@ -198,5 +211,5 @@ function Pause-Script {
     }
 }
 
-# Execute the pause function to keep window open
-Pause-Script
+# Execute the wait function to keep window open
+Wait-ForKey

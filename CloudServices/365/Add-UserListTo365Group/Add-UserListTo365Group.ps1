@@ -2,10 +2,10 @@
 # Script: Add-UserListTo365Group.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 20:45:00 UTC
+# Last Updated: 2025-04-08 19:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Enhanced documentation and parameter validation
+# Version: 1.2.0
+# Additional Info: Added SupportsShouldProcess for safer group member additions
 # =============================================================================
 
 <#
@@ -15,6 +15,8 @@
     This script reads a CSV file containing user principal names and adds each user
     to a specified Microsoft 365 distribution group. The script bypasses security
     group manager check for bulk operations.
+    
+    Supports -WhatIf parameter to preview changes without making them.
     
     Dependencies:
     - Exchange Online PowerShell Module (Install-Module -Name ExchangeOnlineManagement)
@@ -49,11 +51,12 @@
     - Verify distribution group exists
     - Verify current user has appropriate permissions
     Change Log:
+    - v1.2.0: Added SupportsShouldProcess for safer group member additions
     - v1.1.0: Added parameter validation and enhanced error handling
     - v1.0.0: Initial script creation
 #>
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
 param(
     [Parameter(Mandatory=$false)]
     [ValidateScript({
@@ -118,9 +121,11 @@ try {
 
     foreach ($user in $users) {
         try {
-            Add-DistributionGroupMember -Identity $GroupName -Member $user.UserPrincipalName -BypassSecurityGroupManagerCheck -ErrorAction Stop
-            Write-Log "Successfully added user: $($user.UserPrincipalName)" "Success"
-            $successCount++
+            if ($PSCmdlet.ShouldProcess($user.UserPrincipalName, "Add to distribution group '$GroupName'")) {
+                Add-DistributionGroupMember -Identity $GroupName -Member $user.UserPrincipalName -BypassSecurityGroupManagerCheck -ErrorAction Stop
+                Write-Log "Successfully added user: $($user.UserPrincipalName)" "Success"
+                $successCount++
+            }
         }
         catch {
             Write-Log "Failed to add user $($user.UserPrincipalName): $_" "Error"

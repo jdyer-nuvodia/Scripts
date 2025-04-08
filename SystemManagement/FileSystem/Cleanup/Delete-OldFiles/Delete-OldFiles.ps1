@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Delete-OldFiles.ps1
-# Created: 2024-02-20 17:15:00 UTC
+# Created: 2025-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-03-19 22:19:00 UTC
+# Last Updated: 2025-04-08 19:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.0
-# Additional Info: Added log file consolidation and cleanup
+# Version: 1.9.0
+# Additional Info: Added SupportsShouldProcess for safer file deletion
 # =============================================================================
 
 <#
@@ -20,6 +20,8 @@
     - Shows drive space comparison before and after deletion
     - Recursive deletion by default
     - Silent operation with error suppression
+    
+    Supports -WhatIf parameter to preview changes without making them.
 .PARAMETER StartPath
     The path to the folder containing files to be cleaned up
 .PARAMETER daysOld
@@ -34,6 +36,7 @@
     Deletes files older than 90 days from D:\Backups without recursing into subdirectories
 #>
 
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
 param(
     [Parameter(Mandatory=$false)]
     [string]$StartPath = "C:\windows\System32\winevt\logs",
@@ -108,8 +111,10 @@ try {
                       -CurrentOperation $file.Name
         
         try {
-            Remove-Item $file.FullName -Force -ErrorAction Stop
-            "Deleted file: $($file.FullName)" | Out-File -FilePath $tempDeletionLog -Append
+            if ($PSCmdlet.ShouldProcess($file.FullName, "Delete file")) {
+                Remove-Item $file.FullName -Force -ErrorAction Stop
+                "Deleted file: $($file.FullName)" | Out-File -FilePath $tempDeletionLog -Append
+            }
         } catch {
             "Failed to delete file: $($file.FullName) - Error: $_" | Out-File -FilePath $tempDeletionLog -Append
         }
@@ -138,8 +143,10 @@ try {
 
             if (!(Get-ChildItem -Path $dir.FullName -Force)) {
                 try {
-                    Remove-Item $dir.FullName -Force -ErrorAction Stop
-                    "Deleted empty directory: $($dir.FullName)" | Out-File -FilePath $tempDeletionLog -Append
+                    if ($PSCmdlet.ShouldProcess($dir.FullName, "Delete empty directory")) {
+                        Remove-Item $dir.FullName -Force -ErrorAction Stop
+                        "Deleted empty directory: $($dir.FullName)" | Out-File -FilePath $tempDeletionLog -Append
+                    }
                 } catch {
                     "Failed to delete directory: $($dir.FullName) - Error: $_" | Out-File -FilePath $tempDeletionLog -Append
                 }

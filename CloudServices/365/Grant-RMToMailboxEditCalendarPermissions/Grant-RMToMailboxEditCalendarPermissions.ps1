@@ -2,10 +2,10 @@
 # Script: Grant-RMToMailboxEditCalendarPermissions.ps1
 # Created: 2024-02-20 17:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 21:00:00 UTC
+# Last Updated: 2025-04-08 19:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Enhanced documentation, added error handling and logging
+# Version: 1.4.0
+# Additional Info: Added SupportsShouldProcess for safer permission grants
 # =============================================================================
 
 <#
@@ -18,6 +18,8 @@
     - Supporting both single and batch operations
     - Providing detailed progress tracking
     - Maintaining operation logs
+    
+    Supports -WhatIf parameter to preview changes without making them.
     
     Key Features:
     - Flexible input options (single mailbox or file list)
@@ -73,7 +75,9 @@
     - Verify ExchangeOnlineManagement module is installed
 #>
 
-[CmdletBinding(DefaultParameterSetName='File')]
+[CmdletBinding(DefaultParameterSetName='File',
+               SupportsShouldProcess=$true,
+               ConfirmImpact='High')]
 param(
     [Parameter(Mandatory=$true,
               Position=0,
@@ -170,13 +174,17 @@ try {
             $mbx = Get-Mailbox -Identity $mailbox -ErrorAction Stop
             
             # Grant mailbox permissions
-            Add-MailboxPermission -Identity $mailbox -User $UserEmail -AccessRights FullAccess -InheritanceType All -AutoMapping:$AutoMapping -ErrorAction Stop
-            Write-Log "Granted Full Access on mailbox $mailbox" "Success"
+            if ($PSCmdlet.ShouldProcess($mailbox, "Grant FullAccess permissions to $UserEmail")) {
+                Add-MailboxPermission -Identity $mailbox -User $UserEmail -AccessRights FullAccess -InheritanceType All -AutoMapping:$AutoMapping -ErrorAction Stop
+                Write-Log "Granted Full Access on mailbox $mailbox" "Success"
+            }
             
             # Grant calendar permissions
             $calendarPath = $mbx.UserPrincipalName + ":\Calendar"
-            Add-MailboxFolderPermission -Identity $calendarPath -User $UserEmail -AccessRights Editor -SharingPermissionFlags Delegate,CanViewPrivateItems -ErrorAction Stop
-            Write-Log "Granted Editor rights on calendar for $mailbox" "Success"
+            if ($PSCmdlet.ShouldProcess($calendarPath, "Grant Editor calendar permissions to $UserEmail")) {
+                Add-MailboxFolderPermission -Identity $calendarPath -User $UserEmail -AccessRights Editor -SharingPermissionFlags Delegate,CanViewPrivateItems -ErrorAction Stop
+                Write-Log "Granted Editor rights on calendar for $mailbox" "Success"
+            }
         }
         catch {
             Write-Log "Error processing $mailbox`: $_" "Error"

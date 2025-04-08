@@ -2,10 +2,10 @@
 # Script: Create-ADUser.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 20:47:00 UTC
+# Last Updated: 2025-04-08 19:29:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Changed password parameter to use SecureString for security
+# Version: 1.3.0
+# Additional Info: Added SupportsShouldProcess for safer user creation
 # =============================================================================
 
 <#
@@ -19,6 +19,7 @@
     - Parameter validation
     - Group membership management
     - Error handling and logging
+    - Support for -WhatIf to preview changes
     
     Dependencies:
     - Active Directory PowerShell module
@@ -79,7 +80,7 @@
     - Verify password meets complexity requirements
 #>
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -153,28 +154,32 @@ try {
     
     # Create the new user
     Write-Log "Creating new AD user account..." "Information"
-    New-ADUser -Name $Name `
-        -GivenName $GivenName `
-        -Surname $Surname `
-        -SamAccountName $SamAccountName `
-        -UserPrincipalName $UserPrincipalName `
-        -AccountPassword $Password `
-        -Enabled $true `
-        -Path $OUPath `
-        -ErrorAction Stop
-    
-    Write-Log "Successfully created user account: $Name" "Success"
-    
-    # Add user to specified groups
-    if ($Groups.Count -gt 0) {
-        Write-Log "Adding user to specified groups..." "Information"
-        foreach ($Group in $Groups) {
-            try {
-                Add-ADGroupMember -Identity $Group -Members $SamAccountName -ErrorAction Stop
-                Write-Log "Added to group: $Group" "Success"
-            }
-            catch {
-                Write-Log "Failed to add to group $Group`: $_" "Warning"
+    if ($PSCmdlet.ShouldProcess($Name, "Create new AD user with SamAccountName '$SamAccountName'")) {
+        New-ADUser -Name $Name `
+            -GivenName $GivenName `
+            -Surname $Surname `
+            -SamAccountName $SamAccountName `
+            -UserPrincipalName $UserPrincipalName `
+            -AccountPassword $Password `
+            -Enabled $true `
+            -Path $OUPath `
+            -ErrorAction Stop
+        
+        Write-Log "Successfully created user account: $Name" "Success"
+        
+        # Add user to specified groups
+        if ($Groups.Count -gt 0) {
+            Write-Log "Adding user to specified groups..." "Information"
+            foreach ($Group in $Groups) {
+                try {
+                    if ($PSCmdlet.ShouldProcess($SamAccountName, "Add to group '$Group'")) {
+                        Add-ADGroupMember -Identity $Group -Members $SamAccountName -ErrorAction Stop
+                        Write-Log "Added to group: $Group" "Success"
+                    }
+                }
+                catch {
+                    Write-Log "Failed to add to group $Group`: $_" "Warning"
+                }
             }
         }
     }
