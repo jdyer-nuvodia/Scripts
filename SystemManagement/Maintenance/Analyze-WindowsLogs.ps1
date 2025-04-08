@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-08 17:22:00 UTC
+# Last Updated: 2025-04-08 17:27:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.8
-# Additional Info: Enhanced event log access methods and error handling
+# Version: 1.0.9
+# Additional Info: Fixed NoConsole parameter issue and enhanced error handling
 # =============================================================================
 
 <#
@@ -78,21 +78,30 @@ function Write-Log {
         
         [Parameter()]
         [ValidateSet("Info", "Process", "Success", "Warning", "Error", "Debug")]
-        [string]$Level = "Info"
+        [string]$Level = "Info",
+        
+        [Parameter()]
+        [ConsoleColor]$Color,
+        
+        [Parameter()]
+        [switch]$NoConsole
     )
     
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
     
-    switch ($Level) {
-        "Info"      { Write-Host $Message -ForegroundColor White }
-        "Process"   { Write-Host $Message -ForegroundColor Cyan }
-        "Success"   { Write-Host $Message -ForegroundColor Green }
-        "Warning"   { Write-Host $Message -ForegroundColor Yellow }
-        "Error"     { Write-Host $Message -ForegroundColor Red }
-        "Debug"     { Write-Host $Message -ForegroundColor Magenta }
-        Default     { Write-Host $Message -ForegroundColor DarkGray }
+    if (-not $NoConsole) {
+        $ColorToUse = switch ($Level) {
+            "Info"      { "White" }
+            "Process"   { "Cyan" }
+            "Success"   { "Green" }
+            "Warning"   { "Yellow" }
+            "Error"     { "Red" }
+            "Debug"     { "Magenta" }
+            Default     { "DarkGray" }
+        }
+        Write-Host $Message -ForegroundColor $ColorToUse
     }
 }
 
@@ -124,7 +133,7 @@ function Get-LogStatistics {
         
         # Method 1: Direct access with minimal filtering
         try {
-            Write-Log "Attempting direct access to $LogName log..." -Level Process -NoConsole
+            Write-Log "Attempting direct access to $LogName log..." -Level Process
             $Events = Get-WinEvent -LogName $LogName -MaxEvents 1 -ErrorAction Stop
             # If successful, proceed with full query
             $FilterHash = @{
@@ -134,11 +143,11 @@ function Get-LogStatistics {
             $Events = Get-WinEvent -FilterHashtable $FilterHash -ErrorAction Stop
         }
         catch {
-            Write-Log "Direct access failed, trying alternative method for $LogName..." -Level Process -NoConsole
+            Write-Log "Direct access failed, trying alternative method for $LogName..." -Level Process
             
             # Method 2: Use System.Diagnostics.EventLog
             try {
-                Write-Log "Attempting System.Diagnostics.EventLog access..." -Level Process -NoConsole
+                Write-Log "Attempting System.Diagnostics.EventLog access..." -Level Process
                 $EventLog = New-Object System.Diagnostics.EventLog($LogName)
                 $Events = $EventLog.Entries | Where-Object { $_.TimeGenerated -ge $StartTime }
                 $Events = $Events | ForEach-Object {
@@ -155,7 +164,7 @@ function Get-LogStatistics {
                 }
             }
             catch {
-                Write-Log "Alternative method also failed for $LogName. Error: $_" -Level Warning -NoConsole
+                Write-Log "Alternative method also failed for $LogName. Error: $_" -Level Warning
                 return $null
             }
         }
