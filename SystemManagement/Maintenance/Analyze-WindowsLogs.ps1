@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-08 16:23:00 UTC
+# Last Updated: 2025-04-08 16:33:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.6
-# Additional Info: Fixed resource type errors in event log access
+# Version: 1.0.7
+# Additional Info: Fixed variable reference error in error message formatting
 # =============================================================================
 
 <#
@@ -147,7 +147,8 @@ function Get-LogStatistics {
                     $Events = Get-WinEvent -LogName $LogName -MaxEvents 1000 -ErrorAction Stop
                 }
                 catch {
-                    Write-Log "All methods failed to access $LogName: $($_.Exception.Message)" -Level Error
+                    $ErrorMessage = $_.Exception.Message
+                    Write-Log "All methods failed to access ${LogName}: ${ErrorMessage}" -Level Error
                     return $null
                 }
             }
@@ -194,7 +195,8 @@ function Get-LogStatistics {
         }
     }
     catch {
-        Write-Log "Error processing $LogName events: $($_.Exception.Message)" -Level Error
+        $ErrorMessage = $_.Exception.Message
+        Write-Log "Error processing ${LogName}: ${ErrorMessage}" -Level Error
         return $null
     }
 }
