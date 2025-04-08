@@ -2,10 +2,10 @@
 # Script: Delete-OldScreenshots.ps1
 # Created: 2024-02-07 13:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-31 23:25:00 UTC
+# Last Updated: 2025-04-08 21:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Added proper parameter handling, logging, and error handling
+# Version: 1.2.0
+# Additional Info: Added SupportsShouldProcess for safer file deletion
 # =============================================================================
 
 <#
@@ -18,6 +18,8 @@
     - Removes files older than threshold
     - Provides progress feedback and logging
     - Handles errors gracefully
+    
+    Supports -WhatIf parameter to preview deletions without making them.
 .PARAMETER FolderPath
     The path to the screenshots folder
 .PARAMETER DaysOld
@@ -25,13 +27,16 @@
 .EXAMPLE
     .\Delete-OldScreenshots.ps1 -FolderPath "C:\Screenshots" -DaysOld 30
     Deletes all screenshots older than 30 days from the specified folder
+.EXAMPLE
+    .\Delete-OldScreenshots.ps1 -WhatIf
+    Shows which files would be deleted without actually deleting them
 .NOTES
     Security Level: Low
     Required Permissions: File system read/write access to screenshots folder
     Validation Requirements: Verify folder path exists before execution
 #>
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
 param(
     [Parameter(Mandatory=$false)]
     [ValidateScript({Test-Path $_})]
@@ -86,9 +91,11 @@ try {
         Write-Progress -Activity "Deleting old screenshots" -Status "$percent% Complete" -PercentComplete $percent
         
         try {
-            Remove-Item $file.FullName -Force
-            $deleted++
-            Write-Log "Deleted: $($file.Name)" "Success"
+            if ($PSCmdlet.ShouldProcess($file.FullName, "Delete screenshot")) {
+                Remove-Item $file.FullName -Force
+                $deleted++
+                Write-Log "Deleted: $($file.Name)" "Success"
+            }
         }
         catch {
             $failed++
