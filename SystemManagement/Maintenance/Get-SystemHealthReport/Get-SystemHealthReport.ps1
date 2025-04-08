@@ -2,10 +2,10 @@
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 18:17:00 UTC
+# Last Updated: 2025-04-08 18:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.2
-# Additional Info: Fixed type conversion errors and improved error handling
+# Version: 1.2.0
+# Additional Info: Added DattoEDR and Datto RMM service monitoring
 # =============================================================================
 
 <#
@@ -60,7 +60,8 @@ param(
         'EventLog',      # Windows Event Log
         'mpssvc',        # Windows Firewall
         'LanmanServer',  # Server
-        'Dnscache'       # DNS Client
+        'Dnscache',      # DNS Client
+        'DattoRMM'       # Datto RMM Agent
     )
 )
 
@@ -287,6 +288,15 @@ function Get-SecurityStatus {
             if ($DefenderStatus.AntivirusSignatureLastUpdated -lt (Get-Date).AddDays(-3)) {
                 Write-LogMessage "  Warning: Virus definitions are more than 3 days old" -Level "Warning"
             }
+        }
+
+        # DattoEDR Status
+        $DattoService = Get-Service -Name "DattoEDR" -ErrorAction SilentlyContinue
+        if ($DattoService) {
+            $Status = if ($DattoService.Status -eq 'Running') { "Success" } else { "Error" }
+            Write-LogMessage "DattoEDR Status: $($DattoService.Status)" -Level $Status
+        } else {
+            Write-LogMessage "DattoEDR not installed" -Level "Error"
         }
         
         # Firewall Status
