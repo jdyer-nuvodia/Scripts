@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-08 16:33:00 UTC
+# Last Updated: 2025-04-08 17:22:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.7
-# Additional Info: Fixed variable reference error in error message formatting
+# Version: 1.0.8
+# Additional Info: Enhanced event log access methods and error handling
 # =============================================================================
 
 <#
@@ -112,45 +112,51 @@ function Get-LogStatistics {
     try {
         $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
         
-        # First verify the log exists using Get-WinEvent -ListLog
-        try {
-            $LogExists = Get-WinEvent -ListLog $LogName -ErrorAction Stop
-            if (-not $LogExists.IsEnabled) {
-                Write-Log "Log '$LogName' exists but is not enabled" -Level Warning
-                return $null
-            }
-        }
-        catch {
-            Write-Log "Error accessing log '$LogName': $($_.Exception.Message)" -Level Error
+        # First verify the log exists and is accessible
+        $LogExists = Get-WinEvent -ListLog $LogName -ErrorAction Stop
+        if (-not $LogExists.IsEnabled) {
+            Write-Log "Log '$LogName' exists but is not enabled" -Level Warning
             return $null
         }
 
-        # Try primary method with FilterHashtable
+        # Try different methods to access the log
+        $Events = $null
+        
+        # Method 1: Direct access with minimal filtering
         try {
+            Write-Log "Attempting direct access to $LogName log..." -Level Process -NoConsole
+            $Events = Get-WinEvent -LogName $LogName -MaxEvents 1 -ErrorAction Stop
+            # If successful, proceed with full query
             $FilterHash = @{
                 LogName = $LogName
                 StartTime = $StartTime
             }
             $Events = Get-WinEvent -FilterHashtable $FilterHash -ErrorAction Stop
         }
-        catch [System.InvalidOperationException] {
-            # If primary method fails, try alternate method
-            Write-Log "Primary method failed, attempting alternate method for $LogName..." -Level Process
+        catch {
+            Write-Log "Direct access failed, trying alternative method for $LogName..." -Level Process -NoConsole
+            
+            # Method 2: Use System.Diagnostics.EventLog
             try {
-                $Events = Get-WinEvent -LogName $LogName -ErrorAction Stop | 
-                    Where-Object { $_.TimeCreated -ge $StartTime }
+                Write-Log "Attempting System.Diagnostics.EventLog access..." -Level Process -NoConsole
+                $EventLog = New-Object System.Diagnostics.EventLog($LogName)
+                $Events = $EventLog.Entries | Where-Object { $_.TimeGenerated -ge $StartTime }
+                $Events = $Events | ForEach-Object {
+                    # Convert to equivalent WinEvent structure
+                    [PSCustomObject]@{
+                        TimeCreated = $_.TimeGenerated
+                        Level = switch($_.EntryType) {
+                            'Error' { 2 }
+                            'Warning' { 3 }
+                            default { 4 }
+                        }
+                        ProviderName = $_.Source
+                    }
+                }
             }
             catch {
-                # If both methods fail, try one final time with minimal filter
-                Write-Log "Alternate method failed, attempting minimal filter for $LogName..." -Level Warning
-                try {
-                    $Events = Get-WinEvent -LogName $LogName -MaxEvents 1000 -ErrorAction Stop
-                }
-                catch {
-                    $ErrorMessage = $_.Exception.Message
-                    Write-Log "All methods failed to access ${LogName}: ${ErrorMessage}" -Level Error
-                    return $null
-                }
+                Write-Log "Alternative method also failed for $LogName. Error: $_" -Level Warning -NoConsole
+                return $null
             }
         }
 
