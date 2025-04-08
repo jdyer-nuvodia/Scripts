@@ -3,10 +3,10 @@
 File: README.md
 Created: 2025-02-07 21:21:53 UTC
 Author: jdyer-nuvodia
-Last Updated: 2025-04-02 21:15:00 UTC
+Last Updated: 2025-04-08 21:49:00 UTC
 Updated By: jdyer-nuvodia
-Version: 1.0.0
-Additional Info: Added standardized header and version control
+Version: 1.1.1
+Additional Info: Added previously missing scripts to directory structure
 =============================================================================
 -->
 
@@ -17,44 +17,82 @@ This repository contains a collection of PowerShell scripts for various system a
 ## Directory Structure
 
 - **CloudServices/** - Scripts for cloud service management
-  - **365/** - Microsoft 365 management scripts (mailbox, calendar, and user management)
-  - **Azure/** - Azure resource management and automation scripts
+  - **365/** - Microsoft 365 management scripts
+    - Add-UserListTo365Group
+    - Delete-Mailboxes
+    - Diagnose-MailboxFolderAssistant
+    - Get-AllMailboxforwardingRules
+    - Get-CalendarPermissions
+    - Get-FullMailboxAttributes
+    - Get-Mailboxes
+    - Get-MailboxFolderList
+    - Grant-CalendarPermissions
+    - Grant-RMToMailboxEditCalendarPermissions
+    - Remediate-365Account
+    - Remove-AllMailboxPermissions
+  - **Azure/** - Azure resource management
+    - Deploy-ActionGroup
+    - Test-VMAutoShutdown
 
 - **Development/** - Development-related utilities
   - **Git/** - Git repository management tools
-
-- **FileSystem-Management/** - Scripts for file system operations, permissions, and path management
-  - NTFS permissions management
-  - File system cleanup and organization
+    - Generate-GitHistory
 
 - **Network/** - Network administration and diagnostics
-  - Network connectivity testing
-  - Network troubleshooting utilities
+  - **Test-NetworkConnectivity/** - Network connectivity testing
 
 - **PersonalUtilities/** - Personal workflow optimization scripts
-  - File management utilities
-  - Workspace organization tools
+  - **Delete-OldScreenshots/** - Screenshot cleanup utility
 
 - **Security/** - Security and compliance tools
   - **Auditing/** - Security audit scripts
-  - **Compliance/** - Compliance checking and reporting
-  - **Permissions/** - Permission management tools
+  - **Compliance/** 
+    - Get-SecurityConfigurationStatus
+  - **Permissions/**
+    - NTFS permission management
 
 - **Software/** - Software deployment and management
-  - **Installation/** - Software installation scripts
-  - **Management/** - Software management utilities
+  - **Installation/**
+    - Get-WizTreePortable
+  - **Management**
+    - Get-InstalledSoftware
   - **Reinstallation/** - Software reinstallation tools
-  - **Removal/** - Software removal scripts
+  - **Removal/**
+    - Remove-AdobeAcrobatReader
 
 - **SystemManagement/** - System administration and maintenance
-  - **FileSystem/** - File system management tools
-  - **Maintenance/** - System maintenance scripts
-  - **PATHManagement/** - System PATH variable management
-  - **Performance/** - Performance monitoring and optimization
-  - **Services/** - Windows services management
+  - **FileSystem/**
+    - **Cleanup/**
+      - Get-FolderSizes
+    - **Search/**
+      - Search-ContentRecursively
+    - **Naming**
+      - Rename-ScriptToFolderName
+      - Rename-FolderCase
+  - **Maintenance**
+    - Analyze-WindowsLogs
+    - Get-EventLogs
+    - Get-SystemHealthReport
+    - Repair-WindowsOS
+  - **PATHManagement**
+    - Add-FoldersToPath
+    - Reset-MachinePATH
+  - **Performance**
+    - Get-SetInactivityTimers
+    - Monitor-SystemResources
+  - **Services**
+    - Monitor-CriticalServices
 
 - **UserManagement/** - User administration tools
-  - **Accounts/** - Account management scripts
+  - **Accounts/**
+    - **Domain/**
+      - Change-ADUserPassword
+      - Copy-ADUser
+      - Create-ADUser
+      - Remove-GroupsFromDisabledUsers
+    - **Local/**
+      - Change-LocalUserPassword
+      - Create-LocalUserAccount
   - **Groups/** - Group management utilities
   - **Permissions/** - User permissions management
 
@@ -65,6 +103,8 @@ All scripts include detailed help information accessible via:
 ```powershell
 Get-Help .\ScriptName.ps1 -Full
 ```
+
+Most scripts include -WhatIf as a parameter to test changes before running in production.
 
 ## Script Standards
 
