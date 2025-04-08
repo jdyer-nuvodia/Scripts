@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: GitHub-Copilot
-# Last Updated: 2025-04-02 21:58:00 UTC
+# Last Updated: 2025-04-08 16:23:00 UTC
 # Updated By: GitHub-Copilot
-# Version: 1.0.4
-# Additional Info: Enhanced log access reliability and added better error handling
+# Version: 1.0.6
+# Additional Info: Fixed resource type errors in event log access
 # =============================================================================
 
 <#
@@ -112,81 +112,89 @@ function Get-LogStatistics {
     try {
         $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
         
-        # First try to verify the log exists and is accessible
-        $LogExists = Get-WinEvent -ListLog $LogName -ErrorAction Stop
-        
-        if (-not $LogExists.IsEnabled) {
-            Write-Log "Log '$LogName' exists but is not enabled" -Level Warning
+        # First verify the log exists using Get-WinEvent -ListLog
+        try {
+            $LogExists = Get-WinEvent -ListLog $LogName -ErrorAction Stop
+            if (-not $LogExists.IsEnabled) {
+                Write-Log "Log '$LogName' exists but is not enabled" -Level Warning
+                return $null
+            }
+        }
+        catch {
+            Write-Log "Error accessing log '$LogName': $($_.Exception.Message)" -Level Error
             return $null
         }
 
-        # Enhanced FilterHashTable with more specific criteria
-        $FilterHash = @{
-            LogName = $LogName
-            StartTime = $StartTime
-            Level = @(1,2,3,4,5)  # Include all severity levels
+        # Try primary method with FilterHashtable
+        try {
+            $FilterHash = @{
+                LogName = $LogName
+                StartTime = $StartTime
+            }
+            $Events = Get-WinEvent -FilterHashtable $FilterHash -ErrorAction Stop
         }
-        
-        # Add MaxEvents parameter to prevent memory issues with large logs
-        $Log = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop -MaxEvents 10000
-        
-        # If we get here, log access was successful
-        Write-Log "Successfully accessed $LogName log" -Level Success
-        
-        # Get basic statistics with error handling for each property access
-        $TotalEntries = ($Log | Measure-Object).Count
-        $RecentEntries = $TotalEntries  # All entries are already filtered by start time
-        $ErrorEntries = ($Log | Where-Object { $_.Level -eq 2 } | Measure-Object).Count
-        $WarningEntries = ($Log | Where-Object { $_.Level -eq 3 } | Measure-Object).Count
-        
-        # Get top error sources with enhanced error handling
-        $TopErrors = $Log | 
-            Where-Object { $_.Level -eq 2 } |
-            Group-Object {
+        catch [System.InvalidOperationException] {
+            # If primary method fails, try alternate method
+            Write-Log "Primary method failed, attempting alternate method for $LogName..." -Level Process
+            try {
+                $Events = Get-WinEvent -LogName $LogName -ErrorAction Stop | 
+                    Where-Object { $_.TimeCreated -ge $StartTime }
+            }
+            catch {
+                # If both methods fail, try one final time with minimal filter
+                Write-Log "Alternate method failed, attempting minimal filter for $LogName..." -Level Warning
                 try {
-                    if ($_.ProviderName) { $_.ProviderName }
-                    else { "Unknown Provider" }
+                    $Events = Get-WinEvent -LogName $LogName -MaxEvents 1000 -ErrorAction Stop
                 }
                 catch {
-                    "Unknown Provider"
+                    Write-Log "All methods failed to access $LogName: $($_.Exception.Message)" -Level Error
+                    return $null
                 }
-            } |
-            Sort-Object Count -Descending |
-            Select-Object -First 5
-        
-        # Calculate daily entry rate with protection against division by zero
-        $DailyRate = if ($DaysToAnalyze -gt 0) {
-            [math]::Round($RecentEntries / $DaysToAnalyze, 2)
-        } else {
-            0
+            }
         }
-        
-        return @{
-            Name = $LogName
-            TotalEntries = $TotalEntries
-            RecentEntries = $RecentEntries
-            ErrorCount = $ErrorEntries
-            WarningCount = $WarningEntries
-            DailyRate = $DailyRate
-            TopErrorSources = $TopErrors
+
+        # Process events if we have any
+        if ($Events) {
+            # Continue with existing event processing logic
+            $TotalEntries = ($Events | Measure-Object).Count
+            $ErrorEntries = ($Events | Where-Object { $_.Level -eq 2 } | Measure-Object).Count
+            $WarningEntries = ($Events | Where-Object { $_.Level -eq 3 } | Measure-Object).Count
+            
+            # Get top error sources with enhanced error handling
+            $TopErrors = $Events | 
+                Where-Object { $_.Level -eq 2 } |
+                Group-Object {
+                    try {
+                        if ($_.ProviderName) { $_.ProviderName }
+                        else { "Unknown Provider" }
+                    }
+                    catch {
+                        "Unknown Provider"
+                    }
+                } |
+                Sort-Object Count -Descending |
+                Select-Object -First 5
+            
+            # Calculate daily entry rate
+            $DailyRate = if ($DaysToAnalyze -gt 0) {
+                [math]::Round($TotalEntries / $DaysToAnalyze, 2)
+            } else {
+                0
+            }
+            
+            return @{
+                Name = $LogName
+                TotalEntries = $TotalEntries
+                RecentEntries = $TotalEntries
+                ErrorCount = $ErrorEntries
+                WarningCount = $WarningEntries
+                DailyRate = $DailyRate
+                TopErrorSources = $TopErrors
+            }
         }
-    }
-    catch [System.Diagnostics.Eventing.Reader.EventLogNotFoundException] {
-        Write-Log "The specified log '$LogName' was not found" -Level Error
-        return $null
-    }
-    catch [System.Diagnostics.Eventing.Reader.EventLogException] {
-        Write-Log "Error accessing $LogName log: $($_.Exception.Message)" -Level Error
-        Write-Log "Exception details: $($_.Exception.GetType().FullName)" -Level Debug
-        return $null
-    }
-    catch [System.UnauthorizedAccessException] {
-        Write-Log "Access denied while analyzing $LogName log. Please run as administrator." -Level Error
-        return $null
     }
     catch {
-        Write-Log "Error analyzing $LogName log: $($_.Exception.Message)" -Level Error
-        Write-Log "Exception details: $($_.Exception.GetType().FullName)" -Level Debug
+        Write-Log "Error processing $LogName events: $($_.Exception.Message)" -Level Error
         return $null
     }
 }
