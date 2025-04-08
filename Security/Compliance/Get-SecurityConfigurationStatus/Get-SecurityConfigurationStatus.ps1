@@ -3,7 +3,7 @@
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-04-02 20:49:00 UTC
-# Updated By: GitHub-Copilot
+# Updated By: jdyer-nuvodia
 # Version: 1.7.0
 # Additional Info: Enhanced documentation and added function-level help
 # =============================================================================

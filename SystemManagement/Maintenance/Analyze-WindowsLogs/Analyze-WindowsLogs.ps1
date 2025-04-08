@@ -1,9 +1,9 @@
 # =============================================================================
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
-# Author: GitHub-Copilot
+# Author: jdyer-nuvodia
 # Last Updated: 2025-04-08 17:27:00 UTC
-# Updated By: GitHub-Copilot
+# Updated By: jdyer-nuvodia
 # Version: 1.0.9
 # Additional Info: Fixed NoConsole parameter issue and enhanced error handling
 # =============================================================================

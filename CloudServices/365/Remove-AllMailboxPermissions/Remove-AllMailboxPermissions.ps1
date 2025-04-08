@@ -3,7 +3,7 @@
 # Created: 2024-02-21 12:00:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-04-02 21:00:00 UTC
-# Updated By: GitHub-Copilot
+# Updated By: jdyer-nuvodia
 # Version: 1.2.0
 # Additional Info: Enhanced documentation, added logging and error handling
 # =============================================================================

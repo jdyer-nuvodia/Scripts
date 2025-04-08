@@ -3,7 +3,7 @@
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-04-02 20:47:00 UTC
-# Updated By: GitHub-Copilot
+# Updated By: jdyer-nuvodia
 # Version: 1.2.1
 # Additional Info: Changed password parameter to use SecureString for security
 # =============================================================================
