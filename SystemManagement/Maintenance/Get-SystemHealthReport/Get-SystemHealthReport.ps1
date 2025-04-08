@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
-# Author: GitHub-Copilot
-# Last Updated: 2025-04-02 21:11:00 UTC
-# Updated By: GitHub-Copilot
-# Version: 1.1.1
-# Additional Info: Fixed variable naming conflict with reserved $Error variable
+# Author: jdyer-nuvodia
+# Last Updated: 2025-04-08 18:17:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.1.2
+# Additional Info: Fixed type conversion errors and improved error handling
 # =============================================================================
 
 <#
@@ -108,22 +108,14 @@ function Get-SystemResourceStatus {
     try {
         # CPU Usage
         $CpuUsage = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
-        $CpuStatus = switch ($CpuUsage) {
-            {$_ -ge 90} { "Error" }
-            {$_ -ge 80} { "Warning" }
-            Default { "Success" }
-        }
+        $CpuStatus = if ($CpuUsage -ge 90) { "Error" } elseif ($CpuUsage -ge 80) { "Warning" } else { "Success" }
         Write-LogMessage "CPU Usage: $([math]::Round($CpuUsage, 2))%" -Level $CpuStatus
         
         # Memory Usage
         $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
         if ($OS.TotalVisibleMemorySize -gt 0) {
             $MemoryUsage = [math]::Round(($OS.TotalVisibleMemorySize - $OS.FreePhysicalMemory) / $OS.TotalVisibleMemorySize * 100, 2)
-            $MemoryStatus = switch ($MemoryUsage) {
-                {$_ -ge 90} { "Error" }
-                {$_ -ge 80} { "Warning" }
-                Default { "Success" }
-            }
+            $MemoryStatus = if ($MemoryUsage -ge 90) { "Error" } elseif ($MemoryUsage -ge 80) { "Warning" } else { "Success" }
             Write-LogMessage "Memory Usage: ${MemoryUsage}%" -Level $MemoryStatus
         }
         else {
@@ -135,11 +127,7 @@ function Get-SystemResourceStatus {
         foreach ($Disk in $Disks) {
             if ($Disk.Size -gt 0) {
                 $FreeSpace = [math]::Round(($Disk.FreeSpace / $Disk.Size) * 100, 2)
-                $Status = switch ($FreeSpace) {
-                    {$_ -le 10} { "Error" }
-                    {$_ -le 20} { "Warning" }
-                    Default { "Success" }
-                }
+                $Status = if ($FreeSpace -le 10) { "Error" } elseif ($FreeSpace -le 20) { "Warning" } else { "Success" }
                 Write-LogMessage "Drive $($Disk.DeviceID) - Free Space: ${FreeSpace}% ($(([math]::Round($Disk.FreeSpace / 1GB, 2)))GB free)" -Level $Status
             }
             else {
@@ -190,18 +178,14 @@ function Get-EventLogAnalysis {
     
     foreach ($EventType in $CriticalEvents) {
         try {
-            $Events = Get-WinEvent -FilterHashtable @{
+            $Events = @(Get-WinEvent -FilterHashtable @{
                 LogName = $EventType.Log
                 Level = $EventType.Level
                 StartTime = $StartTime
-            } -ErrorAction SilentlyContinue
+            } -ErrorAction SilentlyContinue)
             
-            $Count = ($Events | Measure-Object).Count
-            $Status = switch ($Count) {
-                {$_ -ge 50} { "Error" }
-                {$_ -ge 20} { "Warning" }
-                Default { "Success" }
-            }
+            $Count = $Events.Count
+            $Status = if ($Count -ge 50) { "Error" } elseif ($Count -ge 20) { "Warning" } else { "Success" }
             Write-LogMessage "$($EventType.Name) in last $DaysToAnalyze days: $Count" -Level $Status
             
             if ($Count -gt 0) {
@@ -234,15 +218,11 @@ function Get-WindowsUpdateStatus {
         $SearchResult = $UpdateSearcher.Search("IsInstalled=0")
         
         $Count = $SearchResult.Updates.Count
-        $Status = switch ($Count) {
-            {$_ -ge 10} { "Error" }
-            {$_ -ge 5} { "Warning" }
-            Default { "Success" }
-        }
+        $Status = if ($Count -ge 10) { "Error" } elseif ($Count -ge 5) { "Warning" } else { "Success" }
         Write-LogMessage "Pending Windows Updates: $Count" -Level $Status
         
         if ($Count -gt 0) {
-            $CriticalUpdates = $SearchResult.Updates | Where-Object { $_.MsrcSeverity -eq "Critical" }
+            $CriticalUpdates = @($SearchResult.Updates | Where-Object { $_.MsrcSeverity -eq "Critical" })
             if ($CriticalUpdates.Count -gt 0) {
                 Write-LogMessage "Critical updates pending: $($CriticalUpdates.Count)" -Level "Warning"
                 $CriticalUpdates | ForEach-Object {
