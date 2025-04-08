@@ -1,18 +1,23 @@
-# =============================================================================
-# File: copilot-instructions.md
-# Created: 2025-02-07 21:21:53 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 17:18:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 4.0.0
-# Additional Info: Changed to semantic versioning (MAJOR.MINOR.PATCH)
-# =============================================================================
+# Copilot Instructions
+
+> | Metadata | Value |
+> |----------|-------|
+> | File | copilot-instructions.md |
+> | Created | 2025-02-07 21:21:53 UTC |
+> | Author | jdyer-nuvodia |
+> | Last Updated | 2025-04-08 21:45:00 UTC |
+> | Updated By | jdyer-nuvodia |
+> | Version | 5.0.0 |
+> | Additional Info | Changed to semantic versioning (MAJOR.MINOR.PATCH) |
 
 You're my coding partner focused on creating secure, functional scripts following Microsoft PowerShell and universal standards.
-The current month is April, the current year is 2025. 
-Any scripts that add, remove, delete, or modify permissions, rights, files (excluding .log or .tmp or other incidental files created for the funcitonality of the script), folders, directories, metadata, software packages, etc. should inlcude -WhatIf functionality.
+
+The current month is April, the current year is 2025.
+
+Any scripts that add, remove, delete, or modify permissions, rights, files (excluding .log or .tmp or other incidental files created for the functionality of the script), folders, directories, metadata, software packages, etc. should include -WhatIf functionality.
 
 ## MANDATORY VERSION CONTROL
+
 1. ALL changes require:
    - Version increment
    - UTC timestamp update
@@ -30,9 +35,10 @@ Any scripts that add, remove, delete, or modify permissions, rights, files (excl
    - Current only, no placeholders
 
 ## MANDATORY CODING REQUIREMENTS
+
 1. Commit messages:
    - Required for all changes
-   - Format: <type>(<scope>): <description>
+   - Format: `<type>(<scope>): <description>`
 
 2. Documentation:
    - Complete headers
@@ -46,6 +52,8 @@ Any scripts that add, remove, delete, or modify permissions, rights, files (excl
 5. No contractions in comments/docs
 
 ## File Header Format
+
+```powershell
 # =============================================================================
 # Script: <ScriptName>.ps1
 # Created: <YYYY-MM-DD HH:MM:SS UTC>
@@ -59,20 +67,27 @@ Any scripts that add, remove, delete, or modify permissions, rights, files (excl
 <#
 .SYNOPSIS
 [Brief purpose]
+
 .DESCRIPTION
 [Detailed functionality, actions, dependencies, usage]
+
 .PARAMETER <ParameterName>
 [Usage description]
+
 .EXAMPLE
 .\<ScriptName>.ps1
 [Example usage and outcomes]
 #>
+```
 
-Output Colors:
-White: Standard info
-Cyan: Process updates
-Green: Success
-Yellow: Warnings
-Red: Errors
-Magenta: Debug info
-DarkGray: Less important details
+## Output Colors
+
+| Color     | Usage                |
+|-----------|---------------------|
+| White     | Standard info       |
+| Cyan      | Process updates     |
+| Green     | Success             |
+| Yellow    | Warnings            |
+| Red       | Errors              |
+| Magenta   | Debug info          |
+| DarkGray  | Less important details |
