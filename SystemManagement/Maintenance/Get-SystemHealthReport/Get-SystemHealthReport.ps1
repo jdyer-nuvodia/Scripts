@@ -2,10 +2,10 @@
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 18:26:00 UTC
+# Last Updated: 2025-04-08 18:33:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added DattoEDR and Datto RMM service monitoring
+# Version: 1.2.1
+# Additional Info: Fixed DattoEDR and Datto RMM service names
 # =============================================================================
 
 <#
@@ -61,7 +61,7 @@ param(
         'mpssvc',        # Windows Firewall
         'LanmanServer',  # Server
         'Dnscache',      # DNS Client
-        'DattoRMM'       # Datto RMM Agent
+        'Datto RMM'      # Datto RMM Agent
     )
 )
 
@@ -291,10 +291,10 @@ function Get-SecurityStatus {
         }
 
         # DattoEDR Status
-        $DattoService = Get-Service -Name "DattoEDR" -ErrorAction SilentlyContinue
-        if ($DattoService) {
-            $Status = if ($DattoService.Status -eq 'Running') { "Success" } else { "Error" }
-            Write-LogMessage "DattoEDR Status: $($DattoService.Status)" -Level $Status
+        $DattoEDRService = Get-Service -Name "Datto EDR Agent" -ErrorAction SilentlyContinue
+        if ($DattoEDRService) {
+            $Status = if ($DattoEDRService.Status -eq 'Running') { "Success" } else { "Error" }
+            Write-LogMessage "DattoEDR Status: $($DattoEDRService.Status)" -Level $Status
         } else {
             Write-LogMessage "DattoEDR not installed" -Level "Error"
         }
