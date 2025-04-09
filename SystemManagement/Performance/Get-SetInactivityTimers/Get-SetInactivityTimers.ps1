@@ -2,11 +2,11 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 18:17:00 UTC
+# Last Updated: 2025-04-09 18:21:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.4
-# Additional Info: Removed account lockout duration check to focus on power and inactivity timers only
-# =============================================================================
+# Version: 1.2.5
+# Additional Info: Fixed GPO settings display formatting and type handling
+# ===================================================================================================================================================
 
 <#
 .SYNOPSIS
@@ -66,8 +66,9 @@ function Get-PowerSettings {
     }
 }
 
-function Get-LockPolicySettings {
-    Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan    $settings = @{
+function Get-LockPolicySettings {    Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan
+    $settings = [PSCustomObject]@{
+        PSTypeName = 'LockPolicySettings'
         ScreenSaverForced = $false
         ScreenSaverSecure = $false
         AutoLockEnabled = $false
@@ -229,20 +230,23 @@ try {
     # Display current settings
     Write-Host "`nCurrent Inactivity Settings:" -ForegroundColor White
     Write-Host "------------------------" -ForegroundColor White
-    Write-Host "Monitor Timeout (AC): $(Format-Minutes $currentSettings.MonitorAC)"
-    Write-Host "Monitor Timeout (Battery): $(Format-Minutes $currentSettings.MonitorDC)"
-    Write-Host "Sleep Timeout (AC): $(Format-Minutes $currentSettings.SleepAC)"
-    Write-Host "Sleep Timeout (Battery): $(Format-Minutes $currentSettings.SleepDC)"
-    Write-Host "Screen Saver Timeout: $(Format-Minutes $currentSettings.ScreenSaver)"
-      Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
+    Write-Host ("Monitor Timeout (AC): {0}" -f (Format-Minutes $currentSettings.MonitorAC))
+    Write-Host ("Monitor Timeout (Battery): {0}" -f (Format-Minutes $currentSettings.MonitorDC))
+    Write-Host ("Sleep Timeout (AC): {0}" -f (Format-Minutes $currentSettings.SleepAC))
+    Write-Host ("Sleep Timeout (Battery): {0}" -f (Format-Minutes $currentSettings.SleepDC))
+    Write-Host ("Screen Saver Timeout: {0}" -f (Format-Minutes $currentSettings.ScreenSaver))
+
+    Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
     Write-Host "--------------------------------" -ForegroundColor White
-    Write-Host "Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): $($lockSettings.ScreenSaverForced)"
-    Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"    if ($lockSettings.AutoLockTimeout) {
-        Write-Host "Auto Lock Timeout: $(Format-Minutes $lockSettings.AutoLockTimeout)"
+    Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): {0}" -f ($lockSettings.ScreenSaverForced ? "Yes" : "No"))
+    Write-Host ("Auto Lock Enabled: {0}" -f ($lockSettings.AutoLockEnabled ? "Yes" : "No"))
+    if ($null -ne $lockSettings.AutoLockTimeout) {
+        Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
     }
-      # Ask if user wants to change settings
+
+    # Ask if user wants to change settings
     $response = Read-Host "`nWould you like to change these settings? (Y/N)"
-      if ($response -eq "Y") {
+    if ($response -eq "Y") {
         # Power settings params
         $powerParams = @{}
         
