@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 18:12:00 UTC
+# Last Updated: 2025-04-09 18:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.2
-# Additional Info: Fixed security policy check formatting causing positional parameter error
+# Version: 1.2.3
+# Additional Info: Fixed screen saver policy check to properly handle null values
 # =============================================================================
 
 <#
@@ -75,10 +75,11 @@ function Get-LockPolicySettings {
         AutoLockEnabled = $false
         AutoLockTimeout = $null
     }
-
+    
     try {
         # Check screen saver policy settings
-        $screenSaverPolicy = Get-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop" -ErrorAction SilentlyContinue        if ($screenSaverPolicy) {
+        $screenSaverPolicy = Get-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop" -ErrorAction SilentlyContinue
+        if ($screenSaverPolicy -and $null -ne $screenSaverPolicy.ScreenSaverIsSecure) {
             $settings.ScreenSaverForced = $screenSaverPolicy.ScreenSaverIsSecure -eq 1
         }
         
