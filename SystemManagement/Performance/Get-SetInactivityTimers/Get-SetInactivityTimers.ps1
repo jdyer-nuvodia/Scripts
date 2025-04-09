@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 23:14:00 UTC
+# Last Updated: 2025-04-09 17:46:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Fixed PowerShell analyzer warnings and improved ShouldProcess implementation
+# Version: 1.1.0
+# Additional Info: Added GPO and security policy checks for machine locking settings
 # =============================================================================
 
 <#
@@ -14,8 +14,8 @@ Gets and optionally sets Windows system inactivity timers.
 
 .DESCRIPTION
 This script retrieves all available system inactivity settings including screen timeout,
-sleep settings, and power management configurations. It displays these settings to the user
-and provides the option to modify them. All changes support -WhatIf functionality for safety.
+sleep settings, power management configurations, and security policies related to machine locking.
+It displays these settings to the user and provides the option to modify them. All changes support -WhatIf functionality for safety.
 
 .EXAMPLE
 .\Get-SetInactivityTimers.ps1
@@ -40,7 +40,7 @@ function Format-Minutes {
 
 function Get-PowerSettings {
     Write-Host "Retrieving current power settings..." -ForegroundColor Cyan
-      # Get current power scheme GUID
+    # Get current power scheme GUID
     $schemeGuid = (powercfg /getactivescheme) -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' }
     if (-not $schemeGuid) {
         Write-Warning "Could not determine active power scheme GUID"
@@ -66,6 +66,55 @@ function Get-PowerSettings {
     }
 }
 
+function Get-LockPolicySettings {
+    Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan
+    
+    $settings = @{
+        ScreenSaverForced = $false
+        ScreenSaverSecure = $false
+        MaximumPasswordAge = $null
+        LockoutDuration = $null
+        AutoLockEnabled = $false
+        AutoLockTimeout = $null
+    }
+
+    try {
+        # Check screen saver policy settings
+        $screenSaverPolicy = Get-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop" -ErrorAction SilentlyContinue
+        if ($screenSaverPolicy) {
+            $settings.ScreenSaverForced = $screenSaverPolicy.ScreenSaverIsSecure -eq 1
+        }        # Check security policy settings
+        secedit /export /cfg "$env:TEMP\secpol.cfg" 2>$null
+        if (Test-Path "$env:TEMP\secpol.cfg") {
+            $secPolContent = Get-Content "$env:TEMP\secpol.cfg" -Raw
+            if ($secPolContent -match "MaximumPasswordAge\s*=\s*(\d+)") {
+                $settings.MaximumPasswordAge = $matches[1]
+            }
+            if ($secPolContent -match "LockoutDuration\s*=\s*(\d+)") {
+                $settings.LockoutDuration = $matches[1]
+            }
+            Remove-Item "$env:TEMP\secpol.cfg" -Force
+        }
+
+        # Check workstation lock settings
+        $lockSettings = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -ErrorAction SilentlyContinue
+        if ($lockSettings) {
+            $settings.AutoLockEnabled = $lockSettings.DisableLockWorkstation -ne 1
+        }
+
+        # Check machine inactivity limit
+        $inactivityLimit = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "InactivityTimeoutSecs" -ErrorAction SilentlyContinue
+        if ($inactivityLimit) {
+            $settings.AutoLockTimeout = [math]::Round($inactivityLimit.InactivityTimeoutSecs / 60)
+        }
+    }
+    catch {
+        Write-Warning "Error checking security policies: $_"
+    }
+
+    return $settings
+}
+
 function Set-PowerTimeout {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -74,7 +123,8 @@ function Set-PowerTimeout {
     )
     
     if ($PSCmdlet.ShouldProcess("Power Settings", "Set timeout to $TimeoutMinutes minutes")) {
-        try {            # Get current power scheme GUID
+        try {
+            # Get current power scheme GUID
             $schemeGuid = (powercfg /getactivescheme) -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' }
             if (-not $schemeGuid) {
                 Write-Warning "Could not determine active power scheme GUID"
@@ -112,6 +162,7 @@ function Set-PowerTimeout {
 try {
     # Get current settings
     $currentSettings = Get-PowerSettings
+    $lockSettings = Get-LockPolicySettings
     
     # Display current settings
     Write-Host "`nCurrent Inactivity Settings:" -ForegroundColor White
@@ -121,6 +172,20 @@ try {
     Write-Host "Sleep Timeout (AC): $(Format-Minutes $currentSettings.SleepAC)"
     Write-Host "Sleep Timeout (Battery): $(Format-Minutes $currentSettings.SleepDC)"
     Write-Host "Screen Saver Timeout: $(Format-Minutes $currentSettings.ScreenSaver)"
+    
+    Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
+    Write-Host "--------------------------------" -ForegroundColor White
+    Write-Host "Screen Saver Security Enforced: $($lockSettings.ScreenSaverForced)"
+    Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"
+    if ($lockSettings.AutoLockTimeout) {
+        Write-Host "Auto Lock Timeout: $(Format-Minutes $lockSettings.AutoLockTimeout)"
+    }
+    if ($lockSettings.MaximumPasswordAge) {
+        Write-Host "Maximum Password Age: $($lockSettings.MaximumPasswordAge) days"
+    }
+    if ($lockSettings.LockoutDuration) {
+        Write-Host "Account Lockout Duration: $($lockSettings.LockoutDuration) minutes"
+    }
     
     # Ask if user wants to change settings
     $response = Read-Host "`nWould you like to change these settings? (Y/N)"
