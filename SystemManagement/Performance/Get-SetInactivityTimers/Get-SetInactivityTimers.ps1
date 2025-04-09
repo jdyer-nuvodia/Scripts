@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 18:00:00 UTC
+# Last Updated: 2025-04-09 18:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.4
-# Additional Info: Improved settings modification to handle each timeout individually
+# Version: 1.2.1
+# Additional Info: Added WhatIf mode disclaimer
 # =============================================================================
 
 <#
@@ -169,8 +169,67 @@ function Set-PowerTimeout {
     return $true
 }
 
+function Set-LockPolicySettings {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [bool]$ScreenSaverForced,
+        [Parameter()]
+        [bool]$AutoLockEnabled,
+        [Parameter()]
+        [int]$AutoLockTimeout
+    )
+    
+    if ($PSCmdlet.ShouldProcess("Group Policy Settings", "Update lock policy settings")) {
+        try {
+            # Set screen saver security enforcement
+            if ($PSBoundParameters.ContainsKey('ScreenSaverForced')) {
+                Write-Host "Setting screen saver security enforcement..." -ForegroundColor Cyan
+                $regPath = "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop"
+                if (!(Test-Path $regPath)) {
+                    New-Item -Path $regPath -Force | Out-Null
+                }
+                Set-ItemProperty -Path $regPath -Name "ScreenSaverIsSecure" -Value ([int]$ScreenSaverForced) -Type DWord
+            }
+
+            # Set auto lock settings
+            if ($PSBoundParameters.ContainsKey('AutoLockEnabled')) {
+                Write-Host "Setting auto lock enabled status..." -ForegroundColor Cyan
+                $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System"
+                if (!(Test-Path $regPath)) {
+                    New-Item -Path $regPath -Force | Out-Null
+                }
+                Set-ItemProperty -Path $regPath -Name "DisableLockWorkstation" -Value ([int](!$AutoLockEnabled)) -Type DWord
+            }
+
+            # Set auto lock timeout
+            if ($PSBoundParameters.ContainsKey('AutoLockTimeout')) {
+                Write-Host "Setting auto lock timeout..." -ForegroundColor Cyan
+                $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+                if (!(Test-Path $regPath)) {
+                    New-Item -Path $regPath -Force | Out-Null
+                }
+                Set-ItemProperty -Path $regPath -Name "InactivityTimeoutSecs" -Value ($AutoLockTimeout * 60) -Type DWord
+            }
+
+            Write-Host "Group Policy settings have been updated successfully!" -ForegroundColor Green
+            return $true
+        }
+        catch {
+            Write-Host "Error setting Group Policy settings: $_" -ForegroundColor Red
+            return $false
+        }
+    }
+    return $true
+}
+
 # Main script execution
 try {
+    # Display WhatIf mode disclaimer if applicable
+    if ($WhatIfPreference) {
+        Write-Host "`n[WhatIf Mode] This script is running in simulation mode. No actual changes will be made.`n" -ForegroundColor Yellow
+    }
+
     # Get current settings
     $currentSettings = Get-PowerSettings
     $lockSettings = Get-LockPolicySettings
@@ -195,34 +254,62 @@ try {
     }
       # Ask if user wants to change settings
     $response = Read-Host "`nWould you like to change these settings? (Y/N)"
-    
-    if ($response -eq "Y") {
-        $params = @{}
-          # Monitor timeout AC
+      if ($response -eq "Y") {
+        # Power settings params
+        $powerParams = @{}
+        
+        # Monitor timeout AC
         $userInput = Read-Host "Enter new Monitor Timeout for AC power (current: $(Format-Minutes $currentSettings.MonitorAC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $params['MonitorTimeoutAC'] = [int]$userInput }
+        if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutAC'] = [int]$userInput }
         
         # Monitor timeout DC
         $userInput = Read-Host "Enter new Monitor Timeout for Battery (current: $(Format-Minutes $currentSettings.MonitorDC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $params['MonitorTimeoutDC'] = [int]$userInput }
+        if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutDC'] = [int]$userInput }
         
         # Sleep timeout AC
         $userInput = Read-Host "Enter new Sleep Timeout for AC power (current: $(Format-Minutes $currentSettings.SleepAC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $params['SleepTimeoutAC'] = [int]$userInput }
+        if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutAC'] = [int]$userInput }
         
         # Sleep timeout DC
         $userInput = Read-Host "Enter new Sleep Timeout for Battery (current: $(Format-Minutes $currentSettings.SleepDC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $params['SleepTimeoutDC'] = [int]$userInput }
+        if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutDC'] = [int]$userInput }
         
         # Screen saver timeout
         $userInput = Read-Host "Enter new Screen Saver Timeout (current: $(Format-Minutes $currentSettings.ScreenSaver)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $params['ScreenSaverTimeout'] = [int]$userInput }
+        if ($userInput -match '^\d+$') { $powerParams['ScreenSaverTimeout'] = [int]$userInput }
+
+        # Group Policy settings params
+        $gpoParams = @{}
+
+        # Screen Saver Security Enforcement
+        $userInput = Read-Host "Enforce Screen Saver Security? (current: $($lockSettings.ScreenSaverForced)) [Y/N/Enter to skip]"
+        if ($userInput -match '^[YN]$') { $gpoParams['ScreenSaverForced'] = ($userInput -eq 'Y') }
+
+        # Auto Lock Enabled
+        $userInput = Read-Host "Enable Auto Lock? (current: $($lockSettings.AutoLockEnabled)) [Y/N/Enter to skip]"
+        if ($userInput -match '^[YN]$') { $gpoParams['AutoLockEnabled'] = ($userInput -eq 'Y') }
+
+        # Auto Lock Timeout
+        if ($gpoParams['AutoLockEnabled'] -or ($lockSettings.AutoLockEnabled -and !$PSBoundParameters.ContainsKey('AutoLockEnabled'))) {
+            $userInput = Read-Host "Enter Auto Lock Timeout in minutes (current: $(Format-Minutes $lockSettings.AutoLockTimeout)) [Enter to skip]"
+            if ($userInput -match '^\d+$') { $gpoParams['AutoLockTimeout'] = [int]$userInput }
+        }
         
-        if ($params.Count -gt 0) {
-            if (Set-PowerTimeout @params) {
-                Write-Host "Settings updated successfully!" -ForegroundColor Green
+        # Apply power settings if any were changed
+        if ($powerParams.Count -gt 0) {
+            if (Set-PowerTimeout @powerParams) {
+                Write-Host "Power settings updated successfully!" -ForegroundColor Green
             }
-        } else {
+        }
+
+        # Apply GPO settings if any were changed
+        if ($gpoParams.Count -gt 0) {
+            if (Set-LockPolicySettings @gpoParams) {
+                Write-Host "Group Policy settings updated successfully!" -ForegroundColor Green
+            }
+        }
+
+        if ($powerParams.Count -eq 0 -and $gpoParams.Count -eq 0) {
             Write-Host "No changes were made." -ForegroundColor Cyan
         }
     }
