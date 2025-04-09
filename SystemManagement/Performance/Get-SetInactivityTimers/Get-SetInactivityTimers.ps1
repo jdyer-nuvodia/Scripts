@@ -168,7 +168,7 @@ try {
     Write-Host "Screen Saver Timeout: $(Format-Minutes $currentSettings.ScreenSaver)"
       Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
     Write-Host "--------------------------------" -ForegroundColor White
-    Write-Host "Screen Saver Security Enforced: $($lockSettings.ScreenSaverForced)"
+    Write-Host "Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): $($lockSettings.ScreenSaverForced)"
     Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"
     if ($lockSettings.AutoLockTimeout) {
         Write-Host "Auto Lock Timeout: $(Format-Minutes $lockSettings.AutoLockTimeout)"
