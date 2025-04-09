@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 17:53:00 UTC
+# Last Updated: 2025-04-09 17:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.2
-# Additional Info: Fixed syntax error in Auto Lock settings display
+# Version: 1.1.3
+# Additional Info: Fixed formatting in Security and Group Policy Settings display
 # =============================================================================
 
 <#
@@ -166,9 +166,9 @@ try {
     Write-Host "Sleep Timeout (AC): $(Format-Minutes $currentSettings.SleepAC)"
     Write-Host "Sleep Timeout (Battery): $(Format-Minutes $currentSettings.SleepDC)"
     Write-Host "Screen Saver Timeout: $(Format-Minutes $currentSettings.ScreenSaver)"
-    
-    Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
-    Write-Host "--------------------------------" -ForegroundColor White    Write-Host "Screen Saver Security Enforced: $($lockSettings.ScreenSaverForced)"
+      Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
+    Write-Host "--------------------------------" -ForegroundColor White
+    Write-Host "Screen Saver Security Enforced: $($lockSettings.ScreenSaverForced)"
     Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"
     if ($lockSettings.AutoLockTimeout) {
         Write-Host "Auto Lock Timeout: $(Format-Minutes $lockSettings.AutoLockTimeout)"
