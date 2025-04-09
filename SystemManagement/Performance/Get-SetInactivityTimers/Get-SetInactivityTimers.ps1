@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 17:55:00 UTC
+# Last Updated: 2025-04-09 18:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.3
-# Additional Info: Fixed formatting in Security and Group Policy Settings display
+# Version: 1.1.4
+# Additional Info: Improved settings modification to handle each timeout individually
 # =============================================================================
 
 <#
@@ -112,11 +112,19 @@ function Get-LockPolicySettings {
 function Set-PowerTimeout {
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Mandatory=$true)]
-        [int]$TimeoutMinutes
+        [Parameter()]
+        [int]$MonitorTimeoutAC,
+        [Parameter()]
+        [int]$MonitorTimeoutDC,
+        [Parameter()]
+        [int]$SleepTimeoutAC,
+        [Parameter()]
+        [int]$SleepTimeoutDC,
+        [Parameter()]
+        [int]$ScreenSaverTimeout
     )
     
-    if ($PSCmdlet.ShouldProcess("Power Settings", "Set timeout to $TimeoutMinutes minutes")) {
+    if ($PSCmdlet.ShouldProcess("Power Settings", "Update inactivity timeouts")) {
         try {
             # Get current power scheme GUID
             $schemeGuid = (powercfg /getactivescheme) -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' }
@@ -124,23 +132,32 @@ function Set-PowerTimeout {
                 Write-Warning "Could not determine active power scheme GUID"
                 return $false
             }
-            
-            # Convert minutes to seconds
-            $timeoutSeconds = $TimeoutMinutes * 60
-            
-            # Set monitor timeout (AC and DC)
-            Write-Host "Setting monitor timeout..." -ForegroundColor Cyan
-            powercfg /change monitor-timeout-ac $TimeoutMinutes
-            powercfg /change monitor-timeout-dc $TimeoutMinutes
+              # Set monitor timeout (AC and DC)
+            if ($PSBoundParameters.ContainsKey('MonitorTimeoutAC')) {
+                Write-Host "Setting AC monitor timeout..." -ForegroundColor Cyan
+                powercfg /change monitor-timeout-ac $MonitorTimeoutAC
+            }
+            if ($PSBoundParameters.ContainsKey('MonitorTimeoutDC')) {
+                Write-Host "Setting DC monitor timeout..." -ForegroundColor Cyan
+                powercfg /change monitor-timeout-dc $MonitorTimeoutDC
+            }
             
             # Set sleep timeout (AC and DC)
-            Write-Host "Setting sleep timeout..." -ForegroundColor Cyan
-            powercfg /change standby-timeout-ac $TimeoutMinutes
-            powercfg /change standby-timeout-dc $TimeoutMinutes
+            if ($PSBoundParameters.ContainsKey('SleepTimeoutAC')) {
+                Write-Host "Setting AC sleep timeout..." -ForegroundColor Cyan
+                powercfg /change standby-timeout-ac $SleepTimeoutAC
+            }
+            if ($PSBoundParameters.ContainsKey('SleepTimeoutDC')) {
+                Write-Host "Setting DC sleep timeout..." -ForegroundColor Cyan
+                powercfg /change standby-timeout-dc $SleepTimeoutDC
+            }
             
             # Set screen saver timeout
-            Write-Host "Setting screen saver timeout..." -ForegroundColor Cyan
-            Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -Value $timeoutSeconds
+            if ($PSBoundParameters.ContainsKey('ScreenSaverTimeout')) {
+                Write-Host "Setting screen saver timeout..." -ForegroundColor Cyan
+                $timeoutSeconds = $ScreenSaverTimeout * 60
+                Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -Value $timeoutSeconds
+            }
             
             Write-Host "All inactivity timers have been updated successfully!" -ForegroundColor Green
         }
@@ -176,19 +193,37 @@ try {
     if ($lockSettings.LockoutDuration) {
         Write-Host "Account Lockout Duration: $($lockSettings.LockoutDuration) minutes"
     }
-    
-    # Ask if user wants to change settings
+      # Ask if user wants to change settings
     $response = Read-Host "`nWould you like to change these settings? (Y/N)"
     
     if ($response -eq "Y") {
-        $newTimeout = Read-Host "Enter new timeout in minutes (0 for never)"
-        if ($newTimeout -match '^\d+$') {
-            if (Set-PowerTimeout -TimeoutMinutes ([int]$newTimeout)) {
+        $params = @{}
+          # Monitor timeout AC
+        $userInput = Read-Host "Enter new Monitor Timeout for AC power (current: $(Format-Minutes $currentSettings.MonitorAC)) [Enter to skip]"
+        if ($userInput -match '^\d+$') { $params['MonitorTimeoutAC'] = [int]$userInput }
+        
+        # Monitor timeout DC
+        $userInput = Read-Host "Enter new Monitor Timeout for Battery (current: $(Format-Minutes $currentSettings.MonitorDC)) [Enter to skip]"
+        if ($userInput -match '^\d+$') { $params['MonitorTimeoutDC'] = [int]$userInput }
+        
+        # Sleep timeout AC
+        $userInput = Read-Host "Enter new Sleep Timeout for AC power (current: $(Format-Minutes $currentSettings.SleepAC)) [Enter to skip]"
+        if ($userInput -match '^\d+$') { $params['SleepTimeoutAC'] = [int]$userInput }
+        
+        # Sleep timeout DC
+        $userInput = Read-Host "Enter new Sleep Timeout for Battery (current: $(Format-Minutes $currentSettings.SleepDC)) [Enter to skip]"
+        if ($userInput -match '^\d+$') { $params['SleepTimeoutDC'] = [int]$userInput }
+        
+        # Screen saver timeout
+        $userInput = Read-Host "Enter new Screen Saver Timeout (current: $(Format-Minutes $currentSettings.ScreenSaver)) [Enter to skip]"
+        if ($userInput -match '^\d+$') { $params['ScreenSaverTimeout'] = [int]$userInput }
+        
+        if ($params.Count -gt 0) {
+            if (Set-PowerTimeout @params) {
                 Write-Host "Settings updated successfully!" -ForegroundColor Green
             }
-        }
-        else {
-            Write-Host "Invalid input. Please enter a number." -ForegroundColor Red
+        } else {
+            Write-Host "No changes were made." -ForegroundColor Cyan
         }
     }
 }
