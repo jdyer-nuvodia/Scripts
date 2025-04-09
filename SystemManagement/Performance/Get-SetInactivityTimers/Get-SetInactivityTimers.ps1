@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 18:14:00 UTC
+# Last Updated: 2025-04-09 18:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.3
-# Additional Info: Fixed screen saver policy check to properly handle null values
+# Version: 1.2.4
+# Additional Info: Removed account lockout duration check to focus on power and inactivity timers only
 # =============================================================================
 
 <#
@@ -67,11 +67,9 @@ function Get-PowerSettings {
 }
 
 function Get-LockPolicySettings {
-    Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan
-      $settings = @{
+    Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan    $settings = @{
         ScreenSaverForced = $false
         ScreenSaverSecure = $false
-        LockoutDuration = $null
         AutoLockEnabled = $false
         AutoLockTimeout = $null
     }
@@ -82,16 +80,7 @@ function Get-LockPolicySettings {
         if ($screenSaverPolicy -and $null -ne $screenSaverPolicy.ScreenSaverIsSecure) {
             $settings.ScreenSaverForced = $screenSaverPolicy.ScreenSaverIsSecure -eq 1
         }
-        
-        # Check security policy settings
-        secedit /export /cfg "$env:TEMP\secpol.cfg" 2>$null
-        if (Test-Path "$env:TEMP\secpol.cfg") {
-            $secPolContent = Get-Content "$env:TEMP\secpol.cfg" -Raw
-            if ($secPolContent -match "LockoutDuration\s*=\s*(\d+)") {
-                $settings.LockoutDuration = $matches[1]
-            }
-            Remove-Item "$env:TEMP\secpol.cfg" -Force
-        }
+  
 
         # Check workstation lock settings
         $lockSettings = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -ErrorAction SilentlyContinue
@@ -248,12 +237,8 @@ try {
       Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
     Write-Host "--------------------------------" -ForegroundColor White
     Write-Host "Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): $($lockSettings.ScreenSaverForced)"
-    Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"
-    if ($lockSettings.AutoLockTimeout) {
+    Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"    if ($lockSettings.AutoLockTimeout) {
         Write-Host "Auto Lock Timeout: $(Format-Minutes $lockSettings.AutoLockTimeout)"
-    }
-    if ($lockSettings.LockoutDuration) {
-        Write-Host "Account Lockout Duration: $($lockSettings.LockoutDuration) minutes"
     }
       # Ask if user wants to change settings
     $response = Read-Host "`nWould you like to change these settings? (Y/N)"
