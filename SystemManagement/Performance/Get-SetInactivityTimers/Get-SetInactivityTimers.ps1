@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 17:46:00 UTC
+# Last Updated: 2025-04-09 21:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Added GPO and security policy checks for machine locking settings
+# Version: 1.1.1
+# Additional Info: Removed maximum password age check from security policy settings
 # =============================================================================
 
 <#
@@ -68,11 +68,9 @@ function Get-PowerSettings {
 
 function Get-LockPolicySettings {
     Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan
-    
-    $settings = @{
+      $settings = @{
         ScreenSaverForced = $false
         ScreenSaverSecure = $false
-        MaximumPasswordAge = $null
         LockoutDuration = $null
         AutoLockEnabled = $false
         AutoLockTimeout = $null
@@ -86,11 +84,7 @@ function Get-LockPolicySettings {
         }        # Check security policy settings
         secedit /export /cfg "$env:TEMP\secpol.cfg" 2>$null
         if (Test-Path "$env:TEMP\secpol.cfg") {
-            $secPolContent = Get-Content "$env:TEMP\secpol.cfg" -Raw
-            if ($secPolContent -match "MaximumPasswordAge\s*=\s*(\d+)") {
-                $settings.MaximumPasswordAge = $matches[1]
-            }
-            if ($secPolContent -match "LockoutDuration\s*=\s*(\d+)") {
+            $secPolContent = Get-Content "$env:TEMP\secpol.cfg" -Raw            if ($secPolContent -match "LockoutDuration\s*=\s*(\d+)") {
                 $settings.LockoutDuration = $matches[1]
             }
             Remove-Item "$env:TEMP\secpol.cfg" -Force
@@ -176,12 +170,8 @@ try {
     Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
     Write-Host "--------------------------------" -ForegroundColor White
     Write-Host "Screen Saver Security Enforced: $($lockSettings.ScreenSaverForced)"
-    Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"
-    if ($lockSettings.AutoLockTimeout) {
+    Write-Host "Auto Lock Enabled: $($lockSettings.AutoLockEnabled)"    if ($lockSettings.AutoLockTimeout) {
         Write-Host "Auto Lock Timeout: $(Format-Minutes $lockSettings.AutoLockTimeout)"
-    }
-    if ($lockSettings.MaximumPasswordAge) {
-        Write-Host "Maximum Password Age: $($lockSettings.MaximumPasswordAge) days"
     }
     if ($lockSettings.LockoutDuration) {
         Write-Host "Account Lockout Duration: $($lockSettings.LockoutDuration) minutes"
