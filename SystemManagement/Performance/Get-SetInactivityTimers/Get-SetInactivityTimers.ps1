@@ -2,11 +2,11 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:50:00 UTC
+# Last Updated: 2025-04-10 22:53:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.7
-# Additional Info: Fixed transcript file locking issue
-# =============================================================================
+# Version: 1.3.8
+# Additional Info: Enhanced transcript cleanup to prevent file locking
+# ===================================================================================================================================================
 
 <#
 .SYNOPSIS
@@ -28,6 +28,21 @@ Shows what changes would be made without actually making them
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param()
+
+# Function to safely stop transcript
+function Stop-TranscriptSafely {
+    try {
+        $transcriptPath = $Host.UI.RawUI.WindowTitle
+        if ($transcriptPath -match "Transcript started, output file is (.+)") {
+            Stop-Transcript -ErrorAction SilentlyContinue
+            # Give the system a moment to release the file handle
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    catch {
+        # Silently continue if transcript stop fails
+    }
+}
 
 # Function to format minutes into a readable string
 function Format-Minutes {
@@ -449,7 +464,10 @@ catch {
 }
 finally {
     # Always stop transcript in finally block if it was started
-    if ($transcriptStarted) {
-        Stop-Transcript
+    if ($global:transcriptStarted) {
+        Stop-TranscriptSafely
+        # Remove the termination event handler
+        Get-EventSubscriber -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -ErrorAction SilentlyContinue | 
+            Unregister-Event
     }
 }
