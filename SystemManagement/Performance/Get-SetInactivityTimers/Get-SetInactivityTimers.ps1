@@ -2,11 +2,11 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:28:00 UTC
+# Last Updated: 2025-04-10 22:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Added error handling for null power settings
-# ===================================================================================================================================================
+# Version: 1.3.2
+# Additional Info: Fixed PowerShell syntax errors for ternary operators
+# =============================================================================
 
 <#
 .SYNOPSIS
@@ -298,9 +298,8 @@ try {
     Write-Host ("Screen Saver Timeout: {0}" -f (Format-Minutes $currentSettings.ScreenSaver))
 
     Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
-    Write-Host "--------------------------------" -ForegroundColor White
-    Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): {0}" -f ($lockSettings.ScreenSaverForced ? "Yes" : "No"))
-    Write-Host ("Auto Lock Enabled: {0}" -f ($lockSettings.AutoLockEnabled ? "Yes" : "No"))
+    Write-Host "--------------------------------" -ForegroundColor White    Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): {0}" -f $(if ($lockSettings.ScreenSaverForced) { "Yes" } else { "No" }))
+    Write-Host ("Auto Lock Enabled: {0}" -f $(if ($lockSettings.AutoLockEnabled) { "Yes" } else { "No" }))
     if ($null -ne $lockSettings.AutoLockTimeout) {
         Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
     }
