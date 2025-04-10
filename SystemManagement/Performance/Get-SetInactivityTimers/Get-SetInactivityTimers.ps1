@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 18:21:00 UTC
+# Last Updated: 2025-04-10 22:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.5
-# Additional Info: Fixed GPO settings display formatting and type handling
+# Version: 1.3.0
+# Additional Info: Added power plan display and sleep timer reporting
 # ===================================================================================================================================================
 
 <#
@@ -40,28 +40,50 @@ function Format-Minutes {
 
 function Get-PowerSettings {
     Write-Host "Retrieving current power settings..." -ForegroundColor Cyan
-    # Get current power scheme GUID
-    $schemeGuid = (powercfg /getactivescheme) -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' }
+    
+    # Get current power scheme info
+    $powerSchemeInfo = powercfg /getactivescheme
+    $schemeName = ($powerSchemeInfo -split '\(')[0].Trim()
+    $schemeGuid = ($powerSchemeInfo -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' })
+    
     if (-not $schemeGuid) {
         Write-Warning "Could not determine active power scheme GUID"
         return $null
     }
-    # Get monitor timeout settings using active scheme
-    $monitorTimeoutAC = powercfg /query $schemeGuid SUB_VIDEO VIDEOIDLE | Select-String "AC Power Setting Index: ([0-9a-fx]+)" | ForEach-Object { $_.Matches.Groups[1].Value }
-    $monitorTimeoutDC = powercfg /query $schemeGuid SUB_VIDEO VIDEOIDLE | Select-String "DC Power Setting Index: ([0-9a-fx]+)" | ForEach-Object { $_.Matches.Groups[1].Value }
+
+    # Get all power settings using powercfg /query
+    $powerSettings = powercfg /query $schemeGuid
     
-    # Get sleep settings using active scheme
-    $sleepTimeoutAC = powercfg /query $schemeGuid SUB_SLEEP STANDBYIDLE | Select-String "AC Power Setting Index: ([0-9a-fx]+)" | ForEach-Object { $_.Matches.Groups[1].Value }
-    $sleepTimeoutDC = powercfg /query $schemeGuid SUB_SLEEP STANDBYIDLE | Select-String "DC Power Setting Index: ([0-9a-fx]+)" | ForEach-Object { $_.Matches.Groups[1].Value }
+    # Parse monitor timeout settings
+    $monitorTimeoutAC = ($powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Turn off display after"}).Matches.Groups[1].Value
+    $monitorTimeoutDC = ($powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Turn off display after"}).Matches.Groups[1].Value
+    
+    # Parse sleep settings
+    $sleepTimeoutAC = ($powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Sleep after"}).Matches.Groups[1].Value
+    $sleepTimeoutDC = ($powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Sleep after"}).Matches.Groups[1].Value
+    
+    # Get hibernate settings
+    $hibernateTimeoutAC = ($powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Hibernate after"}).Matches.Groups[1].Value
+    $hibernateTimeoutDC = ($powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Hibernate after"}).Matches.Groups[1].Value
     
     # Screen saver settings from registry
     $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue
     
     return @{
-        MonitorAC = $monitorTimeoutAC
-        MonitorDC = $monitorTimeoutDC
-        SleepAC = $sleepTimeoutAC
-        SleepDC = $sleepTimeoutDC
+        PowerPlanName = $schemeName
+        PowerPlanGuid = $schemeGuid
+        MonitorAC = [int]"0x$monitorTimeoutAC"
+        MonitorDC = [int]"0x$monitorTimeoutDC"
+        SleepAC = [int]"0x$sleepTimeoutAC"
+        SleepDC = [int]"0x$sleepTimeoutDC"
+        HibernateAC = if ($hibernateTimeoutAC) { [int]"0x$hibernateTimeoutAC" } else { 0 }
+        HibernateDC = if ($hibernateTimeoutDC) { [int]"0x$hibernateTimeoutDC" } else { 0 }
         ScreenSaver = $screenSaverTimeout
     }
 }
@@ -226,14 +248,25 @@ try {
     # Get current settings
     $currentSettings = Get-PowerSettings
     $lockSettings = Get-LockPolicySettings
-    
-    # Display current settings
+      # Display current settings
+    Write-Host "`nPower Plan Information:" -ForegroundColor White
+    Write-Host "---------------------" -ForegroundColor White
+    Write-Host ("Active Power Plan: {0}" -f $currentSettings.PowerPlanName)
+    Write-Host ("Plan GUID: {0}" -f $currentSettings.PowerPlanGuid)
+
     Write-Host "`nCurrent Inactivity Settings:" -ForegroundColor White
     Write-Host "------------------------" -ForegroundColor White
-    Write-Host ("Monitor Timeout (AC): {0}" -f (Format-Minutes $currentSettings.MonitorAC))
+    Write-Host "`nDisplay Settings:" -ForegroundColor Cyan
+    Write-Host ("Monitor Timeout (AC Power): {0}" -f (Format-Minutes $currentSettings.MonitorAC))
     Write-Host ("Monitor Timeout (Battery): {0}" -f (Format-Minutes $currentSettings.MonitorDC))
-    Write-Host ("Sleep Timeout (AC): {0}" -f (Format-Minutes $currentSettings.SleepAC))
-    Write-Host ("Sleep Timeout (Battery): {0}" -f (Format-Minutes $currentSettings.SleepDC))
+    
+    Write-Host "`nSleep Settings:" -ForegroundColor Cyan
+    Write-Host ("Sleep Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.SleepAC))
+    Write-Host ("Sleep Timer (Battery): {0}" -f (Format-Minutes $currentSettings.SleepDC))
+    Write-Host ("Hibernate Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.HibernateAC))
+    Write-Host ("Hibernate Timer (Battery): {0}" -f (Format-Minutes $currentSettings.HibernateDC))
+    
+    Write-Host "`nScreen Saver:" -ForegroundColor Cyan
     Write-Host ("Screen Saver Timeout: {0}" -f (Format-Minutes $currentSettings.ScreenSaver))
 
     Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
