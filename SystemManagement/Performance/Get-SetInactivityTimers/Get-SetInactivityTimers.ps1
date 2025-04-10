@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:35:00 UTC
+# Last Updated: 2025-04-10 22:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.3
-# Additional Info: Fixed PowerShell syntax error
+# Version: 1.3.4
+# Additional Info: Fixed incorrect power settings display and Format-Minutes function
 # =============================================================================
 
 <#
@@ -33,8 +33,14 @@ param()
 function Format-Minutes {
     param([int]$Minutes)
     if ($Minutes -eq 0) { return "Never" }
-    if ($Minutes -ge 1440) { return "$($Minutes / 1440) hours" }
-    if ($Minutes -ge 60) { return "$($Minutes / 60) hours" }
+    if ($Minutes -ge 1440) { 
+        $hours = [math]::Round($Minutes / 60)
+        return "$hours hours" 
+    }
+    if ($Minutes -ge 60) { 
+        $hours = [math]::Round($Minutes / 60)
+        return "$hours hours" 
+    }
     return "$Minutes minutes"
 }
 
@@ -102,17 +108,16 @@ function Get-PowerSettings {
     
     # Screen saver settings from registry
     $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue
-    
-    return @{
+      return @{
         PowerPlanName = $schemeName
         PowerPlanGuid = $schemeGuid
-        MonitorAC = [int]"0x$monitorTimeoutAC"
-        MonitorDC = [int]"0x$monitorTimeoutDC"
-        SleepAC = [int]"0x$sleepTimeoutAC"
-        SleepDC = [int]"0x$sleepTimeoutDC"
-        HibernateAC = if ($hibernateTimeoutAC) { [int]"0x$hibernateTimeoutAC" } else { 0 }
-        HibernateDC = if ($hibernateTimeoutDC) { [int]"0x$hibernateTimeoutDC" } else { 0 }
-        ScreenSaver = $screenSaverTimeout
+        MonitorAC = if ($monitorTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($monitorTimeoutAC, 16) } else { 0 }
+        MonitorDC = if ($monitorTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($monitorTimeoutDC, 16) } else { 0 }
+        SleepAC = if ($sleepTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($sleepTimeoutAC, 16) } else { 0 }
+        SleepDC = if ($sleepTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($sleepTimeoutDC, 16) } else { 0 }
+        HibernateAC = if ($hibernateTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutAC, 16) } else { 0 }
+        HibernateDC = if ($hibernateTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutDC, 16) } else { 0 }
+        ScreenSaver = if ($screenSaverTimeout.ScreenSaveTimeout) { [int]$screenSaverTimeout.ScreenSaveTimeout / 60 } else { 0 }
     }
 }
 
