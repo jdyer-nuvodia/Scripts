@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:26:00 UTC
+# Last Updated: 2025-04-10 22:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added power plan display and sleep timer reporting
+# Version: 1.3.1
+# Additional Info: Added error handling for null power settings
 # ===================================================================================================================================================
 
 <#
@@ -40,37 +40,65 @@ function Format-Minutes {
 
 function Get-PowerSettings {
     Write-Host "Retrieving current power settings..." -ForegroundColor Cyan
-    
-    # Get current power scheme info
+      # Get current power scheme info
     $powerSchemeInfo = powercfg /getactivescheme
-    $schemeName = ($powerSchemeInfo -split '\(')[0].Trim()
+    if ([string]::IsNullOrWhiteSpace($powerSchemeInfo)) {
+        Write-Warning "Could not retrieve power scheme information"
+        return $null
+    }
+    $schemeName = if ($powerSchemeInfo -match '\(.*\)') { ($powerSchemeInfo -split '\(')[0].Trim() } else { $powerSchemeInfo.Trim() }
     $schemeGuid = ($powerSchemeInfo -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' })
     
     if (-not $schemeGuid) {
         Write-Warning "Could not determine active power scheme GUID"
         return $null
-    }
-
-    # Get all power settings using powercfg /query
+    }    # Get all power settings using powercfg /query
     $powerSettings = powercfg /query $schemeGuid
+    if ([string]::IsNullOrWhiteSpace($powerSettings)) {
+        Write-Warning "Could not retrieve power settings"
+        return $null
+    }
     
     # Parse monitor timeout settings
-    $monitorTimeoutAC = ($powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Turn off display after"}).Matches.Groups[1].Value
-    $monitorTimeoutDC = ($powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Turn off display after"}).Matches.Groups[1].Value
-    
-    # Parse sleep settings
-    $sleepTimeoutAC = ($powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Sleep after"}).Matches.Groups[1].Value
-    $sleepTimeoutDC = ($powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Sleep after"}).Matches.Groups[1].Value
+    $monitorTimeoutAC = "0"  # Default value
+    $monitorTimeoutDC = "0"  # Default value
+    $monitorMatch = $powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Turn off display after"}
+    if ($monitorMatch) {
+        $monitorTimeoutAC = $monitorMatch.Matches.Groups[1].Value
+    }
+    $monitorMatchDC = $powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Turn off display after"}
+    if ($monitorMatchDC) {
+        $monitorTimeoutDC = $monitorMatchDC.Matches.Groups[1].Value
+    }
+      # Parse sleep settings
+    $sleepTimeoutAC = "0"  # Default value
+    $sleepTimeoutDC = "0"  # Default value
+    $sleepMatch = $powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Sleep after"}
+    if ($sleepMatch) {
+        $sleepTimeoutAC = $sleepMatch.Matches.Groups[1].Value
+    }
+    $sleepMatchDC = $powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Sleep after"}
+    if ($sleepMatchDC) {
+        $sleepTimeoutDC = $sleepMatchDC.Matches.Groups[1].Value
+    }
     
     # Get hibernate settings
-    $hibernateTimeoutAC = ($powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Hibernate after"}).Matches.Groups[1].Value
-    $hibernateTimeoutDC = ($powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Hibernate after"}).Matches.Groups[1].Value
+    $hibernateTimeoutAC = "0"  # Default value
+    $hibernateTimeoutDC = "0"  # Default value
+    $hibernateMatch = $powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Hibernate after"}
+    if ($hibernateMatch) {
+        $hibernateTimeoutAC = $hibernateMatch.Matches.Groups[1].Value
+    }
+    $hibernateMatchDC = $powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
+        Where-Object {$_.Context.PreContext -match "Hibernate after"}
+    if ($hibernateMatchDC) {
+        $hibernateTimeoutDC = $hibernateMatchDC.Matches.Groups[1].Value
+    }
     
     # Screen saver settings from registry
     $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue
