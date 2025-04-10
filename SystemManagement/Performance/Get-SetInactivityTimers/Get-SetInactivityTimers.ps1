@@ -2,11 +2,11 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:53:00 UTC
+# Last Updated: 2025-04-10 22:57:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.8
-# Additional Info: Enhanced transcript cleanup to prevent file locking
-# ===================================================================================================================================================
+# Version: 1.3.9
+# Additional Info: Fixed power settings parsing and script exit handling
+# =============================================================================
 
 <#
 .SYNOPSIS
@@ -346,12 +346,19 @@ function Set-LockPolicySettings {
     return $true
 }
 
+# Register cleanup for unexpected termination
+$null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
+    if ($DebugPreference -ne 'SilentlyContinue') {
+        Stop-TranscriptSafely
+    }
+}
+
 # Main script execution
 try {
     # Start transcript logging only when Debug is enabled
     if ($DebugPreference -ne 'SilentlyContinue') {
         $logPath = Join-Path $PSScriptRoot "Get-SetInactivityTimers_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-        Start-Transcript -Path $logPath
+        Start-Transcript -Path $logPath -Force
         Write-Debug "Debug logging started. Log file: $logPath"
     }
     
@@ -390,13 +397,19 @@ try {
     Write-Host ("Auto Lock Enabled: {0}" -f $(if ($lockSettings.AutoLockEnabled) { "Yes" } else { "No" }))
     if ($null -ne $lockSettings.AutoLockTimeout) {
         Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
-    }
-
-    # Ask if user wants to change settings
+    }    # Ask if user wants to change settings
     $response = Read-Host "`nWould you like to change these settings? (Y/N)"
-    if ($response -eq "Y") {
-        # Power settings params
-        $powerParams = @{}
+    
+    # Stop transcript before exit if user chooses not to make changes
+    if ($response -ne "Y") {
+        if ($DebugPreference -ne 'SilentlyContinue') {
+            Stop-TranscriptSafely
+        }
+        exit 0
+    }
+    
+    # If continuing, prepare power settings params
+    $powerParams = @{}
         
         # Monitor timeout AC
         $userInput = Read-Host "Enter new Monitor Timeout for AC power (current: $(Format-Minutes $currentSettings.MonitorAC)) [Enter to skip]"
@@ -447,16 +460,9 @@ try {
             if (Set-LockPolicySettings @gpoParams) {
                 Write-Host "Group Policy settings updated successfully!" -ForegroundColor Green
             }
-        }
-
-        if ($powerParams.Count -eq 0 -and $gpoParams.Count -eq 0) {
+        }        if ($powerParams.Count -eq 0 -and $gpoParams.Count -eq 0) {
             Write-Host "No changes were made." -ForegroundColor Cyan
         }
-    }
-    # Stop transcript if it was started
-    if ($DebugPreference -ne 'SilentlyContinue' -and (Get-PSCallStack).Command -contains 'Start-Transcript') {
-        Stop-Transcript
-    }
 }
 catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
@@ -464,10 +470,12 @@ catch {
 }
 finally {
     # Always stop transcript in finally block if it was started
-    if ($global:transcriptStarted) {
+    if ($DebugPreference -ne 'SilentlyContinue') {
         Stop-TranscriptSafely
-        # Remove the termination event handler
-        Get-EventSubscriber -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -ErrorAction SilentlyContinue | 
-            Unregister-Event
     }
+    
+    # Clean up any remaining event subscribers
+    Get-EventSubscriber -ErrorAction SilentlyContinue | 
+        Where-Object { $_.SourceIdentifier -eq [System.Management.Automation.PsEngineEvent]::Exiting } |
+        ForEach-Object { Unregister-Event -SubscriptionId $_.SubscriptionId }
 }
