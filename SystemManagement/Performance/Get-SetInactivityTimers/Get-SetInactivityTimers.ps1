@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:47:00 UTC
+# Last Updated: 2025-04-10 22:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.6
-# Additional Info: Modified debug logging to only show with -Debug parameter
+# Version: 1.3.7
+# Additional Info: Fixed transcript file locking issue
 # =============================================================================
 
 <#
@@ -445,9 +445,11 @@ try {
 }
 catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
-    # Stop transcript if it was started
-    if ($DebugPreference -ne 'SilentlyContinue' -and (Get-PSCallStack).Command -contains 'Start-Transcript') {
+    exit 1
+}
+finally {
+    # Always stop transcript in finally block if it was started
+    if ($transcriptStarted) {
         Stop-Transcript
     }
-    exit 1
 }
