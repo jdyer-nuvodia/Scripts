@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:37:00 UTC
+# Last Updated: 2025-04-10 22:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.4
-# Additional Info: Fixed incorrect power settings display and Format-Minutes function
+# Version: 1.3.5
+# Additional Info: Added debug logging functionality
 # =============================================================================
 
 <#
@@ -46,8 +46,12 @@ function Format-Minutes {
 
 function Get-PowerSettings {
     Write-Host "Retrieving current power settings..." -ForegroundColor Cyan
-      # Get current power scheme info
+    Write-Host "[DEBUG] Starting power settings retrieval" -ForegroundColor Magenta
+    
+    # Get current power scheme info
     $powerSchemeInfo = powercfg /getactivescheme
+    Write-Host "[DEBUG] Raw power scheme info: $powerSchemeInfo" -ForegroundColor Magenta
+    
     if ([string]::IsNullOrWhiteSpace($powerSchemeInfo)) {
         Write-Warning "Could not retrieve power scheme information"
         return $null
@@ -64,19 +68,29 @@ function Get-PowerSettings {
         Write-Warning "Could not retrieve power settings"
         return $null
     }
-    
-    # Parse monitor timeout settings
+      # Parse monitor timeout settings
     $monitorTimeoutAC = "0"  # Default value
     $monitorTimeoutDC = "0"  # Default value
+    
+    Write-Host "[DEBUG] Raw power settings output:" -ForegroundColor Magenta
+    $powerSettings | Out-String | Write-Host -ForegroundColor DarkGray
+    
     $monitorMatch = $powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
         Where-Object {$_.Context.PreContext -match "Turn off display after"}
     if ($monitorMatch) {
         $monitorTimeoutAC = $monitorMatch.Matches.Groups[1].Value
+        Write-Host "[DEBUG] Found AC monitor timeout: $monitorTimeoutAC" -ForegroundColor Magenta
+    } else {
+        Write-Host "[DEBUG] No AC monitor timeout found in power settings" -ForegroundColor Magenta
     }
+    
     $monitorMatchDC = $powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
         Where-Object {$_.Context.PreContext -match "Turn off display after"}
     if ($monitorMatchDC) {
         $monitorTimeoutDC = $monitorMatchDC.Matches.Groups[1].Value
+        Write-Host "[DEBUG] Found DC monitor timeout: $monitorTimeoutDC" -ForegroundColor Magenta
+    } else {
+        Write-Host "[DEBUG] No DC monitor timeout found in power settings" -ForegroundColor Magenta
     }
       # Parse sleep settings
     $sleepTimeoutAC = "0"  # Default value
@@ -107,18 +121,69 @@ function Get-PowerSettings {
     }
     
     # Screen saver settings from registry
-    $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue
-      return @{
+    $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue    # Convert and log all power settings
+    Write-Host "[DEBUG] Converting power settings from hex to decimal..." -ForegroundColor Magenta
+    
+    $convertedSettings = @{
         PowerPlanName = $schemeName
         PowerPlanGuid = $schemeGuid
-        MonitorAC = if ($monitorTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($monitorTimeoutAC, 16) } else { 0 }
-        MonitorDC = if ($monitorTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($monitorTimeoutDC, 16) } else { 0 }
-        SleepAC = if ($sleepTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($sleepTimeoutAC, 16) } else { 0 }
-        SleepDC = if ($sleepTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($sleepTimeoutDC, 16) } else { 0 }
-        HibernateAC = if ($hibernateTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutAC, 16) } else { 0 }
-        HibernateDC = if ($hibernateTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutDC, 16) } else { 0 }
-        ScreenSaver = if ($screenSaverTimeout.ScreenSaveTimeout) { [int]$screenSaverTimeout.ScreenSaveTimeout / 60 } else { 0 }
     }
+    
+    # Monitor AC
+    Write-Host "[DEBUG] Converting Monitor AC timeout..." -ForegroundColor Magenta
+    Write-Host "[DEBUG] Raw Monitor AC value: $monitorTimeoutAC" -ForegroundColor Magenta
+    if ($monitorTimeoutAC -match '^[0-9a-fA-F]+$') {
+        $convertedSettings.MonitorAC = [Convert]::ToInt32($monitorTimeoutAC, 16)
+        Write-Host "[DEBUG] Converted Monitor AC value: $($convertedSettings.MonitorAC)" -ForegroundColor Magenta
+    } else {
+        $convertedSettings.MonitorAC = 0
+        Write-Host "[DEBUG] Invalid Monitor AC value, using default: 0" -ForegroundColor Magenta
+    }
+    
+    # Monitor DC
+    Write-Host "[DEBUG] Converting Monitor DC timeout..." -ForegroundColor Magenta
+    Write-Host "[DEBUG] Raw Monitor DC value: $monitorTimeoutDC" -ForegroundColor Magenta
+    if ($monitorTimeoutDC -match '^[0-9a-fA-F]+$') {
+        $convertedSettings.MonitorDC = [Convert]::ToInt32($monitorTimeoutDC, 16)
+        Write-Host "[DEBUG] Converted Monitor DC value: $($convertedSettings.MonitorDC)" -ForegroundColor Magenta
+    } else {
+        $convertedSettings.MonitorDC = 0
+        Write-Host "[DEBUG] Invalid Monitor DC value, using default: 0" -ForegroundColor Magenta
+    }
+    
+    # Sleep AC
+    Write-Host "[DEBUG] Converting Sleep AC timeout..." -ForegroundColor Magenta
+    Write-Host "[DEBUG] Raw Sleep AC value: $sleepTimeoutAC" -ForegroundColor Magenta
+    if ($sleepTimeoutAC -match '^[0-9a-fA-F]+$') {
+        $convertedSettings.SleepAC = [Convert]::ToInt32($sleepTimeoutAC, 16)
+        Write-Host "[DEBUG] Converted Sleep AC value: $($convertedSettings.SleepAC)" -ForegroundColor Magenta
+    } else {
+        $convertedSettings.SleepAC = 0
+        Write-Host "[DEBUG] Invalid Sleep AC value, using default: 0" -ForegroundColor Magenta
+    }
+    
+    # Sleep DC
+    Write-Host "[DEBUG] Converting Sleep DC timeout..." -ForegroundColor Magenta
+    Write-Host "[DEBUG] Raw Sleep DC value: $sleepTimeoutDC" -ForegroundColor Magenta
+    if ($sleepTimeoutDC -match '^[0-9a-fA-F]+$') {
+        $convertedSettings.SleepDC = [Convert]::ToInt32($sleepTimeoutDC, 16)
+        Write-Host "[DEBUG] Converted Sleep DC value: $($convertedSettings.SleepDC)" -ForegroundColor Magenta
+    } else {
+        $convertedSettings.SleepDC = 0
+        Write-Host "[DEBUG] Invalid Sleep DC value, using default: 0" -ForegroundColor Magenta
+    }
+    
+    # Hibernate settings
+    $convertedSettings.HibernateAC = if ($hibernateTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutAC, 16) } else { 0 }
+    $convertedSettings.HibernateDC = if ($hibernateTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutDC, 16) } else { 0 }
+    
+    # Screen saver
+    $convertedSettings.ScreenSaver = if ($screenSaverTimeout.ScreenSaveTimeout) { [int]$screenSaverTimeout.ScreenSaveTimeout / 60 } else { 0 }
+    
+    Write-Host "[DEBUG] Final converted settings:" -ForegroundColor Magenta
+    $convertedSettings | ConvertTo-Json | Write-Host -ForegroundColor DarkGray
+    
+    return $convertedSettings
 }
 
 function Get-LockPolicySettings {    Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan
@@ -273,6 +338,11 @@ function Set-LockPolicySettings {
 
 # Main script execution
 try {
+    # Start transcript logging
+    $logPath = Join-Path $PSScriptRoot "Get-SetInactivityTimers_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    Start-Transcript -Path $logPath
+    Write-Host "Debug logging started. Log file: $logPath" -ForegroundColor Magenta
+    
     # Display WhatIf mode disclaimer if applicable
     if ($WhatIfPreference) {
         Write-Host "`n[WhatIf Mode] This script is running in simulation mode. No actual changes will be made.`n" -ForegroundColor Yellow
