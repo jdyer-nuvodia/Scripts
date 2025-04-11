@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:57:00 UTC
+# Last Updated: 2025-04-10 22:59:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.9
-# Additional Info: Fixed power settings parsing and script exit handling
+# Version: 1.3.10
+# Additional Info: Enhanced transcript cleanup to prevent file locking
 # =============================================================================
 
 <#
@@ -32,15 +32,19 @@ param()
 # Function to safely stop transcript
 function Stop-TranscriptSafely {
     try {
-        $transcriptPath = $Host.UI.RawUI.WindowTitle
-        if ($transcriptPath -match "Transcript started, output file is (.+)") {
+        if ([System.Management.Automation.PowerShell]::Create().AddCommand('Get-PSSession').Invoke() | 
+            Where-Object { $_.State -eq 'Running' -and $_.Name -like '*Transcript*' }) {
+            # Stop any running transcripts
             Stop-Transcript -ErrorAction SilentlyContinue
             # Give the system a moment to release the file handle
-            Start-Sleep -Milliseconds 100
+            Start-Sleep -Milliseconds 500
+            # Force garbage collection to release file handles
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
         }
     }
     catch {
-        # Silently continue if transcript stop fails
+        Write-Debug "Error stopping transcript: $_"
     }
 }
 
@@ -346,21 +350,35 @@ function Set-LockPolicySettings {
     return $true
 }
 
+# Script scope variable to track transcript status
+$script:transcriptActive = $false
+$script:logPath = $null
+
+# Function to start transcript safely
+function Start-TranscriptSafely {
+    if ($DebugPreference -ne 'SilentlyContinue' -and -not $script:transcriptActive) {
+        try {
+            $script:logPath = Join-Path $PSScriptRoot "Get-SetInactivityTimers_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+            Start-Transcript -Path $script:logPath -Force
+            $script:transcriptActive = $true
+            Write-Debug "Debug logging started. Log file: $script:logPath"
+        }
+        catch {
+            Write-Warning "Failed to start transcript: $_"
+        }
+    }
+}
+
 # Register cleanup for unexpected termination
 $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
-    if ($DebugPreference -ne 'SilentlyContinue') {
+    if ($script:transcriptActive) {
         Stop-TranscriptSafely
     }
 }
 
 # Main script execution
 try {
-    # Start transcript logging only when Debug is enabled
-    if ($DebugPreference -ne 'SilentlyContinue') {
-        $logPath = Join-Path $PSScriptRoot "Get-SetInactivityTimers_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-        Start-Transcript -Path $logPath -Force
-        Write-Debug "Debug logging started. Log file: $logPath"
-    }
+    Start-TranscriptSafely
     
     # Display WhatIf mode disclaimer if applicable
     if ($WhatIfPreference) {
@@ -399,11 +417,12 @@ try {
         Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
     }    # Ask if user wants to change settings
     $response = Read-Host "`nWould you like to change these settings? (Y/N)"
-    
-    # Stop transcript before exit if user chooses not to make changes
+      # Stop transcript before exit if user chooses not to make changes
     if ($response -ne "Y") {
-        if ($DebugPreference -ne 'SilentlyContinue') {
+        if ($script:transcriptActive) {
             Stop-TranscriptSafely
+            $script:transcriptActive = $false
+            Start-Sleep -Seconds 1  # Give the system time to fully release handles
         }
         exit 0
     }
@@ -470,12 +489,20 @@ catch {
 }
 finally {
     # Always stop transcript in finally block if it was started
-    if ($DebugPreference -ne 'SilentlyContinue') {
+    if ($script:transcriptActive) {
         Stop-TranscriptSafely
+        $script:transcriptActive = $false
+        Start-Sleep -Seconds 1  # Give the system time to fully release handles
     }
     
     # Clean up any remaining event subscribers
     Get-EventSubscriber -ErrorAction SilentlyContinue | 
         Where-Object { $_.SourceIdentifier -eq [System.Management.Automation.PsEngineEvent]::Exiting } |
-        ForEach-Object { Unregister-Event -SubscriptionId $_.SubscriptionId }
+        ForEach-Object { 
+            Unregister-Event -SubscriptionId $_.SubscriptionId -ErrorAction SilentlyContinue 
+        }
+    
+    # Force final cleanup
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
 }
