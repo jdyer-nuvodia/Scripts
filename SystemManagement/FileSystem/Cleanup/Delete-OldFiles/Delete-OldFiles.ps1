@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2025-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:30:00 UTC
+# Last Updated: 2025-04-14 17:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.0
-# Additional Info: Added SupportsShouldProcess for safer file deletion
+# Version: 1.10.0
+# Additional Info: Changed ConfirmImpact to Low for automated operation
 # =============================================================================
 
 <#
@@ -36,7 +36,7 @@
     Deletes files older than 90 days from D:\Backups without recursing into subdirectories
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Low')]
 param(
     [Parameter(Mandatory=$false)]
     [string]$StartPath = "C:\windows\System32\winevt\logs",
