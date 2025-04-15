@@ -39,6 +39,7 @@
 
 # Ignore everything in Development\Git\Generate-GitHistory directory
 Development/Git/Generate-GitHistory
+Development\Git\Generate-GitHistory
 
 # .csv files
 *.csv
