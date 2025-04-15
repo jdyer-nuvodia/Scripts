@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-RecentAccountLockouts.ps1
 # Created: 2025-04-15 22:28:00 UTC
-# Author: GitHub Copilot
+# Author: jdyer-nuvodia
 # Last Updated: 2025-04-15 23:34:00 UTC
-# Updated By: GitHub Copilot
-# Version: 1.3.0
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays 'Local System' for S-1-5-18 caller SID. Improved file handle management to properly release log files. Enhanced transcript handling with proper resource cleanup via garbage collection.
+# Updated By: jdyer-nuvodia
+# Version: 1.3.1
+# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays 'Local System' for S-1-5-18 caller SID. Added end block and improved file handle management to properly release log files. Enhanced transcript handling with proper resource cleanup via garbage collection.
 # =============================================================================
 
 #Requires -Modules ActiveDirectory
@@ -56,30 +56,70 @@ param(
 )
 
 begin {
-    # Script scope variable to track transcript status - Moved to begin block
-    $script:transcriptActive = $false    # Function to safely stop transcript, improved based on Get-SetInactivityTimers.ps1
+    # Script scope variable to track transcript status
+    $script:transcriptActive = $false
+    $script:logFile = $null
+    
+    # Add script termination handler to ensure transcript is always stopped
+    $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
+        if ($script:transcriptActive) {
+            try {
+                Stop-Transcript -ErrorAction SilentlyContinue
+                # Explicit attempt to release file handle even after Stop-Transcript
+                if ($null -ne $script:logFile -and (Test-Path -Path $script:logFile)) {
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                }
+            } catch {
+                # Swallow errors on exit - we're just trying to clean up
+            }
+        }
+    }
+    
+    # Function to safely stop transcript, improved based on Get-SetInactivityTimers.ps1
     function Stop-TranscriptSafely {
+        [CmdletBinding()]
+        param()
+        
         Write-Debug "Entering Stop-TranscriptSafely function."
         # Check the script-scoped flag to see if transcript was started by this script
         if ($script:transcriptActive) {
             Write-Debug "Transcript was active, attempting to stop."
             try {
-                Stop-Transcript -ErrorAction Stop # Use Stop to ensure catch block executes on error
+                # First try - standard Stop-Transcript
+                Stop-Transcript -ErrorAction Stop
                 Write-Debug "Stop-Transcript command executed."
+                
                 # Give the system a moment to release the file handle
                 Start-Sleep -Milliseconds 500
                 Write-Debug "Slept for 500ms after Stop-Transcript."
-                # Force garbage collection to potentially release file handles
+                
+                # Force garbage collection to release file handles
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
                 Write-Debug "Garbage collection triggered after Stop-Transcript."
+                
+                # Try a second round of garbage collection for stubborn handles
+                Start-Sleep -Milliseconds 200
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                
                 # Set the flag to inactive *after* successful stop
                 $script:transcriptActive = $false
-                Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray # User feedback
+                Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray
             }
             catch {
                 Write-Warning "Error stopping transcript: $_"
-                # Even if stopping failed, mark as inactive to prevent retry loops if applicable
+                try {
+                    # Second try - just in case the first attempt failed but didn't throw properly
+                    Stop-Transcript -ErrorAction SilentlyContinue
+                    Start-Sleep -Milliseconds 500
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+                } catch {
+                    # Ignore errors on the second attempt
+                }
+                # Even if stopping failed, mark as inactive to prevent retry loops
                 $script:transcriptActive = $false
                 Write-Debug "Transcript marked as inactive despite error during stop."
             }
@@ -94,13 +134,13 @@ process {
     # Define Log Path and Start Transcript
     $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
     # Log file will be in the same directory as the script
-    $logFile = Join-Path -Path $scriptPath -ChildPath "Get-RecentAccountLockouts_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    $script:logFile = Join-Path -Path $scriptPath -ChildPath "Get-RecentAccountLockouts_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     try {
-        Start-Transcript -Path $logFile -Append -ErrorAction Stop
+        Start-Transcript -Path $script:logFile -Append -ErrorAction Stop
         $script:transcriptActive = $true # Mark transcript as active
-        Write-Debug "Transcript started: $logFile"
+        Write-Debug "Transcript started: $($script:logFile)"
     } catch {
-        Write-Warning "Failed to start transcript logging to '$logFile'. Error: $($_.Exception.Message)"
+        Write-Warning "Failed to start transcript logging to '$($script:logFile)'. Error: $($_.Exception.Message)"
         # Continue execution without transcript logging
     }
 
@@ -209,14 +249,28 @@ process {
             Write-Host "-----------------------------------------" -ForegroundColor White
         }
 
-        Write-Host "Script finished." -ForegroundColor Cyan
-
-    } catch {
+        Write-Host "Script finished." -ForegroundColor Cyan    } catch {
         # Catch block for errors in the main try block (e.g., Get-ADDomainController failure)
         Write-Error "An error occurred during script execution: $($_.Exception.Message)"
         # Consider adding more specific error handling if needed
     } finally {
-        # Stop Transcript using the safe function
+        # Stop Transcript using the safe function, but don't rely solely on this in case of unexpected termination
         Stop-TranscriptSafely
     }
+}
+
+end {
+    # Ensure transcript is properly stopped and resources are cleaned up
+    if ($script:transcriptActive) {
+        Write-Verbose "Stopping transcript in end block to ensure proper cleanup"
+        Stop-TranscriptSafely
+    }
+    
+    # Unregister event handler to prevent memory leaks
+    Get-EventSubscriber -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -ErrorAction SilentlyContinue | 
+    Unregister-Event -ErrorAction SilentlyContinue
+    
+    # Final garbage collection
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
 }
