@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-14 22:04:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Fixed power settings parsing to correctly detect and display monitor and sleep timeouts
+# Last Updated: 2025-04-15 21:28:00 UTC
+# Updated By: GitHub Copilot
+# Version: 1.4.2
+# Additional Info: Simplified transcript stopping logic and added debug logging to finally block for better cleanup diagnostics.
 # =============================================================================
 
 <#
@@ -31,21 +31,34 @@ param()
 
 # Function to safely stop transcript
 function Stop-TranscriptSafely {
-    try {
-        if ([System.Management.Automation.PowerShell]::Create().AddCommand('Get-PSSession').Invoke() | 
-            Where-Object { $_.State -eq 'Running' -and $_.Name -like '*Transcript*' }) {
-            # Stop any running transcripts
-            Stop-Transcript -ErrorAction SilentlyContinue
+    Write-Debug "Entering Stop-TranscriptSafely function."
+    # Check the script-scoped flag to see if transcript was started by this script
+    if ($script:transcriptActive) {
+        Write-Debug "Transcript was active, attempting to stop."
+        try {
+            Stop-Transcript -ErrorAction Stop # Use Stop to ensure catch block executes on error
+            Write-Debug "Stop-Transcript command executed."
             # Give the system a moment to release the file handle
             Start-Sleep -Milliseconds 500
-            # Force garbage collection to release file handles
+            Write-Debug "Slept for 500ms after Stop-Transcript."
+            # Force garbage collection to potentially release file handles
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
+            Write-Debug "Garbage collection triggered after Stop-Transcript."
+            # Set the flag to inactive *after* successful stop
+            $script:transcriptActive = $false
+            Write-Debug "Transcript marked as inactive."
         }
+        catch {
+            Write-Warning "Error stopping transcript: $_"
+            # Even if stopping failed, mark as inactive to prevent retry loops if applicable
+            $script:transcriptActive = $false
+            Write-Debug "Transcript marked as inactive despite error during stop."
+        }
+    } else {
+        Write-Debug "Transcript was not marked as active by this script, skipping Stop-Transcript."
     }
-    catch {
-        Write-Debug "Error stopping transcript: $_"
-    }
+    Write-Debug "Exiting Stop-TranscriptSafely function."
 }
 
 # Function to format minutes into a readable string
@@ -66,196 +79,131 @@ function Format-Minutes {
 function Get-PowerSettings {
     Write-Host "Retrieving current power settings..." -ForegroundColor Cyan
     Write-Debug "Starting power settings retrieval"
-    
+
     # Get current power scheme info
     $powerSchemeInfo = powercfg /getactivescheme
     Write-Debug "Raw power scheme info: $powerSchemeInfo"
-    
+
     if ([string]::IsNullOrWhiteSpace($powerSchemeInfo)) {
         Write-Warning "Could not retrieve power scheme information"
         return $null
     }
-    $schemeName = if ($powerSchemeInfo -match '\(.*\)') { ($powerSchemeInfo -split '\(')[0].Trim() } else { $powerSchemeInfo.Trim() }
-    $schemeGuid = ($powerSchemeInfo -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' })
-    
+    # Extract the GUID robustly
+    $schemeGuid = ($powerSchemeInfo -split ' ' | Where-Object { $_ -match '^[{(]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[)}]?$' } | Select-Object -First 1)
+
     if (-not $schemeGuid) {
-        Write-Warning "Could not determine active power scheme GUID"
+        Write-Warning "Could not determine active power scheme GUID from '$powerSchemeInfo'"
         return $null
     }
-    
+    Write-Debug "Active Power Scheme GUID: $schemeGuid"
+
     # Get all power settings using powercfg /query
     $powerSettings = powercfg /query $schemeGuid
     if ([string]::IsNullOrWhiteSpace($powerSettings)) {
-        Write-Warning "Could not retrieve power settings"
+        Write-Warning "Could not retrieve power settings for scheme $schemeGuid"
         return $null
     }
-    
+
     Write-Debug "Raw power settings output:"
     $powerSettings | Out-String | Write-Debug
 
-    # Initialize timeout variables
-    $monitorTimeoutAC = "0"
-    $monitorTimeoutDC = "0"
-    $sleepTimeoutAC = "0"
-    $sleepTimeoutDC = "0"
-    $hibernateTimeoutAC = "0"
-    $hibernateTimeoutDC = "0"
-    
-    # Split the output into blocks for better parsing
-    $powerSettingsLines = $powerSettings -split "`r`n"
-    
-    # Parse monitor timeout settings
-    $inDisplaySection = $false
-    $inSleepSection = $false
-    $inHibernateSection = $false
-    
-    for ($i = 0; $i -lt $powerSettingsLines.Count; $i++) {
-        $line = $powerSettingsLines[$i]
-        
-        # Check for display section
-        if ($line -match "Turn off display after") {
-            Write-Debug "Found display section at line $i"
-            $inDisplaySection = $true
-            $inSleepSection = $false
-            $inHibernateSection = $false
+    # Initialize timeout variables (in seconds)
+    $monitorTimeoutAC_Seconds = 0
+    $monitorTimeoutDC_Seconds = 0
+    $sleepTimeoutAC_Seconds = 0
+    $sleepTimeoutDC_Seconds = 0
+    $hibernateTimeoutAC_Seconds = 0
+    $hibernateTimeoutDC_Seconds = 0
+
+    # Split the output into lines for parsing
+    $powerSettingsLines = $powerSettings -split [System.Environment]::NewLine
+
+    # Define GUIDs for common settings (these might vary slightly by Windows version, but are generally stable)
+    $displaySubgroupGuid = "7516b95f-f776-4464-8c53-06167f40cc99" # SUB_VIDEO
+    $sleepSubgroupGuid = "238c9fa8-0aad-41ed-83f4-97be242c8f20"   # SUB_SLEEP
+    $displayTimeoutSettingGuid = "3c0bc021-c8a8-4e07-a973-6b14cbc2b6e6" # VIDEOIDLE
+    $sleepTimeoutSettingGuid = "29f6c1db-86da-48c5-9fdb-f2b67b1f44da"   # STANDBYIDLE
+    $hibernateTimeoutSettingGuid = "9d7815a6-7ee4-497e-8888-515a05f02364" # HIBERNATEIDLE
+
+    $currentSubgroupGuid = $null
+    $currentSettingGuid = $null
+
+    foreach ($line in $powerSettingsLines) {
+        # Identify current Subgroup
+        if ($line -match "Subgroup GUID: ([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})") {
+            $currentSubgroupGuid = $matches[1]
+            $currentSettingGuid = $null # Reset setting when subgroup changes
+            Write-Debug "Processing Subgroup: $currentSubgroupGuid"
             continue
         }
-        
-        # Check for sleep section
-        if ($line -match "Sleep after") {
-            Write-Debug "Found sleep section at line $i"
-            $inDisplaySection = $false
-            $inSleepSection = $true
-            $inHibernateSection = $false
+
+        # Identify current Power Setting GUID within the subgroup
+        if ($line -match "Power Setting GUID: ([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})") {
+            $currentSettingGuid = $matches[1]
+            Write-Debug "Processing Setting: $currentSettingGuid within Subgroup: $currentSubgroupGuid"
             continue
         }
-        
-        # Check for hibernate section
-        if ($line -match "Hibernate after") {
-            Write-Debug "Found hibernate section at line $i"
-            $inDisplaySection = $false
-            $inSleepSection = $false
-            $inHibernateSection = $true
-            continue
-        }
-        
-        # Parse values for the identified section
-        if ($inDisplaySection) {
-            if ($line -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
-                $monitorTimeoutAC = $matches[1]
-                Write-Debug "Found AC monitor timeout: $monitorTimeoutAC"
+
+        # Extract AC value if within the correct subgroup and setting
+        if ($line -match "Current AC Power Setting Index:\s+(0x[0-9a-fA-F]+)") {
+            $hexValue = $matches[1]
+            $seconds = [Convert]::ToInt32($hexValue, 16)
+            Write-Debug "Found AC Value (Hex: $hexValue, Seconds: $seconds) for Setting: $currentSettingGuid"
+            if ($currentSubgroupGuid -eq $displaySubgroupGuid -and $currentSettingGuid -eq $displayTimeoutSettingGuid) {
+                $monitorTimeoutAC_Seconds = $seconds
+                Write-Debug "Assigned AC Monitor Timeout: $seconds seconds"
             }
-            if ($line -match "Current DC Power Setting Index: (0x[0-9a-fA-F]+)") {
-                $monitorTimeoutDC = $matches[1]
-                Write-Debug "Found DC monitor timeout: $monitorTimeoutDC"
+            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $sleepTimeoutSettingGuid) {
+                $sleepTimeoutAC_Seconds = $seconds
+                Write-Debug "Assigned AC Sleep Timeout: $seconds seconds"
+            }
+            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $hibernateTimeoutSettingGuid) {
+                $hibernateTimeoutAC_Seconds = $seconds
+                Write-Debug "Assigned AC Hibernate Timeout: $seconds seconds"
             }
         }
-        
-        if ($inSleepSection) {
-            if ($line -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
-                $sleepTimeoutAC = $matches[1]
-                Write-Debug "Found AC sleep timeout: $sleepTimeoutAC"
+
+        # Extract DC value if within the correct subgroup and setting
+        if ($line -match "Current DC Power Setting Index:\s+(0x[0-9a-fA-F]+)") {
+            $hexValue = $matches[1]
+            $seconds = [Convert]::ToInt32($hexValue, 16)
+            Write-Debug "Found DC Value (Hex: $hexValue, Seconds: $seconds) for Setting: $currentSettingGuid"
+            if ($currentSubgroupGuid -eq $displaySubgroupGuid -and $currentSettingGuid -eq $displayTimeoutSettingGuid) {
+                $monitorTimeoutDC_Seconds = $seconds
+                Write-Debug "Assigned DC Monitor Timeout: $seconds seconds"
             }
-            if ($line -match "Current DC Power Setting Index: (0x[0-9a-fA-F]+)") {
-                $sleepTimeoutDC = $matches[1]
-                Write-Debug "Found DC sleep timeout: $sleepTimeoutDC"
+            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $sleepTimeoutSettingGuid) {
+                $sleepTimeoutDC_Seconds = $seconds
+                Write-Debug "Assigned DC Sleep Timeout: $seconds seconds"
             }
-        }
-        
-        if ($inHibernateSection) {
-            if ($line -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
-                $hibernateTimeoutAC = $matches[1]
-                Write-Debug "Found AC hibernate timeout: $hibernateTimeoutAC"
-            }
-            if ($line -match "Current DC Power Setting Index: (0x[0-9a-fA-F]+)") {
-                $hibernateTimeoutDC = $matches[1]
-                Write-Debug "Found DC hibernate timeout: $hibernateTimeoutDC"
+            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $hibernateTimeoutSettingGuid) {
+                $hibernateTimeoutDC_Seconds = $seconds
+                Write-Debug "Assigned DC Hibernate Timeout: $seconds seconds"
             }
         }
-        
-        # Reset section flags when we encounter a new GUID (indicates a new section)
-        if ($line -match "^  Subgroup GUID:" || $line -match "^Power Scheme GUID:") {
-            $inDisplaySection = $false
-            $inSleepSection = $false
-            $inHibernateSection = $false
-        }
     }
-    
-    # Screen saver settings from registry
-    $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue
-    
-    # Convert and log all power settings
-    Write-Debug "Converting power settings from hex to decimal..."
-    
-    $convertedSettings = @{
-        PowerPlanName = $schemeName
-        PowerPlanGuid = $schemeGuid
+
+    # Convert seconds to minutes for display (0 seconds means Never)
+    $monitorTimeoutAC_Minutes = if ($monitorTimeoutAC_Seconds -eq 0) { 0 } else { $monitorTimeoutAC_Seconds / 60 }
+    $monitorTimeoutDC_Minutes = if ($monitorTimeoutDC_Seconds -eq 0) { 0 } else { $monitorTimeoutDC_Seconds / 60 }
+    $sleepTimeoutAC_Minutes = if ($sleepTimeoutAC_Seconds -eq 0) { 0 } else { $sleepTimeoutAC_Seconds / 60 }
+    $sleepTimeoutDC_Minutes = if ($sleepTimeoutDC_Seconds -eq 0) { 0 } else { $sleepTimeoutDC_Seconds / 60 }
+    $hibernateTimeoutAC_Minutes = if ($hibernateTimeoutAC_Seconds -eq 0) { 0 } else { $hibernateTimeoutAC_Seconds / 60 }
+    $hibernateTimeoutDC_Minutes = if ($hibernateTimeoutDC_Seconds -eq 0) { 0 } else { $hibernateTimeoutDC_Seconds / 60 }
+
+    Write-Debug "Calculated Minutes - Monitor AC: $monitorTimeoutAC_Minutes, DC: $monitorTimeoutDC_Minutes"
+    Write-Debug "Calculated Minutes - Sleep AC: $sleepTimeoutAC_Minutes, DC: $sleepTimeoutDC_Minutes"
+    Write-Debug "Calculated Minutes - Hibernate AC: $hibernateTimeoutAC_Minutes, DC: $hibernateTimeoutDC_Minutes"
+
+    # Return results as a hashtable
+    return @{
+        MonitorTimeoutAC = $monitorTimeoutAC_Minutes
+        MonitorTimeoutDC = $monitorTimeoutDC_Minutes
+        SleepTimeoutAC = $sleepTimeoutAC_Minutes
+        SleepTimeoutDC = $sleepTimeoutDC_Minutes
+        HibernateTimeoutAC = $hibernateTimeoutAC_Minutes
+        HibernateTimeoutDC = $hibernateTimeoutDC_Minutes
     }
-    
-    # Monitor AC
-    Write-Debug "Converting Monitor AC timeout..."
-    Write-Debug "Raw Monitor AC value: $monitorTimeoutAC"
-    if ($monitorTimeoutAC -match '0x([0-9a-fA-F]+)') {
-        $convertedSettings.MonitorAC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
-        Write-Debug "Converted Monitor AC value: $($convertedSettings.MonitorAC)"
-    } else {
-        $convertedSettings.MonitorAC = 0
-        Write-Debug "Invalid Monitor AC value, using default: 0"
-    }
-    
-    # Monitor DC
-    Write-Debug "Converting Monitor DC timeout..."
-    Write-Debug "Raw Monitor DC value: $monitorTimeoutDC"
-    if ($monitorTimeoutDC -match '0x([0-9a-fA-F]+)') {
-        $convertedSettings.MonitorDC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
-        Write-Debug "Converted Monitor DC value: $($convertedSettings.MonitorDC)"
-    } else {
-        $convertedSettings.MonitorDC = 0
-        Write-Debug "Invalid Monitor DC value, using default: 0"
-    }
-    
-    # Sleep AC
-    Write-Debug "Converting Sleep AC timeout..."
-    Write-Debug "Raw Sleep AC value: $sleepTimeoutAC"
-    if ($sleepTimeoutAC -match '0x([0-9a-fA-F]+)') {
-        $convertedSettings.SleepAC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
-        Write-Debug "Converted Sleep AC value: $($convertedSettings.SleepAC)"
-    } else {
-        $convertedSettings.SleepAC = 0
-        Write-Debug "Invalid Sleep AC value, using default: 0"
-    }
-    
-    # Sleep DC
-    Write-Debug "Converting Sleep DC timeout..."
-    Write-Debug "Raw Sleep DC value: $sleepTimeoutDC"
-    if ($sleepTimeoutDC -match '0x([0-9a-fA-F]+)') {
-        $convertedSettings.SleepDC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
-        Write-Debug "Converted Sleep DC value: $($convertedSettings.SleepDC)"
-    } else {
-        $convertedSettings.SleepDC = 0
-        Write-Debug "Invalid Sleep DC value, using default: 0"
-    }
-    
-    # Hibernate settings
-    if ($hibernateTimeoutAC -match '0x([0-9a-fA-F]+)') {
-        $convertedSettings.HibernateAC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
-    } else {
-        $convertedSettings.HibernateAC = 0
-    }
-    
-    if ($hibernateTimeoutDC -match '0x([0-9a-fA-F]+)') {
-        $convertedSettings.HibernateDC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
-    } else {
-        $convertedSettings.HibernateDC = 0
-    }
-    
-    # Screen saver
-    $convertedSettings.ScreenSaver = if ($screenSaverTimeout.ScreenSaveTimeout) { [int]$screenSaverTimeout.ScreenSaveTimeout / 60 } else { 0 }
-    
-    Write-Debug "Final converted settings:"
-    $convertedSettings | ConvertTo-Json | Write-Debug
-    
-    return $convertedSettings
 }
 
 function Get-LockPolicySettings {    Write-Host "Checking Group Policy and security settings..." -ForegroundColor Cyan
@@ -437,7 +385,7 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.Ps
 # Main script execution
 try {
     Start-TranscriptSafely
-    
+
     # Display WhatIf mode disclaimer if applicable
     if ($WhatIfPreference) {
         Write-Host "`n[WhatIf Mode] This script is running in simulation mode. No actual changes will be made.`n" -ForegroundColor Yellow
@@ -446,7 +394,8 @@ try {
     # Get current settings
     $currentSettings = Get-PowerSettings
     $lockSettings = Get-LockPolicySettings
-      # Display current settings
+
+    # Display current settings
     Write-Host "`nPower Plan Information:" -ForegroundColor White
     Write-Host "---------------------" -ForegroundColor White
     Write-Host ("Active Power Plan: {0}" -f $currentSettings.PowerPlanName)
@@ -467,43 +416,42 @@ try {
     Write-Host "`nScreen Saver:" -ForegroundColor Cyan
     Write-Host ("Screen Saver Timeout: {0}" -f (Format-Minutes $currentSettings.ScreenSaver))
 
-        Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
+    Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
     Write-Host "--------------------------------" -ForegroundColor White
     Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): {0}" -f $(if ($lockSettings.ScreenSaverForced) { "Yes" } else { "No" }))
     Write-Host ("Auto Lock Enabled: {0}" -f $(if ($lockSettings.AutoLockEnabled) { "Yes" } else { "No" }))
     if ($null -ne $lockSettings.AutoLockTimeout) {
         Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
-    }    # Ask if user wants to change settings
-    $response = Read-Host "`nWould you like to change these settings? (Y/N)"
-      # Stop transcript before exit if user chooses not to make changes
-    if ($response -ne "Y") {
-        if ($script:transcriptActive) {
-            Stop-TranscriptSafely
-            $script:transcriptActive = $false
-            Start-Sleep -Seconds 1  # Give the system time to fully release handles
-        }
-        exit 0
     }
-    
-    # If continuing, prepare power settings params
-    $powerParams = @{}
-        
+
+    # Ask if user wants to change settings
+    $response = Read-Host "`nWould you like to change these settings? (Y/N)"
+
+    # Stop transcript before exit if user chooses not to make changes
+    if ($response -ne "Y") {
+        Write-Debug "User chose not to make changes. Preparing to exit."
+        # No explicit exit needed here, script will proceed to finally block
+    }
+    else {
+        # If continuing, prepare power settings params
+        $powerParams = @{}
+
         # Monitor timeout AC
         $userInput = Read-Host "Enter new Monitor Timeout for AC power (current: $(Format-Minutes $currentSettings.MonitorAC)) [Enter to skip]"
         if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutAC'] = [int]$userInput }
-        
+
         # Monitor timeout DC
         $userInput = Read-Host "Enter new Monitor Timeout for Battery (current: $(Format-Minutes $currentSettings.MonitorDC)) [Enter to skip]"
         if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutDC'] = [int]$userInput }
-        
+
         # Sleep timeout AC
         $userInput = Read-Host "Enter new Sleep Timeout for AC power (current: $(Format-Minutes $currentSettings.SleepAC)) [Enter to skip]"
         if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutAC'] = [int]$userInput }
-        
+
         # Sleep timeout DC
         $userInput = Read-Host "Enter new Sleep Timeout for Battery (current: $(Format-Minutes $currentSettings.SleepDC)) [Enter to skip]"
         if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutDC'] = [int]$userInput }
-        
+
         # Screen saver timeout
         $userInput = Read-Host "Enter new Screen Saver Timeout (current: $(Format-Minutes $currentSettings.ScreenSaver)) [Enter to skip]"
         if ($userInput -match '^\d+$') { $powerParams['ScreenSaverTimeout'] = [int]$userInput }
@@ -537,30 +485,31 @@ try {
             if (Set-LockPolicySettings @gpoParams) {
                 Write-Host "Group Policy settings updated successfully!" -ForegroundColor Green
             }
-        }        if ($powerParams.Count -eq 0 -and $gpoParams.Count -eq 0) {
-            Write-Host "No changes were made." -ForegroundColor Cyan
         }
+    }
 }
 catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
-    exit 1
+    Write-Error "Script failed with error: $_" # Log error more formally
 }
 finally {
-    # Always stop transcript in finally block if it was started
-    if ($script:transcriptActive) {
-        Stop-TranscriptSafely
-        $script:transcriptActive = $false
-        Start-Sleep -Seconds 1  # Give the system time to fully release handles
-    }
-    
+    Write-Debug "Entering finally block."
+    # Always attempt to stop transcript in finally block if it was started
+    Stop-TranscriptSafely
+
+    Write-Debug "Attempting to unregister engine event subscriber."
     # Clean up any remaining event subscribers
-    Get-EventSubscriber -ErrorAction SilentlyContinue | 
+    Get-EventSubscriber -ErrorAction SilentlyContinue |
         Where-Object { $_.SourceIdentifier -eq [System.Management.Automation.PsEngineEvent]::Exiting } |
-        ForEach-Object { 
-            Unregister-Event -SubscriptionId $_.SubscriptionId -ErrorAction SilentlyContinue 
+        ForEach-Object {
+            Write-Debug "Unregistering event subscription ID: $($_.SubscriptionId)"
+            Unregister-Event -SubscriptionId $_.SubscriptionId -ErrorAction SilentlyContinue
         }
-    
+    Write-Debug "Finished unregistering engine events."
+
     # Force final cleanup
+    Write-Debug "Triggering final garbage collection in finally block."
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()
+    Write-Debug "Exiting finally block."
 }
