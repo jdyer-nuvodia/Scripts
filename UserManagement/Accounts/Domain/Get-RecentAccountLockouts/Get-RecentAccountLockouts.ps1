@@ -2,10 +2,10 @@
 # Script: Get-RecentAccountLockouts.ps1
 # Created: 2025-04-15 22:28:00 UTC
 # Author: GitHub Copilot
-# Last Updated: 2025-04-15 22:53:00 UTC # Approximate current time
+# Last Updated: 2025-04-15 23:13:00 UTC # Approximate current time
 # Updated By: GitHub Copilot
-# Version: 1.2.1
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID. Corrected startTime calculation to use UTC.
+# Version: 1.2.5
+# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID. Corrected startTime calculation to use UTC. Refined SID comparison logic. Implemented robust transcript stopping logic. Fixed script structure and variable naming conflicts. Restored missing comment-based help.
 # =============================================================================
 
 <#
@@ -43,9 +43,7 @@ Uses Get-WinEvent for event log retrieval.
 Creates a transcript log file in the same directory as the script.
 #>
 
-#Requires -Modules ActiveDirectory
-
-[CmdletBinding()]
+[CmdletBinding()] # Moved CmdletBinding and param to the top
 param(
     [Parameter(Mandatory=$false, HelpMessage="Specify the number of hours back to search for lockout events. Default is 24.")]
     [ValidateRange(1, 720)] # Limit search range for performance
@@ -55,6 +53,43 @@ param(
     [string]$UserName
 )
 
+#Requires -Modules ActiveDirectory
+
+# Script scope variable to track transcript status
+$script:transcriptActive = $false
+
+# Function to safely stop transcript, adapted from Get-SetInactivityTimers.ps1
+function Stop-TranscriptSafely {
+    Write-Debug "Entering Stop-TranscriptSafely function."
+    # Check the script-scoped flag to see if transcript was started by this script
+    if ($script:transcriptActive) {
+        Write-Debug "Transcript was active, attempting to stop."
+        try {
+            Stop-Transcript -ErrorAction Stop # Use Stop to ensure catch block executes on error
+            Write-Debug "Stop-Transcript command executed."
+            # Give the system a moment to release the file handle
+            Start-Sleep -Milliseconds 500
+            Write-Debug "Slept for 500ms after Stop-Transcript."
+            # Force garbage collection to potentially release file handles
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+            Write-Debug "Garbage collection triggered after Stop-Transcript."
+            # Set the flag to inactive *after* successful stop
+            $script:transcriptActive = $false
+            Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray # User feedback
+        }
+        catch {
+            Write-Warning "Error stopping transcript: $_"
+            # Even if stopping failed, mark as inactive to prevent retry loops if applicable
+            $script:transcriptActive = $false
+            Write-Debug "Transcript marked as inactive despite error during stop."
+        }
+    } else {
+        Write-Debug "Transcript was not marked as active by this script, skipping Stop-Transcript."
+    }
+    Write-Debug "Exiting Stop-TranscriptSafely function."
+}
+
 process {
     # Define Log Path and Start Transcript
     $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -62,6 +97,8 @@ process {
     $logFile = Join-Path -Path $scriptPath -ChildPath "Get-RecentAccountLockouts_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     try {
         Start-Transcript -Path $logFile -Append -ErrorAction Stop
+        $script:transcriptActive = $true # Mark transcript as active
+        Write-Debug "Transcript started: $logFile"
     } catch {
         Write-Warning "Failed to start transcript logging to '$logFile'. Error: $($_.Exception.Message)"
         # Continue execution without transcript logging
@@ -75,8 +112,8 @@ process {
 
         if ($null -eq $dcs) {
             Write-Error "Could not retrieve list of Domain Controllers. Ensure the Active Directory module is available and you have permissions."
-            # Stop transcript before exiting
-            if ($global:Transcript) { Stop-Transcript }
+            # Stop transcript before exiting (using the safe function)
+            Stop-TranscriptSafely
             exit 1
         }
 
@@ -100,7 +137,7 @@ process {
                 if ($null -ne $events) {
                     Write-Host "Found $($events.Count) potential lockout events on $dc since $startTime." -ForegroundColor White
 
-                    foreach ($event in $events) {
+                    foreach ($lockoutEvent in $events) { # Renamed $event to $lockoutEvent
                         # Extract details from the event message or properties
                         # Property indices based on typical Event ID 4740 structure:
                         # Index 0: Target User Name
@@ -111,15 +148,15 @@ process {
                         # Index 5: Caller Domain Name
                         # Index 6: Caller Logon ID
 
-                        $eventTime = $event.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
-                        $lockedOutUser = $event.Properties[0].Value
-                        $callerComputerRaw = $event.Properties[3].Value
+                        $eventTime = $lockoutEvent.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC') # Use $lockoutEvent
+                        $lockedOutUser = $lockoutEvent.Properties[0].Value # Use $lockoutEvent
+                        $callerComputerRaw = $lockoutEvent.Properties[3].Value # Use $lockoutEvent
 
-                        # Check if the caller computer is the LOCAL SYSTEM SID
-                        $callerComputerDisplay = if ($callerComputerRaw -eq 'S-1-5-18') {
+                        # Refined check for LOCAL SYSTEM SID
+                        $callerComputerDisplay = if ($callerComputerRaw -is [string] -and $callerComputerRaw.Trim() -ieq 'S-1-5-18') {
                             '(Local System)' # Display more descriptive text
                         } else {
-                            $callerComputerRaw # Otherwise, use the raw value
+                            $callerComputerRaw # Otherwise, use the raw value (could be name or other SID)
                         }
 
                         # Apply username filter if provided
@@ -167,11 +204,7 @@ process {
         Write-Error "An error occurred during script execution: $($_.Exception.Message)"
         # Consider adding more specific error handling if needed
     } finally {
-        # Stop Transcript
-        if ($global:Transcript) { # Check if transcript is active before stopping
-            Write-Host "Attempting to stop transcript..." -ForegroundColor DarkGray
-            Stop-Transcript
-            Write-Host "Transcript stopped." -ForegroundColor DarkGray
-        }
+        # Stop Transcript using the safe function
+        Stop-TranscriptSafely
     }
 }
