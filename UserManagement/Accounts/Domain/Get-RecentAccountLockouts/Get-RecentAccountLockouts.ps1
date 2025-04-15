@@ -2,10 +2,10 @@
 # Script: Get-RecentAccountLockouts.ps1
 # Created: 2025-04-15 22:28:00 UTC
 # Author: GitHub Copilot
-# Last Updated: 2025-04-15 23:28:00 UTC
+# Last Updated: 2025-04-15 23:34:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.2.9
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID. Corrected startTime calculation to use UTC. Refined SID comparison logic. Implemented robust transcript stopping logic. Fixed script structure (moved function/variable after param block). Corrected Get-WinEvent error handling when no events are found.
+# Version: 1.3.0
+# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays 'Local System' for S-1-5-18 caller SID. Improved file handle management to properly release log files. Enhanced transcript handling with proper resource cleanup via garbage collection.
 # =============================================================================
 
 #Requires -Modules ActiveDirectory
@@ -57,10 +57,7 @@ param(
 
 begin {
     # Script scope variable to track transcript status - Moved to begin block
-    $script:transcriptActive = $false
-
-    # Function to safely stop transcript, adapted from Get-SetInactivityTimers.ps1
-    # Moved function definition to begin block
+    $script:transcriptActive = $false    # Function to safely stop transcript, improved based on Get-SetInactivityTimers.ps1
     function Stop-TranscriptSafely {
         Write-Debug "Entering Stop-TranscriptSafely function."
         # Check the script-scoped flag to see if transcript was started by this script
@@ -162,11 +159,9 @@ process {
 
                         $eventTime = $lockoutEvent.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
                         $lockedOutUser = $lockoutEvent.Properties[0].Value
-                        $callerComputerRaw = $lockoutEvent.Properties[3].Value
-
-                        # Refined check for LOCAL SYSTEM SID - Ensure not null/empty before comparing
+                        $callerComputerRaw = $lockoutEvent.Properties[3].Value                        # Refined check for LOCAL SYSTEM SID - Ensure not null/empty before comparing
                         $callerComputerDisplay = if (-not [string]::IsNullOrEmpty($callerComputerRaw) -and $callerComputerRaw.Trim() -ieq 'S-1-5-18') {
-                            '(Local System)' # Display more descriptive text
+                            'Local System' # Display more descriptive text without parentheses
                         } else {
                             $callerComputerRaw # Otherwise, use the raw value (could be name or other SID)
                         }
