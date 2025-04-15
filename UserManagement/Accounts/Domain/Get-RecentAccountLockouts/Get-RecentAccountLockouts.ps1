@@ -2,10 +2,10 @@
 # Script: Get-RecentAccountLockouts.ps1
 # Created: 2025-04-15 22:28:00 UTC
 # Author: GitHub Copilot
-# Last Updated: 2025-04-15 22:46:00 UTC # Approximate current time
+# Last Updated: 2025-04-15 22:53:00 UTC # Approximate current time
 # Updated By: GitHub Copilot
-# Version: 1.2.0
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID.
+# Version: 1.2.1
+# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID. Corrected startTime calculation to use UTC.
 # =============================================================================
 
 <#
@@ -69,15 +69,19 @@ process {
 
     try {
         Write-Host "Starting search for account lockout events (ID 4740)..." -ForegroundColor Cyan
-        $startTime = (Get-Date).AddHours(-$HoursAgo)
+        # Calculate start time based on current UTC time
+        $startTime = (Get-Date).ToUniversalTime().AddHours(-$HoursAgo)
         $dcs = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
 
         if ($null -eq $dcs) {
             Write-Error "Could not retrieve list of Domain Controllers. Ensure the Active Directory module is available and you have permissions."
+            # Stop transcript before exiting
+            if ($global:Transcript) { Stop-Transcript }
             exit 1
         }
 
         Write-Host "Searching on Domain Controllers: $($dcs -join ', ')" -ForegroundColor DarkGray
+        # Display the calculated UTC start time for clarity
         Write-Host "Searching for events since: $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) UTC" -ForegroundColor DarkGray
 
         $allLockoutEvents = @()
