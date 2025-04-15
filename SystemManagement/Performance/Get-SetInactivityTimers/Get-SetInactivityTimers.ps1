@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-10 22:59:00 UTC
+# Last Updated: 2025-04-14 22:04:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.10
-# Additional Info: Enhanced transcript cleanup to prevent file locking
+# Version: 1.4.0
+# Additional Info: Fixed power settings parsing to correctly detect and display monitor and sleep timeouts
 # =============================================================================
 
 <#
@@ -81,64 +81,110 @@ function Get-PowerSettings {
     if (-not $schemeGuid) {
         Write-Warning "Could not determine active power scheme GUID"
         return $null
-    }    # Get all power settings using powercfg /query
+    }
+    
+    # Get all power settings using powercfg /query
     $powerSettings = powercfg /query $schemeGuid
     if ([string]::IsNullOrWhiteSpace($powerSettings)) {
         Write-Warning "Could not retrieve power settings"
         return $null
     }
-      # Parse monitor timeout settings
-    $monitorTimeoutAC = "0"  # Default value
-    $monitorTimeoutDC = "0"  # Default value
-      Write-Debug "Raw power settings output:"
+    
+    Write-Debug "Raw power settings output:"
     $powerSettings | Out-String | Write-Debug
+
+    # Initialize timeout variables
+    $monitorTimeoutAC = "0"
+    $monitorTimeoutDC = "0"
+    $sleepTimeoutAC = "0"
+    $sleepTimeoutDC = "0"
+    $hibernateTimeoutAC = "0"
+    $hibernateTimeoutDC = "0"
     
-    $monitorMatch = $powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Turn off display after"}
-    if ($monitorMatch) {
-        $monitorTimeoutAC = $monitorMatch.Matches.Groups[1].Value
-        Write-Debug "Found AC monitor timeout: $monitorTimeoutAC"
-    } else {
-        Write-Debug "No AC monitor timeout found in power settings"
-    }
-      $monitorMatchDC = $powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Turn off display after"}
-    if ($monitorMatchDC) {
-        $monitorTimeoutDC = $monitorMatchDC.Matches.Groups[1].Value
-        Write-Debug "Found DC monitor timeout: $monitorTimeoutDC"
-    } else {
-        Write-Debug "No DC monitor timeout found in power settings"
-    }
-      # Parse sleep settings
-    $sleepTimeoutAC = "0"  # Default value
-    $sleepTimeoutDC = "0"  # Default value
-    $sleepMatch = $powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Sleep after"}
-    if ($sleepMatch) {
-        $sleepTimeoutAC = $sleepMatch.Matches.Groups[1].Value
-    }
-    $sleepMatchDC = $powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Sleep after"}
-    if ($sleepMatchDC) {
-        $sleepTimeoutDC = $sleepMatchDC.Matches.Groups[1].Value
-    }
+    # Split the output into blocks for better parsing
+    $powerSettingsLines = $powerSettings -split "`r`n"
     
-    # Get hibernate settings
-    $hibernateTimeoutAC = "0"  # Default value
-    $hibernateTimeoutDC = "0"  # Default value
-    $hibernateMatch = $powerSettings | Select-String "AC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Hibernate after"}
-    if ($hibernateMatch) {
-        $hibernateTimeoutAC = $hibernateMatch.Matches.Groups[1].Value
-    }
-    $hibernateMatchDC = $powerSettings | Select-String "DC Power Setting Index: ([0-9a-fx]+)" -Context 2,0 | 
-        Where-Object {$_.Context.PreContext -match "Hibernate after"}
-    if ($hibernateMatchDC) {
-        $hibernateTimeoutDC = $hibernateMatchDC.Matches.Groups[1].Value
+    # Parse monitor timeout settings
+    $inDisplaySection = $false
+    $inSleepSection = $false
+    $inHibernateSection = $false
+    
+    for ($i = 0; $i -lt $powerSettingsLines.Count; $i++) {
+        $line = $powerSettingsLines[$i]
+        
+        # Check for display section
+        if ($line -match "Turn off display after") {
+            Write-Debug "Found display section at line $i"
+            $inDisplaySection = $true
+            $inSleepSection = $false
+            $inHibernateSection = $false
+            continue
+        }
+        
+        # Check for sleep section
+        if ($line -match "Sleep after") {
+            Write-Debug "Found sleep section at line $i"
+            $inDisplaySection = $false
+            $inSleepSection = $true
+            $inHibernateSection = $false
+            continue
+        }
+        
+        # Check for hibernate section
+        if ($line -match "Hibernate after") {
+            Write-Debug "Found hibernate section at line $i"
+            $inDisplaySection = $false
+            $inSleepSection = $false
+            $inHibernateSection = $true
+            continue
+        }
+        
+        # Parse values for the identified section
+        if ($inDisplaySection) {
+            if ($line -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
+                $monitorTimeoutAC = $matches[1]
+                Write-Debug "Found AC monitor timeout: $monitorTimeoutAC"
+            }
+            if ($line -match "Current DC Power Setting Index: (0x[0-9a-fA-F]+)") {
+                $monitorTimeoutDC = $matches[1]
+                Write-Debug "Found DC monitor timeout: $monitorTimeoutDC"
+            }
+        }
+        
+        if ($inSleepSection) {
+            if ($line -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
+                $sleepTimeoutAC = $matches[1]
+                Write-Debug "Found AC sleep timeout: $sleepTimeoutAC"
+            }
+            if ($line -match "Current DC Power Setting Index: (0x[0-9a-fA-F]+)") {
+                $sleepTimeoutDC = $matches[1]
+                Write-Debug "Found DC sleep timeout: $sleepTimeoutDC"
+            }
+        }
+        
+        if ($inHibernateSection) {
+            if ($line -match "Current AC Power Setting Index: (0x[0-9a-fA-F]+)") {
+                $hibernateTimeoutAC = $matches[1]
+                Write-Debug "Found AC hibernate timeout: $hibernateTimeoutAC"
+            }
+            if ($line -match "Current DC Power Setting Index: (0x[0-9a-fA-F]+)") {
+                $hibernateTimeoutDC = $matches[1]
+                Write-Debug "Found DC hibernate timeout: $hibernateTimeoutDC"
+            }
+        }
+        
+        # Reset section flags when we encounter a new GUID (indicates a new section)
+        if ($line -match "^  Subgroup GUID:" || $line -match "^Power Scheme GUID:") {
+            $inDisplaySection = $false
+            $inSleepSection = $false
+            $inHibernateSection = $false
+        }
     }
     
     # Screen saver settings from registry
-    $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue    # Convert and log all power settings
+    $screenSaverTimeout = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue
+    
+    # Convert and log all power settings
     Write-Debug "Converting power settings from hex to decimal..."
     
     $convertedSettings = @{
@@ -149,28 +195,30 @@ function Get-PowerSettings {
     # Monitor AC
     Write-Debug "Converting Monitor AC timeout..."
     Write-Debug "Raw Monitor AC value: $monitorTimeoutAC"
-    if ($monitorTimeoutAC -match '^[0-9a-fA-F]+$') {
-        $convertedSettings.MonitorAC = [Convert]::ToInt32($monitorTimeoutAC, 16)
+    if ($monitorTimeoutAC -match '0x([0-9a-fA-F]+)') {
+        $convertedSettings.MonitorAC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
         Write-Debug "Converted Monitor AC value: $($convertedSettings.MonitorAC)"
     } else {
         $convertedSettings.MonitorAC = 0
         Write-Debug "Invalid Monitor AC value, using default: 0"
     }
-      # Monitor DC
+    
+    # Monitor DC
     Write-Debug "Converting Monitor DC timeout..."
     Write-Debug "Raw Monitor DC value: $monitorTimeoutDC"
-    if ($monitorTimeoutDC -match '^[0-9a-fA-F]+$') {
-        $convertedSettings.MonitorDC = [Convert]::ToInt32($monitorTimeoutDC, 16)
+    if ($monitorTimeoutDC -match '0x([0-9a-fA-F]+)') {
+        $convertedSettings.MonitorDC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
         Write-Debug "Converted Monitor DC value: $($convertedSettings.MonitorDC)"
     } else {
         $convertedSettings.MonitorDC = 0
         Write-Debug "Invalid Monitor DC value, using default: 0"
     }
-      # Sleep AC
+    
+    # Sleep AC
     Write-Debug "Converting Sleep AC timeout..."
     Write-Debug "Raw Sleep AC value: $sleepTimeoutAC"
-    if ($sleepTimeoutAC -match '^[0-9a-fA-F]+$') {
-        $convertedSettings.SleepAC = [Convert]::ToInt32($sleepTimeoutAC, 16)
+    if ($sleepTimeoutAC -match '0x([0-9a-fA-F]+)') {
+        $convertedSettings.SleepAC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
         Write-Debug "Converted Sleep AC value: $($convertedSettings.SleepAC)"
     } else {
         $convertedSettings.SleepAC = 0
@@ -180,8 +228,8 @@ function Get-PowerSettings {
     # Sleep DC
     Write-Debug "Converting Sleep DC timeout..."
     Write-Debug "Raw Sleep DC value: $sleepTimeoutDC"
-    if ($sleepTimeoutDC -match '^[0-9a-fA-F]+$') {
-        $convertedSettings.SleepDC = [Convert]::ToInt32($sleepTimeoutDC, 16)
+    if ($sleepTimeoutDC -match '0x([0-9a-fA-F]+)') {
+        $convertedSettings.SleepDC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
         Write-Debug "Converted Sleep DC value: $($convertedSettings.SleepDC)"
     } else {
         $convertedSettings.SleepDC = 0
@@ -189,12 +237,22 @@ function Get-PowerSettings {
     }
     
     # Hibernate settings
-    $convertedSettings.HibernateAC = if ($hibernateTimeoutAC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutAC, 16) } else { 0 }
-    $convertedSettings.HibernateDC = if ($hibernateTimeoutDC -match '^[0-9a-fA-F]+$') { [Convert]::ToInt32($hibernateTimeoutDC, 16) } else { 0 }
+    if ($hibernateTimeoutAC -match '0x([0-9a-fA-F]+)') {
+        $convertedSettings.HibernateAC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
+    } else {
+        $convertedSettings.HibernateAC = 0
+    }
+    
+    if ($hibernateTimeoutDC -match '0x([0-9a-fA-F]+)') {
+        $convertedSettings.HibernateDC = [Convert]::ToInt32($matches[1], 16) / 60 # Convert seconds to minutes
+    } else {
+        $convertedSettings.HibernateDC = 0
+    }
     
     # Screen saver
     $convertedSettings.ScreenSaver = if ($screenSaverTimeout.ScreenSaveTimeout) { [int]$screenSaverTimeout.ScreenSaveTimeout / 60 } else { 0 }
-      Write-Debug "Final converted settings:"
+    
+    Write-Debug "Final converted settings:"
     $convertedSettings | ConvertTo-Json | Write-Debug
     
     return $convertedSettings
