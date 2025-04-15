@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-15 21:28:00 UTC
+# Last Updated: 2025-04-15 21:55:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.2
-# Additional Info: Simplified transcript stopping logic and added debug logging to finally block for better cleanup diagnostics.
+# Version: 1.4.5
+# Additional Info: Changed Format-Minutes to return 'Effectively Disabled' for timeouts over 168 hours.
 # =============================================================================
 
 <#
@@ -14,15 +14,15 @@ Gets and optionally sets Windows system inactivity timers.
 
 .DESCRIPTION
 This script retrieves all available system inactivity settings including screen timeout,
-sleep settings, power management configurations, and security policies related to machine locking.
+sleep settings, power management configurations, screen saver timeout, and security policies related to machine locking.
 It displays these settings to the user and provides the option to modify them. All changes support -WhatIf functionality for safety.
 
 .EXAMPLE
-.\Get-SetInactivityTimers.ps1
+.\\Get-SetInactivityTimers.ps1
 Displays current inactivity settings and prompts for changes
 
 .EXAMPLE
-.\Get-SetInactivityTimers.ps1 -WhatIf
+.\\Get-SetInactivityTimers.ps1 -WhatIf
 Shows what changes would be made without actually making them
 #>
 
@@ -63,17 +63,39 @@ function Stop-TranscriptSafely {
 
 # Function to format minutes into a readable string
 function Format-Minutes {
-    param([int]$Minutes)
-    if ($Minutes -eq 0) { return "Never" }
-    if ($Minutes -ge 1440) { 
-        $hours = [math]::Round($Minutes / 60)
-        return "$hours hours" 
+    param([double]$TotalMinutes) # Use double for precision
+
+    if ($TotalMinutes -eq 0) { return "Never" }
+
+    # Handle large values (over 168 hours / 7 days)
+    if ($TotalMinutes -gt 10080) { # 168 hours * 60 minutes/hour
+         return "Effectively Disabled" # Changed from "Effectively Never"
     }
-    if ($Minutes -ge 60) { 
-        $hours = [math]::Round($Minutes / 60)
-        return "$hours hours" 
+
+    # Use integer part for calculations involving days, hours, minutes
+    $minutesInt = [int][math]::Floor($TotalMinutes)
+
+    if ($minutesInt -lt 1) {
+        # Handle cases less than 1 minute if needed, e.g., show seconds or round up
+        return "Less than 1 minute" # Or adjust as needed
     }
-    return "$Minutes minutes"
+
+    $days = [math]::Floor($minutesInt / 1440)
+    $remainingMinutesAfterDays = $minutesInt % 1440
+    $hours = [math]::Floor($remainingMinutesAfterDays / 60)
+    $minutes = $remainingMinutesAfterDays % 60
+
+    $parts = @()
+    if ($days -gt 0) { $parts += "$days day$(if ($days -gt 1) {'s'} else {''})" }
+    if ($hours -gt 0) { $parts += "$hours hour$(if ($hours -gt 1) {'s'} else {''})" }
+    if ($minutes -gt 0) { $parts += "$minutes minute$(if ($minutes -gt 1) {'s'} else {''})" }
+
+    # Fallback if calculation results in empty parts (should not happen with Floor)
+    if ($parts.Count -eq 0) {
+        return "$minutesInt minute$(if ($minutesInt -gt 1) {'s'} else {''})"
+    }
+
+    return $parts -join ', '
 }
 
 function Get-PowerSettings {
@@ -90,6 +112,9 @@ function Get-PowerSettings {
     }
     # Extract the GUID robustly
     $schemeGuid = ($powerSchemeInfo -split ' ' | Where-Object { $_ -match '^[{(]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[)}]?$' } | Select-Object -First 1)
+    # Extract the Scheme Name
+    $schemeName = if ($powerSchemeInfo -match '\((.*?)\)') { $matches[1] } else { "Unknown" }
+    Write-Debug "Active Power Scheme Name: $schemeName"
 
     if (-not $schemeGuid) {
         Write-Warning "Could not determine active power scheme GUID from '$powerSchemeInfo'"
@@ -114,6 +139,7 @@ function Get-PowerSettings {
     $sleepTimeoutDC_Seconds = 0
     $hibernateTimeoutAC_Seconds = 0
     $hibernateTimeoutDC_Seconds = 0
+    $screenSaverTimeout_Seconds = 0 # Added for screen saver
 
     # Split the output into lines for parsing
     $powerSettingsLines = $powerSettings -split [System.Environment]::NewLine
@@ -121,7 +147,7 @@ function Get-PowerSettings {
     # Define GUIDs for common settings (these might vary slightly by Windows version, but are generally stable)
     $displaySubgroupGuid = "7516b95f-f776-4464-8c53-06167f40cc99" # SUB_VIDEO
     $sleepSubgroupGuid = "238c9fa8-0aad-41ed-83f4-97be242c8f20"   # SUB_SLEEP
-    $displayTimeoutSettingGuid = "3c0bc021-c8a8-4e07-a973-6b14cbc2b6e6" # VIDEOIDLE
+    $displayTimeoutSettingGuid = "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e" # VIDEOIDLE (Corrected last digit)
     $sleepTimeoutSettingGuid = "29f6c1db-86da-48c5-9fdb-f2b67b1f44da"   # STANDBYIDLE
     $hibernateTimeoutSettingGuid = "9d7815a6-7ee4-497e-8888-515a05f02364" # HIBERNATEIDLE
 
@@ -183,26 +209,44 @@ function Get-PowerSettings {
         }
     }
 
+    # Get screen saver settings from registry
+    try {
+        $screenSaverTimeoutReg = Get-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -ErrorAction SilentlyContinue
+        if ($null -ne $screenSaverTimeoutReg.ScreenSaveTimeout) {
+            $screenSaverTimeout_Seconds = [int]$screenSaverTimeoutReg.ScreenSaveTimeout
+            Write-Debug "Found Screen Saver Timeout: $screenSaverTimeout_Seconds seconds"
+        } else {
+            Write-Debug "Screen Saver Timeout registry key not found or value is null."
+        }
+    } catch {
+        Write-Warning "Could not retrieve screen saver timeout from registry: $_"
+    }
+
     # Convert seconds to minutes for display (0 seconds means Never)
-    $monitorTimeoutAC_Minutes = if ($monitorTimeoutAC_Seconds -eq 0) { 0 } else { $monitorTimeoutAC_Seconds / 60 }
-    $monitorTimeoutDC_Minutes = if ($monitorTimeoutDC_Seconds -eq 0) { 0 } else { $monitorTimeoutDC_Seconds / 60 }
-    $sleepTimeoutAC_Minutes = if ($sleepTimeoutAC_Seconds -eq 0) { 0 } else { $sleepTimeoutAC_Seconds / 60 }
-    $sleepTimeoutDC_Minutes = if ($sleepTimeoutDC_Seconds -eq 0) { 0 } else { $sleepTimeoutDC_Seconds / 60 }
-    $hibernateTimeoutAC_Minutes = if ($hibernateTimeoutAC_Seconds -eq 0) { 0 } else { $hibernateTimeoutAC_Seconds / 60 }
-    $hibernateTimeoutDC_Minutes = if ($hibernateTimeoutDC_Seconds -eq 0) { 0 } else { $hibernateTimeoutDC_Seconds / 60 }
+    $monitorTimeoutAC_Minutes = if ($monitorTimeoutAC_Seconds -eq 0) { 0 } else { $monitorTimeoutAC_Seconds / 60.0 } # Use 60.0 for double division
+    $monitorTimeoutDC_Minutes = if ($monitorTimeoutDC_Seconds -eq 0) { 0 } else { $monitorTimeoutDC_Seconds / 60.0 }
+    $sleepTimeoutAC_Minutes = if ($sleepTimeoutAC_Seconds -eq 0) { 0 } else { $sleepTimeoutAC_Seconds / 60.0 }
+    $sleepTimeoutDC_Minutes = if ($sleepTimeoutDC_Seconds -eq 0) { 0 } else { $sleepTimeoutDC_Seconds / 60.0 }
+    $hibernateTimeoutAC_Minutes = if ($hibernateTimeoutAC_Seconds -eq 0) { 0 } else { $hibernateTimeoutAC_Seconds / 60.0 }
+    $hibernateTimeoutDC_Minutes = if ($hibernateTimeoutDC_Seconds -eq 0) { 0 } else { $hibernateTimeoutDC_Seconds / 60.0 }
+    $screenSaverTimeout_Minutes = if ($screenSaverTimeout_Seconds -eq 0) { 0 } else { $screenSaverTimeout_Seconds / 60.0 }
 
     Write-Debug "Calculated Minutes - Monitor AC: $monitorTimeoutAC_Minutes, DC: $monitorTimeoutDC_Minutes"
     Write-Debug "Calculated Minutes - Sleep AC: $sleepTimeoutAC_Minutes, DC: $sleepTimeoutDC_Minutes"
     Write-Debug "Calculated Minutes - Hibernate AC: $hibernateTimeoutAC_Minutes, DC: $hibernateTimeoutDC_Minutes"
+    Write-Debug "Calculated Minutes - Screen Saver: $screenSaverTimeout_Minutes"
 
     # Return results as a hashtable
     return @{
+        PowerPlanName = $schemeName # Use extracted scheme name
+        PowerPlanGuid = $schemeGuid
         MonitorTimeoutAC = $monitorTimeoutAC_Minutes
         MonitorTimeoutDC = $monitorTimeoutDC_Minutes
         SleepTimeoutAC = $sleepTimeoutAC_Minutes
         SleepTimeoutDC = $sleepTimeoutDC_Minutes
         HibernateTimeoutAC = $hibernateTimeoutAC_Minutes
         HibernateTimeoutDC = $hibernateTimeoutDC_Minutes
+        ScreenSaverTimeout = $screenSaverTimeout_Minutes
     }
 }
 
@@ -398,95 +442,123 @@ try {
     # Display current settings
     Write-Host "`nPower Plan Information:" -ForegroundColor White
     Write-Host "---------------------" -ForegroundColor White
-    Write-Host ("Active Power Plan: {0}" -f $currentSettings.PowerPlanName)
-    Write-Host ("Plan GUID: {0}" -f $currentSettings.PowerPlanGuid)
+    # Check if Get-PowerSettings returned valid data
+    if ($null -ne $currentSettings) {
+        Write-Host ("Active Power Plan: {0}" -f $currentSettings.PowerPlanName) # Ensure PowerPlanName exists
+        Write-Host ("Plan GUID: {0}" -f $currentSettings.PowerPlanGuid)
 
-    Write-Host "`nCurrent Inactivity Settings:" -ForegroundColor White
-    Write-Host "------------------------" -ForegroundColor White
-    Write-Host "`nDisplay Settings:" -ForegroundColor Cyan
-    Write-Host ("Monitor Timeout (AC Power): {0}" -f (Format-Minutes $currentSettings.MonitorAC))
-    Write-Host ("Monitor Timeout (Battery): {0}" -f (Format-Minutes $currentSettings.MonitorDC))
-    
-    Write-Host "`nSleep Settings:" -ForegroundColor Cyan
-    Write-Host ("Sleep Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.SleepAC))
-    Write-Host ("Sleep Timer (Battery): {0}" -f (Format-Minutes $currentSettings.SleepDC))
-    Write-Host ("Hibernate Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.HibernateAC))
-    Write-Host ("Hibernate Timer (Battery): {0}" -f (Format-Minutes $currentSettings.HibernateDC))
-    
-    Write-Host "`nScreen Saver:" -ForegroundColor Cyan
-    Write-Host ("Screen Saver Timeout: {0}" -f (Format-Minutes $currentSettings.ScreenSaver))
+        Write-Host "`nCurrent Inactivity Settings:" -ForegroundColor White
+        Write-Host "------------------------" -ForegroundColor White
+        Write-Host "`nDisplay Settings:" -ForegroundColor Cyan
+        Write-Host ("Monitor Timeout (AC Power): {0}" -f (Format-Minutes $currentSettings.MonitorTimeoutAC))
+        Write-Host ("Monitor Timeout (Battery): {0}" -f (Format-Minutes $currentSettings.MonitorTimeoutDC))
 
-    Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
-    Write-Host "--------------------------------" -ForegroundColor White
-    Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): {0}" -f $(if ($lockSettings.ScreenSaverForced) { "Yes" } else { "No" }))
-    Write-Host ("Auto Lock Enabled: {0}" -f $(if ($lockSettings.AutoLockEnabled) { "Yes" } else { "No" }))
-    if ($null -ne $lockSettings.AutoLockTimeout) {
-        Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
+        Write-Host "`nSleep Settings:" -ForegroundColor Cyan
+        Write-Host ("Sleep Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.SleepTimeoutAC))
+        Write-Host ("Sleep Timer (Battery): {0}" -f (Format-Minutes $currentSettings.SleepTimeoutDC))
+        Write-Host ("Hibernate Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.HibernateTimeoutAC))
+        Write-Host ("Hibernate Timer (Battery): {0}" -f (Format-Minutes $currentSettings.HibernateTimeoutDC))
+
+        Write-Host "`nScreen Saver:" -ForegroundColor Cyan
+        Write-Host ("Screen Saver Timeout: {0}" -f (Format-Minutes $currentSettings.ScreenSaverTimeout))
+    } else {
+         Write-Warning "Could not display power settings as they failed to load."
     }
 
-    # Ask if user wants to change settings
-    $response = Read-Host "`nWould you like to change these settings? (Y/N)"
-
-    # Stop transcript before exit if user chooses not to make changes
-    if ($response -ne "Y") {
-        Write-Debug "User chose not to make changes. Preparing to exit."
-        # No explicit exit needed here, script will proceed to finally block
-    }
-    else {
-        # If continuing, prepare power settings params
-        $powerParams = @{}
-
-        # Monitor timeout AC
-        $userInput = Read-Host "Enter new Monitor Timeout for AC power (current: $(Format-Minutes $currentSettings.MonitorAC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutAC'] = [int]$userInput }
-
-        # Monitor timeout DC
-        $userInput = Read-Host "Enter new Monitor Timeout for Battery (current: $(Format-Minutes $currentSettings.MonitorDC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutDC'] = [int]$userInput }
-
-        # Sleep timeout AC
-        $userInput = Read-Host "Enter new Sleep Timeout for AC power (current: $(Format-Minutes $currentSettings.SleepAC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutAC'] = [int]$userInput }
-
-        # Sleep timeout DC
-        $userInput = Read-Host "Enter new Sleep Timeout for Battery (current: $(Format-Minutes $currentSettings.SleepDC)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutDC'] = [int]$userInput }
-
-        # Screen saver timeout
-        $userInput = Read-Host "Enter new Screen Saver Timeout (current: $(Format-Minutes $currentSettings.ScreenSaver)) [Enter to skip]"
-        if ($userInput -match '^\d+$') { $powerParams['ScreenSaverTimeout'] = [int]$userInput }
-
-        # Group Policy settings params
-        $gpoParams = @{}
-
-        # Screen Saver Security Enforcement
-        $userInput = Read-Host "Enforce Screen Saver Security? (current: $($lockSettings.ScreenSaverForced)) [Y/N/Enter to skip]"
-        if ($userInput -match '^[YN]$') { $gpoParams['ScreenSaverForced'] = ($userInput -eq 'Y') }
-
-        # Auto Lock Enabled
-        $userInput = Read-Host "Enable Auto Lock? (current: $($lockSettings.AutoLockEnabled)) [Y/N/Enter to skip]"
-        if ($userInput -match '^[YN]$') { $gpoParams['AutoLockEnabled'] = ($userInput -eq 'Y') }
-
-        # Auto Lock Timeout
-        if ($gpoParams['AutoLockEnabled'] -or ($lockSettings.AutoLockEnabled -and !$PSBoundParameters.ContainsKey('AutoLockEnabled'))) {
-            $userInput = Read-Host "Enter Auto Lock Timeout in minutes (current: $(Format-Minutes $lockSettings.AutoLockTimeout)) [Enter to skip]"
-            if ($userInput -match '^\d+$') { $gpoParams['AutoLockTimeout'] = [int]$userInput }
+    # Display Lock Settings
+    if ($null -ne $lockSettings) {
+        Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
+        Write-Host "--------------------------------" -ForegroundColor White
+        Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): {0}" -f $(if ($lockSettings.ScreenSaverForced) { "Yes" } else { "No" }))
+        Write-Host ("Auto Lock Enabled: {0}" -f $(if ($lockSettings.AutoLockEnabled) { "Yes" } else { "No" }))
+        if ($null -ne $lockSettings.AutoLockTimeout) {
+            Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
         }
-        
-        # Apply power settings if any were changed
-        if ($powerParams.Count -gt 0) {
-            if (Set-PowerTimeout @powerParams) {
-                Write-Host "Power settings updated successfully!" -ForegroundColor Green
+    } else {
+        Write-Warning "Could not display lock policy settings as they failed to load."
+    }
+
+    # Ask if user wants to change settings (only if settings loaded)
+    if ($null -ne $currentSettings -and $null -ne $lockSettings) {
+        $response = Read-Host "`nWould you like to change these settings? (Y/N)"
+
+        if ($response -ne "Y") {
+            Write-Debug "User chose not to make changes. Preparing to exit."
+        }
+        else {
+            # If continuing, prepare power settings params
+            $powerParams = @{}
+
+            # Monitor timeout AC
+            $userInput = Read-Host "Enter new Monitor Timeout for AC power (current: $(Format-Minutes $currentSettings.MonitorTimeoutAC)) [Enter to skip]"
+            if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutAC'] = [int]$userInput }
+
+            # Monitor timeout DC
+            $userInput = Read-Host "Enter new Monitor Timeout for Battery (current: $(Format-Minutes $currentSettings.MonitorTimeoutDC)) [Enter to skip]"
+            if ($userInput -match '^\d+$') { $powerParams['MonitorTimeoutDC'] = [int]$userInput }
+
+            # Sleep timeout AC
+            $userInput = Read-Host "Enter new Sleep Timeout for AC power (current: $(Format-Minutes $currentSettings.SleepTimeoutAC)) [Enter to skip]"
+            if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutAC'] = [int]$userInput }
+
+            # Sleep timeout DC
+            $userInput = Read-Host "Enter new Sleep Timeout for Battery (current: $(Format-Minutes $currentSettings.SleepTimeoutDC)) [Enter to skip]"
+            if ($userInput -match '^\d+$') { $powerParams['SleepTimeoutDC'] = [int]$userInput }
+
+            # Screen saver timeout
+            $userInput = Read-Host "Enter new Screen Saver Timeout (current: $(Format-Minutes $currentSettings.ScreenSaverTimeout)) [Enter to skip]"
+            if ($userInput -match '^\d+$') { $powerParams['ScreenSaverTimeout'] = [int]$userInput }
+
+            # Group Policy settings params
+            $gpoParams = @{}
+
+            # Screen Saver Security Enforcement
+            $userInput = Read-Host "Enforce Screen Saver Security? (current: $($lockSettings.ScreenSaverForced)) [Y/N/Enter to skip]"
+            if ($userInput -match '^[YN]$') { $gpoParams['ScreenSaverForced'] = ($userInput -eq 'Y') }
+
+            # Auto Lock Enabled
+            $userInput = Read-Host "Enable Auto Lock? (current: $($lockSettings.AutoLockEnabled)) [Y/N/Enter to skip]"
+            if ($userInput -match '^[YN]$') { $gpoParams['AutoLockEnabled'] = ($userInput -eq 'Y') }
+
+            # Auto Lock Timeout
+            # Determine if we should prompt for Auto Lock Timeout
+            $promptForAutoLockTimeout = $false
+            if ($gpoParams.ContainsKey('AutoLockEnabled')) {
+                # If user explicitly set AutoLockEnabled, prompt if it's true
+                if ($gpoParams['AutoLockEnabled']) {
+                    $promptForAutoLockTimeout = $true
+                }
+            } elseif ($lockSettings.AutoLockEnabled) {
+                # If user didn't explicitly set it, but it was already enabled, prompt
+                $promptForAutoLockTimeout = $true
+            }
+
+            if ($promptForAutoLockTimeout) {
+                $currentAutoLockFormatted = if ($null -ne $lockSettings.AutoLockTimeout) { Format-Minutes $lockSettings.AutoLockTimeout } else { "Not Set" }
+                $userInput = Read-Host "Enter Auto Lock Timeout in minutes (current: $currentAutoLockFormatted) [Enter to skip]"
+                if ($userInput -match '^\d+$') { $gpoParams['AutoLockTimeout'] = [int]$userInput }
+            }
+
+            # Apply power settings if any were changed
+            if ($powerParams.Count -gt 0) {
+                if (Set-PowerTimeout @powerParams) {
+                    # Success message handled within Set-PowerTimeout
+                }
+            }
+
+            # Apply GPO settings if any were changed
+            if ($gpoParams.Count -gt 0) {
+                if (Set-LockPolicySettings @gpoParams) {
+                    # Success message handled within Set-LockPolicySettings
+                }
+            }
+
+            # Check if no changes were actually made
+            if ($powerParams.Count -eq 0 -and $gpoParams.Count -eq 0) {
+                Write-Host "No changes were specified." -ForegroundColor Cyan
             }
         }
-
-        # Apply GPO settings if any were changed
-        if ($gpoParams.Count -gt 0) {
-            if (Set-LockPolicySettings @gpoParams) {
-                Write-Host "Group Policy settings updated successfully!" -ForegroundColor Green
-            }
-        }
-    }
+    } # End of check if settings loaded
 }
 catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
