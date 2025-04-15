@@ -2,11 +2,13 @@
 # Script: Get-RecentAccountLockouts.ps1
 # Created: 2025-04-15 22:28:00 UTC
 # Author: GitHub Copilot
-# Last Updated: 2025-04-15 23:13:00 UTC # Approximate current time
+# Last Updated: 2025-04-15 23:28:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.2.5
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID. Corrected startTime calculation to use UTC. Refined SID comparison logic. Implemented robust transcript stopping logic. Fixed script structure and variable naming conflicts. Restored missing comment-based help.
+# Version: 1.2.9
+# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID. Corrected startTime calculation to use UTC. Refined SID comparison logic. Implemented robust transcript stopping logic. Fixed script structure (moved function/variable after param block). Corrected Get-WinEvent error handling when no events are found.
 # =============================================================================
+
+#Requires -Modules ActiveDirectory
 
 <#
 .SYNOPSIS
@@ -43,7 +45,7 @@ Uses Get-WinEvent for event log retrieval.
 Creates a transcript log file in the same directory as the script.
 #>
 
-[CmdletBinding()] # Moved CmdletBinding and param to the top
+[CmdletBinding()] # CmdletBinding and param must be after comment-based help
 param(
     [Parameter(Mandatory=$false, HelpMessage="Specify the number of hours back to search for lockout events. Default is 24.")]
     [ValidateRange(1, 720)] # Limit search range for performance
@@ -53,41 +55,42 @@ param(
     [string]$UserName
 )
 
-#Requires -Modules ActiveDirectory
+begin {
+    # Script scope variable to track transcript status - Moved to begin block
+    $script:transcriptActive = $false
 
-# Script scope variable to track transcript status
-$script:transcriptActive = $false
-
-# Function to safely stop transcript, adapted from Get-SetInactivityTimers.ps1
-function Stop-TranscriptSafely {
-    Write-Debug "Entering Stop-TranscriptSafely function."
-    # Check the script-scoped flag to see if transcript was started by this script
-    if ($script:transcriptActive) {
-        Write-Debug "Transcript was active, attempting to stop."
-        try {
-            Stop-Transcript -ErrorAction Stop # Use Stop to ensure catch block executes on error
-            Write-Debug "Stop-Transcript command executed."
-            # Give the system a moment to release the file handle
-            Start-Sleep -Milliseconds 500
-            Write-Debug "Slept for 500ms after Stop-Transcript."
-            # Force garbage collection to potentially release file handles
-            [System.GC]::Collect()
-            [System.GC]::WaitForPendingFinalizers()
-            Write-Debug "Garbage collection triggered after Stop-Transcript."
-            # Set the flag to inactive *after* successful stop
-            $script:transcriptActive = $false
-            Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray # User feedback
+    # Function to safely stop transcript, adapted from Get-SetInactivityTimers.ps1
+    # Moved function definition to begin block
+    function Stop-TranscriptSafely {
+        Write-Debug "Entering Stop-TranscriptSafely function."
+        # Check the script-scoped flag to see if transcript was started by this script
+        if ($script:transcriptActive) {
+            Write-Debug "Transcript was active, attempting to stop."
+            try {
+                Stop-Transcript -ErrorAction Stop # Use Stop to ensure catch block executes on error
+                Write-Debug "Stop-Transcript command executed."
+                # Give the system a moment to release the file handle
+                Start-Sleep -Milliseconds 500
+                Write-Debug "Slept for 500ms after Stop-Transcript."
+                # Force garbage collection to potentially release file handles
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                Write-Debug "Garbage collection triggered after Stop-Transcript."
+                # Set the flag to inactive *after* successful stop
+                $script:transcriptActive = $false
+                Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray # User feedback
+            }
+            catch {
+                Write-Warning "Error stopping transcript: $_"
+                # Even if stopping failed, mark as inactive to prevent retry loops if applicable
+                $script:transcriptActive = $false
+                Write-Debug "Transcript marked as inactive despite error during stop."
+            }
+        } else {
+            Write-Debug "Transcript was not marked as active by this script, skipping Stop-Transcript."
         }
-        catch {
-            Write-Warning "Error stopping transcript: $_"
-            # Even if stopping failed, mark as inactive to prevent retry loops if applicable
-            $script:transcriptActive = $false
-            Write-Debug "Transcript marked as inactive despite error during stop."
-        }
-    } else {
-        Write-Debug "Transcript was not marked as active by this script, skipping Stop-Transcript."
+        Write-Debug "Exiting Stop-TranscriptSafely function."
     }
-    Write-Debug "Exiting Stop-TranscriptSafely function."
 }
 
 process {
@@ -114,7 +117,7 @@ process {
             Write-Error "Could not retrieve list of Domain Controllers. Ensure the Active Directory module is available and you have permissions."
             # Stop transcript before exiting (using the safe function)
             Stop-TranscriptSafely
-            exit 1
+            exit 1 # Exit if DCs cannot be retrieved
         }
 
         Write-Host "Searching on Domain Controllers: $($dcs -join ', ')" -ForegroundColor DarkGray
@@ -132,9 +135,18 @@ process {
                     StartTime = $startTime
                 }
 
-                $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction Stop
+                # Removed -ErrorAction Stop to prevent terminating error when no events are found
+                $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction SilentlyContinue # Continue if specific DC fails, but log warning below
 
-                if ($null -ne $events) {
+                # Check if the command succeeded before processing results
+                if ($LASTEXITCODE -ne 0 -or $Error.Count -gt 0) {
+                    # Log a warning if Get-WinEvent failed for reasons other than 'no events found'
+                    Write-Warning "Failed to query $dc. Error details might be available above or in transcript."
+                    $Error.Clear() # Clear error record after handling
+                }
+
+                # Check if $events is null or empty *after* the call
+                if ($null -ne $events -and $events.Count -gt 0) {
                     Write-Host "Found $($events.Count) potential lockout events on $dc since $startTime." -ForegroundColor White
 
                     foreach ($lockoutEvent in $events) { # Renamed $event to $lockoutEvent
@@ -148,12 +160,12 @@ process {
                         # Index 5: Caller Domain Name
                         # Index 6: Caller Logon ID
 
-                        $eventTime = $lockoutEvent.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC') # Use $lockoutEvent
-                        $lockedOutUser = $lockoutEvent.Properties[0].Value # Use $lockoutEvent
-                        $callerComputerRaw = $lockoutEvent.Properties[3].Value # Use $lockoutEvent
+                        $eventTime = $lockoutEvent.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
+                        $lockedOutUser = $lockoutEvent.Properties[0].Value
+                        $callerComputerRaw = $lockoutEvent.Properties[3].Value
 
-                        # Refined check for LOCAL SYSTEM SID
-                        $callerComputerDisplay = if ($callerComputerRaw -is [string] -and $callerComputerRaw.Trim() -ieq 'S-1-5-18') {
+                        # Refined check for LOCAL SYSTEM SID - Ensure not null/empty before comparing
+                        $callerComputerDisplay = if (-not [string]::IsNullOrEmpty($callerComputerRaw) -and $callerComputerRaw.Trim() -ieq 'S-1-5-18') {
                             '(Local System)' # Display more descriptive text
                         } else {
                             $callerComputerRaw # Otherwise, use the raw value (could be name or other SID)
@@ -175,10 +187,15 @@ process {
                         $allLockoutEvents += $lockoutDetail
                     }
                 } else {
-                     Write-Host "No lockout events found on $dc within the specified timeframe." -ForegroundColor DarkGray
+                     # Handle case where no events were found (no error thrown now)
+                     # Only write this if Get-WinEvent didn't fail for other reasons
+                     if ($LASTEXITCODE -eq 0 -and $Error.Count -eq 0) {
+                        Write-Host "No lockout events found on $dc within the specified timeframe." -ForegroundColor DarkGray
+                     }
                 }
             } catch {
-                Write-Warning "Failed to query $dc. Error: $($_.Exception.Message)"
+                # This catch block handles unexpected errors within the loop iteration
+                Write-Warning "An unexpected error occurred while processing $dc. Error: $($_.Exception.Message)"
             }
         }
 
@@ -200,7 +217,7 @@ process {
         Write-Host "Script finished." -ForegroundColor Cyan
 
     } catch {
-        # Existing catch block for main script logic errors
+        # Catch block for errors in the main try block (e.g., Get-ADDomainController failure)
         Write-Error "An error occurred during script execution: $($_.Exception.Message)"
         # Consider adding more specific error handling if needed
     } finally {
