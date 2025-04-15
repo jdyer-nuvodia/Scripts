@@ -2,10 +2,10 @@
 # Script: Get-RecentAccountLockouts.ps1
 # Created: 2025-04-15 22:28:00 UTC
 # Author: GitHub Copilot
-# Last Updated: 2025-04-15 22:36:00 UTC # Approximate time
+# Last Updated: 2025-04-15 22:46:00 UTC # Approximate current time
 # Updated By: GitHub Copilot
-# Version: 1.1.0
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging.
+# Version: 1.2.0
+# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays '(Local System)' for S-1-5-18 caller SID.
 # =============================================================================
 
 <#
@@ -40,7 +40,7 @@ Requires membership in the 'Event Log Readers' group or equivalent permissions o
 The script attempts to query all DCs found via Get-ADDomainController. Ensure network connectivity and necessary permissions.
 Performance may vary depending on the number of DCs and the volume of event logs.
 Uses Get-WinEvent for event log retrieval.
-Creates a transcript log file in a 'Logs' subdirectory within the script's location.
+Creates a transcript log file in the same directory as the script.
 #>
 
 #Requires -Modules ActiveDirectory
@@ -58,18 +58,8 @@ param(
 process {
     # Define Log Path and Start Transcript
     $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
-    $logDirectory = Join-Path -Path $scriptPath -ChildPath "Logs"
-    if (-not (Test-Path -Path $logDirectory -PathType Container)) {
-        try {
-            New-Item -Path $logDirectory -ItemType Directory -Force -ErrorAction Stop | Out-Null
-            Write-Host "Created log directory: $logDirectory" -ForegroundColor DarkGray
-        } catch {
-            Write-Error "Failed to create log directory '$logDirectory'. Error: $($_.Exception.Message)"
-            # Decide if script should exit or continue without logging
-            # For now, let's attempt to continue, logging might fail
-        }
-    }
-    $logFile = Join-Path -Path $logDirectory -ChildPath "Get-RecentAccountLockouts_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    # Log file will be in the same directory as the script
+    $logFile = Join-Path -Path $scriptPath -ChildPath "Get-RecentAccountLockouts_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     try {
         Start-Transcript -Path $logFile -Append -ErrorAction Stop
     } catch {
@@ -119,7 +109,14 @@ process {
 
                         $eventTime = $event.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
                         $lockedOutUser = $event.Properties[0].Value
-                        $callerComputer = $event.Properties[3].Value
+                        $callerComputerRaw = $event.Properties[3].Value
+
+                        # Check if the caller computer is the LOCAL SYSTEM SID
+                        $callerComputerDisplay = if ($callerComputerRaw -eq 'S-1-5-18') {
+                            '(Local System)' # Display more descriptive text
+                        } else {
+                            $callerComputerRaw # Otherwise, use the raw value
+                        }
 
                         # Apply username filter if provided
                         if (-not [string]::IsNullOrEmpty($UserName)) {
@@ -131,7 +128,7 @@ process {
                         $lockoutDetail = [PSCustomObject]@{
                             TimeLockedUTC  = $eventTime
                             UserName       = $lockedOutUser
-                            CallerComputer = $callerComputer
+                            CallerComputer = $callerComputerDisplay # Use the processed display name
                             DomainController = $dc
                         }
                         $allLockoutEvents += $lockoutDetail
@@ -168,7 +165,9 @@ process {
     } finally {
         # Stop Transcript
         if ($global:Transcript) { # Check if transcript is active before stopping
+            Write-Host "Attempting to stop transcript..." -ForegroundColor DarkGray
             Stop-Transcript
+            Write-Host "Transcript stopped." -ForegroundColor DarkGray
         }
     }
 }
