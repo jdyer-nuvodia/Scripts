@@ -1,12 +1,11 @@
-
 # =============================================================================
 # Script: Get-RecentAccountLockouts.ps1
-# Created: 2025-04-15 22:28:00 UTC # Approximate time, will be set by the tool
+# Created: 2025-04-15 22:28:00 UTC
 # Author: GitHub Copilot
-# Last Updated: 2025-04-15 22:28:00 UTC # Approximate time, will be set by the tool
+# Last Updated: 2025-04-15 22:36:00 UTC # Approximate time
 # Updated By: GitHub Copilot
-# Version: 1.0.0
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers.
+# Version: 1.1.0
+# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging.
 # =============================================================================
 
 <#
@@ -41,6 +40,7 @@ Requires membership in the 'Event Log Readers' group or equivalent permissions o
 The script attempts to query all DCs found via Get-ADDomainController. Ensure network connectivity and necessary permissions.
 Performance may vary depending on the number of DCs and the volume of event logs.
 Uses Get-WinEvent for event log retrieval.
+Creates a transcript log file in a 'Logs' subdirectory within the script's location.
 #>
 
 #Requires -Modules ActiveDirectory
@@ -56,86 +56,119 @@ param(
 )
 
 process {
-    Write-Host "Starting search for account lockout events (ID 4740)..." -ForegroundColor Cyan
-    $startTime = (Get-Date).AddHours(-$HoursAgo)
-    $dcs = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
-
-    if ($null -eq $dcs) {
-        Write-Error "Could not retrieve list of Domain Controllers. Ensure the Active Directory module is available and you have permissions."
-        exit 1
-    }
-
-    Write-Host "Searching on Domain Controllers: $($dcs -join ', ')" -ForegroundColor DarkGray
-    Write-Host "Searching for events since: $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) UTC" -ForegroundColor DarkGray
-
-    $allLockoutEvents = @()
-
-    foreach ($dc in $dcs) {
-        Write-Host "Querying Domain Controller: $dc" -ForegroundColor Cyan
+    # Define Log Path and Start Transcript
+    $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
+    $logDirectory = Join-Path -Path $scriptPath -ChildPath "Logs"
+    if (-not (Test-Path -Path $logDirectory -PathType Container)) {
         try {
-            $filterHashTable = @{
-                LogName   = 'Security'
-                ID        = 4740
-                StartTime = $startTime
-            }
-
-            $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction Stop
-
-            if ($null -ne $events) {
-                Write-Host "Found $($events.Count) potential lockout events on $dc since $startTime." -ForegroundColor White
-
-                foreach ($event in $events) {
-                    # Extract details from the event message or properties
-                    # Property indices based on typical Event ID 4740 structure:
-                    # Index 0: Target User Name
-                    # Index 1: Target Domain Name (often part of user name)
-                    # Index 2: Target SID (not always needed directly)
-                    # Index 3: Caller Computer Name
-                    # Index 4: Caller User Name (often N/A or SYSTEM)
-                    # Index 5: Caller Domain Name
-                    # Index 6: Caller Logon ID
-
-                    $eventTime = $event.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
-                    $lockedOutUser = $event.Properties[0].Value
-                    $callerComputer = $event.Properties[3].Value
-
-                    # Apply username filter if provided
-                    if (-not [string]::IsNullOrEmpty($UserName)) {
-                        if ($lockedOutUser -notlike "*$UserName*") {
-                            continue # Skip if username doesn't match
-                        }
-                    }
-
-                    $lockoutDetail = [PSCustomObject]@{
-                        TimeLockedUTC  = $eventTime
-                        UserName       = $lockedOutUser
-                        CallerComputer = $callerComputer
-                        DomainController = $dc
-                    }
-                    $allLockoutEvents += $lockoutDetail
-                }
-            } else {
-                 Write-Host "No lockout events found on $dc within the specified timeframe." -ForegroundColor DarkGray
-            }
+            New-Item -Path $logDirectory -ItemType Directory -Force -ErrorAction Stop | Out-Null
+            Write-Host "Created log directory: $logDirectory" -ForegroundColor DarkGray
         } catch {
-            Write-Warning "Failed to query $dc. Error: $($_.Exception.Message)"
+            Write-Error "Failed to create log directory '$logDirectory'. Error: $($_.Exception.Message)"
+            # Decide if script should exit or continue without logging
+            # For now, let's attempt to continue, logging might fail
         }
     }
-
-    if ($allLockoutEvents.Count -gt 0) {
-        Write-Host "-----------------------------------------" -ForegroundColor White
-        Write-Host "Recent Account Lockout Events Found:" -ForegroundColor Green
-        Write-Host "-----------------------------------------" -ForegroundColor White
-        $allLockoutEvents | Sort-Object TimeLockedUTC -Descending | Format-Table -AutoSize
-        Write-Host "Successfully retrieved $($allLockoutEvents.Count) lockout events." -ForegroundColor Green
-    } else {
-        Write-Host "-----------------------------------------" -ForegroundColor White
-        Write-Host "No matching account lockout events found in the last $HoursAgo hours" -ForegroundColor Yellow
-        if (-not [string]::IsNullOrEmpty($UserName)) {
-            Write-Host "(Filtered for user: $UserName)" -ForegroundColor Yellow
-        }
-        Write-Host "-----------------------------------------" -ForegroundColor White
+    $logFile = Join-Path -Path $logDirectory -ChildPath "Get-RecentAccountLockouts_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    try {
+        Start-Transcript -Path $logFile -Append -ErrorAction Stop
+    } catch {
+        Write-Warning "Failed to start transcript logging to '$logFile'. Error: $($_.Exception.Message)"
+        # Continue execution without transcript logging
     }
 
-    Write-Host "Script finished." -ForegroundColor Cyan
+    try {
+        Write-Host "Starting search for account lockout events (ID 4740)..." -ForegroundColor Cyan
+        $startTime = (Get-Date).AddHours(-$HoursAgo)
+        $dcs = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
+
+        if ($null -eq $dcs) {
+            Write-Error "Could not retrieve list of Domain Controllers. Ensure the Active Directory module is available and you have permissions."
+            exit 1
+        }
+
+        Write-Host "Searching on Domain Controllers: $($dcs -join ', ')" -ForegroundColor DarkGray
+        Write-Host "Searching for events since: $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) UTC" -ForegroundColor DarkGray
+
+        $allLockoutEvents = @()
+
+        foreach ($dc in $dcs) {
+            Write-Host "Querying Domain Controller: $dc" -ForegroundColor Cyan
+            try {
+                $filterHashTable = @{
+                    LogName   = 'Security'
+                    ID        = 4740
+                    StartTime = $startTime
+                }
+
+                $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction Stop
+
+                if ($null -ne $events) {
+                    Write-Host "Found $($events.Count) potential lockout events on $dc since $startTime." -ForegroundColor White
+
+                    foreach ($event in $events) {
+                        # Extract details from the event message or properties
+                        # Property indices based on typical Event ID 4740 structure:
+                        # Index 0: Target User Name
+                        # Index 1: Target Domain Name (often part of user name)
+                        # Index 2: Target SID (not always needed directly)
+                        # Index 3: Caller Computer Name
+                        # Index 4: Caller User Name (often N/A or SYSTEM)
+                        # Index 5: Caller Domain Name
+                        # Index 6: Caller Logon ID
+
+                        $eventTime = $event.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
+                        $lockedOutUser = $event.Properties[0].Value
+                        $callerComputer = $event.Properties[3].Value
+
+                        # Apply username filter if provided
+                        if (-not [string]::IsNullOrEmpty($UserName)) {
+                            if ($lockedOutUser -notlike "*$UserName*") {
+                                continue # Skip if username doesn't match
+                            }
+                        }
+
+                        $lockoutDetail = [PSCustomObject]@{
+                            TimeLockedUTC  = $eventTime
+                            UserName       = $lockedOutUser
+                            CallerComputer = $callerComputer
+                            DomainController = $dc
+                        }
+                        $allLockoutEvents += $lockoutDetail
+                    }
+                } else {
+                     Write-Host "No lockout events found on $dc within the specified timeframe." -ForegroundColor DarkGray
+                }
+            } catch {
+                Write-Warning "Failed to query $dc. Error: $($_.Exception.Message)"
+            }
+        }
+
+        if ($allLockoutEvents.Count -gt 0) {
+            Write-Host "-----------------------------------------" -ForegroundColor White
+            Write-Host "Recent Account Lockout Events Found:" -ForegroundColor Green
+            Write-Host "-----------------------------------------" -ForegroundColor White
+            $allLockoutEvents | Sort-Object TimeLockedUTC -Descending | Format-Table -AutoSize
+            Write-Host "Successfully retrieved $($allLockoutEvents.Count) lockout events." -ForegroundColor Green
+        } else {
+            Write-Host "-----------------------------------------" -ForegroundColor White
+            Write-Host "No matching account lockout events found in the last $HoursAgo hours" -ForegroundColor Yellow
+            if (-not [string]::IsNullOrEmpty($UserName)) {
+                Write-Host "(Filtered for user: $UserName)" -ForegroundColor Yellow
+            }
+            Write-Host "-----------------------------------------" -ForegroundColor White
+        }
+
+        Write-Host "Script finished." -ForegroundColor Cyan
+
+    } catch {
+        # Existing catch block for main script logic errors
+        Write-Error "An error occurred during script execution: $($_.Exception.Message)"
+        # Consider adding more specific error handling if needed
+    } finally {
+        # Stop Transcript
+        if ($global:Transcript) { # Check if transcript is active before stopping
+            Stop-Transcript
+        }
+    }
 }
