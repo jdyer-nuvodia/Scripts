@@ -2,10 +2,10 @@
 # Script: Search-SoftwareAndServices.ps1
 # Created: 2025-04-17 19:54:45 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-17 19:54:45 UTC
+# Last Updated: 2025-04-17 19:59:32 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial script creation for searching software and services
+# Version: 1.0.1
+# Additional Info: Fixed permission denied errors when querying certain services
 # =============================================================================
 
 <#
@@ -142,29 +142,53 @@ function Search-WindowsServices {
     
     $serviceResults = @()
     
-    # Get services matching the keyword
-    $services = Get-Service | Where-Object { 
-        $_.DisplayName -like "*$Keyword*" -or 
-        $_.Name -like "*$Keyword*" -or 
-        $_.Description -like "*$Keyword*"
+    # Get services matching the keyword with error handling
+    try {
+        # Capture non-terminating errors using ErrorVariable
+        $services = Get-Service -ErrorAction SilentlyContinue -ErrorVariable serviceErrors | 
+            Where-Object { 
+                $_.DisplayName -like "*$Keyword*" -or 
+                $_.Name -like "*$Keyword*" -or 
+                ($null -ne $_.Description -and $_.Description -like "*$Keyword*")
+            }
+        
+        # Log permission errors if verbose
+        if ($serviceErrors) {
+            $permissionDeniedCount = ($serviceErrors | Where-Object { $_.Exception.Message -like "*PermissionDenied*" }).Count
+            if ($permissionDeniedCount -gt 0) {
+                Write-ColorOutput "Note: Unable to query $permissionDeniedCount service(s) due to permission restrictions." -ForegroundColor Yellow
+                Write-Verbose "Some services could not be accessed due to permission restrictions. This is normal behavior when not running as administrator."
+            }
+        }
+    }
+    catch {
+        Write-ColorOutput "Error retrieving services: $_" -ForegroundColor Red
+        return $serviceResults
     }
     
     foreach ($service in $services) {
-        $serviceDetails = Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
-        
-        $serviceObj = [PSCustomObject]@{
-            Type = "Service"
-            Name = $service.DisplayName
-            Status = $service.Status
-            StartType = $service.StartType
-            ServiceName = $service.Name
-            Description = $serviceDetails.Description
-            PathName = $serviceDetails.PathName
-            StartName = $serviceDetails.StartName
+        try {
+            $serviceDetails = Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
+            
+            $serviceObj = [PSCustomObject]@{
+                Type = "Service"
+                Name = $service.DisplayName
+                Status = $service.Status
+                StartType = $service.StartType
+                ServiceName = $service.Name
+                Description = $serviceDetails.Description
+                PathName = $serviceDetails.PathName
+                StartName = $serviceDetails.StartName
+            }
+              $serviceResults += $serviceObj
         }
-        
-        $serviceResults += $serviceObj
+        catch {
+            Write-Verbose "Error processing service $($service.Name): $_"
+        }
     }
+    
+    return $serviceResults
+}
     
     return $serviceResults
 }
