@@ -189,9 +189,6 @@ function Search-WindowsServices {
     
     return $serviceResults
 }
-    
-    return $serviceResults
-}
 
 # Start script execution
 Write-ColorOutput "Starting search for '$Keyword' in installed software and services..." -ForegroundColor White
