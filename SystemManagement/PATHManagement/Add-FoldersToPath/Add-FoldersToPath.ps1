@@ -34,14 +34,14 @@
     Performance impact:
      - Minimal for single folders
      - May take longer with recursive operations on deep folder structures
-.PARAMETER RootPath
+.PARAMETER StartPath
     The root directory to add to PATH. Must be a valid directory path.
 .PARAMETER NoRecurse
     If specified, only adds the root folder without subfolders.
 .PARAMETER Scope
     Whether to modify Machine (system) or User PATH. Default is User.
 .EXAMPLE
-    .\Add-FoldersToPath.ps1 -RootPath "C:\Scripts"
+    .\Add-FoldersToPath.ps1 -StartPath "C:\Scripts"
     Adds C:\Scripts to the user PATH
 .NOTES
     Security Level: Medium
@@ -59,7 +59,7 @@ param(
                ValueFromPipeline=$true,
                HelpMessage="Root directory to add to PATH")]
     [ValidateScript({Test-Path $_ -PathType Container})]
-    [string]$RootPath,
+    [string]$StartPath,
 
     [Parameter(Mandatory=$false)]
     [switch]$NoRecurse,
@@ -120,11 +120,11 @@ process {
     try {
         # Get all directories to process
         $directories = @()
-        $directories += Get-SanitizedPath $RootPath
+        $directories += Get-SanitizedPath $StartPath
         
         if (-not $NoRecurse) {
-            Write-Verbose "Getting subdirectories for $RootPath"
-            $subDirs = Get-ChildItem -Path $RootPath -Recurse -Directory -ErrorAction Stop
+            Write-Verbose "Getting subdirectories for $StartPath"
+            $subDirs = Get-ChildItem -Path $StartPath -Recurse -Directory -ErrorAction Stop
             $directories += $subDirs.FullName
         }
 
