@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:13:00 UTC
+# Last Updated: 2025-04-24 22:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.8
-# Additional Info: Fixed invalid registry path when creating parent keys.
+# Version: 1.3.9
+# Additional Info: Fixed binary value comparison in verification process.
 # =============================================================================
 
 <#
@@ -245,10 +245,25 @@ function Test-RegistryChanges {
                     Write-Log "✗ Verification FAILED: Value exists but is null." "WARNING"
                     return $false
                 } else {
-                    # Determine how to compare values based on type
+                # Determine how to compare values based on type
                     if ($currentValue -is [byte[]]) {
-                        # For byte arrays, use Compare-Object with property expression
-                        if (Compare-Object -ReferenceObject $regValueData -DifferenceObject $currentValue -SyncWindow 0 -Property @{Expression={$PSItem}}) {
+                        # For byte arrays, compare them using a more reliable method
+                        $isEqual = $true
+                        
+                        # First check if lengths match
+                        if ($regValueData.Length -ne $currentValue.Length) {
+                            $isEqual = $false
+                        } else {
+                            # Compare each byte individually
+                            for ($i = 0; $i -lt $regValueData.Length; $i++) {
+                                if ($regValueData[$i] -ne $currentValue[$i]) {
+                                    $isEqual = $false
+                                    break
+                                }
+                            }
+                        }
+                        
+                        if (-not $isEqual) {
                             Write-Log "✗ Verification FAILED: Value data does not match expected." "WARNING"
                             Write-Log "  Expected: $($regValueData | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
                             Write-Log "  Actual:   $($currentValue | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
