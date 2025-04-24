@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 00:52:00 UTC
+# Last Updated: 2025-04-25 23:54:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.18
-# Additional Info: Ensured $null is on the left for both comparisons in the null check.
+# Version: 1.4.19
+# Additional Info: Fixed parsing errors by restructuring the main Try/Catch/Finally block and associated If/Else logic.
 # =============================================================================
 
 <#
@@ -334,7 +334,7 @@ function Confirm-RegistryChanges {
 } # End of Confirm-RegistryChanges
 
 # --- Main Script Logic ---
-try {    
+try {
     Write-Log "Starting registry change application script" "INFO"
     Write-Log "Script version: $($MyInvocation.MyCommand.Version)" "DETAIL"
     Write-Log "Log file: $LogPath" "DETAIL"
@@ -471,7 +471,7 @@ try {
                     if ($LASTEXITCODE -ne 0) {
                         Write-Log "Failed to load user registry hive into '$regExeVerifyHiveMount' for verification: $loadVerifyOutput" "ERROR"
                         # Cannot verify if load fails
-                        $verificationSuccess = $false 
+                        $verificationSuccess = $false
                     } else {
                         $userHiveLoadedForVerify = $true
                         Write-Log "User registry hive loaded successfully into $regExeVerifyHiveMount for Verify." "SUCCESS"
@@ -480,29 +480,32 @@ try {
                 } else {
                     Write-Log "WhatIf: Skipped loading registry hive $userHivePath into $regExeVerifyHiveMount for Verify." "INFO"
                     # Cannot verify if load is skipped
-                    $verificationSuccess = $false 
+                    $verificationSuccess = $false
                 }
-            } 
+            }
             # If user was logged in, verification will target HKEY_USERS directly (no LoadedHivePathForVerification needed)
         }
         # Only run verification if the hive was successfully loaded (or wasn't needed)
         if ($isUserLoggedIn -or -not $Username -or $userHiveLoadedForVerify) {
              Write-Log "Running verification check..." "PROCESS"
-             $verificationSuccess = Confirm-RegistryChanges @verifyParams -WhatIf:$false # Force actual check
+             # Use -ErrorAction Continue on Confirm-RegistryChanges to allow script to proceed to finally even if verification fails
+             $verificationSuccess = Confirm-RegistryChanges @verifyParams -WhatIf:$false -ErrorAction Continue
         } else {
             Write-Log "Skipping verification because the required hive could not be loaded or accessed." "WARNING"
             $verificationSuccess = $false # Mark as failed if we couldn't load/access for verify
         }
 
-    } else {
+    } else { # <-- This 'else' block is now correctly placed inside the Try block
         Write-Log "Skipping verification because the apply step did not succeed or was skipped." "WARNING"
         $verificationSuccess = $false
-    }
+    } # <-- Closing brace for the 'else' block
 
-} catch {
+} catch { # <-- Catch block now correctly follows the Try block
     Write-Log "An error occurred in the main script block: $_" "ERROR"
+    # Ensure verification status reflects the error
+    $verificationSuccess = $false
     # Consider exiting with a non-zero code
-    # exit 1 
+    # exit 1
 } finally {
     # --- Cleanup: Unload hives ---
     Write-Log "Performing cleanup..." "PROCESS"
@@ -514,7 +517,7 @@ try {
         } else {
             Write-Log "WhatIf: Skipped unloading apply hive mount $regExeApplyHiveMount." "INFO"
         }
-    } # <-- This was the missing brace
+    } # <-- Brace for if ($userHiveLoadedForApply)
     if ($userHiveLoadedForVerify) {
         Write-Log "Unloading verify hive mount ($regExeVerifyHiveMount)..." "PROCESS"
         if ($PSCmdlet.ShouldProcess($regExeVerifyHiveMount, "Unload Registry Hive")) {
@@ -523,10 +526,10 @@ try {
         } else {
             Write-Log "WhatIf: Skipped unloading verify hive mount $regExeVerifyHiveMount." "INFO"
         }
-    }
+    } # <-- Brace for if ($userHiveLoadedForVerify)
 
     Write-Log "Script finished. Final Verification Status: $($verificationSuccess)" "INFO"
-    
+
     # Exit with appropriate code based on verification
     if ($verificationSuccess) {
         # exit 0 # Success
