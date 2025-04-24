@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 18:55:00 UTC
+# Last Updated: 2025-04-24 19:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Fixed registry access issue when applying to another user
+# Version: 1.2.0
+# Additional Info: Added verification function to confirm registry changes
 # =============================================================================
 
 <#
@@ -84,9 +84,253 @@ function Write-Log {
     }
 }
 
+# Function to test registry changes
+function Test-RegistryChanges {
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$Username
+    )
+    
+    Write-Log "Verifying registry changes..." "PROCESS"
+    
+    # Define expected registry path and value
+    $regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
+    $regValueName = "TimerAutoMount"
+    
+    if ($Username) {
+        # Need to load the user's hive first to verify
+        $userHiveLoaded = $false
+        $verifyTempHiveKeyName = "HKLM\VerifyTempHive"
+        
+        try {
+            # Find user profile path
+            $allProfiles = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
+                           Where-Object { $_.ProfileImagePath -like "*\$Username" }
+            
+            if (-not $allProfiles) {
+                Write-Log "User profile for '$Username' not found on this system" "ERROR"
+                return $false
+            }
+            
+            $userProfilePath = $allProfiles.ProfileImagePath
+            $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
+            
+            if (-not (Test-Path -Path $userHivePath)) {
+                Write-Log "User registry hive not found at: $userHivePath" "ERROR"
+                return $false
+            }
+            
+            # Load the hive
+            Write-Log "Loading user registry hive for verification..." "DETAIL"
+            $loadHiveOutput = reg.exe load $verifyTempHiveKeyName $userHivePath 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "Failed to load user registry hive for verification: $loadHiveOutput" "ERROR"
+                return $false
+            }
+            
+            $userHiveLoaded = $true
+            
+            # Check the registry value
+            $fullKeyPath = "HKLM:\VerifyTempHive\$regKeyPath"
+            
+            if (Test-Path -Path $fullKeyPath) {
+                if (Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue) {
+                    $value = Get-ItemProperty -Path $fullKeyPath -Name $regValueName
+                    $hexValue = "0x" + ($value.$regValueName | ForEach-Object { "{0:X2}" -f $_ }) -join " "
+                    
+                    Write-Log "Registry value exists in user $Username profile!" "SUCCESS"
+                    Write-Log "Value Name: $regValueName" "DETAIL"
+                    Write-Log "Value Type: Binary" "DETAIL"
+                    Write-Log "Value Data: $hexValue" "DETAIL"
+                    
+                    if ($value.$regValueName[0] -eq 1) {
+                        Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount is set correctly (enabled)" "SUCCESS"
+                        return $true
+                    } else {
+                        Write-Log "✗ Verification FAILED: TimerAutoMount is not set to enabled" "WARNING"
+                        return $false
+                    }
+                } else {
+                    Write-Log "✗ Value '$regValueName' does not exist in the registry key" "ERROR"
+                    return $false
+                }
+            } else {
+                Write-Log "✗ Registry key path does not exist" "ERROR"
+                return $false
+            }
+        }
+        finally {
+            # Unload the hive if loaded
+            if ($userHiveLoaded) {
+                Write-Log "Unloading verification registry hive..." "DETAIL"
+                [System.GC]::Collect()
+                Start-Sleep -Seconds 1
+                
+                $unloadHiveOutput = reg.exe unload $verifyTempHiveKeyName 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Log "Warning: Failed to unload verification registry hive: $unloadHiveOutput" "WARNING"
+                }
+            }
+        }
+    }
+    else {
+        # Verify current user registry
+        $fullKeyPath = "HKCU:\$regKeyPath"
+        
+        if (Test-Path -Path $fullKeyPath) {
+            if (Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue) {
+                $value = Get-ItemProperty -Path $fullKeyPath -Name $regValueName
+                $hexValue = "0x" + ($value.$regValueName | ForEach-Object { "{0:X2}" -f $_ }) -join " "
+                
+                Write-Log "Registry value exists in current user profile!" "SUCCESS"
+                Write-Log "Value Name: $regValueName" "DETAIL"
+                Write-Log "Value Type: Binary" "DETAIL"
+                Write-Log "Value Data: $hexValue" "DETAIL"
+                
+                if ($value.$regValueName[0] -eq 1) {
+                    Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount is set correctly (enabled)" "SUCCESS"
+                    return $true
+                } else {
+                    Write-Log "✗ Verification FAILED: TimerAutoMount is not set to enabled" "WARNING"
+                    return $false
+                }
+            } else {
+                Write-Log "✗ Value '$regValueName' does not exist in the registry key" "ERROR"
+                return $false
+            }
+        } else {
+            Write-Log "✗ Registry key path does not exist" "ERROR"
+            return $false
+        }
+    }
+}
+
+# Function to verify registry changes
+function Verify-RegistryChanges {
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$Username
+    )
+    
+    Write-Log "Verifying registry changes..." "PROCESS"
+    
+    # Define expected registry path and value
+    $regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
+    $regValueName = "TimerAutoMount"
+    
+    if ($Username) {
+        # Need to load the user's hive first to verify
+        $userHiveLoaded = $false
+        $verifyTempHiveKeyName = "HKLM\VerifyTempHive"
+        
+        try {
+            # Find user profile path
+            $allProfiles = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
+                           Where-Object { $_.ProfileImagePath -like "*\$Username" }
+            
+            if (-not $allProfiles) {
+                Write-Log "User profile for '$Username' not found on this system" "ERROR"
+                return $false
+            }
+            
+            $userProfilePath = $allProfiles.ProfileImagePath
+            $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
+            
+            if (-not (Test-Path -Path $userHivePath)) {
+                Write-Log "User registry hive not found at: $userHivePath" "ERROR"
+                return $false
+            }
+            
+            # Load the hive
+            Write-Log "Loading user registry hive for verification..." "DETAIL"
+            $loadHiveOutput = reg.exe load $verifyTempHiveKeyName $userHivePath 2>&1
+            
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "Failed to load user registry hive for verification: $loadHiveOutput" "ERROR"
+                return $false
+            }
+            
+            $userHiveLoaded = $true
+            
+            # Check the registry value
+            $fullKeyPath = "HKLM:\VerifyTempHive\$regKeyPath"
+            
+            if (Test-Path -Path $fullKeyPath) {
+                if (Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue) {
+                    $value = Get-ItemProperty -Path $fullKeyPath -Name $regValueName
+                    $hexValue = "0x" + ($value.$regValueName | ForEach-Object { "{0:X2}" -f $_ }) -join " "
+                    
+                    Write-Log "Registry value exists in user $Username profile!" "SUCCESS"
+                    Write-Log "Value Name: $regValueName" "DETAIL"
+                    Write-Log "Value Type: Binary" "DETAIL"
+                    Write-Log "Value Data: $hexValue" "DETAIL"
+                    
+                    if ($value.$regValueName[0] -eq 1) {
+                        Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount is set correctly (enabled)" "SUCCESS"
+                        return $true
+                    } else {
+                        Write-Log "✗ Verification FAILED: TimerAutoMount is not set to enabled" "WARNING"
+                        return $false
+                    }
+                } else {
+                    Write-Log "✗ Value '$regValueName' does not exist in the registry key" "ERROR"
+                    return $false
+                }
+            } else {
+                Write-Log "✗ Registry key path does not exist" "ERROR"
+                return $false
+            }
+        }
+        finally {
+            # Unload the hive if loaded
+            if ($userHiveLoaded) {
+                Write-Log "Unloading verification registry hive..." "DETAIL"
+                [System.GC]::Collect()
+                Start-Sleep -Seconds 1
+                
+                $unloadHiveOutput = reg.exe unload $verifyTempHiveKeyName 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Log "Warning: Failed to unload verification registry hive: $unloadHiveOutput" "WARNING"
+                }
+            }
+        }
+    }
+    else {
+        # Verify current user registry
+        $fullKeyPath = "HKCU:\$regKeyPath"
+        
+        if (Test-Path -Path $fullKeyPath) {
+            if (Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue) {
+                $value = Get-ItemProperty -Path $fullKeyPath -Name $regValueName
+                $hexValue = "0x" + ($value.$regValueName | ForEach-Object { "{0:X2}" -f $_ }) -join " "
+                
+                Write-Log "Registry value exists in current user profile!" "SUCCESS"
+                Write-Log "Value Name: $regValueName" "DETAIL"
+                Write-Log "Value Type: Binary" "DETAIL"
+                Write-Log "Value Data: $hexValue" "DETAIL"
+                
+                if ($value.$regValueName[0] -eq 1) {
+                    Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount is set correctly (enabled)" "SUCCESS"
+                    return $true
+                } else {
+                    Write-Log "✗ Verification FAILED: TimerAutoMount is not set to enabled" "WARNING"
+                    return $false
+                }
+            } else {
+                Write-Log "✗ Value '$regValueName' does not exist in the registry key" "ERROR"
+                return $false
+            }
+        } else {
+            Write-Log "✗ Registry key path does not exist" "ERROR"
+            return $false
+        }
+    }
+}
+
 try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.1.1" "DETAIL"
+    Write-Log "Script version: 1.2.0" "DETAIL"
     
     # Check if registry file exists
     if (-not (Test-Path -Path $regFilePath)) {
@@ -276,8 +520,7 @@ New-PSDrive -Name HKU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive | O
                     Write-Log "WhatIf: Would unload user registry hive" "PROCESS"
                 }
             }
-            
-            # Remove temporary registry file if created
+              # Remove temporary registry file if created
             if ($modifiedRegFilePath -and (Test-Path -Path $modifiedRegFilePath)) {
                 if ($PSCmdlet.ShouldProcess("File", "Remove temporary registry file")) {
                     Remove-Item -Path $modifiedRegFilePath -Force
@@ -285,6 +528,17 @@ New-PSDrive -Name HKU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive | O
                 }
                 else {
                     Write-Log "WhatIf: Would remove temporary registry file" "PROCESS"
+                }
+            }
+            
+            # Remove temporary PowerShell script if created
+            if ($psRegScriptPath -and (Test-Path -Path $psRegScriptPath)) {
+                if ($PSCmdlet.ShouldProcess("File", "Remove temporary script file")) {
+                    Remove-Item -Path $psRegScriptPath -Force
+                    Write-Log "Temporary script file removed" "DETAIL"
+                }
+                else {
+                    Write-Log "WhatIf: Would remove temporary script file" "PROCESS"
                 }
             }
         }
@@ -295,6 +549,18 @@ New-PSDrive -Name HKU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive | O
         }
         else {
             Write-Log "WhatIf: Would apply registry changes from: $regFilePath to current user" "PROCESS"
+        }
+    }
+    
+    # Verify the registry changes if not in WhatIf mode
+    if (-not $WhatIfPreference) {
+        Write-Log "Starting verification of registry changes..." "PROCESS"
+        $verificationResult = Test-RegistryChanges -Username $Username
+        
+        if ($verificationResult) {
+            Write-Log "Registry changes have been successfully verified!" "SUCCESS"
+        } else {
+            Write-Log "Registry changes could not be verified. Please check the logs for details." "WARNING"
         }
     }
 }
