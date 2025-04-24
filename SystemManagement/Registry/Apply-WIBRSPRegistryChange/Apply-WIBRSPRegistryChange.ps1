@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:34:00 UTC
+# Last Updated: 2025-04-24 22:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added -Debug parameter to control visibility of debug messages.
+# Version: 1.4.1
+# Additional Info: Renamed Debug parameter to Verbose to avoid conflict with PowerShell's built-in Debug parameter.
 # =============================================================================
 
 <#
@@ -55,7 +55,7 @@ param(
     
     # Parameter to control the display of debug messages
     [Parameter(Mandatory = $false)]
-    [switch]$Debug
+    [switch]$ShowDebugOutput
 )
 
 # Set error action preference
@@ -89,7 +89,7 @@ function Write-Log {
     Add-Content -Path $logFile -Value $logMessage
     
     # Filter console output based on level and debug parameter
-    if (($Level -ne "DEBUG") -or ($Level -eq "DEBUG" -and $Debug)) {
+    if (($Level -ne "DEBUG") -or ($Level -eq "DEBUG" -and $ShowDebugOutput)) {
         # Write to console with color-coding
         switch ($Level) {
             "INFO"    { Write-Host $logMessage -ForegroundColor White }
