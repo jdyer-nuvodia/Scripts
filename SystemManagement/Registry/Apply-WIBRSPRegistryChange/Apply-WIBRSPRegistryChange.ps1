@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:17:00 UTC
+# Last Updated: 2025-04-24 22:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.9
-# Additional Info: Fixed binary value comparison in verification process.
+# Version: 1.3.11
+# Additional Info: Enhanced binary data verification with additional type checks and improved comparison.
 # =============================================================================
 
 <#
@@ -244,32 +244,30 @@ function Test-RegistryChanges {
                 if ($null -eq $currentValue) {
                     Write-Log "✗ Verification FAILED: Value exists but is null." "WARNING"
                     return $false
-                } else {
-                # Determine how to compare values based on type
+                } else {                # Determine how to compare values based on type
                     if ($currentValue -is [byte[]]) {
-                        # For byte arrays, compare them using a more reliable method
-                        $isEqual = $true
+                        # For byte arrays, ensure consistent type handling
+                        $expectedData = [byte[]]$regValueData
+                        $actualData = [byte[]]$currentValue
                         
-                        # First check if lengths match
-                        if ($regValueData.Length -ne $currentValue.Length) {
-                            $isEqual = $false
-                        } else {
-                            # Compare each byte individually
-                            for ($i = 0; $i -lt $regValueData.Length; $i++) {
-                                if ($regValueData[$i] -ne $currentValue[$i]) {
-                                    $isEqual = $false
-                                    break
-                                }
-                            }
-                        }
+                        # Debug detailed type information
+                        Write-Log "Debug: Expected data type: $($expectedData.GetType().FullName)" "DEBUG"
+                        Write-Log "Debug: Actual data type: $($actualData.GetType().FullName)" "DEBUG"
+                        Write-Log "Debug: Expected data length: $($expectedData.Length)" "DEBUG"
+                        Write-Log "Debug: Actual data length: $($actualData.Length)" "DEBUG"
                         
-                        if (-not $isEqual) {
-                            Write-Log "✗ Verification FAILED: Value data does not match expected." "WARNING"
-                            Write-Log "  Expected: $($regValueData | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
-                            Write-Log "  Actual:   $($currentValue | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
+                        # Convert to hex strings for consistent comparison
+                        $expectedHex = ($expectedData | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
+                        $actualHex = ($actualData | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
+                        
+                        # Compare hex strings for equality
+                        if ($expectedHex -ne $actualHex) {
+                            Write-Log "✗ Verification FAILED: Binary value does not match expected." "WARNING"
+                            Write-Log "  Expected (hex): $expectedHex" "DETAIL"
+                            Write-Log "  Actual (hex): $actualHex" "DETAIL"
                             return $false
                         } else {
-                            Write-Log "✓ Verification SUCCESSFUL: Value exists and data matches." "SUCCESS"
+                            Write-Log "✓ Verification SUCCESSFUL: Binary value exists and data matches." "SUCCESS"
                             return $true
                         }
                     } else {
@@ -315,10 +313,9 @@ function Confirm-RegistryChanges {
     Test-RegistryChanges -Username $Username -LoadedHivePathForVerification $LoadedHivePathForVerification
 } # End of Confirm-RegistryChanges
 
-try {
-    # Log script start
+try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.8" "DETAIL"
+    Write-Log "Script version: 1.3.10" "DETAIL"
     
     # Check for Admin/SYSTEM privileges
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
