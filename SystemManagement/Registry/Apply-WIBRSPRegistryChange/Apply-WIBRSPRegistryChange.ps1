@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 21:22:00 UTC
+# Last Updated: 2025-04-24 21:30:00 UTC
 # Updated By: GitHub Copilot / jdyer-nuvodia
-# Version: 1.3.4
-# Additional Info: Improved Test-UserLoggedIn to check current identity first. Corrected syntax errors.
+# Version: 1.3.5
+# Additional Info: Improved robustness of current user check in Test-UserLoggedIn.
 # =============================================================================
 
 <#
@@ -120,18 +120,23 @@ function Test-UserLoggedIn {
         [string]$Username
     )
     Write-Log "Checking login status for user '$Username'..." "DETAIL"
+    $trimmedUsername = $Username.Trim() # Trim whitespace just in case
 
     # 1. Check if the target username matches the current user running the script
     $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $currentUserNameOnly = $currentIdentity.Name.Split('\\')[-1] # Get username part, ignore domain
-    Write-Log "Current script identity: $($currentIdentity.Name)" "DEBUG"
-    if ($Username -eq $currentUserNameOnly -or $Username -eq $currentIdentity.Name) {
-        Write-Log "Target user '$Username' matches the current script user. Assuming logged in." "PROCESS"
+    $currentFullName = $currentIdentity.Name # e.g., NUVODIA\jdyer
+    $currentUserNameOnly = $currentFullName.Split('\\')[-1] # e.g., jdyer
+    Write-Log "Current script identity: $currentFullName" "DEBUG"
+    Write-Log "Comparing target (trimmed): '$trimmedUsername' with current name only: '$currentUserNameOnly' and current full name: '$currentFullName'" "DEBUG"
+
+    # Use case-insensitive comparison explicitly
+    if ($trimmedUsername -eq $currentUserNameOnly -or $trimmedUsername -eq $currentFullName) {
+        Write-Log "Target user '$trimmedUsername' matches the current script user '$currentFullName'. Assuming logged in." "PROCESS"
         return $true
     }
 
     # 2. If not the current user, fall back to quser check
-    Write-Log "Target user '$Username' does not match current script user. Checking quser output..." "DETAIL"
+    Write-Log "Target user '$trimmedUsername' does not match current script user '$currentFullName'. Checking quser output..." "DETAIL"
     $quserOutput = try {
         # Ensure quser exists before trying to run it
         if (Get-Command quser -ErrorAction SilentlyContinue) {
@@ -154,14 +159,14 @@ function Test-UserLoggedIn {
     #   >?                - Optional '>' character at the beginning
     #   \s*               - Zero or more whitespace characters
     #   (?:[^\s]+\\)?     - Optional non-capturing group for 'domain\'
-    #   $([regex]::Escape($Username)) - The literal username, properly escaped
+    #   $([regex]::Escape($trimmedUsername)) - The literal username, properly escaped
     #   \s+               - One or more whitespace characters (separating username from session name)
-    $regexPattern = "^\\s*>?\\s*(?:[^\\s]+\\\\)?$([regex]::Escape($Username))\\s+"
+    $regexPattern = "^\\s*>?\\s*(?:[^\\s]+\\\\)?$([regex]::Escape($trimmedUsername))\\s+" # Use trimmed username
     if ($quserOutput -match $regexPattern) {
-        Write-Log "User '$Username' appears to be logged in based on quser output." "PROCESS"
+        Write-Log "User '$trimmedUsername' appears to be logged in based on quser output." "PROCESS"
         return $true
     } else {
-        Write-Log "User '$Username' does not appear to be logged in based on quser output." "PROCESS"
+        Write-Log "User '$trimmedUsername' does not appear to be logged in based on quser output." "PROCESS"
         return $false
     }
 } # End of Test-UserLoggedIn
@@ -277,7 +282,7 @@ function Confirm-RegistryChanges {
 try {
     # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.4" "DETAIL"
+    Write-Log "Script version: 1.3.5" "DETAIL"
 
     # Check if running as elevated/SYSTEM (needed for HKEY_USERS or reg load)
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
