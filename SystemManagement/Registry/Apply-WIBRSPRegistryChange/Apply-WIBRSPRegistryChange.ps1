@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 20:44:00 UTC
+# Last Updated: 2025-04-24 21:22:00 UTC
 # Updated By: GitHub Copilot / jdyer-nuvodia
-# Version: 1.3.3
-# Additional Info: Corrected reg.exe load/unload key name usage to require full path (HKLM\TempHive).
+# Version: 1.3.4
+# Additional Info: Improved Test-UserLoggedIn to check current identity first. Corrected syntax errors.
 # =============================================================================
 
 <#
@@ -113,13 +113,25 @@ function Get-UserSID {
     }
 }
 
-# Function to check if user is logged in using quser
+# Function to check if user is logged in using quser or by checking current identity
 function Test-UserLoggedIn {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Username
     )
-    Write-Log "Checking login status for user '$Username' using quser..." "DETAIL"
+    Write-Log "Checking login status for user '$Username'..." "DETAIL"
+
+    # 1. Check if the target username matches the current user running the script
+    $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $currentUserNameOnly = $currentIdentity.Name.Split('\\')[-1] # Get username part, ignore domain
+    Write-Log "Current script identity: $($currentIdentity.Name)" "DEBUG"
+    if ($Username -eq $currentUserNameOnly -or $Username -eq $currentIdentity.Name) {
+        Write-Log "Target user '$Username' matches the current script user. Assuming logged in." "PROCESS"
+        return $true
+    }
+
+    # 2. If not the current user, fall back to quser check
+    Write-Log "Target user '$Username' does not match current script user. Checking quser output..." "DETAIL"
     $quserOutput = try {
         # Ensure quser exists before trying to run it
         if (Get-Command quser -ErrorAction SilentlyContinue) {
@@ -144,7 +156,7 @@ function Test-UserLoggedIn {
     #   (?:[^\s]+\\)?     - Optional non-capturing group for 'domain\'
     #   $([regex]::Escape($Username)) - The literal username, properly escaped
     #   \s+               - One or more whitespace characters (separating username from session name)
-    $regexPattern = "^\s*>?\s*(?:[^\s]+\\)?$([regex]::Escape($Username))\s+"
+    $regexPattern = "^\\s*>?\\s*(?:[^\\s]+\\\\)?$([regex]::Escape($Username))\\s+"
     if ($quserOutput -match $regexPattern) {
         Write-Log "User '$Username' appears to be logged in based on quser output." "PROCESS"
         return $true
@@ -152,7 +164,7 @@ function Test-UserLoggedIn {
         Write-Log "User '$Username' does not appear to be logged in based on quser output." "PROCESS"
         return $false
     }
-}
+} # End of Test-UserLoggedIn
 
 
 # Function to test registry changes
@@ -245,7 +257,7 @@ function Test-RegistryChanges {
         Write-Log "An error occurred during verification: $_" "ERROR"
         return $false
     }
-}
+} # End of Test-RegistryChanges
 
 # Function alias with approved verb - redirects to Test-RegistryChanges
 function Confirm-RegistryChanges {
@@ -260,12 +272,12 @@ function Confirm-RegistryChanges {
 
     # Call the properly named function, passing the new parameter along
     Test-RegistryChanges -Username $Username -LoadedHivePathForVerification $LoadedHivePathForVerification
-}
+} # End of Confirm-RegistryChanges
 
 try {
     # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.3" "DETAIL"
+    Write-Log "Script version: 1.3.4" "DETAIL"
 
     # Check if running as elevated/SYSTEM (needed for HKEY_USERS or reg load)
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -408,7 +420,7 @@ try {
         } else {
              Write-Log "WhatIf: Would set registry value '$regValueName' for current user at '$targetRegKeyPath'" "PROCESS"
         }
-    }
+    } # End of if ($Username)
 
     # --- Verification Step ---
     # Only verify if the apply step was successful (or skipped via WhatIf)
@@ -431,7 +443,7 @@ try {
         }
     } else {
         Write-Log "Skipping verification because the apply step did not complete successfully." "INFO"
-    }
+    } # End of if ($applySuccess)
 
 } catch {
     Write-Log "An error occurred: $($_.Exception.Message)" "ERROR"
@@ -448,6 +460,6 @@ try {
         } else {
             Write-Log "User registry hive unloaded successfully." "SUCCESS"
         }
-    }
+    } # End of if ($userHiveLoadedForApply)
     Write-Log "Script execution completed" "INFO"
-}
+} # End of try/catch/finally
