@@ -22,11 +22,11 @@ The script includes -WhatIf functionality to preview changes before applying the
 Shows what would happen if the script runs without actually applying the changes.
 
 .EXAMPLE
-.\Apply-RegistryChange.ps1
+.\Apply-WIBRSPRegistryChange.ps1
 Applies registry changes from the SharePoint_Auto_Mount.reg file.
 
 .EXAMPLE
-.\Apply-RegistryChange.ps1 -WhatIf
+.\Apply-WIBRSPRegistryChange.ps1 -WhatIf
 Shows the registry file that would be imported without actually applying the changes.
 #>
 
@@ -38,7 +38,7 @@ $ErrorActionPreference = "Stop"
 
 # Define log file path in the same directory as script
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$logFile = Join-Path -Path $scriptPath -ChildPath "Apply-RegistryChange_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$logFile = Join-Path -Path $scriptPath -ChildPath "Apply-WIBRSPRegistryChange_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $regFilePath = Join-Path -Path $scriptPath -ChildPath "SharePoint_Auto_Mount.reg"
 
 # Function to write to log file and console with color-coding
