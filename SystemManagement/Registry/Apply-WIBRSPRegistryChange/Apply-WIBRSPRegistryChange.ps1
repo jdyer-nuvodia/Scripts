@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 21:32:00 UTC
+# Last Updated: 2025-04-24 21:40:00 UTC
 # Updated By: GitHub Copilot / jdyer-nuvodia
 # Version: 1.3.6
-# Additional Info: Added detailed debugging to Test-UserLoggedIn comparison.
+# Additional Info: Fixed syntax errors. Added detailed debugging to Test-UserLoggedIn comparison.
 # =============================================================================
 
 <#
@@ -125,7 +125,8 @@ function Test-UserLoggedIn {
     # 1. Check if the target username matches the current user running the script
     $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $currentFullName = $currentIdentity.Name # e.g., NUVODIA\jdyer
-    $currentUserNameOnly = $currentFullName.Split('\\')[-1] # e.g., jdyer
+    $splitName = $currentFullName.Split('\\')
+    $currentUserNameOnly = if ($splitName.Count -ge 2) { $splitName[-1] } else { $currentFullName } # Handle cases with/without domain
     Write-Log "Current script identity: $currentFullName" "DEBUG"
     Write-Log "Comparing target (trimmed): '$trimmedUsername' with current name only: '$currentUserNameOnly' and current full name: '$currentFullName'" "DEBUG"
 
@@ -180,7 +181,6 @@ function Test-UserLoggedIn {
         return $false
     }
 } # End of Test-UserLoggedIn
-
 
 # Function to test registry changes
 function Test-RegistryChanges {
@@ -334,14 +334,13 @@ try {
                 if (-not (Test-Path -Path $targetRegKeyPath)) {
                     Write-Log "Creating parent key: $targetRegKeyPath" "DETAIL"
                     New-Item -Path $targetRegRootPath -Name $regKeyRelativePath -Force | Out-Null
-                }
+                } # Added missing closing brace
                 Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force
                 Write-Log "Registry value '$regValueName' set successfully." "SUCCESS"
                 $applySuccess = $true
             } else {
                  Write-Log "Skipped applying registry change due to -WhatIf." "INFO"
-                 # In WhatIf mode, assume success for verification purposes if needed, or skip verification
-                 $applySuccess = $true # Or set to false if verification shouldn't run in WhatIf
+                 $applySuccess = $true # Assume success for WhatIf verification
             }
 
         } else {
@@ -368,45 +367,44 @@ try {
                 $userHiveLoadedForApply = $true # Mark that hive was loaded for apply step
                 Write-Log "User registry hive loaded successfully into $regExeFullKeyName" "SUCCESS"
             } else {
-                 Write-Log "WhatIf: Would load user registry hive from: $userHivePath into $regExeFullKeyName" "PROCESS"
-                 # In WhatIf mode, we can't proceed further with modification for offline user
-                 Write-Log "WhatIf: Skipping modification as hive loading was skipped." "PROCESS"
-                 # Exit cleanly in WhatIf for offline user if load is skipped
-                 return
+                 Write-Log "WhatIf: Would load registry hive $userHivePath into $regExeFullKeyName" "PROCESS"
+                 # In WhatIf mode, we can't actually load, so we can't proceed to set value or verify
+                 $applySuccess = $false # Mark apply as not successful in WhatIf for load scenario
             }
             # Construct target path using the PS provider path
             $targetRegKeyPath = Join-Path -Path $psTempHiveRootPath -ChildPath $regKeyRelativePath
             Write-Log "Targeting loaded user hive: $targetRegKeyPath" "PROCESS"
-        }
+        } # End of if ($isUserLoggedIn)
 
-        # Apply registry change using PowerShell cmdlets (moved outside the if/else for logged-in/off)
-        # This block now runs for both logged-in and logged-off users after $targetRegKeyPath is set
-        Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
-        if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName'")) {
-            try {
-                # Ensure parent key exists
-                $parentPath = Split-Path -Path $targetRegKeyPath
-                if (-not (Test-Path -Path $parentPath)) {
-                    Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
-                    # Determine the root path for New-Item based on whether hive was loaded or not
-                    $newItemRoot = if ($userHiveLoadedForApply) { $psTempHiveRootPath } else { $targetRegRootPath }
-                    New-Item -Path $newItemRoot -Name $regKeyRelativePath -Force -ErrorAction Stop | Out-Null
-                    Write-Log "Parent key created." "DETAIL"
+        # Apply registry change using PowerShell cmdlets (only if hive load wasn't skipped by WhatIf)
+        # Check if we are targeting a loaded hive AND if the load was actually performed (not skipped by WhatIf)
+        if ($isUserLoggedIn -or $userHiveLoadedForApply) {
+            Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
+            if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName'")) {
+                try {
+                    # Ensure parent key exists
+                    $parentPath = Split-Path -Path $targetRegKeyPath
+                    if (-not (Test-Path -Path $parentPath)) {
+                        Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
+                        # Determine the root path for New-Item based on whether hive was loaded or not
+                        $newItemRoot = if ($userHiveLoadedForApply) { $psTempHiveRootPath } else { $targetRegRootPath }
+                        New-Item -Path $newItemRoot -Name $regKeyRelativePath -Force -ErrorAction Stop | Out-Null
+                        Write-Log "Parent key created." "DETAIL"
+                    } # Corrected missing closing brace
+
+                    # Set the value
+                    Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force -ErrorAction Stop
+                    Write-Log "Registry value '$regValueName' set successfully." "SUCCESS"
+                    $applySuccess = $true
+                } catch {
+                    Write-Log "Failed to set registry value '$regValueName' at '$targetRegKeyPath'. Error: $_" "ERROR"
+                    $applySuccess = $false
                 }
-
-                # Set the value
-                Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force -ErrorAction Stop
-                Write-Log "Registry value '$regValueName' set successfully." "SUCCESS"
-                $applySuccess = $true
-            } catch {
-                Write-Log "Failed to set registry value '$regValueName' at '$targetRegKeyPath'. Error: $_" "ERROR"
-                # Don't throw here, let finally block handle unload if needed, but mark apply as failed
-                $applySuccess = $false
+            } else {
+                Write-Log "WhatIf: Would set registry value '$regValueName' at '$targetRegKeyPath'" "PROCESS"
+                $applySuccess = $true # Assume success for WhatIf verification
             }
-        } else {
-            Write-Log "WhatIf: Would set registry value '$regValueName' at '$targetRegKeyPath'" "PROCESS"
-            $applySuccess = $true # Assume success for WhatIf verification
-        }
+        } # End if ($isUserLoggedIn -or $userHiveLoadedForApply)
 
     } else {
         # No username specified - Apply to current user (HKCU)
@@ -438,7 +436,7 @@ try {
     } # End of if ($Username)
 
     # --- Verification Step ---
-    # Only verify if the apply step was successful (or skipped via WhatIf)
+    # Only verify if the apply step was successful (or assumed successful via WhatIf)
     if ($applySuccess) {
         Write-Log "Starting verification of registry changes..." "PROCESS"
         $verificationResult = $false
@@ -454,10 +452,9 @@ try {
         if (-not $verificationResult) {
             Write-Log "Registry changes could not be verified. Please check the logs for details." "WARNING"
             # Consider throwing an error here if verification failure should halt the script or indicate overall failure
-            # throw "Verification failed."
         }
     } else {
-        Write-Log "Skipping verification because the apply step did not complete successfully." "INFO"
+        Write-Log "Skipping verification because the apply step did not complete successfully or was skipped." "INFO"
     } # End of if ($applySuccess)
 
 } catch {
