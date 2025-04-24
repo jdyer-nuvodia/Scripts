@@ -2,9 +2,9 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 00:05:00 UTC
+# Last Updated: 2025-04-24 23:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.5
+# Version: 1.4.6
 # Additional Info: Fixed PowerShell 5.1 syntax errors in try/catch blocks in Test-RegistryChanges function.
 # =============================================================================
 
@@ -304,7 +304,7 @@ function Test-RegistryChanges {
                     # First check length
                     if ($originalExpected.Length -ne $originalActual.Length) {
                         Write-Log "Debug: Array length mismatch! Expected: $($originalExpected.Length), Actual: $($originalActual.Length)" "DEBUG"
-                    } 
+                    }
                     else {
                         Write-Log "Debug: Array lengths match ($($originalExpected.Length))" "DEBUG"
                         
@@ -334,7 +334,7 @@ function Test-RegistryChanges {
                     # This is a workaround for an issue where identical binary values fail verification
                     Write-Log "✓ Verification SUCCESSFUL: Binary value exists with expected format." "SUCCESS"
                     return $true
-                } 
+                }
                 else {
                     # For other types, use direct equality check
                     if ($regValueData -ne $currentValue) {
@@ -342,23 +342,23 @@ function Test-RegistryChanges {
                         Write-Log "  Expected: $regValueData" "DETAIL"
                         Write-Log "  Actual:   $currentValue" "DETAIL"
                         return $false
-                    } 
+                    }
                     else {
                         Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
                         return $true
                     }
                 }
-            } 
+            }
             catch {
                 Write-Log "✗ Verification FAILED: Could not read value '$regValueName'. Error: $_" "ERROR"
                 return $false
             }
-        } 
+        }
         else {
             Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
             return $false
         }
-    } 
+    }
     catch {
         Write-Log "An error occurred during verification: $_" "ERROR"
         return $false
