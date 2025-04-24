@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 21:30:00 UTC
+# Last Updated: 2025-04-24 21:32:00 UTC
 # Updated By: GitHub Copilot / jdyer-nuvodia
-# Version: 1.3.5
-# Additional Info: Improved robustness of current user check in Test-UserLoggedIn.
+# Version: 1.3.6
+# Additional Info: Added detailed debugging to Test-UserLoggedIn comparison.
 # =============================================================================
 
 <#
@@ -129,8 +129,18 @@ function Test-UserLoggedIn {
     Write-Log "Current script identity: $currentFullName" "DEBUG"
     Write-Log "Comparing target (trimmed): '$trimmedUsername' with current name only: '$currentUserNameOnly' and current full name: '$currentFullName'" "DEBUG"
 
-    # Use case-insensitive comparison explicitly
-    if ($trimmedUsername -eq $currentUserNameOnly -or $trimmedUsername -eq $currentFullName) {
+    # --- Enhanced Debugging --- Start
+    Write-Log "Debug: trimmedUsername = '$trimmedUsername' (Length: $($trimmedUsername.Length))" "DEBUG"
+    Write-Log "Debug: currentUserNameOnly = '$currentUserNameOnly' (Length: $($currentUserNameOnly.Length))" "DEBUG"
+    Write-Log "Debug: currentFullName = '$currentFullName' (Length: $($currentFullName.Length))" "DEBUG"
+    $comparison1 = $trimmedUsername -eq $currentUserNameOnly
+    $comparison2 = $trimmedUsername -eq $currentFullName
+    Write-Log "Debug: Comparison 1 ('$trimmedUsername' -eq '$currentUserNameOnly') Result: $comparison1" "DEBUG"
+    Write-Log "Debug: Comparison 2 ('$trimmedUsername' -eq '$currentFullName') Result: $comparison2" "DEBUG"
+    # --- Enhanced Debugging --- End
+
+    # Use pre-calculated comparison results
+    if ($comparison1 -or $comparison2) {
         Write-Log "Target user '$trimmedUsername' matches the current script user '$currentFullName'. Assuming logged in." "PROCESS"
         return $true
     }
@@ -282,7 +292,7 @@ function Confirm-RegistryChanges {
 try {
     # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.5" "DETAIL"
+    Write-Log "Script version: 1.3.6" "DETAIL"
 
     # Check if running as elevated/SYSTEM (needed for HKEY_USERS or reg load)
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
