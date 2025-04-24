@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 23:54:00 UTC
+# Last Updated: 2025-04-25 23:58:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.19
-# Additional Info: Fixed parsing errors by restructuring the main Try/Catch/Finally block and associated If/Else logic.
+# Version: 1.4.20
+# Additional Info: Restructured Try/Catch/Finally blocks to be compatible with PowerShell 5.1 syntax requirements.
 # =============================================================================
 
 <#
@@ -171,7 +171,8 @@ function Test-RegistryChanges {
     $currentValue = $null
     $valueReadSuccess = $false
 
-    try { # Outer Try Block (Setup and Read)
+    # Outer Try Block (Setup and Read)
+    try { 
         # Determine the correct verification path
         if ($Username) {
             if ($LoadedHivePathForVerification) {
@@ -196,7 +197,7 @@ function Test-RegistryChanges {
             return $false
         }
 
-        # Inner Try Block ONLY for Get-ItemProperty
+        # Inner Try Block for Get-ItemProperty
         try {
             $currentValue = Get-ItemProperty -Path $verificationPath -Name $RegValueName -ErrorAction Stop | Select-Object -ExpandProperty $RegValueName
             $valueReadSuccess = $true
@@ -206,38 +207,34 @@ function Test-RegistryChanges {
             Write-Log "✗ Verification FAILED: Could not read value '$RegValueName' from path '$verificationPath'. Error: $_" "ERROR"
             # $valueReadSuccess remains false
         }
-        # --- End Inner Try/Catch ---
-
-    } # End Outer Try Block
-    catch { # Catch for Outer Try Block
+    } 
+    catch { 
         Write-Log "An error occurred during verification setup or path check: $_" "ERROR"
         return $false
-    } # End Outer Catch Block
+    } 
 
     # --- Value Verification Logic (Outside ALL Try/Catch Blocks) ---
     # Check if the read was successful before proceeding
     if (-not $valueReadSuccess) {
-         Write-Log "✗ Verification FAILED: Value read step failed." "ERROR"
-         return $false
+        Write-Log "✗ Verification FAILED: Value read step failed." "ERROR"
+        return $false
     }
 
     # Check if the retrieved value is null (value exists but is empty/null)
-    # Corrected comparison: $null on the left for both parts
     if ($null -eq $currentValue -and $null -ne $RegValueData) { # Only fail if expected data is not null
         Write-Log "✗ Verification FAILED: Value '$RegValueName' exists but is null/empty, expected non-null value '$RegValueData'." "WARNING"
         return $false
     }
 
-    # Perform comparisons - Use a clear, separate block
+    # Perform comparisons
     $finalVerificationResult = $false # Initialize final result
-    if ($RegValueName -eq "TimerAutoMount" -and $RegValueType -eq [Microsoft.Win32.RegistryValueKind]::Binary) 
-    { 
+    
+    if ($RegValueName -eq "TimerAutoMount" -and $RegValueType -eq [Microsoft.Win32.RegistryValueKind]::Binary) { 
         # Special handling for TimerAutoMount (Binary) - just check existence
         Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists (existence check only)." "SUCCESS"
         $finalVerificationResult = $true
     } 
-    elseif ($currentValue -is [byte[]] -and $RegValueData -is [byte[]]) 
-    { 
+    elseif ($currentValue -is [byte[]] -and $RegValueData -is [byte[]]) { 
         # Compare byte arrays
         if (-not (Compare-Object -ReferenceObject $RegValueData -DifferenceObject $currentValue -SyncWindow 0)) {
             Write-Log "✓ Verification SUCCESSFUL: Binary value matches expected." "SUCCESS"
@@ -261,26 +258,21 @@ function Test-RegistryChanges {
             $finalVerificationResult = $false
         }
     }
-    else 
-    { 
+    else { 
         # Direct equality check for other types (String, DWord, QWord, ExpandString)
-        if ($RegValueData -ne $currentValue) 
-        { 
+        if ($RegValueData -ne $currentValue) { 
             Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
             Write-Log "  Expected: $RegValueData ($($RegValueData.GetType().Name))" "DETAIL"
             Write-Log "  Actual:   $currentValue ($($currentValue.GetType().Name))" "DETAIL"
             $finalVerificationResult = $false
         } 
-        else 
-        { 
+        else { 
             Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
             $finalVerificationResult = $true
         }
     }
     
-    return $finalVerificationResult # Return the final result
-    # --- End Value Verification Logic ---
-
+    return $finalVerificationResult
 } # End of Test-RegistryChanges
 
 # Function alias with approved verb - redirects to Test-RegistryChanges
@@ -334,7 +326,7 @@ function Confirm-RegistryChanges {
 } # End of Confirm-RegistryChanges
 
 # --- Main Script Logic ---
-try {
+try {    
     Write-Log "Starting registry change application script" "INFO"
     Write-Log "Script version: $($MyInvocation.MyCommand.Version)" "DETAIL"
     Write-Log "Log file: $LogPath" "DETAIL"
@@ -495,18 +487,20 @@ try {
             $verificationSuccess = $false # Mark as failed if we couldn't load/access for verify
         }
 
-    } else { # <-- This 'else' block is now correctly placed inside the Try block
+    } 
+    else {
         Write-Log "Skipping verification because the apply step did not succeed or was skipped." "WARNING"
         $verificationSuccess = $false
-    } # <-- Closing brace for the 'else' block
-
-} catch { # <-- Catch block now correctly follows the Try block
+    }
+}
+catch {
     Write-Log "An error occurred in the main script block: $_" "ERROR"
     # Ensure verification status reflects the error
     $verificationSuccess = $false
     # Consider exiting with a non-zero code
     # exit 1
-} finally {
+} 
+finally {
     # --- Cleanup: Unload hives ---
     Write-Log "Performing cleanup..." "PROCESS"
     if ($userHiveLoadedForApply) {
