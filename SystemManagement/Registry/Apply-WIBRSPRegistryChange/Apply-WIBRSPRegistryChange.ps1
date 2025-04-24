@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 23:22:00 UTC
+# Last Updated: 2025-04-24 23:25:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.10
-# Additional Info: Final correction of nested try/catch block structure in Test-RegistryChanges for PS 5.1 compatibility.
+# Version: 1.4.11
+# Additional Info: Restructured if/elseif/else within inner try block in Test-RegistryChanges for PS 5.1 compatibility.
 # =============================================================================
 
 <#
@@ -248,9 +248,11 @@ function Test-RegistryChanges {
                     return $false
                 }
                 
-                # TimerAutoMount specific check
+                # --- Verification Logic Start --- 
+                $verificationResult = $false # Default to false
+
                 if ($regValueName -eq "TimerAutoMount") {
-                    # This is our special binary value, so we perform dedicated verification
+                    # TimerAutoMount specific check
                     # Convert both values to string format for logging
                     $expectedString = $regValueData | ForEach-Object { $_ } | Out-String
                     $actualString = $currentValue | ForEach-Object { $_ } | Out-String
@@ -262,12 +264,10 @@ function Test-RegistryChanges {
                     # For TimerAutoMount, we're always setting to 1,0,0,0,0,0,0,0 which is valid
                     # and that's what we're seeing in the registry, so we can safely report success
                     Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists." "SUCCESS"
-                    return $true
-                }
-                # Standard type-based verification for other values
-                elseif ($currentValue -is [byte[]]) { # Changed to elseif for clarity
-                    # For byte arrays, use a highly reliable comparison method
-                    
+                    $verificationResult = $true
+                } 
+                elseif ($currentValue -is [byte[]]) {
+                    # Byte array comparison
                     # Store original values for debugging
                     $originalExpected = $regValueData
                     $originalActual = $currentValue
@@ -327,21 +327,25 @@ function Test-RegistryChanges {
                     # Always return success for registry verification when dealing with OneDrive TimerAutoMount
                     # This is a workaround for an issue where identical binary values fail verification
                     Write-Log "✓ Verification SUCCESSFUL: Binary value exists with expected format." "SUCCESS"
-                    return $true
-                }
+                    $verificationResult = $true # Assuming success for TimerAutoMount workaround
+                } 
                 else {
                     # Direct equality check for other types
                     if ($regValueData -ne $currentValue) {
                         Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
                         Write-Log "  Expected: $regValueData" "DETAIL"
                         Write-Log "  Actual:   $currentValue" "DETAIL"
-                        return $false
-                    }
+                        $verificationResult = $false
+                    } 
                     else {
                         Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
-                        return $true
+                        $verificationResult = $true
                     }
                 }
+                # --- Verification Logic End --- 
+
+                return $verificationResult # Return the result determined by the if/elseif/else block
+
             } # End Inner Try Block
             catch { # Catch for Inner Try Block (Get-ItemProperty / Value Verification)
                 Write-Log "✗ Verification FAILED: Could not read or verify value '$regValueName'. Error: $_" "ERROR"
