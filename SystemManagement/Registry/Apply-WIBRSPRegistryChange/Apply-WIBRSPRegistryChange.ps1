@@ -2,43 +2,43 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 18:40:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 1.2.4
-# Additional Info: Fixed variable reference bug in registry script
+# Last Updated: 2025-04-24 19:41:00 UTC
+# Updated By: GitHub Copilot / jdyer-nuvodia
+# Version: 1.3.0
+# Additional Info: Added logic to handle logged-in users by targeting HKEY_USERS directly.
 # =============================================================================
 
 <#
 .SYNOPSIS
-Applies registry changes from a .reg file in the same directory to a specific user's registry hive.
+Applies a specific registry change (OneDrive TimerAutoMount) to a user's registry hive.
 
 .DESCRIPTION
-This script imports registry settings from a file named 'SharePoint_Auto_Mount.reg' located
-in the same directory as this script. It verifies the file exists, validates it has a .reg
-extension, and applies the registry changes with detailed logging and error handling.
-The script includes -WhatIf functionality to preview changes before applying them.
+This script applies a specific registry setting (OneDrive TimerAutoMount = 1) based on the
+content originally from 'SharePoint_Auto_Mount.reg'. It handles applying the change
+to the current user, a specified user who is logged off (by loading their NTUSER.DAT),
+or a specified user who is currently logged in (by targeting their live HKEY_USERS hive).
+The script includes detailed logging and -WhatIf support.
 
-The script can apply changes to either the current user or a specified user profile
-by loading that user's NTUSER.DAT hive temporarily.
+Requires running with sufficient privileges (like SYSTEM) to load/modify other users' hives.
 
 .PARAMETER Username
 The Windows username for which to apply the registry changes. If not specified,
-changes will be applied to the current user.
+changes will be applied to the current user running the script.
 
 .PARAMETER WhatIf
 Shows what would happen if the script runs without actually applying the changes.
 
 .EXAMPLE
 .\Apply-WIBRSPRegistryChange.ps1
-Applies registry changes from the SharePoint_Auto_Mount.reg file to the current user.
+Applies the registry change to the current user.
 
 .EXAMPLE
 .\Apply-WIBRSPRegistryChange.ps1 -Username "jsmith"
-Applies registry changes from the SharePoint_Auto_Mount.reg file to the jsmith user profile.
+Applies the registry change to the jsmith user profile (logged in or off).
 
 .EXAMPLE
 .\Apply-WIBRSPRegistryChange.ps1 -Username "jsmith" -WhatIf
-Shows what registry changes would be applied to the jsmith user profile without actually making changes.
+Shows what registry changes would be applied to the jsmith user profile without making changes.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -53,7 +53,12 @@ $ErrorActionPreference = "Stop"
 # Define log file path in the same directory as script
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $logFile = Join-Path -Path $scriptPath -ChildPath "Apply-WIBRSPRegistryChange_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$regFilePath = Join-Path -Path $scriptPath -ChildPath "SharePoint_Auto_Mount.reg"
+
+# Define specific registry values to apply
+$regKeyRelativePath = "Software\\Microsoft\\OneDrive\\Accounts\\Business1"
+$regValueName = "TimerAutoMount"
+$regValueData = [byte[]]@(1,0,0,0,0,0,0,0)
+$regValueType = [Microsoft.Win32.RegistryValueKind]::Binary
 
 # Function to write to log file and console with color-coding
 function Write-Log {
@@ -84,6 +89,48 @@ function Write-Log {
     }
 }
 
+# Function to get User SID
+function Get-UserSID {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Username
+    )
+    try {
+        $account = New-Object System.Security.Principal.NTAccount($Username)
+        $sid = $account.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        Write-Log "Found SID for user '$Username': $sid" "DETAIL"
+        return $sid
+    } catch {
+        Write-Log "Failed to retrieve SID for user '$Username'. Error: $_" "ERROR"
+        throw "Could not resolve SID for user '$Username'."
+    }
+}
+
+# Function to check if user is logged in using quser
+function Test-UserLoggedIn {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Username
+    )
+    Write-Log "Checking login status for user '$Username' using quser..." "DETAIL"
+    $quserOutput = try {
+        quser 2>&1 | Out-String
+    } catch {
+        Write-Log "Failed to execute quser. Error: $_" "WARNING"
+        # Assume user is not logged in if quser fails (conservative approach)
+        return $false
+    }
+
+    if ($quserOutput -match ">$($Username)\s+") { # Match username at start of line after '>'
+        Write-Log "User '$Username' appears to be logged in." "PROCESS"
+        return $true
+    } else {
+        Write-Log "User '$Username' does not appear to be logged in." "PROCESS"
+        return $false
+    }
+}
+
+
 # Function to test registry changes
 function Test-RegistryChanges {
     param (
@@ -93,141 +140,94 @@ function Test-RegistryChanges {
     
     Write-Log "Verifying registry changes..." "PROCESS"
     
-    # Define expected registry path and value
-    $regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
-    $regValueName = "TimerAutoMount"
-    
-    if ($Username) {
-        # Need to load the user's hive first to verify
-        $userHiveLoaded = $false
-        $verifyTempHiveKeyName = "HKLM\VerifyTempHive"
-        
-        try {
-            # Find user profile path
-            $allProfiles = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
-                           Where-Object { $_.ProfileImagePath -like "*\$Username" }
-            
-            if (-not $allProfiles) {
-                Write-Log "User profile for '$Username' not found on this system" "ERROR"
-                return $false
+    $verificationPath = $null
+    $userHiveLoadedForVerify = $false
+    $verifyTempHiveKeyName = "HKLM\VerifyTempHive" # Temporary mount point for verification only
+    $userSID = $null
+
+    try {
+        if ($Username) {
+            $isUserLoggedInVerify = Test-UserLoggedIn -Username $Username
+
+            if ($isUserLoggedInVerify) {
+                # User is logged in, check HKEY_USERS\<SID>
+                $userSID = Get-UserSID -Username $Username
+                if (-not $userSID) { return $false } # Get-UserSID throws on failure, but double-check
+                $verificationPath = "Registry::HKEY_USERS\$userSID\$regKeyRelativePath"
+                Write-Log "Verifying logged-in user's live hive path: $verificationPath" "DETAIL"
+            } else {
+                # User is not logged in, load hive temporarily for verification
+                Write-Log "User not logged in. Loading hive for verification..." "DETAIL"
+                $allProfiles = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
+                               Where-Object { $_.ProfileImagePath -like "*\$Username" }
+                if (-not $allProfiles) { Write-Log "User profile for '$Username' not found." "ERROR"; return $false }
+                $userProfilePath = $allProfiles.ProfileImagePath
+                $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
+                if (-not (Test-Path -Path $userHivePath)) { Write-Log "NTUSER.DAT not found at $userHivePath." "ERROR"; return $false }
+
+                # Ensure VerifyTempHive is clear before loading
+                if (Test-Path -Path "Registry::$verifyTempHiveKeyName") {
+                    Write-Log "Attempting to unload existing verification hive mount..." "DEBUG"
+                    reg.exe unload $verifyTempHiveKeyName 2>&1 | Out-Null
+                    Start-Sleep -Seconds 1
+                }
+
+                $loadHiveOutput = reg.exe load $verifyTempHiveKeyName $userHivePath 2>&1
+                if ($LASTEXITCODE -ne 0) { Write-Log "Failed to load user hive for verification: $loadHiveOutput" "ERROR"; return $false }
+                $userHiveLoadedForVerify = $true
+                $verificationPath = "Registry::$verifyTempHiveKeyName\$regKeyRelativePath"
+                Write-Log "Verifying loaded hive path: $verificationPath" "DETAIL"
             }
-            
-            $userProfilePath = $allProfiles.ProfileImagePath
-            $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
-            
-            if (-not (Test-Path -Path $userHivePath)) {
-                Write-Log "User registry hive not found at: $userHivePath" "ERROR"
-                return $false
-            }
-            
-            # Load the hive
-            Write-Log "Loading user registry hive for verification..." "DETAIL"
-            $loadHiveOutput = reg.exe load $verifyTempHiveKeyName $userHivePath 2>&1
-            
-            if ($LASTEXITCODE -ne 0) {
-                Write-Log "Failed to load user registry hive for verification: $loadHiveOutput" "ERROR"
-                return $false
-            }
-            
-            $userHiveLoaded = $true
-            
-            # Create a direct registry access for verification
-            New-PSDrive -Name HKV -PSProvider Registry -Root HKEY_LOCAL_MACHINE\VerifyTempHive -ErrorAction SilentlyContinue | Out-Null
-            
-            # List available registry keys for debugging
-            $allKeys = Get-ChildItem -Path "HKV:" -Recurse -ErrorAction SilentlyContinue | 
-                       Where-Object { $_ -is [Microsoft.Win32.RegistryKey] } | 
-                       Select-Object -ExpandProperty Name
-            Write-Log "Available registry keys: $($allKeys.Count) keys found" "DEBUG"
-            
-            # Check the registry value
-            $fullKeyPath = "HKV:\$regKeyPath"
-            Write-Log "Checking registry key: $fullKeyPath" "DETAIL"
-            
-            if (Test-Path -Path $fullKeyPath) {
-                if (Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue) {
-                    $value = Get-ItemProperty -Path $fullKeyPath -Name $regValueName
-                    $hexValue = "0x" + ($value.$regValueName | ForEach-Object { "{0:X2}" -f $_ }) -join " "
-                    
-                    Write-Log "Registry value exists in user $Username profile!" "SUCCESS"
-                    Write-Log "Value Name: $regValueName" "DETAIL"
-                    Write-Log "Value Type: Binary" "DETAIL"
-                    Write-Log "Value Data: $hexValue" "DETAIL"
-                    
-                    if ($value.$regValueName[0] -eq 1) {
-                        Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount is set correctly (enabled)" "SUCCESS"
-                        Remove-PSDrive -Name HKV -Force -ErrorAction SilentlyContinue
-                        return $true
-                    } else {
-                        Write-Log "✗ Verification FAILED: TimerAutoMount is not set to enabled" "WARNING"
-                        Remove-PSDrive -Name HKV -Force -ErrorAction SilentlyContinue
+        } else {
+            # No username specified, check current user (HKCU)
+            $verificationPath = "Registry::HKEY_CURRENT_USER\$regKeyRelativePath"
+            Write-Log "Verifying current user path: $verificationPath" "DETAIL"
+        }
+
+        # Perform the actual check
+        if (Test-Path -Path $verificationPath) {
+            $item = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction SilentlyContinue
+            if ($item) {
+                $currentValue = $item.$regValueName
+                if ($currentValue -is [byte[]] -and $currentValue.Length -eq $regValueData.Length) {
+                    if (Compare-Object -ReferenceObject $regValueData -DifferenceObject $currentValue -SyncWindow 0 -Property @{Expression={$PSItem}}) {
+                        Write-Log "✗ Verification FAILED: Value data does not match expected." "WARNING"
+                        Write-Log "  Expected: $($regValueData | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
+                        Write-Log "  Actual:   $($currentValue | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
                         return $false
+                    } else {
+                        Write-Log "✓ Verification SUCCESSFUL: Value exists and data matches." "SUCCESS"
+                        return $true
                     }
                 } else {
-                    Write-Log "✗ Value '$regValueName' does not exist in the registry key" "ERROR"
-                    Remove-PSDrive -Name HKV -Force -ErrorAction SilentlyContinue
+                    Write-Log "✗ Verification FAILED: Value exists but type or length is incorrect." "WARNING"
+                    Write-Log "  Actual Type: $($currentValue.GetType().Name)" "DETAIL"
+                    Write-Log "  Actual Length: $($currentValue.Length)" "DETAIL"
                     return $false
                 }
             } else {
-                Write-Log "✗ Registry key path does not exist: $fullKeyPath" "ERROR"
-                
-                # Debug: try to find similar keys
-                $parentPath = Split-Path -Parent $regKeyPath
-                $parentKeys = Get-ChildItem -Path "HKV:\$parentPath" -ErrorAction SilentlyContinue | 
-                              Select-Object -ExpandProperty Name
-                Write-Log "Available keys in parent path: $($parentKeys -join ', ')" "DEBUG"
-                
-                Remove-PSDrive -Name HKV -Force -ErrorAction SilentlyContinue
-                return $false
-            }
-        }
-        finally {
-            # Remove PSDrive if it exists
-            if (Get-PSDrive -Name HKV -ErrorAction SilentlyContinue) {
-                Remove-PSDrive -Name HKV -Force -ErrorAction SilentlyContinue
-            }
-            
-            # Unload the hive if loaded
-            if ($userHiveLoaded) {
-                Write-Log "Unloading verification registry hive..." "DETAIL"
-                [System.GC]::Collect()
-                Start-Sleep -Seconds 1
-                
-                $unloadHiveOutput = reg.exe unload $verifyTempHiveKeyName 2>&1
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Log "Warning: Failed to unload verification registry hive: $unloadHiveOutput" "WARNING"
-                }
-            }
-        }
-    }
-    else {
-        # Verify current user registry
-        $fullKeyPath = "HKCU:\$regKeyPath"
-        
-        if (Test-Path -Path $fullKeyPath) {
-            if (Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue) {
-                $value = Get-ItemProperty -Path $fullKeyPath -Name $regValueName
-                $hexValue = "0x" + ($value.$regValueName | ForEach-Object { "{0:X2}" -f $_ }) -join " "
-                
-                Write-Log "Registry value exists in current user profile!" "SUCCESS"
-                Write-Log "Value Name: $regValueName" "DETAIL"
-                Write-Log "Value Type: Binary" "DETAIL"
-                Write-Log "Value Data: $hexValue" "DETAIL"
-                
-                if ($value.$regValueName[0] -eq 1) {
-                    Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount is set correctly (enabled)" "SUCCESS"
-                    return $true
-                } else {
-                    Write-Log "✗ Verification FAILED: TimerAutoMount is not set to enabled" "WARNING"
-                    return $false
-                }
-            } else {
-                Write-Log "✗ Value '$regValueName' does not exist in the registry key" "ERROR"
+                Write-Log "✗ Verification FAILED: Value '$regValueName' does not exist in the key '$verificationPath'." "ERROR"
                 return $false
             }
         } else {
-            Write-Log "✗ Registry key path does not exist" "ERROR"
+            Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
             return $false
+        }
+    }
+    catch {
+        Write-Log "An error occurred during verification: $_" "ERROR"
+        return $false
+    }
+    finally {
+        # Unload the hive if it was loaded for verification
+        if ($userHiveLoadedForVerify) {
+            Write-Log "Unloading verification registry hive ($verifyTempHiveKeyName)..." "DETAIL"
+            [System.GC]::Collect()
+            Start-Sleep -Seconds 1
+            $unloadVerifyOutput = reg.exe unload $verifyTempHiveKeyName 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "Warning: Failed to unload verification registry hive: $unloadVerifyOutput" "WARNING"
+            }
         }
     }
 }
@@ -244,258 +244,128 @@ function Confirm-RegistryChanges {
     Test-RegistryChanges -Username $Username
 }
 
-try {    # Log script start
+try {
+    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.2.4" "DETAIL"
-    
-    # Check if registry file exists
-    if (-not (Test-Path -Path $regFilePath)) {
-        Write-Log "Registry file not found: $regFilePath" "ERROR"
-        throw "Registry file 'SharePoint_Auto_Mount.reg' not found in script directory."
-    }
-    
-    # Verify file has .reg extension
-    if ([System.IO.Path]::GetExtension($regFilePath) -ne ".reg") {
-        Write-Log "File does not have .reg extension: $regFilePath" "ERROR"
-        throw "The specified file is not a registry (.reg) file."
-    }
-    
-    # Log file details
-    $fileInfo = Get-Item -Path $regFilePath
-    Write-Log "Registry file found: $($fileInfo.Name)" "PROCESS"
-    Write-Log "File size: $([Math]::Round($fileInfo.Length / 1KB, 2)) KB" "DETAIL"
-    Write-Log "Last modified: $($fileInfo.LastWriteTime)" "DETAIL"
-    
-    # Preview first 5 lines of registry file (for information purposes)
-    Write-Log "Registry file preview:" "DETAIL"
-    Get-Content -Path $regFilePath -TotalCount 5 | ForEach-Object {
-        Write-Log "  $_" "DETAIL"
-    }
-    Write-Log "..." "DETAIL"
+    Write-Log "Script version: 1.3.0" "DETAIL"
 
-    # Check if specified user exists if Username parameter was provided
-    $userHiveLoaded = $false
-    $tempHiveKeyName = "HKLM\TempHive"
-    $modifiedRegFilePath = $null
-    
+    # Check if running as elevated/SYSTEM (needed for HKEY_USERS or reg load)
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal $currentUser).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    $isSystem = $currentUser.IsSystem
+    if (-not ($isAdmin -or $isSystem)) {
+         Write-Log "This script requires elevated privileges (Administrator or SYSTEM) to modify other users' registry hives." "ERROR"
+         throw "Insufficient privileges."
+    }
+    Write-Log "Running as: $($currentUser.Name) (Elevated/SYSTEM: $($isAdmin -or $isSystem))" "DETAIL"
+
+    # Define variables for target path construction
+    $targetRegRootPath = $null
+    $targetRegKeyPath = $null
+    $userHiveLoadedForApply = $false
+    $tempHiveKeyName = "HKLM\TempHive" # Temporary mount point for applying changes only
+    $userSID = $null
+    $isUserLoggedIn = $false
+
     if ($Username) {
         Write-Log "Target user specified: $Username" "PROCESS"
-        
-        # Check if the user profile exists
-        $userProfilePath = Join-Path -Path (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList").ProfilesDirectory -ChildPath $Username
-        if (-not (Test-Path -Path $userProfilePath)) {
-            Write-Log "User profile not found at expected location: $userProfilePath" "WARNING"
-            
-            # Try to find the profile by searching all profiles
-            $allProfiles = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
+
+        # Check if user is logged in
+        $isUserLoggedIn = Test-UserLoggedIn -Username $Username
+
+        if ($isUserLoggedIn) {
+            # User is logged in, target HKEY_USERS\<SID>
+            $userSID = Get-UserSID -Username $Username
+            # Get-UserSID throws on failure, script would exit
+            $targetRegRootPath = "Registry::HKEY_USERS\$userSID"
+            $targetRegKeyPath = Join-Path -Path $targetRegRootPath -ChildPath $regKeyRelativePath
+            Write-Log "Targeting live user hive: $targetRegKeyPath" "PROCESS"
+        } else {
+            # User is not logged in, load NTUSER.DAT
+            Write-Log "User not logged in. Attempting to load user hive..." "PROCESS"
+            # Find user profile path
+            $allProfiles = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
                            Where-Object { $_.ProfileImagePath -like "*\$Username" }
-            
-            if ($allProfiles) {
-                $userProfilePath = $allProfiles.ProfileImagePath
-                Write-Log "Found user profile at: $userProfilePath" "PROCESS"
-            }
-            else {
-                Write-Log "User profile for '$Username' not found on this system" "ERROR"
-                throw "User profile for '$Username' not found on this system."
-            }
-        }
-        
-        # Path to user's registry hive
-        $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
-        
-        if (-not (Test-Path -Path $userHivePath)) {
-            Write-Log "User registry hive not found at: $userHivePath" "ERROR"
-            throw "User registry hive (NTUSER.DAT) not found for user '$Username'."
-        }
-          # Create temporary registry file with HKEY_CURRENT_USER replaced by HKEY_LOCAL_MACHINE\TempHive
-        $regContent = Get-Content -Path $regFilePath -Raw
-        $modifiedRegContent = $regContent -replace "HKEY_CURRENT_USER", "HKEY_LOCAL_MACHINE\\TempHive"
-        $modifiedRegFilePath = "$regFilePath.temp"
-        $modifiedRegContent | Out-File -FilePath $modifiedRegFilePath -Encoding Unicode
-        Write-Log "Created temporary modified registry file for the target user" "DETAIL"        # Create a direct PowerShell registry modification script to avoid reg.exe permission issues
-        $psRegScriptPath = "$regFilePath.ps1"
-        $psRegScript = @'
-# PowerShell Registry Modification Script
-$ErrorActionPreference = 'Stop'
+            if (-not $allProfiles) { throw "User profile for '$Username' not found." }
+            $userProfilePath = $allProfiles.ProfileImagePath
+            $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
+            if (-not (Test-Path -Path $userHivePath)) { throw "User registry hive (NTUSER.DAT) not found at '$userHivePath'." }
 
-# Define the registry paths and values
-$regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
-$regValueName = "TimerAutoMount"
-$regValueData = [byte[]]@(1,0,0,0,0,0,0,0)
-
-try {
-    Write-Host "Starting direct registry modification..."
-    
-    # Create a PSDrive to the loaded hive
-    if (-not (Get-PSDrive -Name HKNU -ErrorAction SilentlyContinue)) {
-        Write-Host "Creating PSDrive to access the registry hive..."
-        New-PSDrive -Name HKNU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive -ErrorAction Stop | Out-Null
-        Write-Host "PSDrive created successfully"
-    }
-    
-    # Create parent directories if they don't exist
-    $pathParts = $regKeyPath -split '\\'
-    $currentPath = "HKNU:"
-    
-    # Create each level of the path if needed
-    foreach ($part in $pathParts) {
-        $currentPath = Join-Path $currentPath $part
-        if (-not (Test-Path $currentPath)) {
-            Write-Host "Creating registry key: $currentPath"
-            New-Item -Path $currentPath -Force | Out-Null
-        }
-    }
-    
-    # Set the registry value
-    $fullKeyPath = "HKNU:\$regKeyPath"
-    Write-Host "Setting registry value at: $fullKeyPath"
-    Set-ItemProperty -Path $fullKeyPath -Name $regValueName -Value $regValueData -Type Binary -Force
-    
-    # Verify the change
-    $valueExists = $false
-    if (Test-Path $fullKeyPath) {
-        $prop = Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue
-        if ($prop) {
-            $valueData = $prop.$regValueName
-            if ($valueData) {
-                $hexString = ($valueData | ForEach-Object { "{0:X2}" -f $_ }) -join " "
-                Write-Host "Value exists with data: $hexString"
-                $valueExists = $true
-            }
-        }
-    }
-    
-    if ($valueExists) {
-        Write-Host "Registry modification successful!"
-    } else {
-        Write-Host "Registry value verification failed"
-        throw "Failed to verify registry value was set correctly"
-    }
-}
-catch {
-    Write-Host "ERROR: Registry modification failed: $_"
-    exit 1
-}
-finally {
-    # Clean up
-    if (Get-PSDrive -Name HKNU -ErrorAction SilentlyContinue) {
-        Remove-PSDrive -Name HKNU -Force -ErrorAction SilentlyContinue
-    }
-}
-'@
-        
-        $psRegScript | Out-File -FilePath $psRegScriptPath -Encoding UTF8
-        Write-Log "Created PowerShell registry script to handle registry modifications" "DETAIL"
-    }
-    
-    # Import registry file
-    if ($PSCmdlet.ShouldProcess("Registry", "Apply changes from $regFilePath" + $(if($Username) {" to user $Username"} else {""}))) {
-        try {
-            if ($Username) {
-                # Need to load the user's hive first
-                Write-Log "Loading user registry hive for $Username..." "PROCESS"
-                if ($PSCmdlet.ShouldProcess("Registry", "Load user hive from $userHivePath")) {
-                    $loadHiveOutput = reg.exe load $tempHiveKeyName $userHivePath 2>&1
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Log "Failed to load user registry hive. Exit code: $LASTEXITCODE" "ERROR"
-                        Write-Log "Error details: $loadHiveOutput" "ERROR"
-                        throw "Failed to load user registry hive: $loadHiveOutput"
-                    }
-                    $userHiveLoaded = $true
-                    Write-Log "User registry hive loaded successfully" "SUCCESS"
-                } 
-                else {
-                    Write-Log "WhatIf: Would load user registry hive from: $userHivePath" "PROCESS"
-                }
-                  # Now import the modified registry file to the loaded hive
-                Write-Log "Applying registry changes to user $Username..." "PROCESS"
-                if ($PSCmdlet.ShouldProcess("Registry", "Apply changes from modified registry file to user hive")) {
-                    # Use PowerShell script to apply registry changes instead of reg.exe
-                    $scriptOutput = & powershell.exe -ExecutionPolicy Bypass -File $psRegScriptPath 2>&1
-                    $scriptExitCode = $LASTEXITCODE
-                    
-                    if ($scriptExitCode -eq 0) {
-                        Write-Log "Registry changes applied successfully to user $Username" "SUCCESS"
-                    }
-                    else {
-                        Write-Log "Failed to apply registry changes. Exit code: $scriptExitCode" "ERROR"
-                        Write-Log "Error details: $scriptOutput" "ERROR"
-                        throw "Failed to apply registry changes: $scriptOutput"
-                    }
-                }
-                else {
-                    Write-Log "WhatIf: Would apply registry changes from modified file to user $Username" "PROCESS"
-                }
-            }
-            else {
-                # Apply to current user
-                Write-Log "Applying registry changes to current user..." "PROCESS"
-                $regImportOutput = reg.exe import $regFilePath 2>&1
-                
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Log "Registry changes applied successfully to current user" "SUCCESS"
-                }
-                else {
-                    Write-Log "Failed to apply registry changes. Exit code: $LASTEXITCODE" "ERROR"
-                    Write-Log "Error details: $regImportOutput" "ERROR"
-                    throw "Failed to apply registry changes: $regImportOutput"
-                }
-            }
-        }
-        finally {
-            # Clean up - unload hive if loaded
-            if ($userHiveLoaded) {
-                Write-Log "Unloading user registry hive..." "PROCESS"
-                if ($PSCmdlet.ShouldProcess("Registry", "Unload user hive")) {
-                    # Give system time to release locks on the hive
-                    [System.GC]::Collect()
+            Write-Log "Loading user registry hive for $Username from $userHivePath into $tempHiveKeyName..." "PROCESS"
+            if ($PSCmdlet.ShouldProcess("Registry", "Load user hive from $userHivePath into $tempHiveKeyName")) {
+                 # Ensure TempHive is clear before loading
+                if (Test-Path -Path "Registry::$tempHiveKeyName") {
+                    Write-Log "Attempting to unload existing apply hive mount..." "DEBUG"
+                    reg.exe unload $tempHiveKeyName 2>&1 | Out-Null
                     Start-Sleep -Seconds 1
-                    
-                    $unloadHiveOutput = reg.exe unload $tempHiveKeyName 2>&1
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Log "User registry hive unloaded successfully" "SUCCESS"
-                    }
-                    else {
-                        Write-Log "Warning: Failed to unload user registry hive. Exit code: $LASTEXITCODE" "WARNING"
-                        Write-Log "Error details: $unloadHiveOutput" "WARNING"
-                    }
                 }
-                else {
-                    Write-Log "WhatIf: Would unload user registry hive" "PROCESS"
-                }
+                $loadHiveOutput = reg.exe load $tempHiveKeyName $userHivePath 2>&1
+                if ($LASTEXITCODE -ne 0) { throw "Failed to load user registry hive: $loadHiveOutput" }
+                $userHiveLoadedForApply = $true
+                Write-Log "User registry hive loaded successfully into $tempHiveKeyName" "SUCCESS"
+            } else {
+                 Write-Log "WhatIf: Would load user registry hive from: $userHivePath into $tempHiveKeyName" "PROCESS"
+                 # In WhatIf mode, we can't proceed further with modification for offline user
+                 Write-Log "WhatIf: Skipping modification as hive loading was skipped." "PROCESS"
+                 # Exit cleanly in WhatIf for offline user if load is skipped
+                 return
             }
-              # Remove temporary registry file if created
-            if ($modifiedRegFilePath -and (Test-Path -Path $modifiedRegFilePath)) {
-                if ($PSCmdlet.ShouldProcess("File", "Remove temporary registry file")) {
-                    Remove-Item -Path $modifiedRegFilePath -Force
-                    Write-Log "Temporary registry file removed" "DETAIL"
+            $targetRegRootPath = "Registry::$tempHiveKeyName"
+            $targetRegKeyPath = Join-Path -Path $targetRegRootPath -ChildPath $regKeyRelativePath
+            Write-Log "Targeting loaded user hive: $targetRegKeyPath" "PROCESS"
+        }
+
+        # Apply registry change using PowerShell cmdlets
+        Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
+        if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName'")) {
+            try {
+                # Ensure parent key exists
+                $parentPath = Split-Path -Path $targetRegKeyPath
+                if (-not (Test-Path -Path $parentPath)) {
+                    Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
+                    New-Item -Path $parentPath -Force -ErrorAction Stop | Out-Null
+                    Write-Log "Parent key created." "DETAIL"
                 }
-                else {
-                    Write-Log "WhatIf: Would remove temporary registry file" "PROCESS"
-                }
+
+                # Set the value
+                Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force -ErrorAction Stop
+                Write-Log "Registry value '$regValueName' set successfully." "SUCCESS"
+            } catch {
+                Write-Log "Failed to set registry value '$regValueName' at '$targetRegKeyPath'. Error: $_" "ERROR"
+                throw "Failed to apply registry change." # Throw to ensure cleanup runs if needed
             }
-            
-            # Remove temporary PowerShell script if created
-            if ($psRegScriptPath -and (Test-Path -Path $psRegScriptPath)) {
-                if ($PSCmdlet.ShouldProcess("File", "Remove temporary script file")) {
-                    Remove-Item -Path $psRegScriptPath -Force
-                    Write-Log "Temporary script file removed" "DETAIL"
+        } else {
+            Write-Log "WhatIf: Would set registry value '$regValueName' at '$targetRegKeyPath'" "PROCESS"
+        }
+
+    } else {
+        # No username specified - Apply to current user (HKCU)
+        $targetRegRootPath = "Registry::HKEY_CURRENT_USER"
+        $targetRegKeyPath = Join-Path -Path $targetRegRootPath -ChildPath $regKeyRelativePath
+        Write-Log "Targeting current user hive: $targetRegKeyPath" "PROCESS"
+
+        Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
+        if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName'")) {
+             try {
+                # Ensure parent key exists
+                $parentPath = Split-Path -Path $targetRegKeyPath
+                if (-not (Test-Path -Path $parentPath)) {
+                    Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
+                    New-Item -Path $parentPath -Force -ErrorAction Stop | Out-Null
+                    Write-Log "Parent key created." "DETAIL"
                 }
-                else {
-                    Write-Log "WhatIf: Would remove temporary script file" "PROCESS"
-                }
+                # Set the value
+                Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force -ErrorAction Stop
+                Write-Log "Registry value '$regValueName' set successfully for current user." "SUCCESS"
+            } catch {
+                Write-Log "Failed to set registry value '$regValueName' for current user at '$targetRegKeyPath'. Error: $_" "ERROR"
+                throw "Failed to apply registry change for current user."
             }
+        } else {
+             Write-Log "WhatIf: Would set registry value '$regValueName' for current user at '$targetRegKeyPath'" "PROCESS"
         }
     }
-    else {
-        if ($Username) {
-            Write-Log "WhatIf: Would apply registry changes from: $regFilePath to user $Username" "PROCESS"
-        }
-        else {
-            Write-Log "WhatIf: Would apply registry changes from: $regFilePath to current user" "PROCESS"
-        }
-    }
-    
+
     # Verify the registry changes if not in WhatIf mode
     if (-not $WhatIfPreference) {
         Write-Log "Starting verification of registry changes..." "PROCESS"
@@ -514,5 +384,23 @@ catch {
     exit 1
 }
 finally {
+    # Clean up - unload hive if it was loaded for applying changes
+    if ($userHiveLoadedForApply) {
+        Write-Log "Unloading user registry hive ($tempHiveKeyName)..." "PROCESS"
+        if ($PSCmdlet.ShouldProcess("Registry", "Unload user hive from $tempHiveKeyName")) {
+            [System.GC]::Collect()
+            Start-Sleep -Seconds 1
+            $unloadApplyOutput = reg.exe unload $tempHiveKeyName 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log "User registry hive unloaded successfully." "SUCCESS"
+            } else {
+                Write-Log "Warning: Failed to unload user registry hive ($tempHiveKeyName). Exit code: $LASTEXITCODE" "WARNING"
+                Write-Log "Error details: $unloadApplyOutput" "WARNING"
+            }
+        } else {
+            Write-Log "WhatIf: Would unload user registry hive from $tempHiveKeyName" "PROCESS"
+        }
+    }
+
     Write-Log "Script execution completed" "INFO"
 }
