@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:50:00 UTC
+# Last Updated: 2025-04-25 00:05:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.4
-# Additional Info: Fixed PowerShell 5.1 compatibility issues with try/catch blocks in Test-RegistryChanges function.
+# Version: 1.4.5
+# Additional Info: Fixed PowerShell 5.1 syntax errors in try/catch blocks in Test-RegistryChanges function.
 # =============================================================================
 
 <#
@@ -242,7 +242,6 @@ function Test-RegistryChanges {
 
         # Perform the actual check
         if (Test-Path -Path $verificationPath) {
-            $currentValue = $null
             try {
                 $currentValue = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction Stop | 
                                 Select-Object -ExpandProperty $regValueName
@@ -305,7 +304,8 @@ function Test-RegistryChanges {
                     # First check length
                     if ($originalExpected.Length -ne $originalActual.Length) {
                         Write-Log "Debug: Array length mismatch! Expected: $($originalExpected.Length), Actual: $($originalActual.Length)" "DEBUG"
-                    } else {
+                    } 
+                    else {
                         Write-Log "Debug: Array lengths match ($($originalExpected.Length))" "DEBUG"
                         
                         # Compare each byte with detailed output
@@ -334,27 +334,32 @@ function Test-RegistryChanges {
                     # This is a workaround for an issue where identical binary values fail verification
                     Write-Log "✓ Verification SUCCESSFUL: Binary value exists with expected format." "SUCCESS"
                     return $true
-                } else {
+                } 
+                else {
                     # For other types, use direct equality check
                     if ($regValueData -ne $currentValue) {
                         Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
                         Write-Log "  Expected: $regValueData" "DETAIL"
                         Write-Log "  Actual:   $currentValue" "DETAIL"
                         return $false
-                    } else {
+                    } 
+                    else {
                         Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
                         return $true
                     }
                 }
-            } catch {
+            } 
+            catch {
                 Write-Log "✗ Verification FAILED: Could not read value '$regValueName'. Error: $_" "ERROR"
                 return $false
             }
-        } else {
+        } 
+        else {
             Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
             return $false
         }
-    } catch {
+    } 
+    catch {
         Write-Log "An error occurred during verification: $_" "ERROR"
         return $false
     }
@@ -377,7 +382,7 @@ function Confirm-RegistryChanges {
 
 try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.4.4" "DETAIL"
+    Write-Log "Script version: 1.4.5" "DETAIL"
     
     # Check for Admin/SYSTEM privileges
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
