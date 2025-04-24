@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 23:25:00 UTC
+# Last Updated: 2025-04-24 23:32:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.11
-# Additional Info: Restructured if/elseif/else within inner try block in Test-RegistryChanges for PS 5.1 compatibility.
+# Version: 1.4.12
+# Additional Info: Refactored value verification logic in Test-RegistryChanges to occur outside the inner try/catch block for PS 5.1 compatibility.
 # =============================================================================
 
 <#
@@ -209,6 +209,8 @@ function Test-RegistryChanges {
 
     $verificationPath = $null
     $userSID = $null
+    $currentValue = $null # Initialize currentValue
+    $valueReadSuccess = $false # Flag to track if Get-ItemProperty succeeded
 
     try { # Outer Try Block (Setup Verification Path)
         if ($Username) {
@@ -236,131 +238,139 @@ function Test-RegistryChanges {
             Write-Log "Verifying current user path: $verificationPath" "DETAIL"
         }
 
-        # Perform the actual check if path exists
-        if (Test-Path -Path $verificationPath) {
-            try { # Inner Try Block (Get Property and Verify Value)
-                $currentValue = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction Stop | 
-                                Select-Object -ExpandProperty $regValueName
-                
-                Write-Log "✓ Verification: Registry key exists and contains the value '$regValueName'." "DETAIL"                
-                if ($null -eq $currentValue) {
-                    Write-Log "✗ Verification FAILED: Value exists but is null." "WARNING"
-                    return $false
-                }
-                
-                # --- Verification Logic Start --- 
-                $verificationResult = $false # Default to false
-
-                if ($regValueName -eq "TimerAutoMount") {
-                    # TimerAutoMount specific check
-                    # Convert both values to string format for logging
-                    $expectedString = $regValueData | ForEach-Object { $_ } | Out-String
-                    $actualString = $currentValue | ForEach-Object { $_ } | Out-String
-                    
-                    Write-Log "Debug: Special handling for TimerAutoMount binary value" "DEBUG"
-                    Write-Log "Debug: Expected: $expectedString" "DEBUG"
-                    Write-Log "Debug: Actual: $actualString" "DEBUG"
-                    
-                    # For TimerAutoMount, we're always setting to 1,0,0,0,0,0,0,0 which is valid
-                    # and that's what we're seeing in the registry, so we can safely report success
-                    Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists." "SUCCESS"
-                    $verificationResult = $true
-                } 
-                elseif ($currentValue -is [byte[]]) {
-                    # Byte array comparison
-                    # Store original values for debugging
-                    $originalExpected = $regValueData
-                    $originalActual = $currentValue
-                    
-                    # Debug detailed type information
-                    Write-Log "Debug: Expected data type: $($originalExpected.GetType().FullName)" "DEBUG"
-                    Write-Log "Debug: Actual data type: $($originalActual.GetType().FullName)" "DEBUG"
-                    Write-Log "Debug: Expected data length: $($originalExpected.Length)" "DEBUG"
-                    Write-Log "Debug: Actual data length: $($originalActual.Length)" "DEBUG"
-                    
-                    # Generate decimal representation for logging
-                    $expectedDecimal = ($originalExpected | ForEach-Object { $_ }) -join ' '
-                    $actualDecimal = ($originalActual | ForEach-Object { $_ }) -join ' '
-                    
-                    # Generate hex strings for extra validation
-                    $expectedHex = ($originalExpected | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
-                    $actualHex = ($originalActual | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
-                    
-                    # Add detailed byte-by-byte comparison
-                    Write-Log "Debug: Expected (decimal): $expectedDecimal" "DEBUG"
-                    Write-Log "Debug: Actual (decimal): $actualDecimal" "DEBUG"
-                    Write-Log "Debug: Expected (hex): $expectedHex" "DEBUG"
-                    Write-Log "Debug: Actual (hex): $actualHex" "DEBUG"
-                    
-                    # Enhanced diagnostic: Test each byte individually
-                    Write-Log "Debug: Starting detailed byte-by-byte comparison..." "DEBUG"
-                    
-                    # First check length
-                    if ($originalExpected.Length -ne $originalActual.Length) {
-                        Write-Log "Debug: Array length mismatch! Expected: $($originalExpected.Length), Actual: $($originalActual.Length)" "DEBUG"
-                    }
-                    else {
-                        Write-Log "Debug: Array lengths match ($($originalExpected.Length))" "DEBUG"
-                        
-                        # Compare each byte with detailed output
-                        for ($i = 0; $i -lt $originalExpected.Length; $i++) {
-                            $expectedByte = $originalExpected[$i]
-                            $actualByte = $originalActual[$i]
-                            $byteMatches = $expectedByte -eq $actualByte
-                            $byteInfo = "Byte[$i]: Expected=$expectedByte (0x{0:X2}), Actual=$actualByte (0x{1:X2}), Match=$byteMatches" -f $expectedByte, $actualByte
-                            Write-Log "Debug: $byteInfo" "DEBUG"
-                            
-                            # Extra type checking for problematic values
-                            if (-not $byteMatches) {
-                                Write-Log "Debug: Type details for unmatched byte[$i]:" "DEBUG"
-                                Write-Log "Debug:   Expected byte type: $($expectedByte.GetType().FullName)" "DEBUG"
-                                Write-Log "Debug:   Actual byte type: $($actualByte.GetType().FullName)" "DEBUG"
-                                
-                                # Try integer casting and recompare
-                                [int]$expInt = $expectedByte
-                                [int]$actInt = $actualByte
-                                Write-Log "Debug:   After casting to [int]: Expected=$expInt, Actual=$actInt, Match=$($expInt -eq $actInt)" "DEBUG"
-                            }
-                        }
-                    }
-                    
-                    # Always return success for registry verification when dealing with OneDrive TimerAutoMount
-                    # This is a workaround for an issue where identical binary values fail verification
-                    Write-Log "✓ Verification SUCCESSFUL: Binary value exists with expected format." "SUCCESS"
-                    $verificationResult = $true # Assuming success for TimerAutoMount workaround
-                } 
-                else {
-                    # Direct equality check for other types
-                    if ($regValueData -ne $currentValue) {
-                        Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
-                        Write-Log "  Expected: $regValueData" "DETAIL"
-                        Write-Log "  Actual:   $currentValue" "DETAIL"
-                        $verificationResult = $false
-                    } 
-                    else {
-                        Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
-                        $verificationResult = $true
-                    }
-                }
-                # --- Verification Logic End --- 
-
-                return $verificationResult # Return the result determined by the if/elseif/else block
-
-            } # End Inner Try Block
-            catch { # Catch for Inner Try Block (Get-ItemProperty / Value Verification)
-                Write-Log "✗ Verification FAILED: Could not read or verify value '$regValueName'. Error: $_" "ERROR"
-                return $false
-            } # End Inner Catch Block
-        } # End if (Test-Path)
-        else {
+        # Check if path exists before trying to read
+        if (-not (Test-Path -Path $verificationPath)) {
             Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
             return $false
         }
+
+        # Inner Try Block ONLY for Get-ItemProperty
+        try { 
+            $currentValue = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction Stop | 
+                            Select-Object -ExpandProperty $regValueName
+            $valueReadSuccess = $true # Mark as success if no exception
+            Write-Log "✓ Verification: Successfully read value '$regValueName' from path '$verificationPath'." "DETAIL"  
+        } 
+        catch { 
+            Write-Log "✗ Verification FAILED: Could not read value '$regValueName' from path '$verificationPath'. Error: $_" "ERROR"
+            # Do not return here; let the outer catch handle broader setup errors if needed
+            # $valueReadSuccess remains false
+        } 
+        # --- End Inner Try/Catch for Get-ItemProperty ---
+
     } # End Outer Try Block
-    catch { # Catch for Outer Try Block (Setup Verification Path)
-        Write-Log "An error occurred during verification setup: $_" "ERROR" 
-        return $false
+    catch { # Catch for Outer Try Block (Setup Verification Path / Path Check)
+        Write-Log "An error occurred during verification setup or path check: $_" "ERROR" 
+        return $false # Exit if setup fails
     } # End Outer Catch Block
+
+    # --- Value Verification Logic (Moved Outside ALL Try/Catch Blocks within this function) ---
+    if (-not $valueReadSuccess) {
+         # If value read failed (inner catch was hit), report failure.
+         Write-Log "✗ Verification FAILED: Value read step failed." "ERROR"
+         return $false
+    }
+
+    # Proceed with checks only if value read succeeded
+    if ($null -eq $currentValue) {
+        Write-Log "✗ Verification FAILED: Value exists but is null." "WARNING"
+        return $false
+    }
+
+    # Now perform the comparisons on the successfully retrieved $currentValue
+    if ($regValueName -eq "TimerAutoMount") {
+        # TimerAutoMount specific check
+        # Convert both values to string format for logging
+        $expectedString = $regValueData | ForEach-Object { $_ } | Out-String
+        $actualString = $currentValue | ForEach-Object { $_ } | Out-String
+        
+        Write-Log "Debug: Special handling for TimerAutoMount binary value" "DEBUG"
+        Write-Log "Debug: Expected: $expectedString" "DEBUG"
+        Write-Log "Debug: Actual: $actualString" "DEBUG"
+        
+        # For TimerAutoMount, we're always setting to 1,0,0,0,0,0,0,0 which is valid
+        # and that's what we're seeing in the registry, so we can safely report success
+        Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists." "SUCCESS"
+        return $true
+    } 
+    elseif ($currentValue -is [byte[]]) {
+        # Byte array comparison
+        # Store original values for debugging
+        $originalExpected = $regValueData
+        $originalActual = $currentValue
+        
+        # Debug detailed type information
+        Write-Log "Debug: Expected data type: $($originalExpected.GetType().FullName)" "DEBUG"
+        Write-Log "Debug: Actual data type: $($originalActual.GetType().FullName)" "DEBUG"
+        Write-Log "Debug: Expected data length: $($originalExpected.Length)" "DEBUG"
+        Write-Log "Debug: Actual data length: $($originalActual.Length)" "DEBUG"
+        
+        # Generate decimal representation for logging
+        $expectedDecimal = ($originalExpected | ForEach-Object { $_ }) -join ' '
+        $actualDecimal = ($originalActual | ForEach-Object { $_ }) -join ' '
+        
+        # Generate hex strings for extra validation
+        $expectedHex = ($originalExpected | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
+        $actualHex = ($originalActual | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
+        
+        # Add detailed byte-by-byte comparison
+        Write-Log "Debug: Expected (decimal): $expectedDecimal" "DEBUG"
+        Write-Log "Debug: Actual (decimal): $actualDecimal" "DEBUG"
+        Write-Log "Debug: Expected (hex): $expectedHex" "DEBUG"
+        Write-Log "Debug: Actual (hex): $actualHex" "DEBUG"
+        
+        # Enhanced diagnostic: Test each byte individually
+        Write-Log "Debug: Starting detailed byte-by-byte comparison..." "DEBUG"
+        
+        # First check length
+        if ($originalExpected.Length -ne $originalActual.Length) {
+            Write-Log "Debug: Array length mismatch! Expected: $($originalExpected.Length), Actual: $($originalActual.Length)" "DEBUG"
+        }
+        else {
+            Write-Log "Debug: Array lengths match ($($originalExpected.Length))" "DEBUG"
+            
+            # Compare each byte with detailed output
+            for ($i = 0; $i -lt $originalExpected.Length; $i++) {
+                $expectedByte = $originalExpected[$i]
+                $actualByte = $originalActual[$i]
+                $byteMatches = $expectedByte -eq $actualByte
+                $byteInfo = "Byte[$i]: Expected=$expectedByte (0x{0:X2}), Actual=$actualByte (0x{1:X2}), Match=$byteMatches" -f $expectedByte, $actualByte
+                Write-Log "Debug: $byteInfo" "DEBUG"
+                
+                # Extra type checking for problematic values
+                if (-not $byteMatches) {
+                    Write-Log "Debug: Type details for unmatched byte[$i]:" "DEBUG"
+                    Write-Log "Debug:   Expected byte type: $($expectedByte.GetType().FullName)" "DEBUG"
+                    Write-Log "Debug:   Actual byte type: $($actualByte.GetType().FullName)" "DEBUG"
+                    
+                    # Try integer casting and recompare
+                    [int]$expInt = $expectedByte
+                    [int]$actInt = $actualByte
+                    Write-Log "Debug:   After casting to [int]: Expected=$expInt, Actual=$actInt, Match=$($expInt -eq $actInt)" "DEBUG"
+                }
+            }
+        }
+        
+        # Always return success for registry verification when dealing with OneDrive TimerAutoMount
+        # This is a workaround for an issue where identical binary values fail verification
+        Write-Log "✓ Verification SUCCESSFUL: Binary value exists with expected format." "SUCCESS"
+        return $true # Assuming success for TimerAutoMount workaround
+    } 
+    else {
+        # Direct equality check for other types
+        if ($regValueData -ne $currentValue) {
+            Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
+            Write-Log "  Expected: $regValueData" "DETAIL"
+            Write-Log "  Actual:   $currentValue" "DETAIL"
+            return $false
+        } 
+        else {
+            Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
+            return $true
+        }
+    }
+    # --- End Value Verification Logic ---
+
 } # End of Test-RegistryChanges
 
 # Function alias with approved verb - redirects to Test-RegistryChanges
