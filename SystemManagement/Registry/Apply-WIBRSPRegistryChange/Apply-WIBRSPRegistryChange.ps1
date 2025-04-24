@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 23:19:00 UTC
+# Last Updated: 2025-04-24 23:22:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.9
-# Additional Info: Re-corrected nested try/catch block structure in Test-RegistryChanges for PS 5.1 compatibility.
+# Version: 1.4.10
+# Additional Info: Final correction of nested try/catch block structure in Test-RegistryChanges for PS 5.1 compatibility.
 # =============================================================================
 
 <#
@@ -210,40 +210,35 @@ function Test-RegistryChanges {
     $verificationPath = $null
     $userSID = $null
 
-    try { # Outer Try Block
+    try { # Outer Try Block (Setup Verification Path)
         if ($Username) {
             # Check if a pre-loaded hive path was provided
             if ($LoadedHivePathForVerification) {
-                 # Hive already loaded by caller, use the provided path directly
                  $verificationPath = "Registry::$LoadedHivePathForVerification\$regKeyRelativePath"
                  Write-Log "Verifying pre-loaded hive path: $verificationPath" "DETAIL"
             } 
             else {
-                # Hive not pre-loaded by caller, check if user is logged in
                 $isUserLoggedInVerify = Test-UserLoggedIn -Username $Username
                 if ($isUserLoggedInVerify) {
-                    # User is logged in, check HKEY_USERS\<SID>
                     $userSID = Get-UserSID -Username $Username
                     if (-not $userSID) { return $false } 
                     $verificationPath = "Registry::HKEY_USERS\$userSID\$regKeyRelativePath"
                     Write-Log "Verifying logged-in user's live hive path: $verificationPath" "DETAIL"
                 } 
                 else {
-                    # User is not logged in AND hive wasn't pre-loaded
                     Write-Log "Verification cannot proceed for logged-off user '$Username' without a pre-loaded hive path." "ERROR"
                     return $false
                 }
             }
         } 
         else {
-            # No username specified, check current user (HKCU)
             $verificationPath = "Registry::HKEY_CURRENT_USER\$regKeyRelativePath"
             Write-Log "Verifying current user path: $verificationPath" "DETAIL"
         }
 
-        # Perform the actual check
+        # Perform the actual check if path exists
         if (Test-Path -Path $verificationPath) {
-            try { # Inner Try Block for Get-ItemProperty
+            try { # Inner Try Block (Get Property and Verify Value)
                 $currentValue = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction Stop | 
                                 Select-Object -ExpandProperty $regValueName
                 
@@ -269,9 +264,8 @@ function Test-RegistryChanges {
                     Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists." "SUCCESS"
                     return $true
                 }
-                
                 # Standard type-based verification for other values
-                if ($currentValue -is [byte[]]) {
+                elseif ($currentValue -is [byte[]]) { # Changed to elseif for clarity
                     # For byte arrays, use a highly reliable comparison method
                     
                     # Store original values for debugging
@@ -349,8 +343,8 @@ function Test-RegistryChanges {
                     }
                 }
             } # End Inner Try Block
-            catch { # Catch for Inner Try Block (Get-ItemProperty)
-                Write-Log "✗ Verification FAILED: Could not read value '$regValueName'. Error: $_" "ERROR"
+            catch { # Catch for Inner Try Block (Get-ItemProperty / Value Verification)
+                Write-Log "✗ Verification FAILED: Could not read or verify value '$regValueName'. Error: $_" "ERROR"
                 return $false
             } # End Inner Catch Block
         } # End if (Test-Path)
@@ -359,8 +353,8 @@ function Test-RegistryChanges {
             return $false
         }
     } # End Outer Try Block
-    catch { # Catch for Outer Try Block
-        Write-Log "An error occurred during verification setup: $_" "ERROR"
+    catch { # Catch for Outer Try Block (Setup Verification Path)
+        Write-Log "An error occurred during verification setup: $_" "ERROR" 
         return $false
     } # End Outer Catch Block
 } # End of Test-RegistryChanges
