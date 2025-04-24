@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 19:40:00 UTC
+# Last Updated: 2025-04-24 18:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.2
-# Additional Info: Fixed confirmed issue with registry changes not actually applying
+# Version: 1.2.3
+# Additional Info: Fixed critical issue with registry changes not being written
 # =============================================================================
 
 <#
@@ -246,7 +246,7 @@ function Confirm-RegistryChanges {
 
 try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.2.2" "DETAIL"
+    Write-Log "Script version: 1.2.3" "DETAIL"
     
     # Check if registry file exists
     if (-not (Test-Path -Path $regFilePath)) {
@@ -318,81 +318,60 @@ try {    # Log script start
 # PowerShell Registry Modification Script
 `$ErrorActionPreference = 'Stop'
 
-Write-Host "Starting registry modification process..."
-
-# Load the registry hive directly to ensure we're modifying the correct location
-`$hivePath = '$userHivePath'
-Write-Host "Target hive path: `$hivePath"
-
 # The key to modify
 `$regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
 `$regValueName = "TimerAutoMount"
 `$regValueData = [byte[]]@(1,0,0,0,0,0,0,0)
 
-# Use registry API directly to ensure changes are applied correctly
+# Create a direct connection to the registry
 try {
-    Write-Host "Creating registry key path..."
+    Write-Host "Directly accessing registry..."
     
-    # Open the loaded hive using the registry API
-    `$baseKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("TempHive", `$true)
-    if (-not `$baseKey) {
-        throw "Failed to open TempHive registry key"
+    # Create a PSDrive to access the loaded hive
+    if (-not (Get-PSDrive -Name HKNU -ErrorAction SilentlyContinue)) {
+        New-PSDrive -Name HKNU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive | Out-Null
     }
     
-    Write-Host "Base registry key opened successfully"
+    Write-Host "PSDrive created successfully"
     
-    # Ensure parent paths exist by creating them if needed
-    `$parts = `$regKeyPath.Split('\')
-    `$currentKey = `$baseKey
-    
-    for (`$i = 0; `$i -lt `$parts.Length; `$i++) {
-        `$part = `$parts[`$i]
-        `$subKey = `$currentKey.OpenSubKey(`$part, `$true)
-        
-        if (-not `$subKey) {
-            Write-Host "Creating key: `$part"
-            `$subKey = `$currentKey.CreateSubKey(`$part)
-            if (-not `$subKey) {
-                throw "Failed to create registry key: `$part"
-            }
-        }
-        
-        if (`$i -lt `$parts.Length - 1) {
-            `$currentKey.Close()
-            `$currentKey = `$subKey
-        }
-        else {
-            # This is the final key where we'll set the value
-            Write-Host "Setting value: `$regValueName"
-            `$subKey.SetValue(`$regValueName, `$regValueData, [Microsoft.Win32.RegistryValueKind]::Binary)
-            `$subKey.Close()
-            `$currentKey.Close()
-        }
+    # Ensure parent paths exist
+    `$parentPath = Split-Path -Parent "HKNU:\`$regKeyPath"
+    if (-not (Test-Path -Path `$parentPath)) {
+        Write-Host "Creating parent path: `$parentPath"
+        New-Item -Path `$parentPath -Force | Out-Null
     }
+    
+    # Create the final key
+    `$keyPath = "HKNU:\`$regKeyPath"
+    if (-not (Test-Path -Path `$keyPath)) {
+        Write-Host "Creating registry key: `$keyPath"
+        New-Item -Path `$keyPath -Force | Out-Null
+    }
+    
+    # Set the registry value
+    Write-Host "Setting registry value: `$regValueName"
+    Set-ItemProperty -Path `$keyPath -Name `$regValueName -Value `$regValueData -Type Binary -Force
     
     # Verify the change
-    `$baseKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("TempHive")
-    `$verifyKey = `$baseKey.OpenSubKey(`$regKeyPath)
-    
-    if (`$verifyKey) {
-        `$value = `$verifyKey.GetValue(`$regValueName)
-        if (`$value) {
-            Write-Host "Verification successful! Value exists."
-            Write-Host "Value data: `$([BitConverter]::ToString(`$value))"
+    if (Test-Path -Path `$keyPath) {
+        `$value = Get-ItemProperty -Path `$keyPath -Name `$regValueName -ErrorAction SilentlyContinue
+        if (`$value -and `$value.`$regValueName) {
+            `$hexString = (`$value.`$regValueName | ForEach-Object { "{0:X2}" -f `$_ }) -join " "
+            Write-Host "Verification successful - value exists: `$hexString"
         } else {
-            Write-Host "Value was not created properly!"
+            Write-Host "Warning: Value verification failed - value not found after creation!"
         }
-        `$verifyKey.Close()
     } else {
-        Write-Host "Key was not created properly!"
+        Write-Host "Warning: Key verification failed - key not found after creation!"
     }
     
-    `$baseKey.Close()
-    
-    Write-Host "Registry modification completed successfully"
+    # Clean up
+    Remove-PSDrive -Name HKNU -ErrorAction SilentlyContinue
 }
 catch {
     Write-Host "Error modifying registry: `$_"
+    # Try to clean up on error
+    Remove-PSDrive -Name HKNU -ErrorAction SilentlyContinue
     exit 1
 }
 "@
