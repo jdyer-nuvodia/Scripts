@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:43:00 UTC
+# Last Updated: 2025-04-24 22:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.2
-# Additional Info: Fixed syntax errors with try/catch blocks in Test-RegistryChanges function.
+# Version: 1.4.3
+# Additional Info: Fixed syntax errors with nested try/catch blocks in Test-RegistryChanges function.
 # =============================================================================
 
 <#
@@ -275,7 +275,9 @@ function Test-RegistryChanges {
                         
                         # Store original values for debugging
                         $originalExpected = $regValueData
-                        $originalActual = $currentValue                        # Debug detailed type information
+                        $originalActual = $currentValue
+                        
+                        # Debug detailed type information
                         Write-Log "Debug: Expected data type: $($originalExpected.GetType().FullName)" "DEBUG"
                         Write-Log "Debug: Actual data type: $($originalActual.GetType().FullName)" "DEBUG"
                         Write-Log "Debug: Expected data length: $($originalExpected.Length)" "DEBUG"
@@ -374,7 +376,7 @@ function Confirm-RegistryChanges {
 
 try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.15" "DETAIL"
+    Write-Log "Script version: 1.4.3" "DETAIL"
     
     # Check for Admin/SYSTEM privileges
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
