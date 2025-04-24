@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 18:38:00 UTC
+# Last Updated: 2025-04-24 18:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.3
-# Additional Info: Fixed critical issue with registry changes not being written
+# Version: 1.2.4
+# Additional Info: Fixed variable reference bug in registry script
 # =============================================================================
 
 <#
@@ -246,7 +246,7 @@ function Confirm-RegistryChanges {
 
 try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.2.3" "DETAIL"
+    Write-Log "Script version: 1.2.4" "DETAIL"
     
     # Check if registry file exists
     if (-not (Test-Path -Path $regFilePath)) {
@@ -314,67 +314,75 @@ try {    # Log script start
         $modifiedRegContent | Out-File -FilePath $modifiedRegFilePath -Encoding Unicode
         Write-Log "Created temporary modified registry file for the target user" "DETAIL"        # Create a direct PowerShell registry modification script to avoid reg.exe permission issues
         $psRegScriptPath = "$regFilePath.ps1"
-        $psRegScript = @"
+        $psRegScript = @'
 # PowerShell Registry Modification Script
-`$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
-# The key to modify
-`$regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
-`$regValueName = "TimerAutoMount"
-`$regValueData = [byte[]]@(1,0,0,0,0,0,0,0)
+# Define the registry paths and values
+$regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
+$regValueName = "TimerAutoMount"
+$regValueData = [byte[]]@(1,0,0,0,0,0,0,0)
 
-# Create a direct connection to the registry
 try {
-    Write-Host "Directly accessing registry..."
+    Write-Host "Starting direct registry modification..."
     
-    # Create a PSDrive to access the loaded hive
+    # Create a PSDrive to the loaded hive
     if (-not (Get-PSDrive -Name HKNU -ErrorAction SilentlyContinue)) {
-        New-PSDrive -Name HKNU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive | Out-Null
+        Write-Host "Creating PSDrive to access the registry hive..."
+        New-PSDrive -Name HKNU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive -ErrorAction Stop | Out-Null
+        Write-Host "PSDrive created successfully"
     }
     
-    Write-Host "PSDrive created successfully"
+    # Create parent directories if they don't exist
+    $pathParts = $regKeyPath -split '\\'
+    $currentPath = "HKNU:"
     
-    # Ensure parent paths exist
-    `$parentPath = Split-Path -Parent "HKNU:\`$regKeyPath"
-    if (-not (Test-Path -Path `$parentPath)) {
-        Write-Host "Creating parent path: `$parentPath"
-        New-Item -Path `$parentPath -Force | Out-Null
-    }
-    
-    # Create the final key
-    `$keyPath = "HKNU:\`$regKeyPath"
-    if (-not (Test-Path -Path `$keyPath)) {
-        Write-Host "Creating registry key: `$keyPath"
-        New-Item -Path `$keyPath -Force | Out-Null
+    # Create each level of the path if needed
+    foreach ($part in $pathParts) {
+        $currentPath = Join-Path $currentPath $part
+        if (-not (Test-Path $currentPath)) {
+            Write-Host "Creating registry key: $currentPath"
+            New-Item -Path $currentPath -Force | Out-Null
+        }
     }
     
     # Set the registry value
-    Write-Host "Setting registry value: `$regValueName"
-    Set-ItemProperty -Path `$keyPath -Name `$regValueName -Value `$regValueData -Type Binary -Force
+    $fullKeyPath = "HKNU:\$regKeyPath"
+    Write-Host "Setting registry value at: $fullKeyPath"
+    Set-ItemProperty -Path $fullKeyPath -Name $regValueName -Value $regValueData -Type Binary -Force
     
     # Verify the change
-    if (Test-Path -Path `$keyPath) {
-        `$value = Get-ItemProperty -Path `$keyPath -Name `$regValueName -ErrorAction SilentlyContinue
-        if (`$value -and `$value.`$regValueName) {
-            `$hexString = (`$value.`$regValueName | ForEach-Object { "{0:X2}" -f `$_ }) -join " "
-            Write-Host "Verification successful - value exists: `$hexString"
-        } else {
-            Write-Host "Warning: Value verification failed - value not found after creation!"
+    $valueExists = $false
+    if (Test-Path $fullKeyPath) {
+        $prop = Get-ItemProperty -Path $fullKeyPath -Name $regValueName -ErrorAction SilentlyContinue
+        if ($prop) {
+            $valueData = $prop.$regValueName
+            if ($valueData) {
+                $hexString = ($valueData | ForEach-Object { "{0:X2}" -f $_ }) -join " "
+                Write-Host "Value exists with data: $hexString"
+                $valueExists = $true
+            }
         }
-    } else {
-        Write-Host "Warning: Key verification failed - key not found after creation!"
     }
     
-    # Clean up
-    Remove-PSDrive -Name HKNU -ErrorAction SilentlyContinue
+    if ($valueExists) {
+        Write-Host "Registry modification successful!"
+    } else {
+        Write-Host "Registry value verification failed"
+        throw "Failed to verify registry value was set correctly"
+    }
 }
 catch {
-    Write-Host "Error modifying registry: `$_"
-    # Try to clean up on error
-    Remove-PSDrive -Name HKNU -ErrorAction SilentlyContinue
+    Write-Host "ERROR: Registry modification failed: $_"
     exit 1
 }
-"@
+finally {
+    # Clean up
+    if (Get-PSDrive -Name HKNU -ErrorAction SilentlyContinue) {
+        Remove-PSDrive -Name HKNU -Force -ErrorAction SilentlyContinue
+    }
+}
+'@
         
         $psRegScript | Out-File -FilePath $psRegScriptPath -Encoding UTF8
         Write-Log "Created PowerShell registry script to handle registry modifications" "DETAIL"
