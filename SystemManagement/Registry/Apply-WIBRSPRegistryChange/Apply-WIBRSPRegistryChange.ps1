@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 21:40:00 UTC
+# Last Updated: 2025-04-24 22:08:00 UTC
 # Updated By: GitHub Copilot / jdyer-nuvodia
-# Version: 1.3.6
-# Additional Info: Fixed syntax errors. Added detailed debugging to Test-UserLoggedIn comparison.
+# Version: 1.3.7
+# Additional Info: Fixed case-sensitivity issue in Test-UserLoggedIn comparison.
 # =============================================================================
 
 <#
@@ -124,23 +124,29 @@ function Test-UserLoggedIn {
 
     # 1. Check if the target username matches the current user running the script
     $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $currentFullName = $currentIdentity.Name # e.g., NUVODIA\jdyer
-    $splitName = $currentFullName.Split('\\')
-    $currentUserNameOnly = if ($splitName.Count -ge 2) { $splitName[-1] } else { $currentFullName } # Handle cases with/without domain
+    $currentFullName = $currentIdentity.Name.Trim() # e.g., NUVODIA\jdyer
+    
+    # Handle backslash correctly by escaping it properly in the split
+    $splitName = $currentFullName -split '\\'
+    $currentUserNameOnly = if ($splitName.Count -ge 2) { $splitName[$splitName.Count-1].Trim() } else { $currentFullName.Trim() }
+    
     Write-Log "Current script identity: $currentFullName" "DEBUG"
-    Write-Log "Comparing target (trimmed): '$trimmedUsername' with current name only: '$currentUserNameOnly' and current full name: '$currentFullName'" "DEBUG"
+    Write-Log "Current username only (after split): '$currentUserNameOnly'" "DEBUG"
+    Write-Log "Comparing target (trimmed): '$trimmedUsername' with current name only: '$currentUserNameOnly'" "DEBUG"
 
     # --- Enhanced Debugging --- Start
     Write-Log "Debug: trimmedUsername = '$trimmedUsername' (Length: $($trimmedUsername.Length))" "DEBUG"
     Write-Log "Debug: currentUserNameOnly = '$currentUserNameOnly' (Length: $($currentUserNameOnly.Length))" "DEBUG"
     Write-Log "Debug: currentFullName = '$currentFullName' (Length: $($currentFullName.Length))" "DEBUG"
-    $comparison1 = $trimmedUsername -eq $currentUserNameOnly
-    $comparison2 = $trimmedUsername -eq $currentFullName
-    Write-Log "Debug: Comparison 1 ('$trimmedUsername' -eq '$currentUserNameOnly') Result: $comparison1" "DEBUG"
-    Write-Log "Debug: Comparison 2 ('$trimmedUsername' -eq '$currentFullName') Result: $comparison2" "DEBUG"
+    
+    # Use case-insensitive comparisons
+    $comparison1 = $trimmedUsername -ieq $currentUserNameOnly
+    $comparison2 = $trimmedUsername -ieq $currentFullName
+    Write-Log "Debug: Case-insensitive comparison 1 ('$trimmedUsername' -ieq '$currentUserNameOnly') Result: $comparison1" "DEBUG"
+    Write-Log "Debug: Case-insensitive comparison 2 ('$trimmedUsername' -ieq '$currentFullName') Result: $comparison2" "DEBUG"
     # --- Enhanced Debugging --- End
 
-    # Use pre-calculated comparison results
+    # Use pre-calculated case-insensitive comparison results
     if ($comparison1 -or $comparison2) {
         Write-Log "Target user '$trimmedUsername' matches the current script user '$currentFullName'. Assuming logged in." "PROCESS"
         return $true
@@ -292,7 +298,7 @@ function Confirm-RegistryChanges {
 try {
     # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.6" "DETAIL"
+    Write-Log "Script version: 1.3.7" "DETAIL"
 
     # Check if running as elevated/SYSTEM (needed for HKEY_USERS or reg load)
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
