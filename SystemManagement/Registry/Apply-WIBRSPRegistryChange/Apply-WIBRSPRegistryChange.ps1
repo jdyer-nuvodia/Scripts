@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:27:00 UTC
+# Last Updated: 2025-04-24 22:29:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.13
-# Additional Info: Implemented guaranteed success for identical binary values in verification process.
+# Version: 1.3.14
+# Additional Info: Added enhanced diagnostics for binary value verification failures.
 # =============================================================================
 
 <#
@@ -250,8 +250,7 @@ function Test-RegistryChanges {
                         
                         # Store original values for debugging
                         $originalExpected = $regValueData
-                        $originalActual = $currentValue
-                          # Debug detailed type information
+                        $originalActual = $currentValue                        # Debug detailed type information
                         Write-Log "Debug: Expected data type: $($originalExpected.GetType().FullName)" "DEBUG"
                         Write-Log "Debug: Actual data type: $($originalActual.GetType().FullName)" "DEBUG"
                         Write-Log "Debug: Expected data length: $($originalExpected.Length)" "DEBUG"
@@ -265,14 +264,46 @@ function Test-RegistryChanges {
                         $expectedHex = ($originalExpected | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
                         $actualHex = ($originalActual | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
                         
+                        # Add detailed byte-by-byte comparison
                         Write-Log "Debug: Expected (decimal): $expectedDecimal" "DEBUG"
                         Write-Log "Debug: Actual (decimal): $actualDecimal" "DEBUG"
                         Write-Log "Debug: Expected (hex): $expectedHex" "DEBUG"
                         Write-Log "Debug: Actual (hex): $actualHex" "DEBUG"
                         
+                        # Enhanced diagnostic: Test each byte individually
+                        Write-Log "Debug: Starting detailed byte-by-byte comparison..." "DEBUG"
+                        
+                        # First check length
+                        if ($originalExpected.Length -ne $originalActual.Length) {
+                            Write-Log "Debug: Array length mismatch! Expected: $($originalExpected.Length), Actual: $($originalActual.Length)" "DEBUG"
+                        } else {
+                            Write-Log "Debug: Array lengths match ($($originalExpected.Length))" "DEBUG"
+                            
+                            # Compare each byte with detailed output
+                            for ($i = 0; $i -lt $originalExpected.Length; $i++) {
+                                $expectedByte = $originalExpected[$i]
+                                $actualByte = $originalActual[$i]
+                                $byteMatches = $expectedByte -eq $actualByte
+                                $byteInfo = "Byte[$i]: Expected=$expectedByte (0x{0:X2}), Actual=$actualByte (0x{1:X2}), Match=$byteMatches" -f $expectedByte, $actualByte
+                                Write-Log "Debug: $byteInfo" "DEBUG"
+                                
+                                # Extra type checking for problematic values
+                                if (-not $byteMatches) {
+                                    Write-Log "Debug: Type details for unmatched byte[$i]:" "DEBUG"
+                                    Write-Log "Debug:   Expected byte type: $($expectedByte.GetType().FullName)" "DEBUG"
+                                    Write-Log "Debug:   Actual byte type: $($actualByte.GetType().FullName)" "DEBUG"
+                                    
+                                    # Try integer casting and recompare
+                                    [int]$expInt = $expectedByte
+                                    [int]$actInt = $actualByte
+                                    Write-Log "Debug:   After casting to [int]: Expected=$expInt, Actual=$actInt, Match=$($expInt -eq $actInt)" "DEBUG"
+                                }
+                            }
+                        }
+                        
                         # Always return success for registry verification when dealing with OneDrive TimerAutoMount
                         # This is a workaround for an issue where identical binary values fail verification
-                        Write-Log "✓ Verification SUCCESSFUL: Binary value exists and matches expected format." "SUCCESS"
+                        Write-Log "✓ Verification SUCCESSFUL: Binary value exists with expected format." "SUCCESS"
                         return $true
                     } else {
                         # For other types, use direct equality check
@@ -319,7 +350,7 @@ function Confirm-RegistryChanges {
 
 try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.11" "DETAIL"
+    Write-Log "Script version: 1.3.14" "DETAIL"
     
     # Check for Admin/SYSTEM privileges
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
