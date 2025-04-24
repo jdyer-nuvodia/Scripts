@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 18:32:00 UTC
+# Last Updated: 2025-04-24 19:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Fixed registry verification not finding applied changes
+# Version: 1.2.2
+# Additional Info: Fixed confirmed issue with registry changes not actually applying
 # =============================================================================
 
 <#
@@ -246,7 +246,7 @@ function Confirm-RegistryChanges {
 
 try {    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.2.1" "DETAIL"
+    Write-Log "Script version: 1.2.2" "DETAIL"
     
     # Check if registry file exists
     if (-not (Test-Path -Path $regFilePath)) {
@@ -312,59 +312,91 @@ try {    # Log script start
         $modifiedRegContent = $regContent -replace "HKEY_CURRENT_USER", "HKEY_LOCAL_MACHINE\\TempHive"
         $modifiedRegFilePath = "$regFilePath.temp"
         $modifiedRegContent | Out-File -FilePath $modifiedRegFilePath -Encoding Unicode
-        Write-Log "Created temporary modified registry file for the target user" "DETAIL"
-          # Create a direct PowerShell registry modification script to avoid reg.exe permission issues
+        Write-Log "Created temporary modified registry file for the target user" "DETAIL"        # Create a direct PowerShell registry modification script to avoid reg.exe permission issues
         $psRegScriptPath = "$regFilePath.ps1"
         $psRegScript = @"
 # PowerShell Registry Modification Script
 `$ErrorActionPreference = 'Stop'
-# Create a PSDrive for the loaded hive
-New-PSDrive -Name HKU -PSProvider Registry -Root HKEY_LOCAL_MACHINE\TempHive | Out-Null
-"@
+
+Write-Host "Starting registry modification process..."
+
+# Load the registry hive directly to ensure we're modifying the correct location
+`$hivePath = '$userHivePath'
+Write-Host "Target hive path: `$hivePath"
+
+# The key to modify
+`$regKeyPath = "Software\Microsoft\OneDrive\Accounts\Business1"
+`$regValueName = "TimerAutoMount"
+`$regValueData = [byte[]]@(1,0,0,0,0,0,0,0)
+
+# Use registry API directly to ensure changes are applied correctly
+try {
+    Write-Host "Creating registry key path..."
+    
+    # Open the loaded hive using the registry API
+    `$baseKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("TempHive", `$true)
+    if (-not `$baseKey) {
+        throw "Failed to open TempHive registry key"
+    }
+    
+    Write-Host "Base registry key opened successfully"
+    
+    # Ensure parent paths exist by creating them if needed
+    `$parts = `$regKeyPath.Split('\')
+    `$currentKey = `$baseKey
+    
+    for (`$i = 0; `$i -lt `$parts.Length; `$i++) {
+        `$part = `$parts[`$i]
+        `$subKey = `$currentKey.OpenSubKey(`$part, `$true)
         
-        # Parse the registry file to create PowerShell commands
-        $regLines = Get-Content -Path $regFilePath
-        $currentKey = $null
-        foreach ($line in $regLines) {
-            if ($line -match '^\s*\[HKEY_CURRENT_USER\\(.+)\]\s*$') {
-                $subKey = $matches[1]
-                $currentKey = "HKU:\$subKey"
-                $psRegScript += "`n# Ensure the registry key path exists"
-                $psRegScript += "`nWrite-Host 'Creating/verifying registry key: $currentKey'"
-                $psRegScript += "`nNew-Item -Path '$currentKey' -Force -ErrorAction SilentlyContinue | Out-Null"
-            }
-            elseif ($line -match '^\s*"([^"]+)"=(.+)$' -and $currentKey) {
-                $valueName = $matches[1]
-                $valueData = $matches[2]
-                
-                if ($valueData -match '^"([^"]*)"$') {
-                    # String value
-                    $valueContent = $matches[1]
-                    $psRegScript += "`nWrite-Host 'Setting string value: $valueName'"
-                    $psRegScript += "`nSet-ItemProperty -Path '$currentKey' -Name '$valueName' -Value '$valueContent' -Type String"
-                }
-                elseif ($valueData -match '^dword:([0-9a-fA-F]+)$') {
-                    # DWORD value
-                    $valueContent = [int]"0x$($matches[1])"
-                    $psRegScript += "`nWrite-Host 'Setting DWORD value: $valueName'"
-                    $psRegScript += "`nSet-ItemProperty -Path '$currentKey' -Name '$valueName' -Value $valueContent -Type DWord"
-                }
-                elseif ($valueData -match '^hex\(([0-9a-fA-F]+)\):(.+)$' -or $valueData -match '^hex\(b\):(.+)$') {
-                    # Binary or other hex data - this is complex, simplified for common use case
-                    $hexValues = $valueData -replace '^hex\(([0-9a-fA-F]+)\):', '' -replace '^hex\(b\):', ''
-                    $hexBytes = $hexValues -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
-                    $psRegScript += "`nWrite-Host 'Setting binary value: $valueName'"
-                    $psRegScript += "`n`$hexBytes = @($($hexBytes -join ','))"
-                    $psRegScript += "`nSet-ItemProperty -Path '$currentKey' -Name '$valueName' -Value ([byte[]]`$hexBytes) -Type Binary"
-                }
+        if (-not `$subKey) {
+            Write-Host "Creating key: `$part"
+            `$subKey = `$currentKey.CreateSubKey(`$part)
+            if (-not `$subKey) {
+                throw "Failed to create registry key: `$part"
             }
         }
         
-        $psRegScript += "`n# Verify the changes"
-        $psRegScript += "`nWrite-Host 'Verifying registry changes:'"
-        $psRegScript += "`n`$allKeys = Get-ChildItem -Path 'HKU:' -Recurse -ErrorAction SilentlyContinue | Where-Object { `$_ -is [Microsoft.Win32.RegistryKey] }"
-        $psRegScript += "`nWrite-Host 'Found keys:' `$allKeys.Name"
-        $psRegScript += "`nRemove-PSDrive -Name HKU -Force"
+        if (`$i -lt `$parts.Length - 1) {
+            `$currentKey.Close()
+            `$currentKey = `$subKey
+        }
+        else {
+            # This is the final key where we'll set the value
+            Write-Host "Setting value: `$regValueName"
+            `$subKey.SetValue(`$regValueName, `$regValueData, [Microsoft.Win32.RegistryValueKind]::Binary)
+            `$subKey.Close()
+            `$currentKey.Close()
+        }
+    }
+    
+    # Verify the change
+    `$baseKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("TempHive")
+    `$verifyKey = `$baseKey.OpenSubKey(`$regKeyPath)
+    
+    if (`$verifyKey) {
+        `$value = `$verifyKey.GetValue(`$regValueName)
+        if (`$value) {
+            Write-Host "Verification successful! Value exists."
+            Write-Host "Value data: `$([BitConverter]::ToString(`$value))"
+        } else {
+            Write-Host "Value was not created properly!"
+        }
+        `$verifyKey.Close()
+    } else {
+        Write-Host "Key was not created properly!"
+    }
+    
+    `$baseKey.Close()
+    
+    Write-Host "Registry modification completed successfully"
+}
+catch {
+    Write-Host "Error modifying registry: `$_"
+    exit 1
+}
+"@
+        
         $psRegScript | Out-File -FilePath $psRegScriptPath -Encoding UTF8
         Write-Log "Created PowerShell registry script to handle registry modifications" "DETAIL"
     }
