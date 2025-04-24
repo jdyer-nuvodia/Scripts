@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:08:00 UTC
-# Updated By: GitHub Copilot / jdyer-nuvodia
-# Version: 1.3.7
-# Additional Info: Fixed case-sensitivity issue in Test-UserLoggedIn comparison.
+# Last Updated: 2025-04-24 22:13:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.3.8
+# Additional Info: Fixed invalid registry path when creating parent keys.
 # =============================================================================
 
 <#
@@ -62,7 +62,7 @@ $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $logFile = Join-Path -Path $scriptPath -ChildPath "Apply-WIBRSPRegistryChange_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
 # Define specific registry values to apply
-$regKeyRelativePath = "Software\\Microsoft\\OneDrive\\Accounts\\Business1"
+$regKeyRelativePath = "Software\Microsoft\OneDrive\Accounts\Business1"
 $regValueName = "TimerAutoMount"
 $regValueData = [byte[]]@(1,0,0,0,0,0,0,0)
 $regValueType = [Microsoft.Win32.RegistryValueKind]::Binary
@@ -208,13 +208,8 @@ function Test-RegistryChanges {
             # Check if a pre-loaded hive path was provided
             if ($LoadedHivePathForVerification) {
                  # Hive already loaded by caller, use the provided path directly
-                 # Construct the full PS provider path
-                 # Ensure $LoadedHivePathForVerification is in the format HKLM\KeyName
-                 if ($LoadedHivePathForVerification -notlike 'HKLM\*' -and $LoadedHivePathForVerification -notlike 'HKU\*') {
-                     Write-Log "Invalid format for LoadedHivePathForVerification: '$LoadedHivePathForVerification'. Expected HKLM\KeyName or HKU\KeyName." "ERROR"
-                     return $false
-                 }
-                 $verificationPath = "Registry::$LoadedHivePathForVerification\\$regKeyRelativePath" # Ensure backslash separator
+                 # Construct the full PS provider path with proper backslash formatting
+                 $verificationPath = "Registry::$LoadedHivePathForVerification\$regKeyRelativePath"
                  Write-Log "Verifying pre-loaded hive path: $verificationPath" "DETAIL"
             } else {
                 # Hive not pre-loaded by caller, check if user is logged in to determine target
@@ -223,7 +218,7 @@ function Test-RegistryChanges {
                     # User is logged in, check HKEY_USERS\<SID>
                     $userSID = Get-UserSID -Username $Username
                     if (-not $userSID) { return $false } # Get-UserSID throws on failure, but double-check
-                    $verificationPath = "Registry::HKEY_USERS\\$userSID\\$regKeyRelativePath" # Ensure backslash separator
+                    $verificationPath = "Registry::HKEY_USERS\$userSID\$regKeyRelativePath"
                     Write-Log "Verifying logged-in user's live hive path: $verificationPath" "DETAIL"
                 } else {
                     # User is not logged in AND hive wasn't pre-loaded by the caller.
@@ -234,39 +229,49 @@ function Test-RegistryChanges {
             }
         } else {
             # No username specified, check current user (HKCU)
-            $verificationPath = "Registry::HKEY_CURRENT_USER\\$regKeyRelativePath" # Ensure backslash separator
+            $verificationPath = "Registry::HKEY_CURRENT_USER\$regKeyRelativePath"
             Write-Log "Verifying current user path: $verificationPath" "DETAIL"
         }
 
         # Perform the actual check
         if (Test-Path -Path $verificationPath) {
-            $item = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction SilentlyContinue
-            if ($item) {
-                # Use PSBoundParameters to safely access the property even if its name conflicts with PowerShell keywords
-                $currentValue = $item.PSObject.Properties[$regValueName].Value
-                if ($currentValue -is [byte[]] -and $currentValue.Length -eq $regValueData.Length) {
-                    # Compare byte arrays element by element
-                    if (Compare-Object -ReferenceObject $regValueData -DifferenceObject $currentValue -SyncWindow 0 -Property @{Expression={$PSItem}}) { # Use Compare-Object for byte arrays
-                        Write-Log "✗ Verification FAILED: Value data does not match expected." "WARNING"
-                        Write-Log "  Expected: $($regValueData | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
-                        Write-Log "  Actual:   $($currentValue | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
-                        return $false
-                    } else {
-                        Write-Log "✓ Verification SUCCESSFUL: Value exists and data matches." "SUCCESS"
-                        return $true
-                    }
-                } else {
-                    Write-Log "✗ Verification FAILED: Value exists but type or length is incorrect." "WARNING"
-                    Write-Log "  Expected Type: Binary, Expected Length: $($regValueData.Length)" "DETAIL"
-                    if ($currentValue) {
-                        Write-Log "  Actual Type: $($currentValue.GetType().Name), Actual Length: $($currentValue.Length)" "DETAIL"
-                    } else {
-                         Write-Log "  Actual Value: Could not retrieve or is null." "DETAIL"
-                    }
+            try {
+                $currentValue = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction Stop | 
+                                Select-Object -ExpandProperty $regValueName
+                
+                Write-Log "✓ Verification: Registry key exists and contains the value '$regValueName'." "DETAIL"
+                
+                if ($null -eq $currentValue) {
+                    Write-Log "✗ Verification FAILED: Value exists but is null." "WARNING"
                     return $false
+                } else {
+                    # Determine how to compare values based on type
+                    if ($currentValue -is [byte[]]) {
+                        # For byte arrays, use Compare-Object with property expression
+                        if (Compare-Object -ReferenceObject $regValueData -DifferenceObject $currentValue -SyncWindow 0 -Property @{Expression={$PSItem}}) {
+                            Write-Log "✗ Verification FAILED: Value data does not match expected." "WARNING"
+                            Write-Log "  Expected: $($regValueData | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
+                            Write-Log "  Actual:   $($currentValue | ForEach-Object { '{0:X2}' -f $_ })" "DETAIL"
+                            return $false
+                        } else {
+                            Write-Log "✓ Verification SUCCESSFUL: Value exists and data matches." "SUCCESS"
+                            return $true
+                        }
+                    } else {
+                        # For other types, use direct equality check
+                        if ($regValueData -ne $currentValue) {
+                            Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
+                            Write-Log "  Expected: $regValueData" "DETAIL"
+                            Write-Log "  Actual:   $currentValue" "DETAIL"
+                            return $false
+                        } else {
+                            Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
+                            return $true
+                        }
+                    }
                 }
-            } else {
-                Write-Log "✗ Verification FAILED: Value '$regValueName' does not exist in the key '$verificationPath'." "ERROR"
+            } catch {
+                Write-Log "✗ Verification FAILED: Could not read value '$regValueName'. Error: $_" "ERROR"
                 return $false
             }
         } else {
@@ -298,17 +303,16 @@ function Confirm-RegistryChanges {
 try {
     # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.7" "DETAIL"
-
-    # Check if running as elevated/SYSTEM (needed for HKEY_USERS or reg load)
+    Write-Log "Script version: 1.3.8" "DETAIL"
+    
+    # Check for Admin/SYSTEM privileges
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    $isAdmin = (New-Object System.Security.Principal.WindowsPrincipal $currentUser).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    $isSystem = $currentUser.IsSystem
-    if (-not ($isAdmin -or $isSystem)) {
-         Write-Log "This script requires elevated privileges (Administrator or SYSTEM) to modify other users' registry hives." "ERROR"
-         throw "Insufficient privileges."
+    $principal = New-Object System.Security.Principal.WindowsPrincipal($currentUser)
+    $isAdmin = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    Write-Log "Running as: $($currentUser.Name) (Elevated/SYSTEM: $isAdmin)" "DETAIL"
+    if (-not $isAdmin) {
+        throw "This script requires administrative privileges to modify registry hives."
     }
-    Write-Log "Running as: $($currentUser.Name) (Elevated/SYSTEM: $($isAdmin -or $isSystem))" "DETAIL"
 
     # Define variables for target path construction
     $targetRegRootPath = $null
@@ -322,25 +326,28 @@ try {
 
     if ($Username) {
         Write-Log "Target user specified: $Username" "PROCESS"
-
-        # Check if user is logged in
+        
+        # Check if the user is logged in
         $isUserLoggedIn = Test-UserLoggedIn -Username $Username
-
+        
         if ($isUserLoggedIn) {
             # User is logged in, target HKEY_USERS\<SID>
             $userSID = Get-UserSID -Username $Username
             if (-not $userSID) { throw "Could not get SID for logged-in user '$Username'." }
-            $targetRegRootPath = "Registry::HKEY_USERS\\$userSID"
-            $targetRegKeyPath = Join-Path -Path $targetRegRootPath -ChildPath $regKeyRelativePath
+            
+            # Use proper path format for PowerShell provider
+            $targetRegRootPath = "Registry::HKEY_USERS\$userSID"
+            $targetRegKeyPath = "$targetRegRootPath\$regKeyRelativePath"
             Write-Log "Targeting live user hive: $targetRegKeyPath" "PROCESS"
-
+            
             # Apply change directly to HKEY_USERS
             if ($pscmdlet.ShouldProcess("registry key '$targetRegKeyPath'", "Set value '$regValueName'")) {
                 # Ensure parent key exists
                 if (-not (Test-Path -Path $targetRegKeyPath)) {
                     Write-Log "Creating parent key: $targetRegKeyPath" "DETAIL"
-                    New-Item -Path $targetRegRootPath -Name $regKeyRelativePath -Force | Out-Null
-                } # Added missing closing brace
+                    # Create parent keys recursively with proper path formatting
+                    $null = New-Item -Path $targetRegRootPath -Name $regKeyRelativePath -Force
+                }
                 Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force
                 Write-Log "Registry value '$regValueName' set successfully." "SUCCESS"
                 $applySuccess = $true
@@ -348,17 +355,14 @@ try {
                  Write-Log "Skipped applying registry change due to -WhatIf." "INFO"
                  $applySuccess = $true # Assume success for WhatIf verification
             }
-
         } else {
             # User is not logged in, load NTUSER.DAT
             Write-Log "User not logged in. Attempting to load user hive..." "PROCESS"
-            # Find user profile path
-            $allProfiles = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
-                           Where-Object { $_.ProfileImagePath -like "*\$Username" }
-            if (-not $allProfiles) { throw "User profile for '$Username' not found." }
-            $userProfilePath = $allProfiles.ProfileImagePath
-            $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
-            if (-not (Test-Path -Path $userHivePath)) { throw "User registry hive (NTUSER.DAT) not found at '$userHivePath'." }
+            # Find user profile path and hive path
+            $userProfile = Get-CimInstance -ClassName Win32_UserProfile | Where-Object { $_.LocalPath.EndsWith($Username) }
+            if (-not $userProfile) { throw "User profile for '$Username' not found via WMI." }
+            $userHivePath = Join-Path -Path $userProfile.LocalPath -ChildPath "NTUSER.DAT"
+            if (-not (Test-Path -Path $userHivePath)) { throw "NTUSER.DAT not found at $userHivePath." }
 
             Write-Log "Loading user registry hive for $Username from $userHivePath into $regExeFullKeyName..." "PROCESS"
             if ($PSCmdlet.ShouldProcess("Registry Hive: $userHivePath", "Load into $regExeFullKeyName")) {
@@ -377,26 +381,32 @@ try {
                  # In WhatIf mode, we can't actually load, so we can't proceed to set value or verify
                  $applySuccess = $false # Mark apply as not successful in WhatIf for load scenario
             }
-            # Construct target path using the PS provider path
-            $targetRegKeyPath = Join-Path -Path $psTempHiveRootPath -ChildPath $regKeyRelativePath
+            # Construct target path using the PS provider path with proper backslash formatting
+            $targetRegKeyPath = "$psTempHiveRootPath\$regKeyRelativePath"
             Write-Log "Targeting loaded user hive: $targetRegKeyPath" "PROCESS"
         } # End of if ($isUserLoggedIn)
 
         # Apply registry change using PowerShell cmdlets (only if hive load wasn't skipped by WhatIf)
-        # Check if we are targeting a loaded hive AND if the load was actually performed (not skipped by WhatIf)
         if ($isUserLoggedIn -or $userHiveLoadedForApply) {
             Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
             if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName'")) {
                 try {
                     # Ensure parent key exists
-                    $parentPath = Split-Path -Path $targetRegKeyPath
+                    $parentPath = Split-Path -Path $targetRegKeyPath -Parent
                     if (-not (Test-Path -Path $parentPath)) {
                         Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
-                        # Determine the root path for New-Item based on whether hive was loaded or not
-                        $newItemRoot = if ($userHiveLoadedForApply) { $psTempHiveRootPath } else { $targetRegRootPath }
-                        New-Item -Path $newItemRoot -Name $regKeyRelativePath -Force -ErrorAction Stop | Out-Null
+                        # Determine the root path and relative path for New-Item
+                        if ($userHiveLoadedForApply) {
+                            # For loaded hive, create key at root of mounted hive
+                            $relativePath = $regKeyRelativePath
+                            $null = New-Item -Path $psTempHiveRootPath -Name $relativePath -Force -ErrorAction Stop
+                        } else {
+                            # For logged-in user, create key at HKEY_USERS\SID
+                            $relativePath = $regKeyRelativePath
+                            $null = New-Item -Path $targetRegRootPath -Name $relativePath -Force -ErrorAction Stop
+                        }
                         Write-Log "Parent key created." "DETAIL"
-                    } # Corrected missing closing brace
+                    }
 
                     # Set the value
                     Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force -ErrorAction Stop
@@ -410,26 +420,27 @@ try {
                 Write-Log "WhatIf: Would set registry value '$regValueName' at '$targetRegKeyPath'" "PROCESS"
                 $applySuccess = $true # Assume success for WhatIf verification
             }
-        } # End if ($isUserLoggedIn -or $userHiveLoadedForApply)
+        }
 
     } else {
         # No username specified - Apply to current user (HKCU)
+        # Use proper path format for PowerShell provider
         $targetRegRootPath = "Registry::HKEY_CURRENT_USER"
-        $targetRegKeyPath = Join-Path -Path $targetRegRootPath -ChildPath $regKeyRelativePath
+        $targetRegKeyPath = "$targetRegRootPath\$regKeyRelativePath"
         Write-Log "Targeting current user hive: $targetRegKeyPath" "PROCESS"
-
-        Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
-        if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName'")) {
+        
+        # Apply change to HKCU
+        if ($PSCmdlet.ShouldProcess("registry key '$targetRegKeyPath'", "Set value '$regValueName'")) {
              try {
                 # Ensure parent key exists
-                $parentPath = Split-Path -Path $targetRegKeyPath
+                $parentPath = Split-Path -Path $targetRegKeyPath -Parent
                 if (-not (Test-Path -Path $parentPath)) {
                     Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
-                    New-Item -Path $parentPath -Force -ErrorAction Stop | Out-Null
+                    $null = New-Item -Path $targetRegRootPath -Name $regKeyRelativePath -Force
                     Write-Log "Parent key created." "DETAIL"
                 }
                 # Set the value
-                Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force -ErrorAction Stop
+                Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force
                 Write-Log "Registry value '$regValueName' set successfully for current user." "SUCCESS"
                 $applySuccess = $true
             } catch {
