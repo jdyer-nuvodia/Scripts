@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 22:37:00 UTC
+# Last Updated: 2025-04-24 22:43:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Renamed Debug parameter to Verbose to avoid conflict with PowerShell's built-in Debug parameter.
+# Version: 1.4.2
+# Additional Info: Fixed syntax errors with try/catch blocks in Test-RegistryChanges function.
 # =============================================================================
 
 <#
@@ -351,8 +351,7 @@ function Test-RegistryChanges {
             Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
             return $false
         }
-    }
-    catch {
+    } catch {
         Write-Log "An error occurred during verification: $_" "ERROR"
         return $false
     }
