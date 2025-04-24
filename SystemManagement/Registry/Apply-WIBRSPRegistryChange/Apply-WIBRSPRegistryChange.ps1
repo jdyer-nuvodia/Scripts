@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 20:34:00 UTC
+# Last Updated: 2025-04-24 20:44:00 UTC
 # Updated By: GitHub Copilot / jdyer-nuvodia
-# Version: 1.3.2
-# Additional Info: Corrected reg.exe hive load/unload key name usage.
+# Version: 1.3.3
+# Additional Info: Corrected reg.exe load/unload key name usage to require full path (HKLM\TempHive).
 # =============================================================================
 
 <#
@@ -176,6 +176,11 @@ function Test-RegistryChanges {
             if ($LoadedHivePathForVerification) {
                  # Hive already loaded by caller, use the provided path directly
                  # Construct the full PS provider path
+                 # Ensure $LoadedHivePathForVerification is in the format HKLM\KeyName
+                 if ($LoadedHivePathForVerification -notlike 'HKLM\*' -and $LoadedHivePathForVerification -notlike 'HKU\*') {
+                     Write-Log "Invalid format for LoadedHivePathForVerification: '$LoadedHivePathForVerification'. Expected HKLM\KeyName or HKU\KeyName." "ERROR"
+                     return $false
+                 }
                  $verificationPath = "Registry::$LoadedHivePathForVerification\\$regKeyRelativePath" # Ensure backslash separator
                  Write-Log "Verifying pre-loaded hive path: $verificationPath" "DETAIL"
             } else {
@@ -260,7 +265,7 @@ function Confirm-RegistryChanges {
 try {
     # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: 1.3.2" "DETAIL"
+    Write-Log "Script version: 1.3.3" "DETAIL"
 
     # Check if running as elevated/SYSTEM (needed for HKEY_USERS or reg load)
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -276,8 +281,8 @@ try {
     $targetRegRootPath = $null
     $targetRegKeyPath = $null
     $userHiveLoadedForApply = $false
-    $regExeTempKeyName = "TempHive" # Key name for reg.exe (relative to HKLM)
-    $psTempHiveRootPath = "Registry::HKLM\\$regExeTempKeyName" # Full path for PowerShell provider
+    $regExeFullKeyName = "HKLM\TempHive" # Full key path for reg.exe load/unload
+    $psTempHiveRootPath = "Registry::$regExeFullKeyName" # Full path for PowerShell provider
     $userSID = $null
     $isUserLoggedIn = $false
     $applySuccess = $false # Flag to track if the apply step succeeded
@@ -323,20 +328,20 @@ try {
             $userHivePath = Join-Path -Path $userProfilePath -ChildPath "NTUSER.DAT"
             if (-not (Test-Path -Path $userHivePath)) { throw "User registry hive (NTUSER.DAT) not found at '$userHivePath'." }
 
-            Write-Log "Loading user registry hive for $Username from $userHivePath into HKLM\\$regExeTempKeyName..." "PROCESS"
-            if ($PSCmdlet.ShouldProcess("Registry Hive: $userHivePath", "Load into HKLM\\$regExeTempKeyName")) {
+            Write-Log "Loading user registry hive for $Username from $userHivePath into $regExeFullKeyName..." "PROCESS"
+            if ($PSCmdlet.ShouldProcess("Registry Hive: $userHivePath", "Load into $regExeFullKeyName")) {
                  # Ensure TempHive is clear before loading
                 if (Test-Path -Path $psTempHiveRootPath) { # Use PS path for Test-Path
-                    Write-Log "Attempting to unload existing apply hive mount ($regExeTempKeyName)..." "DEBUG"
-                    reg.exe unload $regExeTempKeyName 2>&1 | Out-Null # Use reg.exe name
+                    Write-Log "Attempting to unload existing apply hive mount ($regExeFullKeyName)..." "DEBUG"
+                    reg.exe unload $regExeFullKeyName 2>&1 | Out-Null # Use full reg.exe name
                     Start-Sleep -Seconds 1
                 }
-                $loadHiveOutput = reg.exe load $regExeTempKeyName $userHivePath 2>&1 # Use reg.exe name
-                if ($LASTEXITCODE -ne 0) { throw "Failed to load user registry hive into '$regExeTempKeyName': $loadHiveOutput" }
+                $loadHiveOutput = reg.exe load $regExeFullKeyName $userHivePath 2>&1 # Use full reg.exe name
+                if ($LASTEXITCODE -ne 0) { throw "Failed to load user registry hive into '$regExeFullKeyName': $loadHiveOutput" }
                 $userHiveLoadedForApply = $true # Mark that hive was loaded for apply step
-                Write-Log "User registry hive loaded successfully into HKLM\\$regExeTempKeyName" "SUCCESS"
+                Write-Log "User registry hive loaded successfully into $regExeFullKeyName" "SUCCESS"
             } else {
-                 Write-Log "WhatIf: Would load user registry hive from: $userHivePath into HKLM\\$regExeTempKeyName" "PROCESS"
+                 Write-Log "WhatIf: Would load user registry hive from: $userHivePath into $regExeFullKeyName" "PROCESS"
                  # In WhatIf mode, we can't proceed further with modification for offline user
                  Write-Log "WhatIf: Skipping modification as hive loading was skipped." "PROCESS"
                  # Exit cleanly in WhatIf for offline user if load is skipped
@@ -347,7 +352,8 @@ try {
             Write-Log "Targeting loaded user hive: $targetRegKeyPath" "PROCESS"
         }
 
-        # Apply registry change using PowerShell cmdlets
+        # Apply registry change using PowerShell cmdlets (moved outside the if/else for logged-in/off)
+        # This block now runs for both logged-in and logged-off users after $targetRegKeyPath is set
         Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
         if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName'")) {
             try {
@@ -355,8 +361,9 @@ try {
                 $parentPath = Split-Path -Path $targetRegKeyPath
                 if (-not (Test-Path -Path $parentPath)) {
                     Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
-                    # Use the root path for New-Item when creating relative path inside loaded hive
-                    New-Item -Path $psTempHiveRootPath -Name $regKeyRelativePath -Force -ErrorAction Stop | Out-Null
+                    # Determine the root path for New-Item based on whether hive was loaded or not
+                    $newItemRoot = if ($userHiveLoadedForApply) { $psTempHiveRootPath } else { $targetRegRootPath }
+                    New-Item -Path $newItemRoot -Name $regKeyRelativePath -Force -ErrorAction Stop | Out-Null
                     Write-Log "Parent key created." "DETAIL"
                 }
 
@@ -366,10 +373,12 @@ try {
                 $applySuccess = $true
             } catch {
                 Write-Log "Failed to set registry value '$regValueName' at '$targetRegKeyPath'. Error: $_" "ERROR"
-                throw "Failed to apply registry change." # Throw to ensure cleanup runs if needed
+                # Don't throw here, let finally block handle unload if needed, but mark apply as failed
+                $applySuccess = $false
             }
         } else {
             Write-Log "WhatIf: Would set registry value '$regValueName' at '$targetRegKeyPath'" "PROCESS"
+            $applySuccess = $true # Assume success for WhatIf verification
         }
 
     } else {
@@ -408,7 +417,7 @@ try {
         $verificationResult = $false
         if ($userHiveLoadedForApply) {
             # Pass the loaded hive path for verification (format: HKLM\KeyName)
-            $verificationHivePath = "HKLM\\$regExeTempKeyName"
+            $verificationHivePath = $regExeFullKeyName # Use the full key name HKLM\TempHive
             $verificationResult = Confirm-RegistryChanges -Username $Username -LoadedHivePathForVerification $verificationHivePath
         } else {
             # Verify logged-in user or current user normally
@@ -430,12 +439,12 @@ try {
 } finally {
     # Unload the hive if it was loaded during the apply step
     if ($userHiveLoadedForApply) {
-        Write-Log "Unloading user registry hive ($regExeTempKeyName)..." "PROCESS"
+        Write-Log "Unloading user registry hive ($regExeFullKeyName)..." "PROCESS"
         [System.GC]::Collect()
         Start-Sleep -Seconds 1
-        $unloadOutput = reg.exe unload $regExeTempKeyName 2>&1 # Use reg.exe name
+        $unloadOutput = reg.exe unload $regExeFullKeyName 2>&1 # Use full reg.exe name
         if ($LASTEXITCODE -ne 0) {
-            Write-Log "Warning: Failed to unload user registry hive ($regExeTempKeyName): $unloadOutput" "WARNING"
+            Write-Log "Warning: Failed to unload user registry hive ($regExeFullKeyName): $unloadOutput" "WARNING"
         } else {
             Write-Log "User registry hive unloaded successfully." "SUCCESS"
         }
