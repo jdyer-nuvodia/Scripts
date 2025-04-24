@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 23:08:00 UTC
+# Last Updated: 2025-04-24 21:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.6
-# Additional Info: Fixed PowerShell 5.1 syntax errors in try/catch blocks in Test-RegistryChanges function.
+# Version: 1.4.7
+# Additional Info: Fixed PowerShell 5.1 syntax errors with try/catch blocks and proper spacing in Test-RegistryChanges function.
 # =============================================================================
 
 <#
@@ -218,7 +218,8 @@ function Test-RegistryChanges {
                  # Construct the full PS provider path with proper backslash formatting
                  $verificationPath = "Registry::$LoadedHivePathForVerification\$regKeyRelativePath"
                  Write-Log "Verifying pre-loaded hive path: $verificationPath" "DETAIL"
-            } else {
+            } 
+            else {
                 # Hive not pre-loaded by caller, check if user is logged in to determine target
                 $isUserLoggedInVerify = Test-UserLoggedIn -Username $Username
                 if ($isUserLoggedInVerify) {
@@ -227,14 +228,16 @@ function Test-RegistryChanges {
                     if (-not $userSID) { return $false } # Get-UserSID throws on failure, but double-check
                     $verificationPath = "Registry::HKEY_USERS\$userSID\$regKeyRelativePath"
                     Write-Log "Verifying logged-in user's live hive path: $verificationPath" "DETAIL"
-                } else {
+                } 
+                else {
                     # User is not logged in AND hive wasn't pre-loaded by the caller.
                     # This function instance cannot load the hive itself anymore.
                     Write-Log "Verification cannot proceed for logged-off user '$Username' without a pre-loaded hive path." "ERROR"
                     return $false
                 }
             }
-        } else {
+        } 
+        else {
             # No username specified, check current user (HKCU)
             $verificationPath = "Registry::HKEY_CURRENT_USER\$regKeyRelativePath"
             Write-Log "Verifying current user path: $verificationPath" "DETAIL"
