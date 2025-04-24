@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-24 23:32:00 UTC
+# Last Updated: 2025-04-25 00:36:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.12
-# Additional Info: Refactored value verification logic in Test-RegistryChanges to occur outside the inner try/catch block for PS 5.1 compatibility.
+# Version: 1.4.13
+# Additional Info: Added CmdletBinding to Test-RegistryChanges and ensured clean structure for if/elseif/else block for PS 5.1.
 # =============================================================================
 
 <#
@@ -197,6 +197,7 @@ function Test-UserLoggedIn {
 
 # Function to test registry changes
 function Test-RegistryChanges {
+    [CmdletBinding(SupportsShouldProcess = $true)] # Added CmdletBinding
     param (
         [Parameter(Mandatory = $false)]
         [string]$Username,
@@ -207,14 +208,15 @@ function Test-RegistryChanges {
 
     Write-Log "Verifying registry changes..." "PROCESS"
 
+    # ... variable initializations ...
     $verificationPath = $null
     $userSID = $null
-    $currentValue = $null # Initialize currentValue
-    $valueReadSuccess = $false # Flag to track if Get-ItemProperty succeeded
+    $currentValue = $null
+    $valueReadSuccess = $false
 
-    try { # Outer Try Block (Setup Verification Path)
+    try { # Outer Try Block
+        # ... path setup logic ...
         if ($Username) {
-            # Check if a pre-loaded hive path was provided
             if ($LoadedHivePathForVerification) {
                  $verificationPath = "Registry::$LoadedHivePathForVerification\$regKeyRelativePath"
                  Write-Log "Verifying pre-loaded hive path: $verificationPath" "DETAIL"
@@ -238,47 +240,44 @@ function Test-RegistryChanges {
             Write-Log "Verifying current user path: $verificationPath" "DETAIL"
         }
 
-        # Check if path exists before trying to read
         if (-not (Test-Path -Path $verificationPath)) {
             Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
             return $false
         }
 
         # Inner Try Block ONLY for Get-ItemProperty
-        try { 
+        try {
             $currentValue = Get-ItemProperty -Path $verificationPath -Name $regValueName -ErrorAction Stop | 
                             Select-Object -ExpandProperty $regValueName
-            $valueReadSuccess = $true # Mark as success if no exception
-            Write-Log "✓ Verification: Successfully read value '$regValueName' from path '$verificationPath'." "DETAIL"  
-        } 
-        catch { 
+            $valueReadSuccess = $true
+            Write-Log "✓ Verification: Successfully read value '$regValueName' from path '$verificationPath'." "DETAIL"
+        }
+        catch {
             Write-Log "✗ Verification FAILED: Could not read value '$regValueName' from path '$verificationPath'. Error: $_" "ERROR"
-            # Do not return here; let the outer catch handle broader setup errors if needed
             # $valueReadSuccess remains false
-        } 
-        # --- End Inner Try/Catch for Get-ItemProperty ---
+        }
+        # --- End Inner Try/Catch ---
 
     } # End Outer Try Block
-    catch { # Catch for Outer Try Block (Setup Verification Path / Path Check)
-        Write-Log "An error occurred during verification setup or path check: $_" "ERROR" 
-        return $false # Exit if setup fails
+    catch { # Catch for Outer Try Block
+        Write-Log "An error occurred during verification setup or path check: $_" "ERROR"
+        return $false
     } # End Outer Catch Block
 
-    # --- Value Verification Logic (Moved Outside ALL Try/Catch Blocks within this function) ---
+    # --- Value Verification Logic (Outside ALL Try/Catch Blocks) ---
     if (-not $valueReadSuccess) {
-         # If value read failed (inner catch was hit), report failure.
          Write-Log "✗ Verification FAILED: Value read step failed." "ERROR"
          return $false
     }
 
-    # Proceed with checks only if value read succeeded
     if ($null -eq $currentValue) {
         Write-Log "✗ Verification FAILED: Value exists but is null." "WARNING"
         return $false
     }
 
-    # Now perform the comparisons on the successfully retrieved $currentValue
-    if ($regValueName -eq "TimerAutoMount") {
+    # Perform comparisons with explicit bracing for PS 5.1 robustness
+    if ($regValueName -eq "TimerAutoMount") 
+    { 
         # TimerAutoMount specific check
         # Convert both values to string format for logging
         $expectedString = $regValueData | ForEach-Object { $_ } | Out-String
@@ -293,7 +292,8 @@ function Test-RegistryChanges {
         Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists." "SUCCESS"
         return $true
     } 
-    elseif ($currentValue -is [byte[]]) {
+    elseif ($currentValue -is [byte[]]) 
+    { 
         # Byte array comparison
         # Store original values for debugging
         $originalExpected = $regValueData
@@ -356,15 +356,18 @@ function Test-RegistryChanges {
         Write-Log "✓ Verification SUCCESSFUL: Binary value exists with expected format." "SUCCESS"
         return $true # Assuming success for TimerAutoMount workaround
     } 
-    else {
+    else 
+    { 
         # Direct equality check for other types
-        if ($regValueData -ne $currentValue) {
+        if ($regValueData -ne $currentValue) 
+        { 
             Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
             Write-Log "  Expected: $regValueData" "DETAIL"
             Write-Log "  Actual:   $currentValue" "DETAIL"
             return $false
         } 
-        else {
+        else 
+        { 
             Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
             return $true
         }
