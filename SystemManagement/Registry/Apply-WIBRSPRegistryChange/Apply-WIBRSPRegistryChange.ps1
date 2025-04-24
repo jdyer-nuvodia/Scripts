@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-22 22:33:00 UTC
+# Last Updated: 2025-04-24 22:34:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.15
-# Additional Info: Fixed verification logic for binary registry values with direct comparison bypass.
+# Version: 1.4.0
+# Additional Info: Added -Debug parameter to control visibility of debug messages.
 # =============================================================================
 
 <#
@@ -51,7 +51,11 @@ param(
 
     # Internal parameter to reuse already loaded hive for verification
     [Parameter(Mandatory = $false)]
-    [string]$LoadedHivePathForVerification
+    [string]$LoadedHivePathForVerification,
+    
+    # Parameter to control the display of debug messages
+    [Parameter(Mandatory = $false)]
+    [switch]$Debug
 )
 
 # Set error action preference
@@ -81,18 +85,21 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Level] $Message"
     
-    # Write to log file
+    # Always write to log file regardless of debug setting
     Add-Content -Path $logFile -Value $logMessage
     
-    # Write to console with color-coding
-    switch ($Level) {
-        "INFO"    { Write-Host $logMessage -ForegroundColor White }
-        "PROCESS" { Write-Host $logMessage -ForegroundColor Cyan }
-        "SUCCESS" { Write-Host $logMessage -ForegroundColor Green }
-        "WARNING" { Write-Host $logMessage -ForegroundColor Yellow }
-        "ERROR"   { Write-Host $logMessage -ForegroundColor Red }
-        "DEBUG"   { Write-Host $logMessage -ForegroundColor Magenta }
-        "DETAIL"  { Write-Host $logMessage -ForegroundColor DarkGray }
+    # Filter console output based on level and debug parameter
+    if (($Level -ne "DEBUG") -or ($Level -eq "DEBUG" -and $Debug)) {
+        # Write to console with color-coding
+        switch ($Level) {
+            "INFO"    { Write-Host $logMessage -ForegroundColor White }
+            "PROCESS" { Write-Host $logMessage -ForegroundColor Cyan }
+            "SUCCESS" { Write-Host $logMessage -ForegroundColor Green }
+            "WARNING" { Write-Host $logMessage -ForegroundColor Yellow }
+            "ERROR"   { Write-Host $logMessage -ForegroundColor Red }
+            "DEBUG"   { Write-Host $logMessage -ForegroundColor Magenta }
+            "DETAIL"  { Write-Host $logMessage -ForegroundColor DarkGray }
+        }
     }
 }
 
