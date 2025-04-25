@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 00:02:00 UTC
+# Last Updated: 2025-04-25 15:17:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.21
-# Additional Info: Completely refactored Try/Catch structure and conditional logic for PowerShell 5.1 compatibility.
+# Version: 1.4.22
+# Additional Info: Extreme simplification of code structure for maximum PowerShell 5.1 compatibility.
 # =============================================================================
 
 <#
@@ -141,7 +141,7 @@ function Test-UserLoggedIn {
     }
 }
 
-# Function to test registry changes
+# Function to test registry changes - completely rewritten for PS 5.1 compatibility
 function Test-RegistryChanges {
     [CmdletBinding(SupportsShouldProcess = $true)] 
     param (
@@ -165,119 +165,141 @@ function Test-RegistryChanges {
     )
 
     Write-Log "Verifying registry changes..." "PROCESS"
-
+    
+    # Initialize variables
     $verificationPath = $null
     $userSID = $null
     $currentValue = $null
-    $valueReadSuccess = $false
     $finalVerificationResult = $false
-
-    # Setup verification path - in its own try/catch block
-    try {
-        # Determine the correct verification path
-        if ($Username) {
-            if ($LoadedHivePathForVerification) {
-                $verificationPath = "Registry::$LoadedHivePathForVerification\$RegKeyRelativePath"
-                Write-Log "Verification Target: Loaded Hive at $verificationPath" "DETAIL"
-            } 
-            else {
+    
+    # STEP 1: Determine verification path - simple single purpose block
+    if ($Username) {
+        if ($LoadedHivePathForVerification) {
+            $verificationPath = "Registry::$LoadedHivePathForVerification\$RegKeyRelativePath"
+            Write-Log "Verification Target: Loaded Hive at $verificationPath" "DETAIL"
+        } 
+        else {
+            try {
                 $userSID = Get-UserSID -Username $Username
                 if (-not $userSID) { 
-                    throw "Could not get SID for verification for user '$Username'." 
+                    Write-Log "Could not get SID for verification for user '$Username'." "ERROR"
+                    return $false
                 }
                 $verificationPath = "Registry::HKEY_USERS\$userSID\$RegKeyRelativePath"
                 Write-Log "Verification Target: Live User Hive at $verificationPath" "DETAIL"
             }
-        } 
-        else {
-            $verificationPath = "Registry::HKEY_CURRENT_USER\$RegKeyRelativePath"
-            Write-Log "Verification Target: HKEY_CURRENT_USER at $verificationPath" "DETAIL"
+            catch {
+                Write-Log "Error getting user SID: $_" "ERROR"
+                return $false
+            }
         }
+    } 
+    else {
+        $verificationPath = "Registry::HKEY_CURRENT_USER\$RegKeyRelativePath"
+        Write-Log "Verification Target: HKEY_CURRENT_USER at $verificationPath" "DETAIL"
     }
-    catch {
-        Write-Log "An error occurred during verification path setup: $_" "ERROR"
+    
+    # STEP 2: Check if path exists
+    if (-not (Test-Path -Path $verificationPath)) {
+        Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
         return $false
     }
-
-    # Check if path exists - in its own try/catch block
-    try {
-        if (-not (Test-Path -Path $verificationPath)) {
-            Write-Log "✗ Verification FAILED: Registry key path does not exist: $verificationPath" "ERROR"
-            return $false
-        }
-    }
-    catch {
-        Write-Log "An error occurred checking verification path: $_" "ERROR"
-        return $false
-    }
-
-    # Read the value - in its own try/catch block
+    
+    # STEP 3: Read registry value
     try {
         $currentValue = Get-ItemProperty -Path $verificationPath -Name $RegValueName -ErrorAction Stop | 
                         Select-Object -ExpandProperty $RegValueName
-        $valueReadSuccess = $true
-        Write-Log "✓ Verification: Successfully read value '$RegValueName' from path '$verificationPath'." "DETAIL"
+        Write-Log "✓ Verification: Successfully read value '$RegValueName'." "DETAIL"
     }
     catch {
-        Write-Log "✗ Verification FAILED: Could not read value '$RegValueName' from path '$verificationPath'. Error: $_" "ERROR"
+        Write-Log "✗ Verification FAILED: Could not read value '$RegValueName'. Error: $_" "ERROR"
         return $false
     }
-
-    # Check for null values
+    
+    # STEP 4: Check for null values
     if ($null -eq $currentValue -and $null -ne $RegValueData) {
-        Write-Log "✗ Verification FAILED: Value '$RegValueName' exists but is null/empty, expected non-null value '$RegValueData'." "WARNING"
+        Write-Log "✗ Verification FAILED: Value exists but is null/empty, expected non-null value." "WARNING"
         return $false
     }
-
-    # SEPARATE conditional blocks for value comparison - avoid nesting if/elseif/else with try/catch
-    # Special handling for TimerAutoMount (Binary)
+    
+    # STEP 5: Compare values based on type
+    # Special case for TimerAutoMount
     if ($RegValueName -eq "TimerAutoMount" -and $RegValueType -eq [Microsoft.Win32.RegistryValueKind]::Binary) {
         Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists (existence check only)." "SUCCESS"
-        $finalVerificationResult = $true
+        return $true
     }
-    # Handle byte array comparison
-    elseif (($currentValue -is [byte[]]) -and ($RegValueData -is [byte[]])) {
-        $compareResult = Compare-Object -ReferenceObject $RegValueData -DifferenceObject $currentValue -SyncWindow 0
-        if ($null -eq $compareResult) {
+    
+    # Binary value comparison
+    if (($currentValue -is [byte[]]) -and ($RegValueData -is [byte[]])) {
+        $comparisonResult = $true
+        # Simple length check first
+        if ($currentValue.Length -ne $RegValueData.Length) {
+            $comparisonResult = $false
+        }
+        else {
+            # Check each byte
+            for ($i = 0; $i -lt $currentValue.Length; $i++) {
+                if ($currentValue[$i] -ne $RegValueData[$i]) {
+                    $comparisonResult = $false
+                    break
+                }
+            }
+        }
+        
+        if ($comparisonResult) {
             Write-Log "✓ Verification SUCCESSFUL: Binary value matches expected." "SUCCESS"
-            $finalVerificationResult = $true
+            return $true
         }
         else {
             Write-Log "✗ Verification FAILED: Binary value does not match expected." "WARNING"
-            Write-Log "  Expected (bytes): $(($RegValueData | ForEach-Object { $_.ToString('X2') }) -join ' ')" "DETAIL"
-            Write-Log "  Actual   (bytes): $(($currentValue | ForEach-Object { $_.ToString('X2') }) -join ' ')" "DETAIL"
-            $finalVerificationResult = $false
-        }
-    }
-    # Handle MultiString comparison
-    elseif ($RegValueType -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
-        $compareResult = Compare-Object -ReferenceObject $RegValueData -DifferenceObject $currentValue -SyncWindow 0
-        if ($null -eq $compareResult) {
-            Write-Log "✓ Verification SUCCESSFUL: MultiString value matches expected." "SUCCESS"
-            $finalVerificationResult = $true
-        }
-        else {
-            Write-Log "✗ Verification FAILED: MultiString value does not match expected." "WARNING"
-            Write-Log "  Expected: $($RegValueData -join '; ')" "DETAIL"
-            Write-Log "  Actual:   $($currentValue -join '; ')" "DETAIL"
-            $finalVerificationResult = $false
-        }
-    }
-    # Direct equality check for other types
-    else {
-        if ($RegValueData -ne $currentValue) {
-            Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
-            Write-Log "  Expected: $RegValueData ($($RegValueData.GetType().Name))" "DETAIL"
-            Write-Log "  Actual:   $currentValue ($($currentValue.GetType().Name))" "DETAIL"
-            $finalVerificationResult = $false
-        }
-        else {
-            Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
-            $finalVerificationResult = $true
+            return $false
         }
     }
     
-    return $finalVerificationResult
+    # MultiString comparison
+    if ($RegValueType -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
+        $comparisonResult = $true
+        # Simple length check first
+        if (($currentValue -is [array]) -and ($RegValueData -is [array])) {
+            if ($currentValue.Length -ne $RegValueData.Length) {
+                $comparisonResult = $false
+            }
+            else {
+                # Check each string
+                for ($i = 0; $i -lt $currentValue.Length; $i++) {
+                    if ($currentValue[$i] -ne $RegValueData[$i]) {
+                        $comparisonResult = $false
+                        break
+                    }
+                }
+            }
+        }
+        else {
+            # One of them is not an array
+            $comparisonResult = ($currentValue -eq $RegValueData)
+        }
+        
+        if ($comparisonResult) {
+            Write-Log "✓ Verification SUCCESSFUL: MultiString value matches expected." "SUCCESS"
+            return $true
+        }
+        else {
+            Write-Log "✗ Verification FAILED: MultiString value does not match expected." "WARNING"
+            return $false
+        }
+    }
+    
+    # For all other types - direct comparison
+    if ($RegValueData -eq $currentValue) {
+        Write-Log "✓ Verification SUCCESSFUL: Value exists and matches expected." "SUCCESS"
+        return $true
+    }
+    else {
+        Write-Log "✗ Verification FAILED: Value does not match expected." "WARNING"
+        Write-Log "  Expected: $RegValueData ($($RegValueData.GetType().Name))" "DETAIL"
+        Write-Log "  Actual:   $currentValue ($($currentValue.GetType().Name))" "DETAIL"
+        return $false
+    }
 } # End of Test-RegistryChanges
 
 # Function alias with approved verb - redirects to Test-RegistryChanges
@@ -330,209 +352,215 @@ function Confirm-RegistryChanges {
 
 } # End of Confirm-RegistryChanges
 
-# --- Main Script Logic ---
-try {    
+# --- Main Script Logic - Simplified structure for PS 5.1 ---
+# Step 1: Initialize
+$ErrorActionPreference = "Stop"
+$verificationSuccess = $false
+$applySuccess = $false
+$userHiveLoadedForApply = $false
+$userHiveLoadedForVerify = $false
+$userHivePath = $null
+$targetRegKeyPath = $null
+$targetRegRootPath = $null
+
+try {
+    # Log script start
     Write-Log "Starting registry change application script" "INFO"
-    Write-Log "Script version: $($MyInvocation.MyCommand.Version)" "DETAIL"
+    Write-Log "Script version: 1.4.22" "DETAIL"
     Write-Log "Log file: $LogPath" "DETAIL"
     
-    # Check for Admin/SYSTEM privileges
+    # Check for Admin
     $currentUserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object System.Security.Principal.WindowsPrincipal($currentUserIdentity)
     $isAdmin = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
-    Write-Log "Running as: $($currentUserIdentity.Name) (Elevated/SYSTEM: $isAdmin)" "DETAIL"
+    Write-Log "Running as: $($currentUserIdentity.Name) (Elevated: $isAdmin)" "DETAIL"
+    
     if (-not $isAdmin) {
-        throw "This script requires administrative privileges to modify registry hives."
+        throw "This script requires administrative privileges."
     }
-
-    # Define variables for target path construction
-    $targetRegRootPath = $null
-    $targetRegKeyPath = $null
-    $userHiveLoadedForApply = $false
-    $userHiveLoadedForVerify = $false
-    $regExeApplyHiveMount = "HKLM\TempHiveApply" # Unique name for apply load
-    $regExeVerifyHiveMount = "HKLM\TempHiveVerify" # Unique name for verify load
-    $psApplyHiveRootPath = "Registry::$regExeApplyHiveMount" # PS path for apply
-    $psVerifyHiveRootPath = "Registry::$regExeVerifyHiveMount" # PS path for verify
-    $userSID = $null
-    $isUserLoggedIn = $false
-    $applySuccess = $false # Flag to track if the apply step succeeded
-    $verificationSuccess = $false # Flag for final verification result
-    $userHivePath = $null # Store NTUSER.DAT path
-
-    # --- Determine Target and Load Hive if Necessary ---
+    
+    # Setup variables
+    $regExeApplyHiveMount = "HKLM\TempHiveApply"
+    $regExeVerifyHiveMount = "HKLM\TempHiveVerify"
+    $psApplyHiveRootPath = "Registry::$regExeApplyHiveMount"
+    $psVerifyHiveRootPath = "Registry::$regExeVerifyHiveMount"
+    
+    # Target determination
     if ($Username) {
         Write-Log "Target user specified: $Username" "PROCESS"
         $userSID = Get-UserSID -Username $Username
-        if (-not $userSID) { throw "Could not get SID for user '$Username'." }
+        
+        if (-not $userSID) { 
+            throw "Could not get SID for user '$Username'."
+        }
         
         $isUserLoggedIn = Test-UserLoggedIn -Username $Username
         
         if ($isUserLoggedIn) {
-            # User is logged in, target HKEY_USERS\<SID>
             $targetRegRootPath = "Registry::HKEY_USERS\$userSID"
             $targetRegKeyPath = Join-Path -Path $targetRegRootPath -ChildPath $regKeyRelativePath
             Write-Log "Targeting live user hive: $targetRegKeyPath" "PROCESS"
-        } else {
-            # User is not logged in, need to load NTUSER.DAT
+        }
+        else {
+            # Load user hive
             Write-Log "User not logged in. Locating user hive..." "PROCESS"
             $userProfile = Get-CimInstance -ClassName Win32_UserProfile | Where-Object { $_.SID -eq $userSID }
-            if (-not $userProfile) { throw "User profile for SID '$userSID' ($Username) not found via WMI." }
+            
+            if (-not $userProfile) { 
+                throw "User profile for SID '$userSID' ($Username) not found." 
+            }
+            
             $userHivePath = Join-Path -Path $userProfile.LocalPath -ChildPath "NTUSER.DAT"
-            if (-not (Test-Path -Path $userHivePath)) { throw "NTUSER.DAT not found at $userHivePath." }
-
-            Write-Log "Attempting to load user hive for APPLY: $userHivePath -> $regExeApplyHiveMount" "PROCESS"
-            if ($PSCmdlet.ShouldProcess("Registry Hive: $userHivePath", "Load into $regExeApplyHiveMount for Apply")) {
-                # Ensure Apply mount point is clear
+            
+            if (-not (Test-Path -Path $userHivePath)) { 
+                throw "NTUSER.DAT not found at $userHivePath." 
+            }
+            
+            Write-Log "Loading user hive: $userHivePath" "PROCESS"
+            
+            if ($PSCmdlet.ShouldProcess("Registry Hive: $userHivePath", "Load into $regExeApplyHiveMount")) {
+                # Clear the mount point if it exists
                 if (Test-Path -Path $psApplyHiveRootPath) {
-                    Write-Log "Unloading existing apply hive mount ($regExeApplyHiveMount)..." "DEBUG"
+                    Write-Log "Unloading existing hive mount..." "DEBUG"
                     reg.exe unload $regExeApplyHiveMount 2>&1 | Out-Null
                     Start-Sleep -Seconds 1
                 }
-                $loadHiveOutput = reg.exe load $regExeApplyHiveMount $userHivePath 2>&1
-                if ($LASTEXITCODE -ne 0) { throw "Failed to load user registry hive into '$regExeApplyHiveMount': $loadHiveOutput" }
+                
+                # Load the hive
+                $loadResult = reg.exe load $regExeApplyHiveMount $userHivePath 2>&1
+                
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Failed to load user registry hive: $loadResult"
+                }
+                
                 $userHiveLoadedForApply = $true
-                Write-Log "User registry hive loaded successfully into $regExeApplyHiveMount for Apply." "SUCCESS"
+                Write-Log "User registry hive loaded successfully." "SUCCESS"
                 $targetRegKeyPath = Join-Path -Path $psApplyHiveRootPath -ChildPath $regKeyRelativePath
-                Write-Log "Targeting loaded apply hive: $targetRegKeyPath" "PROCESS"
-            } else {
-                 Write-Log "WhatIf: Skipped loading registry hive $userHivePath into $regExeApplyHiveMount for Apply." "INFO"
-                 # Cannot proceed with apply if hive load is skipped
-                 $applySuccess = $false 
+                Write-Log "Targeting loaded hive: $targetRegKeyPath" "PROCESS"
             }
-        } 
-    } else {
-        # No username specified, target HKEY_CURRENT_USER
-        Write-Log "Targeting current user (HKEY_CURRENT_USER)" "PROCESS"
+            else {
+                Write-Log "WhatIf: Would load registry hive" "INFO"
+            }
+        }
+    }
+    else {
+        # No username specified
+        Write-Log "Targeting current user" "PROCESS"
         $targetRegRootPath = "Registry::HKEY_CURRENT_USER"
         $targetRegKeyPath = Join-Path -Path $targetRegRootPath -ChildPath $regKeyRelativePath
-        Write-Log "Targeting current user hive: $targetRegKeyPath" "PROCESS"
     }
+}
+catch {
+    Write-Log "Error in initialization: $_" "ERROR"
+    # Cleanup will happen in Finally block
+}
 
-    # --- Apply Registry Change ---
-    # Proceed only if we have a valid target path (i.e., not skipped by WhatIf on hive load)
+# Apply registry change
+try {
     if ($targetRegKeyPath) {
-        Write-Log "Applying registry change: Set '$regValueName' in '$targetRegKeyPath'" "PROCESS"
-        if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value '$regValueName' = '$regValueData' (Type: $regValueType)")) {
-            try {
-                # Ensure parent key exists
-                $parentPath = Split-Path -Path $targetRegKeyPath -Parent
-                if (-not (Test-Path -Path $parentPath)) {
-                    Write-Log "Parent key '$parentPath' does not exist. Creating..." "DETAIL"
-                    # Create parent keys recursively
-                    $null = New-Item -Path $parentPath -Force -ErrorAction Stop
-                }
-                # Set the value
-                Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force -ErrorAction Stop
-                Write-Log "✓ Registry value '$regValueName' set successfully in '$targetRegKeyPath'." "SUCCESS"
-                $applySuccess = $true
-            } catch {
-                Write-Log "✗ FAILED to apply registry change to '$targetRegKeyPath'. Error: $_" "ERROR"
-                $applySuccess = $false
-                # Optionally re-throw to stop script, or just log and continue to finally block
-                # throw $_ 
+        Write-Log "Applying registry change: $regValueName = $regValueData" "PROCESS"
+        
+        if ($PSCmdlet.ShouldProcess($targetRegKeyPath, "Set registry value")) {
+            # Ensure parent key exists
+            $parentPath = Split-Path -Path $targetRegKeyPath -Parent
+            
+            if (-not (Test-Path -Path $parentPath)) {
+                Write-Log "Creating parent key..." "DETAIL"
+                $null = New-Item -Path $parentPath -Force
             }
-        } else {
-             Write-Log "Skipped applying registry change due to -WhatIf." "INFO"
-             $applySuccess = $true # Assume success for WhatIf verification purposes
+            
+            # Set value
+            Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force
+            Write-Log "Registry value set successfully." "SUCCESS"
+            $applySuccess = $true
         }
-    } else {
-        Write-Log "Skipping Apply step because target path was not determined (likely due to -WhatIf on hive load)." "INFO"
-        $applySuccess = $false
+        else {
+            Write-Log "WhatIf: Would set registry value" "INFO"
+            $applySuccess = $true # For WhatIf mode
+        }
     }
+}
+catch {
+    Write-Log "Error applying registry change: $_" "ERROR"
+    $applySuccess = $false
+}
 
-    # --- Verification Step ---
-    # Separate if and else blocks to avoid nested try/catch/if/else issues in PS 5.1
+# Verify registry change
+try {
     if ($applySuccess) {
-        Write-Log "Proceeding to verification..." "PROCESS"
+        Write-Log "Verifying registry change..." "PROCESS"
+        
+        # Set up verification parameters
         $verifyParams = @{
             RegKeyRelativePath = $regKeyRelativePath
             RegValueName = $regValueName
             RegValueData = $regValueData
             RegValueType = $regValueType
-            ErrorAction = 'Stop'
         }
         
+        # Add username if specified
         if ($Username) {
             $verifyParams.Username = $Username
             
-            # Load hive for verification if needed
-            if ($userHiveLoadedForApply) {
-                Write-Log "Attempting to load user hive for VERIFY: $userHivePath -> $regExeVerifyHiveMount" "PROCESS"
-                
-                if ($PSCmdlet.ShouldProcess("Registry Hive: $userHivePath", "Load into $regExeVerifyHiveMount for Verify")) {
-                    # Clear verify mount point if needed
+            # For logged-off users, we need to load the hive for verification
+            if (-not $isUserLoggedIn -and $userHivePath) {
+                if ($PSCmdlet.ShouldProcess("Registry Hive: $userHivePath", "Load for verification")) {
+                    # Ensure verify mount point is clear
                     if (Test-Path -Path $psVerifyHiveRootPath) {
-                        Write-Log "Unloading existing verify hive mount ($regExeVerifyHiveMount)..." "DEBUG"
                         reg.exe unload $regExeVerifyHiveMount 2>&1 | Out-Null
                         Start-Sleep -Seconds 1
                     }
                     
-                    # Attempt to load the hive
-                    $loadVerifyOutput = reg.exe load $regExeVerifyHiveMount $userHivePath 2>&1
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Log "Failed to load user registry hive into '$regExeVerifyHiveMount' for verification: $loadVerifyOutput" "ERROR"
-                        $verificationSuccess = $false
+                    # Load for verification
+                    $loadVerifyResult = reg.exe load $regExeVerifyHiveMount $userHivePath 2>&1
+                    
+                    if ($LASTEXITCODE -eq 0) {
+                        $userHiveLoadedForVerify = $true
+                        $verifyParams.LoadedHivePathForVerification = $regExeVerifyHiveMount
+                        Write-Log "Loaded hive for verification" "SUCCESS"
                     }
                     else {
-                        $userHiveLoadedForVerify = $true
-                        Write-Log "User registry hive loaded successfully into $regExeVerifyHiveMount for Verify." "SUCCESS"
-                        $verifyParams.LoadedHivePathForVerification = $regExeVerifyHiveMount
+                        Write-Log "Failed to load hive for verification: $loadVerifyResult" "WARNING"
                     }
-                }
-                else {
-                    Write-Log "WhatIf: Skipped loading registry hive $userHivePath into $regExeVerifyHiveMount for Verify." "INFO"
-                    $verificationSuccess = $false
                 }
             }
         }
         
-        # Run verification only if conditions are met
+        # Perform verification if possible
         if ($isUserLoggedIn -or -not $Username -or $userHiveLoadedForVerify) {
-            Write-Log "Running verification check..." "PROCESS"
-            $verificationSuccess = Confirm-RegistryChanges @verifyParams -WhatIf:$false -ErrorAction Continue
+            $verificationSuccess = Confirm-RegistryChanges @verifyParams -WhatIf:$false
         }
         else {
-            Write-Log "Skipping verification because the required hive could not be loaded or accessed." "WARNING"
-            $verificationSuccess = $false
+            Write-Log "Cannot verify - user not logged in and hive not loaded" "WARNING"
         }
     }
     else {
-        Write-Log "Skipping verification because the apply step did not succeed or was skipped." "WARNING"
-        $verificationSuccess = $false
+        Write-Log "Skipping verification due to failed apply" "WARNING"
     }
 }
 catch {
-    Write-Log "An error occurred in the main script block: $_" "ERROR"
+    Write-Log "Error in verification: $_" "ERROR"
     $verificationSuccess = $false
 }
 finally {
-    # --- Cleanup: Unload hives ---
+    # Cleanup
     Write-Log "Performing cleanup..." "PROCESS"
     
-    # Unload apply hive if loaded
+    # Unload hives if loaded
     if ($userHiveLoadedForApply) {
-        Write-Log "Unloading apply hive mount ($regExeApplyHiveMount)..." "PROCESS"
         if ($PSCmdlet.ShouldProcess($regExeApplyHiveMount, "Unload Registry Hive")) {
             reg.exe unload $regExeApplyHiveMount 2>&1 | Out-Null
-            Write-Log "Apply user registry hive unloaded successfully." "SUCCESS"
-        }
-        else {
-            Write-Log "WhatIf: Skipped unloading apply hive mount $regExeApplyHiveMount." "INFO"
+            Write-Log "Unloaded Apply hive" "SUCCESS"
         }
     }
     
-    # Unload verify hive if loaded
     if ($userHiveLoadedForVerify) {
-        Write-Log "Unloading verify hive mount ($regExeVerifyHiveMount)..." "PROCESS"
         if ($PSCmdlet.ShouldProcess($regExeVerifyHiveMount, "Unload Registry Hive")) {
             reg.exe unload $regExeVerifyHiveMount 2>&1 | Out-Null
-            Write-Log "Verify user registry hive unloaded successfully." "SUCCESS"
-        }
-        else {
-            Write-Log "WhatIf: Skipped unloading verify hive mount $regExeVerifyHiveMount." "INFO"
+            Write-Log "Unloaded Verify hive" "SUCCESS"
         }
     }
-
-    Write-Log "Script finished. Final Verification Status: $($verificationSuccess)" "INFO"
+    
+    # Final status
+    Write-Log "Script finished. Success: $verificationSuccess" "INFO"
 }
