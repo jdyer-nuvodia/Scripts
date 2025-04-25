@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 17:43:00 UTC
+# Last Updated: 2025-04-25 22:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.3
-# Additional Info: Replace Set-ItemProperty -Type with New-ItemProperty for PS 5.1 compatibility
+# Version: 1.5.4
+# Additional Info: Fix braces and Write-Host color param errors for PS 5.1 compatibility
 # =============================================================================
 
 <#
@@ -308,7 +308,9 @@ function Test-RegistryChanges {
         Write-Log "  Actual:   $currentValue ($($currentValue.GetType().Name))" "DETAIL"
         return $false
     }
-}
+} # Close Test-RegistryChanges function
+
+# --- Function alias Confirm-RegistryChanges follows ---
 
 # Function alias with approved verb - redirects to Test-RegistryChanges
 function Confirm-RegistryChanges {
@@ -575,5 +577,6 @@ finally {
     
     # Final status
     Write-Log "Script finished. Success: $verificationSuccess" "INFO"
-    Write-Host "Script execution complete. Success: $verificationSuccess" -ForegroundColor $(if ($verificationSuccess) { "Green" } else { "Yellow" })
+    $finalColor = if ($verificationSuccess) { 'Green' } else { 'Yellow' }
+    Write-Host "Script execution complete. Success: $verificationSuccess" -ForegroundColor $finalColor
 }
