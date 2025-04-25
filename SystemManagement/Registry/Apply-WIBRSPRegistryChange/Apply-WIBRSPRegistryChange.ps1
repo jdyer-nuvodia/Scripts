@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 15:23:00 UTC
-# Updated By: GitHub Copilot
-# Version: 1.4.23
-# Additional Info: Fixed PSScriptAnalyzer warning - removed unused variable.
+# Last Updated: 2025-04-25 15:49:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.4.24
+# Additional Info: Fixed syntax errors: missing braces, catch blocks, and string terminators.
 # =============================================================================
 
 <#
