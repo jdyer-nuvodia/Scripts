@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 15:49:00 UTC
+# Last Updated: 2025-04-25 16:03:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.24
-# Additional Info: Fixed syntax errors: missing braces, catch blocks, and string terminators.
+# Version: 1.4.25
+# Additional Info: Fixed syntax errors for PowerShell 5.1 compatibility - corrected function structure and brace placement.
 # =============================================================================
 
 <#
@@ -227,8 +227,7 @@ function Test-RegistryChanges {
         Write-Log "✓ Verification SUCCESSFUL: TimerAutoMount registry value exists (existence check only)." "SUCCESS"
         return $true
     }
-    
-    # Binary value comparison
+      # Binary value comparison
     if (($currentValue -is [byte[]]) -and ($RegValueData -is [byte[]])) {
         $comparisonResult = $true
         # Simple length check first
@@ -254,7 +253,7 @@ function Test-RegistryChanges {
             return $false
         }
     }
-    
+
     # MultiString comparison
     if ($RegValueType -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
         $comparisonResult = $true
