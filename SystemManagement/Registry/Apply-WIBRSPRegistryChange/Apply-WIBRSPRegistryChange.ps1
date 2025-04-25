@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 23:30:00 UTC
+# Last Updated: 2025-04-25 17:43:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.2
-# Additional Info: Complete rewrite for PowerShell 5.1 compatibility
+# Version: 1.5.3
+# Additional Info: Replace Set-ItemProperty -Type with New-ItemProperty for PS 5.1 compatibility
 # =============================================================================
 
 <#
@@ -480,7 +480,7 @@ try {
             }
             
             # Set value
-            Set-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -Type $regValueType -Force
+            New-ItemProperty -Path $targetRegKeyPath -Name $regValueName -Value $regValueData -PropertyType $regValueType -Force
             Write-Log "Registry value set successfully." "SUCCESS"
             $applySuccess = $true
         }
