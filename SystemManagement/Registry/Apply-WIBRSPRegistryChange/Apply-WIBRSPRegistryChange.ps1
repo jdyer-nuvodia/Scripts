@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 15:17:00 UTC
+# Last Updated: 2025-04-25 15:23:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.22
-# Additional Info: Extreme simplification of code structure for maximum PowerShell 5.1 compatibility.
+# Version: 1.4.23
+# Additional Info: Fixed PSScriptAnalyzer warning - removed unused variable.
 # =============================================================================
 
 <#
@@ -170,7 +170,6 @@ function Test-RegistryChanges {
     $verificationPath = $null
     $userSID = $null
     $currentValue = $null
-    $finalVerificationResult = $false
     
     # STEP 1: Determine verification path - simple single purpose block
     if ($Username) {
