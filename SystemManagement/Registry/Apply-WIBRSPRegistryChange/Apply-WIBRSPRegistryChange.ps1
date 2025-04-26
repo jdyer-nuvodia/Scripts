@@ -2,10 +2,10 @@
 # Script: Apply-WIBRSPRegistryChange.ps1
 # Created: 2025-04-24 18:10:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-25 22:30:00 UTC
+# Last Updated: 2025-04-26 00:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.4
-# Additional Info: Fix braces and Write-Host color param errors for PS 5.1 compatibility
+# Version: 1.5.5
+# Additional Info: Fix missing braces in Test-RegistryChanges for parsing errors
 # =============================================================================
 
 <#
@@ -262,7 +262,7 @@ function Test-RegistryChanges {
             Write-Log "✗ Verification FAILED: Binary value does not match expected." "WARNING"
             return $false
         }
-    }
+    } # End Binary comparison block
 
     # MultiString comparison
     if ($RegValueType -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
