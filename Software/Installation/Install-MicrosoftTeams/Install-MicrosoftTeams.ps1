@@ -2,10 +2,10 @@
 # Script: Install-MicrosoftTeams.ps1
 # Created: 2025-04-08 15:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-28 23:25:00 UTC
+# Last Updated: 2025-04-28 23:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.3
-# Additional Info: Fixed syntax errors and formatting issues throughout the script
+# Version: 1.7.4
+# Additional Info: Fixed architecture detection and installer compatibility issues
 # =============================================================================
 
 <#
@@ -612,8 +612,7 @@ function Install-Teams {
                 }
                 
                 Write-Host "Using EXE installer with silent arguments" -ForegroundColor DarkGray
-                
-                # Check if the EXE is compatible with this system
+                  # Check if the EXE is compatible with this system
                 try {
                     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
                     $pinfo.FileName = $exeInstallerPath
@@ -640,64 +639,204 @@ function Install-Teams {
                             Write-Host "ERROR: The installer is not compatible with this OS platform (Error 193)" -ForegroundColor Red
                             Write-Host "This typically indicates an architecture mismatch (e.g., trying to run 64-bit EXE on 32-bit Windows)" -ForegroundColor Yellow
                             
-                            # Try to download the correct architecture
-                            $correctArch = if ($osArch -eq "x64") { "x86" } else { "x64" }
+                            # Always download the x86 installer as a fallback
+                            $correctArch = "x86"
                             Write-Host "Attempting to download $correctArch installer instead..." -ForegroundColor Cyan
                             
                             $correctUrl = "https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=$correctArch&download=true"
                             $correctInstallerPath = Join-Path -Path $tempDir -ChildPath "Teams_windows_$correctArch.exe"
                             
                             try {
-                                Invoke-WebRequest -Uri $correctUrl -OutFile $correctInstallerPath -UseBasicParsing
+                                # Try direct download for x86
+                                $webClient = New-Object System.Net.WebClient
+                                $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                                $webClient.DownloadFile($correctUrl, $correctInstallerPath)
+                                
                                 if ((Test-Path -Path $correctInstallerPath) -and ((Get-Item -Path $correctInstallerPath).Length -gt 10MB)) {
                                     Write-Host "Successfully downloaded alternative architecture Teams installer" -ForegroundColor Green
                                     $exeInstallerPath = $correctInstallerPath
                                 }
                                 else {
-                                    throw "Failed to download alternative architecture installer"
+                                    # Try fallback link for x86
+                                    $fallbackX86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                                    Write-Host "Trying fallback link for x86..." -ForegroundColor Yellow
+                                    $webClient.DownloadFile($fallbackX86Url, $correctInstallerPath)
+                                    
+                                    if ((Test-Path -Path $correctInstallerPath) -and ((Get-Item -Path $correctInstallerPath).Length -gt 10MB)) {
+                                        Write-Host "Successfully downloaded x86 Teams installer from fallback link" -ForegroundColor Green
+                                        $exeInstallerPath = $correctInstallerPath
+                                    } else {
+                                        throw "Failed to download alternative architecture installer"
+                                    }
                                 }
                             }
-                            catch {                                Write-Host "Failed to download alternative installer. Attempting direct installation anyway." -ForegroundColor Yellow
+                            catch {                                
+                                Write-Host "Failed to download alternative installer: $_" -ForegroundColor Red
+                                Write-Host "Attempting to extract installer from MSI package..." -ForegroundColor Yellow
+                                
+                                # Try using MSI as a last resort
+                                $msiUrl = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                                $msiPath = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86.msi"
+                                
+                                try {
+                                    Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing
+                                    
+                                    if ((Test-Path -Path $msiPath) -and ((Get-Item -Path $msiPath).Length -gt 10MB)) {
+                                        Write-Host "Successfully downloaded Teams MSI installer" -ForegroundColor Green
+                                        $exeInstallerPath = $msiPath
+                                        $installerExtension = ".msi"
+                                    } else {
+                                        throw "Failed to download MSI installer"
+                                    }
+                                } catch {
+                                    Write-Host "All download attempts failed. Cannot continue with installation." -ForegroundColor Red
+                                    return
+                                }
                             }
                         }
                         else {
                             Write-Host "WARNING: Installer compatibility check failed: $($_.Exception.Message)" -ForegroundColor Yellow
-                            Write-Host "Attempting to proceed with installation regardless..." -ForegroundColor Yellow
+                            Write-Host "Will try to download x86 version as fallback..." -ForegroundColor Yellow
+                            
+                            # Force x86 download
+                            $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                            $x86Path = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86.exe"
+                            
+                            try {
+                                Invoke-WebRequest -Uri $x86Url -OutFile $x86Path -UseBasicParsing
+                                
+                                if ((Test-Path -Path $x86Path) -and ((Get-Item -Path $x86Path).Length -gt 10MB)) {
+                                    Write-Host "Successfully downloaded x86 Teams installer" -ForegroundColor Green
+                                    $exeInstallerPath = $x86Path
+                                } else {
+                                    throw "Failed to download x86 installer"
+                                }
+                            } catch {
+                                Write-Host "Failed to download x86 installer: $_" -ForegroundColor Red
+                                # Continue with original installer despite warning
+                            }
                         }
                     }
                 }
                 catch {
                     Write-Host "WARNING: Installer compatibility check failed: $_" -ForegroundColor Yellow
-                    Write-Host "Attempting to proceed with installation anyway..." -ForegroundColor Yellow
+                    Write-Host "Will try to download x86 version as fallback..." -ForegroundColor Yellow
+                    
+                    # Force x86 download
+                    $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                    $x86Path = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86.exe"
+                    
+                    try {
+                        Invoke-WebRequest -Uri $x86Url -OutFile $x86Path -UseBasicParsing
+                        
+                        if ((Test-Path -Path $x86Path) -and ((Get-Item -Path $x86Path).Length -gt 10MB)) {
+                            Write-Host "Successfully downloaded x86 Teams installer" -ForegroundColor Green
+                            $exeInstallerPath = $x86Path
+                        } else {
+                            throw "Failed to download x86 installer"
+                        }
+                    } catch {
+                        Write-Host "Failed to download x86 installer: $_" -ForegroundColor Red
+                        # Continue with original installer despite warning
+                    }
                 }
-                  
-                # Now try the actual installation
+                    # Now try the actual installation
                 try {
                     Write-Host "Starting Teams installation..." -ForegroundColor Cyan
-                    $process = Start-Process -FilePath $exeInstallerPath -ArgumentList $installerArguments -Wait -PassThru
-                }                catch {
-                    Write-Host "Error during Teams installation: $_" -ForegroundColor Red
-                    throw "Teams installation failed"
+                    Write-Host "Running: $exeInstallerPath $installerArguments" -ForegroundColor Cyan
+                    $process = Start-Process -FilePath $exeInstallerPath -ArgumentList $installerArguments -Wait -PassThru -NoNewWindow
                 }
-            }
-            elseif ($installerExtension -eq ".msi") {
+                catch {
+                    Write-Host "Error during Teams installation: $_" -ForegroundColor Red
+                    
+                    # Try alternative installer approach by extracting and using the embedded MSI
+                    try {
+                        Write-Host "Trying to extract MSI from EXE installer..." -ForegroundColor Yellow
+                        $extractDir = Join-Path -Path $tempDir -ChildPath "TeamsExtract"
+                        
+                        # Create extraction directory if it doesn't exist
+                        if (-not (Test-Path -Path $extractDir)) {
+                            New-Item -Path $extractDir -ItemType Directory -Force | Out-Null
+                        }
+                        
+                        # Try to extract with /extract parameter (common for many installers)
+                        Write-Host "Attempting to extract installer contents..." -ForegroundColor Cyan
+                        Start-Process -FilePath $exeInstallerPath -ArgumentList "/extract:`"$extractDir`"", "/quiet" -Wait -NoNewWindow
+
+                        # Look for MSI files in extract directory
+                        $msiFiles = Get-ChildItem -Path $extractDir -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
+                        
+                        if ($msiFiles.Count -gt 0) {
+                            $msiPath = $msiFiles[0].FullName
+                            Write-Host "Found MSI file: $msiPath" -ForegroundColor Green
+                            
+                            # Install using the extracted MSI
+                            Write-Host "Installing Teams using extracted MSI..." -ForegroundColor Cyan
+                            $msiArgs = "/i `"$msiPath`" /qn /norestart ALLUSERS=1"
+                            $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru -NoNewWindow
+                        }
+                        else {
+                            # Try the x86 direct download link as a last resort
+                            Write-Host "No MSI found. Trying direct download of x86 teams..." -ForegroundColor Yellow
+                            $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                            $x86Path = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86_direct.exe"
+                            
+                            try {
+                                $webClient = New-Object System.Net.WebClient
+                                $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                                $webClient.DownloadFile($x86Url, $x86Path)
+                                
+                                if ((Test-Path -Path $x86Path) -and ((Get-Item -Path $x86Path).Length -gt 10MB)) {
+                                    Write-Host "Successfully downloaded x86 Teams installer" -ForegroundColor Green
+                                    $process = Start-Process -FilePath $x86Path -ArgumentList "--silent" -Wait -PassThru -NoNewWindow
+                                }
+                                else {
+                                    throw "Failed to download valid x86 installer"
+                                }
+                            }
+                            catch {
+                                Write-Host "All installation methods failed: $_" -ForegroundColor Red
+                                throw "Teams installation failed after multiple attempts"
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Host "Alternative installation method failed: $_" -ForegroundColor Red
+                        throw "Teams installation failed"
+                    }
+                }
+            }            elseif ($installerExtension -eq ".msi") {
                 # If we somehow got an MSI file instead of EXE
-                Write-Host "Detected MSI installer format, adjusting installation method" -ForegroundColor Yellow
+                Write-Host "Detected MSI installer format, using MSI installation method" -ForegroundColor Yellow
                 $installerArguments = "/i `"$exeInstallerPath`" /qn /norestart ALLUSERS=1"
                 
                 try {
                     Write-Host "Using MSI installer with silent arguments" -ForegroundColor DarkGray
-                    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $installerArguments -Wait -PassThru
-                }                catch {
+                    Write-Host "Running: msiexec.exe $installerArguments" -ForegroundColor Cyan
+                    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $installerArguments -Wait -PassThru -NoNewWindow
+                }
+                catch {
                     Write-Host "Error during Teams MSI installation: $_" -ForegroundColor Red
-                    throw "Teams MSI installation failed"
+                    
+                    # Try an alternative MSI installation approach
+                    try {
+                        Write-Host "Trying alternative MSI installation method..." -ForegroundColor Yellow
+                        $alternativeArgs = "/i `"$exeInstallerPath`" /quiet /norestart"
+                        Write-Host "Running: msiexec.exe $alternativeArgs" -ForegroundColor Cyan
+                        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $alternativeArgs -Wait -PassThru -NoNewWindow
+                    }
+                    catch {
+                        Write-Host "Error during alternative Teams MSI installation: $_" -ForegroundColor Red
+                        throw "Teams MSI installation failed"
+                    }
                 }
             }
             else {
                 # If it's neither EXE nor MSI, try running as EXE with no arguments
                 try {
                     Write-Host "Unknown installer format, attempting default installation method" -ForegroundColor Yellow
-                    $process = Start-Process -FilePath $exeInstallerPath -Wait -PassThru
+                    Write-Host "Running installer directly without arguments" -ForegroundColor Cyan
+                    $process = Start-Process -FilePath $exeInstallerPath -Wait -PassThru -NoNewWindow
                 }
                 catch {
                     Write-Host "Error during Teams generic installation: $_" -ForegroundColor Red
@@ -994,6 +1133,7 @@ function Get-SystemArchitecture {
     # Detect system architecture and return OS-specific info
     $osArch = "x64"
     
+    # Start with basic OS architecture detection
     if (-not [Environment]::Is64BitOperatingSystem) {
         $osArch = "x86"
         Write-Host "Detected 32-bit operating system" -ForegroundColor DarkGray
@@ -1001,11 +1141,18 @@ function Get-SystemArchitecture {
         Write-Host "Detected 64-bit operating system" -ForegroundColor DarkGray
     }
     
+    # Check if we're running in a 32-bit process on 64-bit OS
+    if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) {
+        Write-Host "Running in 32-bit process on 64-bit OS" -ForegroundColor Yellow
+        # For Teams, we should use x86 installer in this case
+        $osArch = "x86"
+    }
+    
     # Additional architecture detection
     try {
         $procArch = $env:PROCESSOR_ARCHITECTURE
         Write-Host "Processor architecture: $procArch" -ForegroundColor DarkGray
-          $osVersion = [Environment]::OSVersion.Version
+        $osVersion = [Environment]::OSVersion.Version
         Write-Host "OS Version: $($osVersion.Major).$($osVersion.Minor) (Build $($osVersion.Build))" -ForegroundColor DarkGray
         
         # Check if running in WOW64 (Windows 32-bit on Windows 64-bit)
@@ -1015,16 +1162,27 @@ function Get-SystemArchitecture {
             # Detect if process is running in 32-bit mode on 64-bit Windows
             if ($null -ne $env:PROCESSOR_ARCHITEW6432) {
                 Write-Host "Current process is running under WOW64 emulation" -ForegroundColor Yellow
-                # In this case, we might need to use x86 installer even on x64 OS
+                # In this case, we need to use x86 installer even on x64 OS
                 # This happens when running 32-bit PowerShell on 64-bit Windows
                 $osArch = "x86"
                 Write-Host "Adjusting download architecture to x86 due to WOW64 process" -ForegroundColor Yellow
             }
         }
+        
+        # Double-check bit process vs OS architecture
+        if ([IntPtr]::Size -eq 4) {
+            # Running in 32-bit process
+            Write-Host "Confirmed running in 32-bit process" -ForegroundColor Yellow
+            $osArch = "x86"
+        }
     } catch {
         Write-Host "Error detecting detailed system architecture: $_" -ForegroundColor DarkGray
+        # Default to x86 in case of detection errors
+        $osArch = "x86" 
+        Write-Host "Defaulting to x86 architecture due to detection error" -ForegroundColor Yellow
     }
     
+    Write-Host "Using $osArch architecture for Teams installer" -ForegroundColor Cyan
     return $osArch
 }
 
