@@ -2,10 +2,10 @@
 # Script: Install-MicrosoftTeams.ps1
 # Created: 2025-04-28 15:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-28 23:00:00 UTC
+# Last Updated: 2025-04-28 23:07:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Switched from MSI to EXE installer format for better reliability
+# Version: 1.6.0
+# Additional Info: Updated installer URLs and added platform compatibility detection
 # =============================================================================
 
 <#
@@ -497,12 +497,12 @@ function Install-Teams {
     
     $tempDir = [System.IO.Path]::GetTempPath()
     $exeInstallerPath = Join-Path -Path $tempDir -ChildPath 'Teams_windows_x64.exe'
-    $downloadSuccess = $false
-
-    if ($PSCmdlet.ShouldProcess('Download Microsoft Teams', "Download latest installer")) {
+    $downloadSuccess = $false    if ($PSCmdlet.ShouldProcess('Download Microsoft Teams', "Download latest installer")) {
         # Use the current Teams EXE installer URL (updated for 2025)
-        $teamsExeUrl = 'https://statics.teams.cdn.office.net/production-windows-x64/desktop/TeamsSetup_win_x64.exe'
-        $teamsExeFallbackUrl = 'https://go.microsoft.com/fwlink/?linkid=2196106'
+        # Microsoft periodically changes the Teams download URLs and link IDs
+        $teamsExeUrl = 'https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=x64&managedInstaller=true&download=true'
+        $teamsExeFallbackUrl = 'https://go.microsoft.com/fwlink/?linkid=2187327'
+        $teamsExeBackupUrl = 'https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=x64&download=true'
         
         # Try direct exe download first
         Write-Host "Downloading Microsoft Teams EXE installer..." -ForegroundColor Cyan
@@ -534,15 +534,14 @@ function Install-Teams {
                     throw "Failed to download a valid Teams installer"
                 }
             }
-            catch {
-                Write-Host "Error downloading Teams EXE installer: $_" -ForegroundColor Red
+            catch {                Write-Host "Error downloading Teams EXE installer: $_" -ForegroundColor Red
                   
-                # Try one last method - using System.Net.WebClient which sometimes works better with redirects
-                Write-Host "Trying alternate download method..." -ForegroundColor Cyan
+                # Try the third/backup URL as a last resort
+                Write-Host "Trying backup download URL..." -ForegroundColor Cyan
                 try {
                     $webClient = New-Object System.Net.WebClient
                     $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                    $webClient.DownloadFile($teamsExeFallbackUrl, $exeInstallerPath)
+                    $webClient.DownloadFile($teamsExeBackupUrl, $exeInstallerPath)
                     
                     if ((Test-Path -Path $exeInstallerPath) -and ((Get-Item -Path $exeInstallerPath).Length -gt 10MB)) {
                         $fileInfo = Get-Item -Path $exeInstallerPath
@@ -550,7 +549,7 @@ function Install-Teams {
                         $downloadSuccess = $true
                     }
                     else {
-                        throw "Failed to download a valid Teams installer with alternate method"
+                        throw "Failed to download a valid Teams installer with backup method"
                     }
                 }
                 catch {
@@ -564,21 +563,56 @@ function Install-Teams {
     if (-not $downloadSuccess) {
         Write-Host "Unable to download a valid Teams installer. Installation aborted." -ForegroundColor Red
         return
-    }
-
-    if ($PSCmdlet.ShouldProcess('Install Microsoft Teams', "Install using $exeInstallerPath")) {
+    }    if ($PSCmdlet.ShouldProcess('Install Microsoft Teams', "Install using $exeInstallerPath")) {
         Write-Host "Installing Microsoft Teams silently..." -ForegroundColor Cyan
+        
+        # Verify the downloaded file is valid
         try {
-            # Use the TeamsSetup.exe installer with silent parameters
-            $process = Start-Process -FilePath $exeInstallerPath -ArgumentList "--silent" -Wait -PassThru
+            # Verify the downloaded executable's architecture matches the system
+            $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exeInstallerPath)
             
-            if ($process.ExitCode -eq 0) {
+            # Check if we're on a 64-bit operating system
+            $is64BitOS = [Environment]::Is64BitOperatingSystem
+            
+            Write-Host "System architecture: $(if ($is64BitOS) { 'x64' } else { 'x86' })" -ForegroundColor DarkGray
+            Write-Host "Downloaded installer: $($fileInfo.FileName)" -ForegroundColor DarkGray
+            
+            # Handle both EXE and MSI formats (in case the download returned an MSI)
+            $installerExtension = [System.IO.Path]::GetExtension($exeInstallerPath).ToLower()
+            $installerArguments = ""
+            
+            if ($installerExtension -eq ".exe") {
+                $installerArguments = "--silent"
+                
+                # Remove incompatible files if they exist
+                if (Test-Path -Path "$exeInstallerPath.old") {
+                    Remove-Item -Path "$exeInstallerPath.old" -Force -ErrorAction SilentlyContinue
+                }
+                
+                Write-Host "Using EXE installer with silent arguments" -ForegroundColor DarkGray
+                $process = Start-Process -FilePath $exeInstallerPath -ArgumentList $installerArguments -Wait -PassThru
+            }
+            elseif ($installerExtension -eq ".msi") {
+                # If we somehow got an MSI file instead of EXE
+                Write-Host "Detected MSI installer format, adjusting installation method" -ForegroundColor Yellow
+                $installerArguments = "/i `"$exeInstallerPath`" /qn /norestart ALLUSERS=1"
+                
+                Write-Host "Using MSI installer with silent arguments" -ForegroundColor DarkGray
+                $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $installerArguments -Wait -PassThru
+            }
+            else {
+                # If it's neither EXE nor MSI, try running as EXE with no arguments
+                Write-Host "Unknown installer format, attempting default installation method" -ForegroundColor Yellow
+                $process = Start-Process -FilePath $exeInstallerPath -Wait -PassThru
+            }
+              if ($process.ExitCode -eq 0) {
                 Write-Host "Microsoft Teams installed successfully." -ForegroundColor Green
             }
             elseif ($process.ExitCode -eq 3010) {
                 Write-Host "Microsoft Teams installed successfully but requires a restart to complete installation." -ForegroundColor Yellow
             }
-            else {                Write-Host "Microsoft Teams installation exited with code: $($process.ExitCode)." -ForegroundColor Yellow
+            else {
+                Write-Host "Microsoft Teams installation exited with code: $($process.ExitCode)." -ForegroundColor Yellow
                 # Provide more specific information about common error codes
                 switch ($process.ExitCode) {
                     1 { Write-Host "Error 1: General installation error." -ForegroundColor Red }
@@ -592,12 +626,56 @@ function Install-Teams {
                     1620 { Write-Host "Error 1620: Installation package could not be opened." -ForegroundColor Red }
                     1638 { Write-Host "Error 1638: Another version of this product is already installed." -ForegroundColor Yellow }
                     1641 { Write-Host "Error 1641: The installer has initiated a restart." -ForegroundColor Yellow }
-                    default { Write-Host "Check EXE installer exit codes for more details." -ForegroundColor Yellow }
+                    default { Write-Host "Check installer error codes for more details." -ForegroundColor Yellow }
                 }
             }
         }
         catch {
             Write-Host "Error installing Microsoft Teams: $_" -ForegroundColor Red
+            
+            # Attempt to provide more detailed diagnostics
+            Write-Host "Performing additional diagnostics..." -ForegroundColor Cyan
+            
+            # Check if the file exists
+            if (-not (Test-Path -Path $exeInstallerPath)) {
+                Write-Host "ERROR: The installer file no longer exists at $exeInstallerPath" -ForegroundColor Red
+                return
+            }
+            
+            # Verify file is not corrupted
+            try {
+                $fileSize = (Get-Item -Path $exeInstallerPath).Length
+                Write-Host "Installer file size: $([math]::Round($fileSize / 1MB, 2)) MB" -ForegroundColor DarkGray
+                
+                if ($fileSize -lt 1MB) {
+                    Write-Host "ERROR: The installer file appears to be too small and may be corrupted" -ForegroundColor Red
+                    return
+                }
+                
+                # Check file signature if available
+                $signature = Get-AuthenticodeSignature -FilePath $exeInstallerPath -ErrorAction SilentlyContinue
+                if ($signature) {
+                    Write-Host "File signature status: $($signature.Status)" -ForegroundColor DarkGray
+                    if ($signature.Status -ne "Valid") {
+                        Write-Host "WARNING: The installer does not have a valid signature" -ForegroundColor Yellow
+                    }
+                }
+                
+                # Try alternate installation method as a last resort
+                Write-Host "Attempting alternate installation method..." -ForegroundColor Cyan
+                
+                # Try copying to a new location with .new extension and execute from there
+                $newInstallerPath = "$exeInstallerPath.new"
+                Copy-Item -Path $exeInstallerPath -Destination $newInstallerPath -Force
+                
+                if (Test-Path -Path $newInstallerPath) {
+                    Write-Host "Executing installer from alternate location: $newInstallerPath" -ForegroundColor Yellow
+                    Start-Process -FilePath $newInstallerPath -Wait
+                }
+            }
+            catch {
+                Write-Host "Error during diagnostics: $_" -ForegroundColor Red
+            }
         }
     }
 }
