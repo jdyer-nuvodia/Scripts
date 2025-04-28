@@ -2,10 +2,10 @@
 # Script: Install-MicrosoftTeams.ps1
 # Created: 2025-04-28 15:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-28 22:41:00 UTC
+# Last Updated: 2025-04-28 22:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Enhanced detection to find protected Teams installations in WindowsApps
+# Version: 1.4.0
+# Additional Info: Fixed download issues with multiple fallback URLs and support for .exe installers
 # =============================================================================
 
 <#
@@ -486,11 +486,11 @@ function Uninstall-Teams {
 function Install-Teams {
     [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
     param()
-    # Primary direct download URL for Teams MSI
-    $downloadUrl = 'https://statics.teams.cdn.office.net/production-windows-x64/enterprise/webview2/Teams_windows_x64.msi'
+    # Primary direct download URL for Teams MSI (2025 updated URL)
+    $downloadUrl = 'https://go.microsoft.com/fwlink/p/?LinkID=2187327&clcid=0x409&culture=en-us&country=US'
     
     # Fallback URL if the primary fails
-    $fallbackUrl = 'https://statics.teams.cdn.office.net/production-windows/enterprise/webview2/Teams_windows_x64.msi'
+    $fallbackUrl = 'https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=x64&managedInstaller=true'
     
     $tempDir = [System.IO.Path]::GetTempPath()
     $installerPath = Join-Path -Path $tempDir -ChildPath 'Teams_windows_x64.msi'
@@ -529,12 +529,11 @@ function Install-Teams {
             }
             catch {
                 Write-Host "Error downloading Microsoft Teams installer: $_" -ForegroundColor Red
-                
-                # Try a third method - using System.Net.WebClient which sometimes works better with redirects
+                  # Try a third method - using System.Net.WebClient which sometimes works better with redirects
                 Write-Host "Trying alternate download method..." -ForegroundColor Cyan
                 try {
                     $webClient = New-Object System.Net.WebClient
-                    $webClient.DownloadFile('https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=x64&managedInstaller=true', $installerPath)
+                    $webClient.DownloadFile('https://www.microsoft.com/en-us/microsoft-teams/download-app?rtc=2#allDevicesSection', $installerPath)
                     if ((Test-Path -Path $installerPath) -and ((Get-Item -Path $installerPath).Length -gt 1MB)) {
                         $fileInfo = Get-Item -Path $installerPath
                         Write-Host "Downloaded installer to $installerPath (Size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB)" -ForegroundColor Green
