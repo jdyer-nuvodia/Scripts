@@ -498,7 +498,7 @@ foreach ($software in $outputList) {
 }
 
 # Get current timestamp for the filename
-$timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 
 # Export list to a CSV file with FQDN and timestamp in the filename in the script directory
 $outputFileName = Join-Path -Path $scriptDirectory -ChildPath "InstalledSoftware_${fqdn}_${timestamp}.csv"
