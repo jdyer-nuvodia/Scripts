@@ -208,7 +208,8 @@ param (
     [int]$Top = 3,
     [bool]$IncludeHiddenSystem = $true,
     [bool]$FollowJunctions = $true,
-    [int]$MaxThreads = 10,    [switch]$OnlyPhysicalFiles = $false
+    [int]$MaxThreads = 10,    
+    [switch]$OnlyPhysicalFiles = $true
 )
 
 # Console colors for diagnostic output
