@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-05 21:45:00 UTC
+# Last Updated: 2025-05-05 22:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.1
-# Additional Info: Simplified OneDrive file handling with consolidated parameters
+# Version: 2.3.2
+# Additional Info: Fixed compilation errors with ExcludeOneDrivePlaceholders parameter removal
 # =============================================================================
 
 # Requires -Version 5.1
@@ -64,9 +64,10 @@
     
     This parameter replaces the previous ExcludeOneDrivePlaceholders parameter for simplified usage.
     
-.PARAMETER ExcludeOneDrivePlaceholders
-    [DEPRECATED] This parameter is maintained for backward compatibility.
-    Please use OnlyPhysicalFiles instead as it provides the same functionality with clearer intent.
+.PARAMETER OnlyPhysicalFiles
+    When enabled, only includes physically stored files in size calculations and skips
+    cloud placeholder files commonly found in OneDrive and other cloud storage providers.
+    This parameter replaces the previous ExcludeOneDrivePlaceholders parameter for simplified usage.
 
 .EXAMPLE
     .\Get-FolderSizes.ps1
@@ -207,10 +208,7 @@ param (
     [int]$Top = 3,
     [bool]$IncludeHiddenSystem = $true,
     [bool]$FollowJunctions = $true,
-    [int]$MaxThreads = 10,
-    [switch]$OnlyPhysicalFiles = $false,
-    [Parameter(DontShow)]
-    [bool]$ExcludeOneDrivePlaceholders = $true
+    [int]$MaxThreads = 10,    [switch]$OnlyPhysicalFiles = $false
 )
 
 # Console colors for diagnostic output
@@ -627,8 +625,7 @@ public static class FolderSizeHelper
             return true;
         }
     }
-    
-    public static long GetDirectorySize(string path, bool onlyPhysicalFiles)
+      public static long GetDirectorySize(string path, bool onlyPhysicalFiles)
     {
         long size = 0;
         var stack = new Stack<string>();
@@ -643,6 +640,12 @@ public static class FolderSizeHelper
                 {
                     try
                     {
+                        // Skip non-physical files if requested
+                        if (onlyPhysicalFiles && !IsFilePhysicallyStored(file))
+                        {
+                            continue;
+                        }
+                        
                         size += new FileInfo(file).Length;
                     }
                     catch (Exception) { }
@@ -655,11 +658,12 @@ public static class FolderSizeHelper
             }
             catch (UnauthorizedAccessException) { }
             catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
+            catch (IOException) { }            catch (Exception) { }
         }
         return size;
-    }    public static Tuple<int, int> GetDirectoryCounts(string path, bool onlyPhysicalFiles)
+    }
+    
+    public static Tuple<int, int> GetDirectoryCounts(string path, bool onlyPhysicalFiles)
     {
         int files = 0;
         int folders = 0;
@@ -695,8 +699,7 @@ public static class FolderSizeHelper
         }
         return new Tuple<int, int>(files, folders);
     }
-    
-    public static FileDetails GetLargestFile(string path, bool onlyPhysicalFiles)
+      public static FileDetails GetLargestFile(string path, bool onlyPhysicalFiles)
     {
         try
         {
@@ -704,7 +707,7 @@ public static class FolderSizeHelper
             
             // Filter for physical files if requested
             var filteredFiles = allFiles;
-            if (excludeOneDrivePlaceholders || onlyPhysicalFiles)
+            if (onlyPhysicalFiles)
             {
                 filteredFiles = allFiles.Where(f => IsFilePhysicallyStored(f.FullName)).ToArray();
             }
@@ -750,7 +753,6 @@ function Start-FolderProcessing {
     param(
         [array]$Folders,
         [int]$MaxThreads,
-        [bool]$ExcludeOneDrivePlaceholders,
         [bool]$OnlyPhysicalFiles
     )
     
@@ -762,7 +764,8 @@ function Start-FolderProcessing {
     $processedCount = 0
     $totalFolders = $Folders.Count
     
-    Write-Host "`nParallel Processing Configuration:" -ForegroundColor Cyan    Write-Host "Maximum Threads: $MaxThreads" -ForegroundColor DarkGray
+    Write-Host "`nParallel Processing Configuration:" -ForegroundColor Cyan
+    Write-Host "Maximum Threads: $MaxThreads" -ForegroundColor DarkGray
     Write-Host "Total Folders to Process: $totalFolders" -ForegroundColor DarkGray
     Write-Host "Only Physical Files: $OnlyPhysicalFiles" -ForegroundColor DarkGray
     
@@ -771,7 +774,9 @@ function Start-FolderProcessing {
         $ps.RunspacePool = $RunspacePool
         $activeRunspaces++
 
-        Write-Host "`rActive Runspaces: $activeRunspaces/$MaxThreads" -NoNewline -ForegroundColor Magenta        [void]$ps.AddScript({
+        Write-Host "`rActive Runspaces: $activeRunspaces/$MaxThreads" -NoNewline -ForegroundColor Magenta
+        
+        [void]$ps.AddScript({
             param($StartPath, $OnlyPhysicalFiles)
             
             $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
@@ -941,9 +946,8 @@ function Get-FolderSize {
         }            # Process root level folders first
         if ($rootFolders -and $rootFolders.Count -gt 0) {
             Write-Host "Processing $($rootFolders.Count) folders in root directory..." -ForegroundColor Cyan
-            
-            # Process root folders in parallel
-            $folderResults = Start-FolderProcessing -Folders $rootFolders -MaxThreads $MaxThreads -ExcludeOneDrivePlaceholders $ExcludeOneDrivePlaceholders -OnlyPhysicalFiles $OnlyPhysicalFiles
+              # Process root folders in parallel
+            $folderResults = Start-FolderProcessing -Folders $rootFolders -MaxThreads $MaxThreads -OnlyPhysicalFiles $OnlyPhysicalFiles
             
             # Convert results to sorted array
             $sortedFolders = $folderResults.GetEnumerator() | ForEach-Object {
