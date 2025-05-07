@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-07 22:30:00 UTC
+# Last Updated: 2025-05-07 23:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.8
-# Additional Info: Added special handling for Dell Pair and SupportAssist with robust error code handling
+# Version: 1.0.9
+# Additional Info: Added machine name and UTC timestamp to log filename
 # =============================================================================
 
 <#
@@ -92,8 +92,10 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 # Script variables
-$logFile = "$PSScriptRoot\Remove-WindowsBloatware.log"
-$scriptVersion = "1.0.7"
+$computerName = $env:COMPUTERNAME
+$utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
+$logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
+$scriptVersion = "1.0.9"
 
 # Function to write log entries
 function Write-Log {
