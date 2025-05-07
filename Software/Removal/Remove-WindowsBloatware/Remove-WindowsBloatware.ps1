@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-07 23:45:00 UTC
+# Last Updated: 2025-05-07 23:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.9
-# Additional Info: Added machine name and UTC timestamp to log filename
+# Version: 1.1.1
+# Additional Info: Improved messaging to clearly indicate if apps are not found or removed
 # =============================================================================
 
 <#
@@ -95,7 +95,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
-$scriptVersion = "1.0.9"
+$scriptVersion = "1.1.1"
 
 # Function to write log entries
 function Write-Log {
@@ -140,23 +140,55 @@ function Uninstall-UWPApp {
     )
     
     try {
-        $app = Get-AppxPackage -Name $AppName -AllUsers
-        if ($app) {
-            if ($PSCmdlet.ShouldProcess($AppName, "Remove UWP application")) {
-                Write-Log "Removing UWP application: $AppName" "INFO"
-                Remove-AppxPackage -Package $app.PackageFullName
-                Write-Log "Successfully removed UWP application: $AppName" "SUCCESS"
+        # Use ErrorAction SilentlyContinue to prevent errors from appearing for non-existent apps
+        $app = Get-AppxPackage -Name $AppName -AllUsers -ErrorAction SilentlyContinue
+        
+        if ($null -ne $app) {
+            # Check if it's a single app or multiple apps with the same name
+            if ($app -is [System.Array]) {
+                Write-Log "FOUND: Multiple instances of UWP application: $AppName" "INFO"
+                foreach ($singleApp in $app) {
+                    if ($PSCmdlet.ShouldProcess($singleApp.Name, "Remove UWP application")) {
+                        Write-Log "REMOVING: UWP application instance: $($singleApp.Name) (PackageFullName: $($singleApp.PackageFullName))" "INFO"
+                        try {
+                            Remove-AppxPackage -Package $singleApp.PackageFullName -ErrorAction SilentlyContinue
+                            Write-Log "REMOVED: UWP application instance: $($singleApp.Name)" "SUCCESS"
+                        }                        catch {
+                            # Log the error but don't display it to the console
+                            $errorMsg = $_.Exception.Message
+                            Write-Log "ERROR: Failed to remove UWP application instance $($singleApp.Name): $errorMsg" "WARNING"
+                        }
+                    }
+                    else {
+                        Write-Log "WhatIf: Would remove UWP application instance: $($singleApp.Name)" "INFO"
+                    }
+                }
             }
             else {
-                Write-Log "WhatIf: Would remove UWP application: $AppName" "INFO"
+                # Single app instance
+                if ($PSCmdlet.ShouldProcess($app.Name, "Remove UWP application")) {
+                    Write-Log "REMOVING: UWP application: $AppName (PackageFullName: $($app.PackageFullName))" "INFO"
+                    try {
+                        Remove-AppxPackage -Package $app.PackageFullName -ErrorAction SilentlyContinue
+                        Write-Log "REMOVED: UWP application: $AppName" "SUCCESS"
+                    }                    catch {
+                        # Log the error but don't display it to the console
+                        $errorMsg = $_.Exception.Message
+                        Write-Log "ERROR: Failed to remove UWP application ${AppName}: $errorMsg" "WARNING"
+                    }
+                }
+                else {
+                    Write-Log "WhatIf: Would remove UWP application: $AppName" "INFO"
+                }
             }
         }
         else {
-            Write-Log "UWP application not found: $AppName" "INFO"
+            Write-Log "NOT FOUND: UWP application $AppName is not installed or was previously removed" "INFO"
         }
-    }
-    catch {
-        Write-Log "Error removing UWP application $AppName. Error: $_" "ERROR"
+    }    catch {
+        # Log the error but don't display it to the console
+        $errorMsg = $_.Exception.Message
+        Write-Log "ERROR: Failed to access UWP application ${AppName}: $errorMsg" "WARNING"
     }
 }
 
@@ -197,11 +229,11 @@ function Uninstall-Win32App {
             $uninstallString = $app.UninstallString
             $productCode = $app.PSChildName
             
-            Write-Log "Found application: $appName" "INFO"
+            Write-Log "FOUND: Win32 application: $appName" "INFO"
             
             try {
                 if ($PSCmdlet.ShouldProcess($appName, "Uninstall application")) {
-                    Write-Log "Uninstalling application: $appName" "INFO"
+                    Write-Log "REMOVING: Win32 application: $appName" "INFO"
                       # If msiexec is in the uninstall string, use that
                     if ($uninstallString -like "*msiexec*") {
                         # Using /qn (no UI), /norestart (prevent restart), /passive (progress bar only, no user input)
@@ -219,24 +251,25 @@ function Uninstall-Win32App {
                     }
                     
                     if ($process.ExitCode -eq 0) {
-                        Write-Log "Successfully uninstalled: $appName" "SUCCESS"
+                        Write-Log "REMOVED: Win32 application: $appName" "SUCCESS"
                     }
                     else {
-                        Write-Log "Failed to uninstall: $appName. Exit code: $($process.ExitCode)" "WARNING"
+                        Write-Log "ERROR: Failed to remove Win32 application: $appName. Exit code: $($process.ExitCode)" "WARNING"
                     }
                 }
                 else {
-                    Write-Log "WhatIf: Would uninstall application: $appName" "INFO"
+                    Write-Log "WhatIf: Would remove Win32 application: $appName" "INFO"
                 }
             }
             catch {
-                Write-Log "Error uninstalling $appName. Error: $_" "ERROR"
+                $errorMsg = $_.Exception.Message
+                Write-Log "ERROR: Failed to remove Win32 application: $appName. Error: $errorMsg" "ERROR"
             }
         }
     }
     
     if (-not $found) {
-        Write-Log "No matching applications found for: $DisplayName" "INFO"
+        Write-Log "NOT FOUND: Win32 application: $DisplayName is not installed" "INFO"
     }
 }
 
@@ -278,30 +311,45 @@ function Remove-DellBloatware {
         "Dell SupportAssist OS Recovery Plugin for Dell Update"
     )
     
+    $foundDellApps = $false
+    
     foreach ($key in $uninstallKeys) {
         $dellApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
                     Get-ItemProperty | 
                     Where-Object { $_.DisplayName -like "*Dell*" }
+        
+        if ($dellApps) {
+            $foundDellApps = $true
+        }
         
         foreach ($app in $dellApps) {
             $appName = $app.DisplayName
             
             # Skip Dell Command Update
             if (Test-IsDellCommandUpdate -AppName $appName) {
-                Write-Log "Keeping Dell Command Update: $appName" "INFO"
+                Write-Log "KEEPING: Dell Command Update: $appName" "INFO"
                 continue
             }
-            
-            # Uninstall other Dell applications
+              # Uninstall other Dell applications
             try {
                 if ($PSCmdlet.ShouldProcess($appName, "Uninstall Dell application")) {
-                    Write-Log "Uninstalling Dell application: $appName" "INFO"
+                    Write-Log "REMOVING: Dell application: $appName" "INFO"
                     
                     $productCode = $app.PSChildName
                     $uninstallString = $app.UninstallString
                     
-                    # For special Dell apps that need custom handling
-                    if ($specialDellApps -contains $appName) {
+                    # Special handling for Dell Pair
+                    if ($appName -eq "Dell Pair") {
+                        # Use our specialized Dell Pair uninstaller
+                        $dellPairResult = Uninstall-DellPair
+                        if ($dellPairResult) {
+                            # Skip further processing as it's been handled by the specialized function
+                            continue
+                        }
+                        # If the specialized function failed, fall through to standard methods
+                    }
+                    # For other special Dell apps that need custom handling
+                    elseif ($specialDellApps -contains $appName) {
                         # Try to get the direct uninstaller path if available
                         if ($uninstallString -match '"([^"]+)"') {
                             $uninstallExe = $matches[1]
@@ -323,35 +371,76 @@ function Remove-DellBloatware {
                         # Standard MSI uninstall for other Dell apps
                         $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow -PassThru
                     }
-                    
-                    if ($process.ExitCode -eq 0) {
-                        Write-Log "Successfully uninstalled: $appName" "SUCCESS"
+                      if ($process.ExitCode -eq 0) {
+                        Write-Log "REMOVED: Dell application: $appName" "SUCCESS"
                     }
                     else {
                         # Handle specific MSI error codes
                         switch ($process.ExitCode) {
                             1605 { 
-                                Write-Log "Product not installed (code 1605) for $appName - marking as success" "WARNING" 
+                                Write-Log "NOT FOUND: Dell application $appName (code 1605) - product not installed" "WARNING" 
                             }
                             1619 {
-                                Write-Log "Installation package could not be found (code 1619) for $appName" "WARNING"
-                            }
-                            1639 {
+                                Write-Log "ERROR: Installation package could not be found (code 1619) for Dell application: $appName" "WARNING"
+                            }1639 {
                                 Write-Log "Invalid command line parameters (code 1639) for $appName - attempting alternative method" "WARNING"
-                                if ($uninstallString -and $uninstallString -notlike "*msiexec*") {
+                                
+                                # Special handling for Dell Pair
+                                if ($appName -eq "Dell Pair") {
+                                    Write-Log "Using special uninstall method for Dell Pair" "INFO"
+                                    # Try to find and use the specific uninstaller for Dell Pair
+                                    $dellPairPath = Get-ChildItem -Path "C:\Program Files\Dell\*\*\Uninstall.exe" -ErrorAction SilentlyContinue | 
+                                                   Where-Object { $_.Directory.Name -like "*Pair*" }
+                                    
+                                    if ($dellPairPath) {
+                                        Write-Log "Found Dell Pair uninstaller at: $($dellPairPath.FullName)" "INFO"
+                                        $altProcess = Start-Process -FilePath $dellPairPath.FullName -ArgumentList "/S" -Wait -NoNewWindow -PassThru                                        if ($altProcess.ExitCode -eq 0) {
+                                            Write-Log "REMOVED: Dell Pair using direct uninstaller" "SUCCESS"
+                                        }
+                                        else {
+                                            Write-Log "ERROR: Direct uninstaller for Dell Pair failed. Exit code: $($altProcess.ExitCode). Will try alternative cleanup." "WARNING"
+                                            # Attempt registry cleanup for Dell Pair
+                                            try {
+                                                Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
+                                                Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
+                                                Remove-Item -Path "C:\Program Files\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
+                                                Remove-Item -Path "C:\Program Files (x86)\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
+                                                Write-Log "Completed Dell Pair cleanup" "SUCCESS"
+                                            }
+                                            catch {                                                $errorMsg = $_.Exception.Message
+                                                Write-Log "ERROR: Failed during Dell Pair cleanup: $errorMsg" "ERROR"
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        Write-Log "NOT FOUND: Could not find Dell Pair uninstaller, trying alternative cleanup" "WARNING"
+                                        # Attempt registry cleanup for Dell Pair
+                                        try {
+                                            Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
+                                            Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
+                                            Remove-Item -Path "C:\Program Files\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
+                                            Remove-Item -Path "C:\Program Files (x86)\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue                                                Write-Log "REMOVED: Dell Pair via registry and file cleanup" "SUCCESS"
+                                                }
+                                                catch {
+                                                    $errorMsg = $_.Exception.Message
+                                                    Write-Log "ERROR: Failed during Dell Pair cleanup: $errorMsg" "ERROR"
+                                        }
+                                    }                                }
+                                # Standard handling for other applications
+                                else {
+                                    if ($uninstallString -and $uninstallString -notlike "*msiexec*") {
                                     # Try the original uninstall string from registry
                                     if ($uninstallString -match '"([^"]+)"(.*)') {
                                         $uninstallExe = $matches[1]
                                         $uninstallArgs = $matches[2] + " /S /SILENT"
-                                        $altProcess = Start-Process -FilePath $uninstallExe -ArgumentList $uninstallArgs -Wait -NoNewWindow -PassThru
-                                        if ($altProcess.ExitCode -eq 0) {
-                                            Write-Log "Successfully uninstalled $appName using alternative method" "SUCCESS"
+                                        $altProcess = Start-Process -FilePath $uninstallExe -ArgumentList $uninstallArgs -Wait -NoNewWindow -PassThru                                        if ($altProcess.ExitCode -eq 0) {
+                                            Write-Log "REMOVED: $appName using alternative method" "SUCCESS"
                                         }
                                         else {
-                                            Write-Log "Alternative method failed for $appName. Exit code: $($altProcess.ExitCode)" "WARNING"
-                                        }
+                                            Write-Log "ERROR: Alternative method failed for $appName. Exit code: $($altProcess.ExitCode)" "WARNING"}
                                     }
                                 }
+                            }
                             }
                             default {
                                 Write-Log "Failed to uninstall: $appName. Exit code: $($process.ExitCode)" "WARNING"
@@ -359,14 +448,18 @@ function Remove-DellBloatware {
                         }
                     }
                 }
-                else {
-                    Write-Log "WhatIf: Would uninstall Dell application: $appName" "INFO"
+                else {                    Write-Log "WhatIf: Would uninstall Dell application: $appName" "INFO"
                 }
             }
             catch {
-                Write-Log "Error uninstalling $appName. Error: $_" "ERROR"
+                $errorMsg = $_.Exception.Message
+                Write-Log "ERROR: Failed to remove Dell application: $appName. Error: $errorMsg" "ERROR"
             }
         }
+    }
+    
+    if (-not $foundDellApps) {
+        Write-Log "NOT FOUND: No Dell applications installed" "INFO"
     }
 }
 
@@ -382,43 +475,198 @@ function Remove-LenovoBloatware {
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
     
+    $foundLenovoApps = $false
+    
     foreach ($key in $uninstallKeys) {
         $lenovoApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
                     Get-ItemProperty | 
                     Where-Object { $_.DisplayName -like "*Lenovo*" }
+        
+        if ($lenovoApps -and $lenovoApps.Count -gt 0) {
+            $foundLenovoApps = $true
+        }
         
         foreach ($app in $lenovoApps) {
             $appName = $app.DisplayName
             
             # Skip Lenovo Vantage
             if (Test-IsLenovoVantage -AppName $appName) {
-                Write-Log "Keeping Lenovo Vantage: $appName" "INFO"
+                Write-Log "KEEPING: Lenovo Vantage: $appName" "INFO"
                 continue
             }
-            
-            # Uninstall other Lenovo applications
+              # Uninstall other Lenovo applications
             try {
-                if ($PSCmdlet.ShouldProcess($appName, "Uninstall Lenovo application")) {                    Write-Log "Uninstalling Lenovo application: $appName" "INFO"
+                if ($PSCmdlet.ShouldProcess($appName, "Uninstall Lenovo application")) {
+                    Write-Log "REMOVING: Lenovo application: $appName" "INFO"
                     
                     $productCode = $app.PSChildName
                     $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow -PassThru
-                    
-                    if ($process.ExitCode -eq 0) {
-                        Write-Log "Successfully uninstalled: $appName" "SUCCESS"
+                      if ($process.ExitCode -eq 0) {
+                        Write-Log "REMOVED: Lenovo application: $appName" "SUCCESS"
                     }
                     else {
-                        Write-Log "Failed to uninstall: $appName. Exit code: $($process.ExitCode)" "WARNING"
+                        Write-Log "ERROR: Failed to remove Lenovo application: $appName. Exit code: $($process.ExitCode)" "WARNING"
                     }
                 }
-                else {
-                    Write-Log "WhatIf: Would uninstall Lenovo application: $appName" "INFO"
+                else {                    Write-Log "WhatIf: Would uninstall Lenovo application: $appName" "INFO"
                 }
             }
             catch {
-                Write-Log "Error uninstalling $appName. Error: $_" "ERROR"
+                $errorMsg = $_.Exception.Message
+                Write-Log "ERROR: Failed to remove Lenovo application: $appName. Error: $errorMsg" "ERROR"
             }
         }
     }
+    
+    if (-not $foundLenovoApps) {
+        Write-Log "NOT FOUND: No Lenovo applications installed" "INFO"
+    }
+}
+
+# Function to handle Dell Pair uninstallation, which requires special handling
+function Uninstall-DellPair {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([System.Boolean])]
+    param()
+    
+    Write-Log "Starting Dell Pair special uninstallation procedure" "INFO"
+    
+    # First try uninstalling using standard method with a variety of arguments
+    $uninstallRegistryKeys = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+    
+    $foundDellPair = $false
+    
+    # First attempt: Find Dell Pair in registry and use its uninstall string
+    foreach ($key in $uninstallRegistryKeys) {
+        $dellPairs = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
+                    Get-ItemProperty -ErrorAction SilentlyContinue |
+                    Where-Object { $_.DisplayName -like "*Dell Pair*" }
+        
+        if ($null -ne $dellPairs) {
+            foreach ($app in $dellPairs) {
+                $foundDellPair = $true
+                $appName = $app.DisplayName
+                $productCode = $app.PSChildName
+                $uninstallString = $app.UninstallString
+                
+                Write-Log "Found Dell Pair application: $appName with Product Code: $productCode" "INFO"
+                
+                # Try multiple uninstall methods to see what works
+                if ($PSCmdlet.ShouldProcess("Dell Pair", "Uninstall using multiple methods")) {
+                    # Method 1: Standard MSI uninstall with logging
+                    Write-Log "Trying MSI uninstall with logging for Dell Pair" "INFO"
+                    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x `"$productCode`" /qn /norestart /l*v `"$env:TEMP\DellPair_uninstall.log`"" -Wait -NoNewWindow -PassThru -ErrorAction SilentlyContinue
+                      if ($process.ExitCode -eq 0) {
+                        Write-Log "REMOVED: Dell Pair using MSI with product code" "SUCCESS"
+                        return
+                    }
+                    
+                    # Method 2: Try using the uninstall string directly if available
+                    if ($uninstallString) {
+                        Write-Log "Trying direct uninstall string for Dell Pair: $uninstallString" "INFO"
+                        if ($uninstallString -match '"([^"]+)"(.*)') {
+                            $uninstallExe = $matches[1]
+                            $uninstallArgs = $matches[2] + " /S /SILENT /VERYSILENT /NORESTART"
+                            
+                            if (Test-Path $uninstallExe) {
+                                $process = Start-Process -FilePath $uninstallExe -ArgumentList $uninstallArgs -Wait -NoNewWindow -PassThru -ErrorAction SilentlyContinue
+                                  if ($process.ExitCode -eq 0) {
+                                    Write-Log "REMOVED: Dell Pair using direct uninstall string" "SUCCESS"
+                                    return
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    # Second attempt: Search for uninstaller in common Dell locations
+    if (-not $foundDellPair -or $foundDellPair) { # Still continue even if we found it but failed to uninstall
+        Write-Log "Searching for Dell Pair uninstaller in common locations" "INFO"
+        
+        $possiblePaths = @(
+            "${env:ProgramFiles}\Dell\Dell Pair\uninstall.exe",
+            "${env:ProgramFiles(x86)}\Dell\Dell Pair\uninstall.exe",
+            "${env:ProgramFiles}\Dell\DellPair\uninstall.exe",
+            "${env:ProgramFiles(x86)}\Dell\DellPair\uninstall.exe"
+        )
+        
+        # Also search for uninstallers in Dell subdirectories
+        $dellDirs = Get-ChildItem -Path "${env:ProgramFiles}\Dell\", "${env:ProgramFiles(x86)}\Dell\" -Directory -ErrorAction SilentlyContinue
+        foreach ($dir in $dellDirs) {
+            $possiblePaths += Get-ChildItem -Path $dir.FullName -Recurse -Include "unins*.exe" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+        }
+        
+        foreach ($path in $possiblePaths) {
+            if (Test-Path $path) {
+                Write-Log "Found potential Dell Pair uninstaller: $path" "INFO"
+                
+                if ($PSCmdlet.ShouldProcess("Dell Pair", "Uninstall using $path")) {
+                    $process = Start-Process -FilePath $path -ArgumentList "/S /SILENT /VERYSILENT /NORESTART" -Wait -NoNewWindow -PassThru -ErrorAction SilentlyContinue
+                      if ($process.ExitCode -eq 0) {
+                        Write-Log "REMOVED: Dell Pair using $path" "SUCCESS"
+                        return
+                    }
+                    else {
+                        Write-Log "ERROR: Uninstaller $path failed with exit code: $($process.ExitCode)" "WARNING"
+                    }
+                }
+            }
+        }
+    }
+    
+    # Final attempt: Brute force removal of files and registry keys
+    Write-Log "Attempting manual removal of Dell Pair files and registry entries" "INFO"
+    
+    if ($PSCmdlet.ShouldProcess("Dell Pair", "Manual cleanup")) {
+        try {
+            # Remove registry entries
+            $regPaths = @(
+                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+            )
+            
+            foreach ($regPath in $regPaths) {
+                Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue | 
+                Get-ItemProperty -ErrorAction SilentlyContinue | 
+                Where-Object { $_.DisplayName -like "*Dell Pair*" } | 
+                ForEach-Object {
+                    $keyPath = $_.PSPath
+                    Write-Log "Removing registry key: $keyPath" "INFO"
+                    Remove-Item -Path $keyPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+            
+            # Remove program files
+            $filePaths = @(
+                "${env:ProgramFiles}\Dell\Dell Pair\",
+                "${env:ProgramFiles(x86)}\Dell\Dell Pair\",
+                "${env:ProgramFiles}\Dell\DellPair\",
+                "${env:ProgramFiles(x86)}\Dell\DellPair\"
+            )
+            
+            foreach ($filePath in $filePaths) {
+                if (Test-Path $filePath) {
+                    Write-Log "Removing directory: $filePath" "INFO"
+                    Remove-Item -Path $filePath -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+              Write-Log "REMOVED: Dell Pair through manual cleanup completed" "SUCCESS"
+            return $true
+        }
+        catch {
+            $errorMsg = $_.Exception.Message
+            Write-Log "ERROR: Failed during Dell Pair manual cleanup: $errorMsg" "ERROR"
+            return $false
+        }
+    }
+    
+    return $false
 }
 
 # Start script execution
@@ -460,11 +708,17 @@ try {
         "king.com.CandyCrushSodaSaga",
         "king.com.CandyCrushFriends"
     )
-    
-    # Remove UWP bloatware
+      # Remove UWP bloatware
     Write-Log "Removing UWP bloatware applications..." "INFO"
     foreach ($app in $uwpBloatware) {
-        Uninstall-UWPApp -AppName $app
+        # Wrap each call in try/catch to ensure script continues even if one app fails
+        try {
+            Uninstall-UWPApp -AppName $app -ErrorAction SilentlyContinue
+        }
+        catch {
+            # Just log and continue to the next app
+            Write-Log "Caught exception while processing $app, continuing with next app" "WARNING"
+        }
     }
     
     # List of common Win32 bloatware apps
@@ -530,11 +784,11 @@ try {
             if ($PSCmdlet.ShouldProcess($folder, "Remove directory")) {
                 Write-Log "Removing directory: $folder" "INFO"
                 try {
-                    Remove-Item -Path $folder -Recurse -Force
-                    Write-Log "Successfully removed directory: $folder" "SUCCESS"
+                    Remove-Item -Path $folder -Recurse -Force                    Write-Log "REMOVED: Directory $folder" "SUCCESS"
                 }
                 catch {
-                    Write-Log "Failed to remove directory $folder. Error: $_" "ERROR"
+                    $errorMsg = $_.Exception.Message
+                    Write-Log "ERROR: Failed to remove directory $folder. Error: $errorMsg" "ERROR"
                 }
             }
             else {
@@ -546,7 +800,8 @@ try {
     Write-Log "Windows bloatware removal completed successfully" "SUCCESS"
 }
 catch {
-    Write-Log "An error occurred during bloatware removal: $_" "ERROR"
+    $errorMsg = $_.Exception.Message
+    Write-Log "An error occurred during bloatware removal: $errorMsg" "ERROR"
     Write-Log "Exception details: $($_.Exception.Message)" "ERROR"
     Write-Log "Stack trace: $($_.ScriptStackTrace)" "DEBUG"
     exit 1
