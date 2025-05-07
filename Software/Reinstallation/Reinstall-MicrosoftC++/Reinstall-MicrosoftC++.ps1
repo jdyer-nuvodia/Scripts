@@ -2,10 +2,10 @@
 # Script: Reinstall-MicrosoftC++.ps1
 # Created: 2025-02-27 18:51:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-11 15:30:00 UTC
+# Last Updated: 2025-04-14 17:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.4.0
-# Additional Info: Added machine name and timestamp to log filenames
+# Version: 2.5.0
+# Additional Info: Added cleanup functionality, restart parameter, and fixed duplicate log messages
 # =============================================================================
 
 <#
@@ -19,21 +19,36 @@
      - Creates a temporary directory for downloads
      - Downloads all versions (2008, 2010, 2012, 2013, 2015-2022) of Visual C++ Redistributables and Runtimes
      - Installs the components silently
-     - No system restart is forced after installation
+     - No system restart is forced after installation unless specified
      - Includes -WhatIf parameter to preview changes without executing them
+     - Cleans up downloaded files after installation unless specified
     Dependencies:
      - Requires internet connection
      - Requires administrative privileges
 .PARAMETER WhatIf
     Simulates the removal and installation process without making actual changes.
 
+.PARAMETER NoCleanup
+    Skip cleanup of downloaded installation files.
+
+.PARAMETER Restart
+    Automatically restart the computer if needed after installation.
+
 .EXAMPLE
     .\Reinstall-MicrosoftC++.ps1
-    Removes all existing Visual C++ Redistributables/Runtimes and installs all versions from 2008 to latest
+    Removes all existing Visual C++ Redistributables/Runtimes, installs all versions from 2008 to latest, and cleans up downloaded files
 
 .EXAMPLE
     .\Reinstall-MicrosoftC++.ps1 -WhatIf
     Shows what would happen if the script is run without making any changes
+
+.EXAMPLE
+    .\Reinstall-MicrosoftC++.ps1 -NoCleanup
+    Performs installation but keeps the downloaded installation files
+
+.EXAMPLE
+    .\Reinstall-MicrosoftC++.ps1 -Restart
+    Performs installation and restarts the computer if needed
 
 .NOTES
     Security Level: Medium
@@ -42,7 +57,10 @@
 #>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
-param()
+param(
+    [switch]$NoCleanup,
+    [switch]$Restart
+)
 
 # Check for administrative privileges
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -50,28 +68,48 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     Exit
 }
 
-# Define the path where the redistributable installers will be saved
-$downloadPath = "$env:TEMP\Redistributables"
 # Get the directory where the script is located
 $scriptDirectory = $PSScriptRoot
+# Define the path where the redistributable installers will be saved
+$downloadPath = "$scriptDirectory\Redistributables"
 # Get computer name for log files
 $computerName = $env:COMPUTERNAME
+# Add a global variable to track if reboot is recommended
+$global:rebootRecommended = $false
 
-# Function to generate timestamp-based filenames
-function Get-TimestampedFileName {
+# Create a single log file name with timestamp and computer name
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$global:logFile = "$scriptDirectory\reinstall_vcredist_${computerName}_${timestamp}.log"
+$global:logFileCreated = $false
+
+# Function to create a log file
+function Write-Log {
     param (
-        [string]$BaseFileName,
-        [string]$Extension = "log"
+        [string]$Message,
+        [switch]$NoConsole
     )
     
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    return "$BaseFileName`_$computerName`_$timestamp.$Extension"
+    # Create log file if it doesn't exist
+    if (-not $global:logFileCreated) {
+        "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" | 
+            Out-File -FilePath $global:logFile -Force
+        $global:logFileCreated = $true
+    }
+    
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "[$timestamp] $Message"
+    
+    Add-Content -Path $global:logFile -Value $logMessage
+    
+    if (-not $NoConsole) {
+        Write-Host $Message
+    }
 }
 
 # Create the download directory if it doesn't exist
 if (!(Test-Path -Path $downloadPath)) {
     if ($PSCmdlet.ShouldProcess("Directory $downloadPath", "Create")) {
-        New-Item -ItemType Directory -Path $downloadPath | Out-Null
+        New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
         Write-Host "Created temporary directory: $downloadPath" -ForegroundColor Cyan
     }
 }
@@ -84,12 +122,14 @@ $redistributables = @(
         URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe";
         Filename = "vcredist_2008_x86.exe";
         ProductCode = "{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
+        Args = "/q"; # Add specific arguments for 2008 SP1 x86
     },
     @{
         Name = "Microsoft Visual C++ 2008 SP1 Redistributable (x64)";
         URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe";
         Filename = "vcredist_2008_x64.exe";
         ProductCode = "{350AA351-21FA-3270-8B7A-835434E766AD}";
+        Args = "/q"; # Add specific arguments for 2008 SP1 x64
     },
     # 2010 SP1
     @{
@@ -103,26 +143,6 @@ $redistributables = @(
         URL = "https://download.microsoft.com/download/A/8/0/A80747C3-41BD-45DF-B505-E9710D2744E0/vcredist_x64.exe";
         Filename = "vcredist_2010_x64.exe";
         ProductCode = "{1D8E6291-B0D5-35EC-8441-6616F567A0F7}";
-    },
-    # 2010 Runtime
-    @{
-        Name = "Microsoft Visual C++ 2010 x86 Runtime - 10.0";
-        URL = "https://download.microsoft.com/download/5/B/C/5BC5DBB3-652D-4DCE-B14A-475AB85EEF6E/vcredist_x86.exe";
-        Filename = "vcredist_2010_runtime_x86.exe";
-        ProductCode = "{196BB40D-1578-3D01-B289-BEFC77A11A1E}";
-    },
-    @{
-        Name = "Microsoft Visual C++ 2010 x64 Runtime - 10.0";
-        URL = "https://download.microsoft.com/download/3/2/2/3224B87F-CFA0-4E70-BDA3-3DE650EFEBA5/vcredist_x64.exe";
-        Filename = "vcredist_2010_runtime_x64.exe";
-        ProductCode = "{DA5E371C-6333-3D8A-93A4-6FD5B20BCC6E}";
-    },
-    # 2010 x64 Designtime
-    @{
-        Name = "Microsoft Visual C++ 2010 x64 Designtime - 10.0";
-        URL = "https://download.microsoft.com/download/4/E/6/4E64A465-F02E-43AD-9A86-A08A223A82C3/vc_x64.exe";
-        Filename = "vc_2010_designtime_x64.exe";
-        ProductCode = "{EFA6AFA1-738E-3E00-8101-FD66644F8A6A}";
     },
     # 2012 Update 4
     @{
@@ -184,23 +204,6 @@ function Get-InstalledPrograms {
     return $installedPrograms | Sort-Object DisplayName
 }
 
-# Function to create a log file
-function Write-Log {
-    param (
-        [string]$Message,
-        [switch]$NoConsole
-    )
-    
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logMessage = "[$timestamp] $Message"
-    
-    Add-Content -Path "$scriptDirectory\$(Get-TimestampedFileName -BaseFileName "reinstall_vcredist")" -Value $logMessage
-    
-    if (-not $NoConsole) {
-        Write-Host $Message
-    }
-}
-
 # Function to format a list of programs for display and logging
 function Format-ProgramList {
     param(
@@ -212,7 +215,7 @@ function Format-ProgramList {
     
     if ($Programs.Count -gt 0) {
         Write-Host "`n$Title ($($Programs.Count)):" -ForegroundColor $TitleColor
-        Write-Log "$Title ($($Programs.Count)):" -NoConsole
+        Write-Log "$Title ($($Programs.Count))" -NoConsole
         
         $formattedList = @()
         
@@ -237,27 +240,35 @@ function Invoke-SilentInstallation {
     param (
         [string]$FilePath,
         [string]$DisplayName,
-        [switch]$Uninstall
+        [switch]$Uninstall,
+        [string]$CustomArgs = ""
     )
     
     $extension = [System.IO.Path]::GetExtension($FilePath).ToLower()
     $baseFileName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
     $action = if($Uninstall){'uninstall'}else{'install'}
-    $logFile = "$scriptDirectory\$(Get-TimestampedFileName -BaseFileName "$($baseFileName)_$action")"
     
     # Determine arguments based on file type and action
     switch ($extension) {
         ".msi" {
             # For MSI files use msiexec with appropriate switches
             $action = if ($Uninstall) { "/x" } else { "/i" }
-            $arguments = "$action `"$FilePath`" /quiet /norestart /log `"$logFile`" ALLUSERS=1"
+            $arguments = "$action `"$FilePath`" /quiet /norestart ALLUSERS=1"
+            if ($CustomArgs) {
+                $arguments += " $CustomArgs"
+            }
         }
         ".exe" {
-            # Most Visual C++ redistributables use these parameters
-            if ($Uninstall) {
-                $arguments = "/uninstall /quiet /norestart /log `"$logFile`""
+            # Use custom args if provided, otherwise use default
+            if ($CustomArgs) {
+                $arguments = $CustomArgs
             } else {
-                $arguments = "/install /quiet /norestart /log `"$logFile`""
+                # Most Visual C++ redistributables use these parameters
+                if ($Uninstall) {
+                    $arguments = "/uninstall /quiet /norestart"
+                } else {
+                    $arguments = "/install /quiet /norestart"
+                }
             }
         }
         default {
@@ -268,10 +279,18 @@ function Invoke-SilentInstallation {
     }
     
     try {
+        # Log the command being executed
+        Write-Log "Executing: $(if($extension -eq '.msi'){'msiexec.exe'}else{$FilePath}) with args: $arguments" -NoConsole
+        
         if ($extension -eq ".msi") {
             $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
         } else {
             $process = Start-Process -FilePath $FilePath -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
+        }
+        
+        # Check if reboot is recommended
+        if ($process.ExitCode -eq 3010) {
+            $global:rebootRecommended = $true
         }
         
         return $process
@@ -283,12 +302,46 @@ function Invoke-SilentInstallation {
     }
 }
 
+# Function to download file with retry logic
+function Invoke-DownloadWithRetry {
+    param (
+        [string]$Url,
+        [string]$OutFile,
+        [string]$DisplayName,
+        [int]$MaxRetries = 3,
+        [int]$RetryDelaySeconds = 5
+    )
+    
+    $retryCount = 0
+    $success = $false
+    
+    while (-not $success -and $retryCount -lt $MaxRetries) {
+        try {
+            if ($retryCount -gt 0) {
+                Write-Host "    Retry attempt $retryCount for $DisplayName..." -ForegroundColor Yellow
+                Write-Log "Retry attempt $retryCount for download: $DisplayName"
+                Start-Sleep -Seconds $RetryDelaySeconds
+            }
+            
+            Invoke-WebRequest -Uri $Url -OutFile $OutFile -ErrorAction Stop -UseBasicParsing
+            $success = $true
+        }
+        catch {
+            $retryCount++
+            if ($retryCount -ge $MaxRetries) {
+                Write-Host "    Failed to download $DisplayName after $MaxRetries attempts: $_" -ForegroundColor Red
+                Write-Log "Download failed after $MaxRetries attempts: $DisplayName - $_"
+                return $false
+            }
+        }
+    }
+    
+    return $true
+}
+
 # Start by creating the log file
 if ($PSCmdlet.ShouldProcess("Log file", "Create")) {
-    $mainLogFile = "$scriptDirectory\$(Get-TimestampedFileName -BaseFileName "reinstall_vcredist")"
-    "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" | 
-        Out-File -FilePath $mainLogFile -Force
-    Write-Host "Log file created: $mainLogFile" -ForegroundColor Cyan
+    Write-Host "Log file created: $global:logFile" -ForegroundColor Cyan
 }
 
 # Get currently installed Visual C++ Redistributables
@@ -321,6 +374,9 @@ if ($installedVCRedists.Count -gt 0) {
                 Write-Log "Removing: $($program.DisplayName)"
                 
                 try {
+                    # Add a short delay between uninstallations to prevent conflicts
+                    Start-Sleep -Seconds 2
+                    
                     # Handle MSI uninstallations differently
                     if ($executable -like "*msiexec*" -or $program.UninstallString -like "*msiexec*") {
                         # Extract ProductCode if it's an MSI uninstallation
@@ -344,6 +400,33 @@ if ($installedVCRedists.Count -gt 0) {
                     if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
                         Write-Host "    Successfully uninstalled $($program.DisplayName)" -ForegroundColor Green
                         Write-Log "Successfully uninstalled: $($program.DisplayName)"
+                        
+                        # Check if reboot required
+                        if ($process.ExitCode -eq 3010) {
+                            $global:rebootRecommended = $true
+                        }
+                    }
+                    # Specific error handling for common error codes
+                    elseif ($process.ExitCode -eq 1605) {
+                        # Error 1605: This action is only valid for products that are currently installed
+                        Write-Host "    Product $($program.DisplayName) was already uninstalled or not properly installed" -ForegroundColor Yellow
+                        Write-Log "Product already uninstalled or not properly installed: $($program.DisplayName)"
+                    }
+                    elseif ($process.ExitCode -eq 1618) {
+                        # Error 1618: Another installation is in progress
+                        Write-Host "    Another installation is in progress. Waiting 10 seconds before retry..." -ForegroundColor Yellow
+                        Write-Log "Another installation in progress for: $($program.DisplayName). Waiting before retry."
+                        Start-Sleep -Seconds 10
+                        
+                        # Try again after waiting
+                        $retryProcess = Start-Process -FilePath $executable -ArgumentList $existingArgs -Wait -PassThru -ErrorAction Stop
+                        if ($retryProcess.ExitCode -eq 0 -or $retryProcess.ExitCode -eq 3010) {
+                            Write-Host "    Successfully uninstalled $($program.DisplayName) on retry" -ForegroundColor Green
+                            Write-Log "Successfully uninstalled on retry: $($program.DisplayName)"
+                        } else {
+                            Write-Host "    Failed to uninstall $($program.DisplayName) on retry (Exit code: $($retryProcess.ExitCode))" -ForegroundColor Red
+                            Write-Log "Failed to uninstall on retry: $($program.DisplayName) with exit code: $($retryProcess.ExitCode)"
+                        }
                     }
                     else {
                         Write-Host "    Failed to uninstall $($program.DisplayName) (Exit code: $($process.ExitCode))" -ForegroundColor Red
@@ -369,15 +452,20 @@ else {
 
 # Download all redistributables
 Write-Host "`nDownloading Microsoft Visual C++ Redistributables..." -ForegroundColor Cyan
+Write-Log "Downloading Microsoft Visual C++ Redistributables..." -NoConsole
+
 foreach ($redist in $redistributables) {
     if ($PSCmdlet.ShouldProcess("$($redist.Name)", "Download")) {
         try {
             Write-Host "  Downloading $($redist.Name)..." -ForegroundColor Cyan
             Write-Log "Downloading: $($redist.Name) from $($redist.URL)"
             
-            Invoke-WebRequest -Uri $redist.URL -OutFile "$downloadPath\$($redist.Filename)" -ErrorAction Stop
-            Write-Host "    Download complete for $($redist.Name)" -ForegroundColor Green
-            Write-Log "Download complete: $($redist.Name)"
+            $downloadSuccess = Invoke-DownloadWithRetry -Url $redist.URL -OutFile "$downloadPath\$($redist.Filename)" -DisplayName $redist.Name
+            
+            if ($downloadSuccess) {
+                Write-Host "    Download complete for $($redist.Name)" -ForegroundColor Green
+                Write-Log "Download complete: $($redist.Name)"
+            }
         }
         catch {
             Write-Host "    Failed to download $($redist.Name): $_" -ForegroundColor Red
@@ -388,6 +476,8 @@ foreach ($redist in $redistributables) {
 
 # Install all redistributables
 Write-Host "`nInstalling Microsoft Visual C++ Redistributables..." -ForegroundColor Cyan
+Write-Log "Installing Microsoft Visual C++ Redistributables..." -NoConsole
+
 foreach ($redist in $redistributables) {
     if ($PSCmdlet.ShouldProcess("$($redist.Name)", "Install")) {
         $filePath = "$downloadPath\$($redist.Filename)"
@@ -397,7 +487,8 @@ foreach ($redist in $redistributables) {
                 Write-Host "  Installing $($redist.Name)..." -ForegroundColor Cyan
                 Write-Log "Installing: $($redist.Name)"
                 
-                $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name
+                $customArgs = if ($redist.Args) { $redist.Args } else { "" }
+                $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name -CustomArgs $customArgs
                 
                 if ($process -and ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010)) {
                     Write-Host "    Successfully installed $($redist.Name)" -ForegroundColor Green
@@ -407,6 +498,33 @@ foreach ($redist in $redistributables) {
                     if ($process.ExitCode -eq 3010) {
                         Write-Host "    Note: A system reboot is recommended after installation" -ForegroundColor Yellow
                         Write-Log "Reboot recommended after installing: $($redist.Name)"
+                        $global:rebootRecommended = $true
+                    }
+                }
+                # Handle specific error codes
+                elseif ($process -and $process.ExitCode -eq 5100) {
+                    Write-Host "    Cannot install $($redist.Name) because a newer version is already installed" -ForegroundColor Yellow
+                    Write-Log "Cannot install: $($redist.Name) - newer version already installed (code 5100)"
+                }
+                elseif ($process -and $process.ExitCode -eq 4096) {
+                    # For 2008 packages that fail with 4096, try alternate installation parameters
+                    Write-Host "    First attempt failed for $($redist.Name), trying alternate parameters..." -ForegroundColor Yellow
+                    Write-Log "First attempt failed for $($redist.Name), trying alternate parameters"
+                    
+                    $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name -CustomArgs "/q /norestart"
+                    
+                    if ($process -and ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010)) {
+                        Write-Host "    Successfully installed $($redist.Name) with alternate parameters" -ForegroundColor Green
+                        Write-Log "Successfully installed with alternate parameters: $($redist.Name)"
+                        
+                        if ($process.ExitCode -eq 3010) {
+                            $global:rebootRecommended = $true
+                        }
+                    }
+                    else {
+                        $exitCode = if ($process) { $process.ExitCode } else { "Unknown" }
+                        Write-Host "    Failed to install $($redist.Name) with alternate parameters (Exit code: $exitCode)" -ForegroundColor Red
+                        Write-Log "Failed to install with alternate parameters: $($redist.Name) with exit code: $exitCode"
                     }
                 }
                 else {
@@ -429,6 +547,7 @@ foreach ($redist in $redistributables) {
 
 # Verify installation
 Write-Host "`nVerifying installations..." -ForegroundColor Cyan
+Write-Log "Verifying installations..." -NoConsole
 
 if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify installation")) {
     $installedAfter = Get-InstalledPrograms
@@ -473,5 +592,43 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
     }
 }
 
-Write-Host "`nProcess complete. Log file saved to: $scriptDirectory\$(Get-TimestampedFileName -BaseFileName "reinstall_vcredist")" -ForegroundColor Green
-Write-Log "Process complete"
+# Clean up downloaded files if requested
+if (-not $NoCleanup) {
+    if ($PSCmdlet.ShouldProcess("Downloaded Installation Files", "Clean up")) {
+        Write-Host "`nCleaning up downloaded files..." -ForegroundColor Cyan
+        Write-Log "Cleaning up downloaded files..." -NoConsole
+        
+        try {
+            Remove-Item -Path $downloadPath -Recurse -Force -ErrorAction Stop
+            Write-Host "  Successfully removed downloaded files" -ForegroundColor Green
+            Write-Log "Successfully removed downloaded files" -NoConsole
+        }
+        catch {
+            Write-Host "  Failed to remove downloaded files: $_" -ForegroundColor Yellow
+            Write-Log "Failed to remove downloaded files: $_" -NoConsole
+        }
+    }
+}
+else {
+    Write-Host "`nDownloaded files remain in: $downloadPath" -ForegroundColor Cyan
+    Write-Log "Downloaded files remain in: $downloadPath" -NoConsole
+}
+
+# Display reboot recommendation at the end if needed
+if ($global:rebootRecommended) {
+    Write-Host "`nA system reboot is recommended to complete the installation process." -ForegroundColor Yellow
+    Write-Log "A system reboot is recommended to complete the installation process." -NoConsole
+    
+    if ($Restart) {
+        Write-Host "System will restart in 15 seconds. Press Ctrl+C to cancel." -ForegroundColor Yellow
+        Write-Log "System will restart in 15 seconds." -NoConsole
+        
+        if ($PSCmdlet.ShouldProcess("System", "Restart")) {
+            Start-Sleep -Seconds 15
+            Restart-Computer -Force
+        }
+    }
+}
+
+Write-Host "`nProcess complete. Log file saved to: $global:logFile" -ForegroundColor Green
+Write-Log "Process complete" -NoConsole
