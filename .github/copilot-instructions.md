@@ -16,6 +16,8 @@ The current month is April, the current year is 2025.
 
 Any scripts that add, remove, delete, or modify permissions, rights, files (excluding .log or .tmp or other incidental files created for the functionality of the script), folders, directories, metadata, software packages, etc. should include -WhatIf functionality.
 
+Always run PSScriptAnalyzer on the code before finalizing it. If any issues are found, please address them before proceeding.
+
 ## MANDATORY VERSION CONTROL
 
 1. ALL changes require:
