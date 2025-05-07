@@ -2,10 +2,10 @@
 # Script: Reinstall-MicrosoftC++.ps1
 # Created: 2025-02-27 18:51:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 21:32:00 UTC
+# Last Updated: 2025-04-09 15:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.0
-# Additional Info: Improved logging and display of found/installed redistributables
+# Version: 2.3.0
+# Additional Info: Enhanced installation parameters for silent operation and improved MSI execution
 # =============================================================================
 
 <#
@@ -217,6 +217,55 @@ function Format-ProgramList {
     }
 }
 
+# Function to properly handle different installer types with silent options
+function Invoke-SilentInstallation {
+    param (
+        [string]$FilePath,
+        [string]$DisplayName,
+        [switch]$Uninstall
+    )
+    
+    $extension = [System.IO.Path]::GetExtension($FilePath).ToLower()
+    $logFile = "$downloadPath\$([System.IO.Path]::GetFileNameWithoutExtension($FilePath))_$(if($Uninstall){'uninstall'}else{'install'}).log"
+    
+    # Determine arguments based on file type and action
+    switch ($extension) {
+        ".msi" {
+            # For MSI files use msiexec with appropriate switches
+            $action = if ($Uninstall) { "/x" } else { "/i" }
+            $arguments = "$action `"$FilePath`" /quiet /norestart /log `"$logFile`" ALLUSERS=1"
+        }
+        ".exe" {
+            # Most Visual C++ redistributables use these parameters
+            if ($Uninstall) {
+                $arguments = "/uninstall /quiet /norestart /log `"$logFile`""
+            } else {
+                $arguments = "/install /quiet /norestart /log `"$logFile`""
+            }
+        }
+        default {
+            Write-Host "    Unsupported file type: $extension for $DisplayName" -ForegroundColor Red
+            Write-Log "Unsupported file type: $extension for $DisplayName"
+            return $false
+        }
+    }
+    
+    try {
+        if ($extension -eq ".msi") {
+            $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
+        } else {
+            $process = Start-Process -FilePath $FilePath -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
+        }
+        
+        return $process
+    }
+    catch {
+        Write-Host "    Error executing $DisplayName: $_" -ForegroundColor Red
+        Write-Log "Error executing $DisplayName: $_"
+        return $false
+    }
+}
+
 # Start by creating the log file
 if ($PSCmdlet.ShouldProcess("Log file", "Create")) {
     "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" | 
@@ -248,20 +297,32 @@ if ($installedVCRedists.Count -gt 0) {
                 $existingArgs = $matches[2]
             }
             
-            # Add silent uninstall arguments if they're not already present
-            $uninstallArgs = $existingArgs
-            if ($uninstallArgs -notlike "*/quiet*" -and $uninstallArgs -notlike "*/passive*") {
-                $uninstallArgs = '/quiet /norestart'
-            }
-            
             if ($PSCmdlet.ShouldProcess("$($program.DisplayName)", "Uninstall")) {
                 Write-Host "  Uninstalling: $($program.DisplayName)" -ForegroundColor Yellow
                 Write-Log "Removing: $($program.DisplayName)"
                 
                 try {
-                    $process = Start-Process -FilePath $executable -ArgumentList $uninstallArgs -Wait -PassThru -ErrorAction Stop
+                    # Handle MSI uninstallations differently
+                    if ($executable -like "*msiexec*" -or $program.UninstallString -like "*msiexec*") {
+                        # Extract ProductCode if it's an MSI uninstallation
+                        $productCode = ""
+                        if ($uninstallString -match "{[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}}") {
+                            $productCode = $matches[0]
+                            $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /quiet /norestart" -Wait -PassThru -ErrorAction Stop
+                        } else {
+                            # If we can't extract the product code, use the original uninstall string with quiet/passive parameters
+                            $process = Start-Process -FilePath $executable -ArgumentList "$existingArgs /quiet /norestart" -Wait -PassThru -ErrorAction Stop
+                        }
+                    } 
+                    else {
+                        # For EXE uninstallers
+                        if ($existingArgs -notlike "*/quiet*" -and $existingArgs -notlike "*/passive*") {
+                            $existingArgs += " /quiet /norestart"
+                        }
+                        $process = Start-Process -FilePath $executable -ArgumentList $existingArgs -Wait -PassThru -ErrorAction Stop
+                    }
                     
-                    if ($process.ExitCode -eq 0) {
+                    if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
                         Write-Host "    Successfully uninstalled $($program.DisplayName)" -ForegroundColor Green
                         Write-Log "Successfully uninstalled: $($program.DisplayName)"
                     }
@@ -317,9 +378,9 @@ foreach ($redist in $redistributables) {
                 Write-Host "  Installing $($redist.Name)..." -ForegroundColor Cyan
                 Write-Log "Installing: $($redist.Name)"
                 
-                $process = Start-Process -FilePath $filePath -ArgumentList "/install /quiet /norestart" -Wait -PassThru -ErrorAction Stop
+                $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name
                 
-                if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
+                if ($process -and ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010)) {
                     Write-Host "    Successfully installed $($redist.Name)" -ForegroundColor Green
                     Write-Log "Successfully installed: $($redist.Name)"
                     
@@ -330,8 +391,9 @@ foreach ($redist in $redistributables) {
                     }
                 }
                 else {
-                    Write-Host "    Failed to install $($redist.Name) (Exit code: $($process.ExitCode))" -ForegroundColor Red
-                    Write-Log "Failed to install: $($redist.Name) with exit code: $($process.ExitCode)"
+                    $exitCode = if ($process) { $process.ExitCode } else { "Unknown" }
+                    Write-Host "    Failed to install $($redist.Name) (Exit code: $exitCode)" -ForegroundColor Red
+                    Write-Log "Failed to install: $($redist.Name) with exit code: $exitCode"
                 }
             }
             catch {
