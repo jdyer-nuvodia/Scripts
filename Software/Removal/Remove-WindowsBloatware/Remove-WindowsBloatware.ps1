@@ -4,8 +4,8 @@
 # Author: jdyer-nuvodia
 # Last Updated: 2025-05-07 22:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.6
-# Additional Info: Added dedicated handling for Lenovo software with Lenovo Vantage preservation
+# Version: 1.0.8
+# Additional Info: Added special handling for Dell Pair and SupportAssist with robust error code handling
 # =============================================================================
 
 <#
@@ -93,7 +93,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 # Script variables
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware.log"
-$scriptVersion = "1.0.6"
+$scriptVersion = "1.0.7"
 
 # Function to write log entries
 function Write-Log {
@@ -200,10 +200,10 @@ function Uninstall-Win32App {
             try {
                 if ($PSCmdlet.ShouldProcess($appName, "Uninstall application")) {
                     Write-Log "Uninstalling application: $appName" "INFO"
-                    
-                    # If msiexec is in the uninstall string, use that
+                      # If msiexec is in the uninstall string, use that
                     if ($uninstallString -like "*msiexec*") {
-                        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn" -Wait -NoNewWindow -PassThru
+                        # Using /qn (no UI), /norestart (prevent restart), /passive (progress bar only, no user input)
+                        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow -PassThru
                     }
                     else {
                         # Some applications use custom uninstallers
@@ -270,6 +270,12 @@ function Remove-DellBloatware {
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
     
+    # Special case Dell applications that need custom handling
+    $specialDellApps = @(
+        "Dell Pair", 
+        "Dell SupportAssist OS Recovery Plugin for Dell Update"
+    )
+    
     foreach ($key in $uninstallKeys) {
         $dellApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
                     Get-ItemProperty | 
@@ -290,13 +296,65 @@ function Remove-DellBloatware {
                     Write-Log "Uninstalling Dell application: $appName" "INFO"
                     
                     $productCode = $app.PSChildName
-                    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn" -Wait -NoNewWindow -PassThru
+                    $uninstallString = $app.UninstallString
+                    
+                    # For special Dell apps that need custom handling
+                    if ($specialDellApps -contains $appName) {
+                        # Try to get the direct uninstaller path if available
+                        if ($uninstallString -match '"([^"]+)"') {
+                            $uninstallExe = $matches[1]
+                            if (Test-Path $uninstallExe) {
+                                Write-Log "Using direct uninstaller for $appName" "INFO"
+                                $process = Start-Process -FilePath $uninstallExe -ArgumentList "/S /SILENT" -Wait -NoNewWindow -PassThru
+                            }
+                            else {
+                                Write-Log "Direct uninstaller not found for $appName, using MSI method" "INFO"
+                                $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart /l*v `"$env:TEMP\$($productCode)_uninstall.log`"" -Wait -NoNewWindow -PassThru
+                            }
+                        }
+                        else {
+                            Write-Log "Using MSI method with logging for $appName" "INFO"
+                            $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart /l*v `"$env:TEMP\$($productCode)_uninstall.log`"" -Wait -NoNewWindow -PassThru
+                        }
+                    }
+                    else {
+                        # Standard MSI uninstall for other Dell apps
+                        $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow -PassThru
+                    }
                     
                     if ($process.ExitCode -eq 0) {
                         Write-Log "Successfully uninstalled: $appName" "SUCCESS"
                     }
                     else {
-                        Write-Log "Failed to uninstall: $appName. Exit code: $($process.ExitCode)" "WARNING"
+                        # Handle specific MSI error codes
+                        switch ($process.ExitCode) {
+                            1605 { 
+                                Write-Log "Product not installed (code 1605) for $appName - marking as success" "WARNING" 
+                            }
+                            1619 {
+                                Write-Log "Installation package could not be found (code 1619) for $appName" "WARNING"
+                            }
+                            1639 {
+                                Write-Log "Invalid command line parameters (code 1639) for $appName - attempting alternative method" "WARNING"
+                                if ($uninstallString -and $uninstallString -notlike "*msiexec*") {
+                                    # Try the original uninstall string from registry
+                                    if ($uninstallString -match '"([^"]+)"(.*)') {
+                                        $uninstallExe = $matches[1]
+                                        $uninstallArgs = $matches[2] + " /S /SILENT"
+                                        $altProcess = Start-Process -FilePath $uninstallExe -ArgumentList $uninstallArgs -Wait -NoNewWindow -PassThru
+                                        if ($altProcess.ExitCode -eq 0) {
+                                            Write-Log "Successfully uninstalled $appName using alternative method" "SUCCESS"
+                                        }
+                                        else {
+                                            Write-Log "Alternative method failed for $appName. Exit code: $($altProcess.ExitCode)" "WARNING"
+                                        }
+                                    }
+                                }
+                            }
+                            default {
+                                Write-Log "Failed to uninstall: $appName. Exit code: $($process.ExitCode)" "WARNING"
+                            }
+                        }
                     }
                 }
                 else {
@@ -338,11 +396,10 @@ function Remove-LenovoBloatware {
             
             # Uninstall other Lenovo applications
             try {
-                if ($PSCmdlet.ShouldProcess($appName, "Uninstall Lenovo application")) {
-                    Write-Log "Uninstalling Lenovo application: $appName" "INFO"
+                if ($PSCmdlet.ShouldProcess($appName, "Uninstall Lenovo application")) {                    Write-Log "Uninstalling Lenovo application: $appName" "INFO"
                     
                     $productCode = $app.PSChildName
-                    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn" -Wait -NoNewWindow -PassThru
+                    $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow -PassThru
                     
                     if ($process.ExitCode -eq 0) {
                         Write-Log "Successfully uninstalled: $appName" "SUCCESS"
