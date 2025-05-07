@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-07 23:08:00 UTC
+# Last Updated: 2025-05-07 23:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Improved messaging to clearly indicate if apps are not found or removed
+# Version: 1.1.3
+# Additional Info: Added improved detection and removal of Dell Digital Delivery and Partner Promo apps
 # =============================================================================
 
 <#
@@ -95,7 +95,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
-$scriptVersion = "1.1.1"
+$scriptVersion = "1.1.3"
 
 # Function to write log entries
 function Write-Log {
@@ -304,19 +304,25 @@ function Remove-DellBloatware {
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
-    
-    # Special case Dell applications that need custom handling
+      # Special case Dell applications that need custom handling
     $specialDellApps = @(
         "Dell Pair", 
-        "Dell SupportAssist OS Recovery Plugin for Dell Update"
+        "Dell SupportAssist OS Recovery Plugin for Dell Update",
+        "Dell Digital Delivery",
+        "Partner Promo"
     )
     
     $foundDellApps = $false
-    
-    foreach ($key in $uninstallKeys) {
+      foreach ($key in $uninstallKeys) {
+        # Look for Dell apps and specific apps like Partner Promo that might not have "Dell" in the name
         $dellApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
                     Get-ItemProperty | 
-                    Where-Object { $_.DisplayName -like "*Dell*" }
+                    Where-Object { 
+                        $_.DisplayName -like "*Dell*" -or 
+                        $_.DisplayName -like "*Partner Promo*" -or
+                        $_.DisplayName -like "*SupportAssist OS Recovery*" -or
+                        $_.Publisher -like "*Dell*"
+                    }
         
         if ($dellApps) {
             $foundDellApps = $true
@@ -405,7 +411,7 @@ function Remove-DellBloatware {
                                                 Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
                                                 Remove-Item -Path "C:\Program Files\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
                                                 Remove-Item -Path "C:\Program Files (x86)\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
-                                                Write-Log "Completed Dell Pair cleanup" "SUCCESS"
+                                                Write-Log "REMOVED: Dell Pair via registry and file cleanup" "SUCCESS"
                                             }
                                             catch {                                                $errorMsg = $_.Exception.Message
                                                 Write-Log "ERROR: Failed during Dell Pair cleanup: $errorMsg" "ERROR"
@@ -780,11 +786,11 @@ try {
                 Write-Log "Skipping Lenovo Vantage folder: $folder\Lenovo Vantage" "INFO"
                 continue
             }
-            
-            if ($PSCmdlet.ShouldProcess($folder, "Remove directory")) {
+              if ($PSCmdlet.ShouldProcess($folder, "Remove directory")) {
                 Write-Log "Removing directory: $folder" "INFO"
                 try {
-                    Remove-Item -Path $folder -Recurse -Force                    Write-Log "REMOVED: Directory $folder" "SUCCESS"
+                    Remove-Item -Path $folder -Recurse -Force -ErrorAction Stop
+                    Write-Log "REMOVED: Directory $folder" "SUCCESS"
                 }
                 catch {
                     $errorMsg = $_.Exception.Message
