@@ -18,6 +18,8 @@ Any scripts that add, remove, delete, or modify permissions, rights, files (excl
 
 Always run PSScriptAnalyzer on the code before finalizing it. If any issues are found, please address them before proceeding.
 
+All scripts that have logs should save the log to the same folder as the script and should have the system name it's being run on and a UTC timestamp to the filename of the log.
+
 ## MANDATORY VERSION CONTROL
 
 1. ALL changes require:
