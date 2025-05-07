@@ -2,10 +2,10 @@
 # Script: Reinstall-MicrosoftC++.ps1
 # Created: 2025-02-27 18:51:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-09 15:30:00 UTC
+# Last Updated: 2025-04-11 15:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.0
-# Additional Info: Enhanced installation parameters for silent operation and improved MSI execution
+# Version: 2.4.0
+# Additional Info: Added machine name and timestamp to log filenames
 # =============================================================================
 
 <#
@@ -52,6 +52,21 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Define the path where the redistributable installers will be saved
 $downloadPath = "$env:TEMP\Redistributables"
+# Get the directory where the script is located
+$scriptDirectory = $PSScriptRoot
+# Get computer name for log files
+$computerName = $env:COMPUTERNAME
+
+# Function to generate timestamp-based filenames
+function Get-TimestampedFileName {
+    param (
+        [string]$BaseFileName,
+        [string]$Extension = "log"
+    )
+    
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    return "$BaseFileName`_$computerName`_$timestamp.$Extension"
+}
 
 # Create the download directory if it doesn't exist
 if (!(Test-Path -Path $downloadPath)) {
@@ -179,7 +194,7 @@ function Write-Log {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
     
-    Add-Content -Path "$downloadPath\reinstall_vcredist.log" -Value $logMessage
+    Add-Content -Path "$scriptDirectory\$(Get-TimestampedFileName -BaseFileName "reinstall_vcredist")" -Value $logMessage
     
     if (-not $NoConsole) {
         Write-Host $Message
@@ -226,7 +241,9 @@ function Invoke-SilentInstallation {
     )
     
     $extension = [System.IO.Path]::GetExtension($FilePath).ToLower()
-    $logFile = "$downloadPath\$([System.IO.Path]::GetFileNameWithoutExtension($FilePath))_$(if($Uninstall){'uninstall'}else{'install'}).log"
+    $baseFileName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
+    $action = if($Uninstall){'uninstall'}else{'install'}
+    $logFile = "$scriptDirectory\$(Get-TimestampedFileName -BaseFileName "$($baseFileName)_$action")"
     
     # Determine arguments based on file type and action
     switch ($extension) {
@@ -260,16 +277,18 @@ function Invoke-SilentInstallation {
         return $process
     }
     catch {
-        Write-Host "    Error executing $DisplayName: $_" -ForegroundColor Red
-        Write-Log "Error executing $DisplayName: $_"
+        Write-Host "    Error executing ${DisplayName}: $_" -ForegroundColor Red
+        Write-Log "Error executing ${DisplayName}: $_"
         return $false
     }
 }
 
 # Start by creating the log file
 if ($PSCmdlet.ShouldProcess("Log file", "Create")) {
+    $mainLogFile = "$scriptDirectory\$(Get-TimestampedFileName -BaseFileName "reinstall_vcredist")"
     "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" | 
-        Out-File -FilePath "$downloadPath\reinstall_vcredist.log" -Force
+        Out-File -FilePath $mainLogFile -Force
+    Write-Host "Log file created: $mainLogFile" -ForegroundColor Cyan
 }
 
 # Get currently installed Visual C++ Redistributables
@@ -454,5 +473,5 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
     }
 }
 
-Write-Host "`nProcess complete. Log file saved to: $downloadPath\reinstall_vcredist.log" -ForegroundColor Green
+Write-Host "`nProcess complete. Log file saved to: $scriptDirectory\$(Get-TimestampedFileName -BaseFileName "reinstall_vcredist")" -ForegroundColor Green
 Write-Log "Process complete"
