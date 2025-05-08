@@ -55,9 +55,6 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Define the new PATH entries
 $newPathEntries = @(
     'C:\Program Files\PowerShell\7',
-    'C:\AzCopy',
-    'C:\Users\nuvodialocal\AppData\Local\Microsoft\WindowsApps',
-    'C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin',
     'C:\WINDOWS\system32',
     'C:\WINDOWS',
     'C:\WINDOWS\System32\Wbem',
@@ -68,7 +65,8 @@ $newPathEntries = @(
     'C:\Program Files\PowerShell\7\',
     'C:\Users\jdyer\AppData\Local\Microsoft\WindowsApps',
     'C:\Users\jdyer\AppData\Local\GitHubDesktop\bin'
-)
+	'C:\Program Files\Git\cmd'
+	)
 
 try {
     # Backup current PATH
