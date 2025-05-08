@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-07 22:45:00 UTC
+# Last Updated: 2025-05-08 17:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.5
-# Additional Info: Added helper function to ensure silent directory removal with no confirmation prompts
+# Version: 1.1.6
+# Additional Info: Fixed PSScriptAnalyzer warning PSAvoidDefaultValueSwitchParameter by removing default value from Force parameter
 # =============================================================================
 
 <#
@@ -85,7 +85,7 @@ If specified, shows what would happen if the script runs without actually making
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
 param(
     [Parameter(Mandatory = $false)]
-    [switch]$Force = $true
+    [switch]$Force
 )
 
 # Run this script as an administrator
@@ -98,7 +98,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
-$scriptVersion = "1.1.5"
+$scriptVersion = "1.1.6"
 
 # Function to write log entries
 function Write-Log {
