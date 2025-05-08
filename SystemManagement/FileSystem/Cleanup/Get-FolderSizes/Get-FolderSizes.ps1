@@ -1,11 +1,12 @@
 # =============================================================================
+# =============================================================================
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-05 22:10:00 UTC
+# Last Updated: 2025-05-08 22:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.2
-# Additional Info: Fixed compilation errors with ExcludeOneDrivePlaceholders parameter removal
+# Version: 2.3.3
+# Additional Info: Fixed PSScriptAnalyzer warning by changing [switch] to [bool] parameter
 # =============================================================================
 
 # Requires -Version 5.1
@@ -115,11 +116,9 @@
     
     Validation Requirements:
     - Check available memory (4GB+)
-    - Validate write access to log directory
-
-    Author:  jdyer-nuvodia
+    - Validate write access to log directory    Author:  jdyer-nuvodia
     Created: 2025-02-05 00:55:03 UTC
-    Updated: 2025-06-04 17:25:00 UTC
+    Updated: 2025-05-08 22:10:00 UTC
 
     Requirements:
     - Windows PowerShell 5.1 or later
@@ -186,10 +185,10 @@
     2.1.7 - Enhanced console output control for thread processing messages
     2.1.8 - Moved processing results header to transcript-only logging
     2.1.9 - Fixed incorrect root directory processing order
-    2.1.10 - Fixed syntax errors in Try-Catch blocks    2.1.12 - Fixed initial path scanning to start from root directory
-    2.1.13 - Added path validation and handling for empty paths
+    2.1.10 - Fixed syntax errors in Try-Catch blocks    2.1.12 - Fixed initial path scanning to start from root directory    2.1.13 - Added path validation and handling for empty paths
     2.2.0 - Added OneDrive placeholder detection and filtering options
     2.3.0 - Improved OneDrive scanning to accurately report local disk usage
+    2.3.3 - Fixed PSScriptAnalyzer warning by changing OnlyPhysicalFiles from [switch] to [bool]
 #>
 
 param (
@@ -209,7 +208,7 @@ param (
     [bool]$IncludeHiddenSystem = $true,
     [bool]$FollowJunctions = $true,
     [int]$MaxThreads = 10,    
-    [switch]$OnlyPhysicalFiles = $true
+    [bool]$OnlyPhysicalFiles = $true
 )
 
 # Console colors for diagnostic output
