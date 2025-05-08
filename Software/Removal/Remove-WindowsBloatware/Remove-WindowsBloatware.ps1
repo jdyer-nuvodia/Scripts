@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-07 23:45:00 UTC
+# Last Updated: 2025-05-07 22:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.3
-# Additional Info: Added improved detection and removal of Dell Digital Delivery and Partner Promo apps
+# Version: 1.1.5
+# Additional Info: Added helper function to ensure silent directory removal with no confirmation prompts
 # =============================================================================
 
 <#
@@ -82,8 +82,11 @@ If specified, shows what would happen if the script runs without actually making
 # Shows what applications would be removed without making actual changes
 #>
 
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-param()
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+param(
+    [Parameter(Mandatory = $false)]
+    [switch]$Force = $true
+)
 
 # Run this script as an administrator
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -95,7 +98,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
-$scriptVersion = "1.1.3"
+$scriptVersion = "1.1.5"
 
 # Function to write log entries
 function Write-Log {
@@ -129,6 +132,34 @@ function Write-Log {
     
     # Write to log file
     Add-Content -Path $logFile -Value $logEntry
+}
+
+# Helper function to remove directories without confirmation
+function Remove-DirectorySilently {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$LogPrefix = ""
+    )
+    
+    if (Test-Path $Path) {
+        Write-Log "$LogPrefix Removing directory: $Path" "INFO"
+        try {
+            # Use -Force to override read-only attributes, -Recurse to remove subdirectories,
+            # -Confirm:$false to suppress confirmation, and -ErrorAction Stop to catch errors
+            Remove-Item -Path $Path -Recurse -Force -Confirm:$false -ErrorAction Stop
+            Write-Log "$LogPrefix REMOVED: Directory $Path" "SUCCESS"
+            return $true
+        }
+        catch {
+            $errorMsg = $_.Exception.Message
+            Write-Log "$LogPrefix ERROR: Failed to remove directory $Path. Error: $errorMsg" "ERROR"
+            return $false
+        }
+    }
+    return $false
 }
 
 # Function to uninstall UWP apps
@@ -404,13 +435,12 @@ function Remove-DellBloatware {
                                             Write-Log "REMOVED: Dell Pair using direct uninstaller" "SUCCESS"
                                         }
                                         else {
-                                            Write-Log "ERROR: Direct uninstaller for Dell Pair failed. Exit code: $($altProcess.ExitCode). Will try alternative cleanup." "WARNING"
-                                            # Attempt registry cleanup for Dell Pair
+                                            Write-Log "ERROR: Direct uninstaller for Dell Pair failed. Exit code: $($altProcess.ExitCode). Will try alternative cleanup." "WARNING"                                            # Attempt registry cleanup for Dell Pair
                                             try {
-                                                Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
-                                                Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
-                                                Remove-Item -Path "C:\Program Files\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
-                                                Remove-Item -Path "C:\Program Files (x86)\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
+                                                Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
+                                                Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
+                                                Remove-Item -Path "C:\Program Files\Dell\Dell Pair\" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+                                                Remove-Item -Path "C:\Program Files (x86)\Dell\Dell Pair\" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
                                                 Write-Log "REMOVED: Dell Pair via registry and file cleanup" "SUCCESS"
                                             }
                                             catch {                                                $errorMsg = $_.Exception.Message
@@ -419,13 +449,12 @@ function Remove-DellBloatware {
                                         }
                                     }
                                     else {
-                                        Write-Log "NOT FOUND: Could not find Dell Pair uninstaller, trying alternative cleanup" "WARNING"
-                                        # Attempt registry cleanup for Dell Pair
+                                        Write-Log "NOT FOUND: Could not find Dell Pair uninstaller, trying alternative cleanup" "WARNING"                                        # Attempt registry cleanup for Dell Pair
                                         try {
-                                            Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
-                                            Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -ErrorAction SilentlyContinue
-                                            Remove-Item -Path "C:\Program Files\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue
-                                            Remove-Item -Path "C:\Program Files (x86)\Dell\Dell Pair\" -Recurse -Force -ErrorAction SilentlyContinue                                                Write-Log "REMOVED: Dell Pair via registry and file cleanup" "SUCCESS"
+                                            Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
+                                            Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
+                                            Remove-Item -Path "C:\Program Files\Dell\Dell Pair\" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+                                            Remove-Item -Path "C:\Program Files (x86)\Dell\Dell Pair\" -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue                                                Write-Log "REMOVED: Dell Pair via registry and file cleanup" "SUCCESS"
                                                 }
                                                 catch {
                                                     $errorMsg = $_.Exception.Message
@@ -644,11 +673,10 @@ function Uninstall-DellPair {
                 ForEach-Object {
                     $keyPath = $_.PSPath
                     Write-Log "Removing registry key: $keyPath" "INFO"
-                    Remove-Item -Path $keyPath -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $keyPath -Force -Confirm:$false -ErrorAction SilentlyContinue
                 }
             }
-            
-            # Remove program files
+              # Remove program files
             $filePaths = @(
                 "${env:ProgramFiles}\Dell\Dell Pair\",
                 "${env:ProgramFiles(x86)}\Dell\Dell Pair\",
@@ -657,10 +685,8 @@ function Uninstall-DellPair {
             )
             
             foreach ($filePath in $filePaths) {
-                if (Test-Path $filePath) {
-                    Write-Log "Removing directory: $filePath" "INFO"
-                    Remove-Item -Path $filePath -Recurse -Force -ErrorAction SilentlyContinue
-                }
+                # Use our silent removal helper function
+                Remove-DirectorySilently -Path $filePath -LogPrefix "Dell Pair cleanup:"
             }
               Write-Log "REMOVED: Dell Pair through manual cleanup completed" "SUCCESS"
             return $true
@@ -771,8 +797,7 @@ try {
         "${env:ProgramFiles}\Lenovo", # Not removing all Lenovo folders, just checking for specific ones
         "${env:ProgramFiles(x86)}\Lenovo" # Not removing all Lenovo folders, just checking for specific ones
     )
-    
-    Write-Log "Cleaning up leftover bloatware directories..." "INFO"
+      Write-Log "Cleaning up leftover bloatware directories..." "INFO"
     foreach ($folder in $bloatwareFolders) {
         if (Test-Path $folder) {
             # Skip Dell Command Update folders
@@ -785,20 +810,12 @@ try {
             if (($folder -like "*Lenovo*") -and (Test-Path "$folder\Lenovo Vantage")) {
                 Write-Log "Skipping Lenovo Vantage folder: $folder\Lenovo Vantage" "INFO"
                 continue
-            }
-              if ($PSCmdlet.ShouldProcess($folder, "Remove directory")) {
-                Write-Log "Removing directory: $folder" "INFO"
-                try {
-                    Remove-Item -Path $folder -Recurse -Force -ErrorAction Stop
-                    Write-Log "REMOVED: Directory $folder" "SUCCESS"
-                }
-                catch {
-                    $errorMsg = $_.Exception.Message
-                    Write-Log "ERROR: Failed to remove directory $folder. Error: $errorMsg" "ERROR"
-                }
-            }
-            else {
+            }              
+            # Use our helper function that guarantees no confirmation prompt
+            if ($WhatIfPreference) {
                 Write-Log "WhatIf: Would remove directory: $folder" "INFO"
+            } else {
+                Remove-DirectorySilently -Path $folder
             }
         }
     }
