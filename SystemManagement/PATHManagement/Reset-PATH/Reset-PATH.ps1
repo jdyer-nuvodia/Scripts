@@ -2,10 +2,10 @@
 # Script: Reset-PATH.ps1
 # Created: 2025-01-09 15:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-08 19:30:00 UTC
+# Last Updated: 2025-05-08 21:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.0
-# Additional Info: Renamed script and added support for both Machine and User PATH
+# Version: 2.1.0
+# Additional Info: Changed parameters to use -Scope instead of separate -Machine and -User switches
 # =============================================================================
 
 <#
@@ -35,22 +35,21 @@
      - Minimal system impact
      - One-time environment variable modification
      - No ongoing resource usage
-.PARAMETER Machine
-    Specifies that the Machine (system-wide) PATH should be reset.
-    Requires administrative privileges.
-.PARAMETER User
-    Specifies that the User (current user) PATH should be reset.
-    This is the default if no parameter is specified.
+.PARAMETER Scope
+    Specifies the scope for the PATH reset operation.
+    Valid values are "Machine" (system-wide) or "User" (current user).
+    Default value is "User".
+    The "Machine" scope requires administrative privileges.
 .PARAMETER WhatIf
     Shows what would happen if the script runs without making any actual changes.
 .EXAMPLE
     .\Reset-PATH.ps1
     Resets the User PATH to the predefined list of directories.
 .EXAMPLE
-    .\Reset-PATH.ps1 -Machine
+    .\Reset-PATH.ps1 -Scope Machine
     Resets the Machine PATH to the predefined list of directories.
 .EXAMPLE
-    .\Reset-PATH.ps1 -User -WhatIf
+    .\Reset-PATH.ps1 -Scope User -WhatIf
     Shows what the User PATH would be reset to without making any changes.
 .NOTES
     Security Level: High
@@ -63,22 +62,15 @@
 
 [CmdletBinding(SupportsShouldProcess=$true)]
 param (
-    [Parameter(Mandatory=$false, ParameterSetName='Machine')]
-    [switch]$Machine,
-    
-    [Parameter(Mandatory=$false, ParameterSetName='User')]
-    [switch]$User
+    [Parameter(Mandatory=$false)]
+    [ValidateSet("Machine", "User")]
+    [string]$Scope = "User"
 )
 
-# If neither parameter is specified, default to User
-if (-not $Machine -and -not $User) {
-    $User = $true
-}
-
-$pathType = if ($Machine) { "Machine" } else { "User" }
+$pathType = $Scope
 
 # Verify running as Administrator when modifying Machine PATH
-if ($Machine -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+if ($Scope -eq "Machine" -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Error "Administrative privileges required to modify Machine PATH!"
     exit 1
 }
@@ -131,7 +123,7 @@ $defaultUserPaths = @(
 )
 
 # Select appropriate paths based on PATH type
-$newPathEntries = if ($Machine) {
+$newPathEntries = if ($Scope -eq "Machine") {
     $defaultMachinePaths
 } else {
     $defaultUserPaths
