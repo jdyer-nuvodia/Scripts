@@ -2,7 +2,7 @@
 # Script: Reset-PATH.ps1
 # Created: 2025-01-09 15:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-08 21:45:00 UTC
+# Last Updated: 2025-05-08 17:25:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 2.1.0
 # Additional Info: Changed parameters to use -Scope instead of separate -Machine and -User switches

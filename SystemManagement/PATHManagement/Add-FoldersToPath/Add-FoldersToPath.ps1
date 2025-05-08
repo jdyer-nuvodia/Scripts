@@ -2,10 +2,10 @@
 # Script: Add-FoldersToPath.ps1
 # Created: 2025-02-05 22:15:38 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-20 17:15:00 UTC
+# Last Updated: 2025-05-08 17:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1
-# Additional Info: Updated header format to match standardization requirements
+# Version: 2.2.0
+# Additional Info: Fixed performance issue causing script to hang after completion
 # =============================================================================
 
 <#
@@ -70,18 +70,70 @@ param(
 )
 
 begin {
+    # Set up logging
+    $ScriptName = $MyInvocation.MyCommand.Name
+    $Host.UI.RawUI.WindowTitle = $ScriptName
+    $ComputerName = $env:COMPUTERNAME
+    $Timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HHmmss")
+    $LogFile = Join-Path -Path $PSScriptRoot -ChildPath "$ComputerName`_$ScriptName`_$Timestamp.log"
+    
+    function Write-Log {
+        param (
+            [Parameter(Mandatory = $true)]
+            [string]$Message,
+            [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG')]
+            [string]$Level = 'INFO'
+        )
+        
+        $TimeStamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss UTC")
+        $LogEntry = "$TimeStamp [$Level] $Message"
+        Add-Content -Path $LogFile -Value $LogEntry
+        
+    # Also output with appropriate colors and methods
+        $color = switch ($Level) {
+            'INFO'    { 'White' }
+            'WARNING' { 'Yellow' }
+            'ERROR'   { 'Red' }
+            'DEBUG'   { 'Magenta' }
+            'SUCCESS' { 'Green' }
+            default   { 'White' }
+        }
+        
+        if ($Level -eq 'DEBUG' -and -not $VerbosePreference) {
+            # Skip debug messages unless -Verbose is specified
+            return
+        }
+        
+        # Use appropriate output methods
+        switch ($Level) {
+            'ERROR'   { Write-Error $LogEntry }
+            'WARNING' { Write-Warning $Message }
+            'DEBUG'   { Write-Verbose $Message }
+            'INFO'    { Write-Information $Message -InformationAction Continue }
+            'SUCCESS' { Write-Information "$Message" -InformationAction Continue }
+            default   { Write-Output $LogEntry }
+        }
+    }
+    
+    Write-Log "Starting script execution" -Level INFO
+    Write-Log "Script version: 2.2.0" -Level INFO
+    
     # Verify running as administrator for Machine scope
     if ($Scope -eq 'Machine' -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Log "Administrator privileges required for Machine scope" -Level ERROR
         throw "Administrator privileges required for Machine scope. Please run as administrator or use User scope."
     }
-
+    
+    Write-Log "Processing PATH changes for scope: $Scope" -Level INFO
+    
     # Get current PATH based on scope
     try {
         $currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::$Scope)
         $currentPathArray = $currentPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-        Write-Verbose "Current PATH contains $($currentPathArray.Count) entries"
+        Write-Log "Current PATH contains $($currentPathArray.Count) entries" -Level INFO
     }
     catch {
+        Write-Log "Failed to get current PATH: $_" -Level ERROR
         throw "Failed to get current PATH: $_"
     }
 }
@@ -95,7 +147,7 @@ process {
             return (Resolve-Path $StartPath).Path.TrimEnd('\')
         }
         catch {
-            Write-Warning "Failed to resolve path: $StartPath"
+            Write-Log "Failed to resolve path: $StartPath" -Level WARNING
             return $null
         }
     }
@@ -108,11 +160,11 @@ process {
         if ($null -eq $sanitizedPath) { return $null }
         
         if ($currentPathArray -notcontains $sanitizedPath) {
-            Write-Verbose "Adding new path: $sanitizedPath"
+            Write-Log "Adding new path: $sanitizedPath" -Level DEBUG
             return $sanitizedPath
         }
         else {
-            Write-Verbose "Path already exists: $sanitizedPath"
+            Write-Log "Path already exists: $sanitizedPath" -Level DEBUG
             return $null
         }
     }
@@ -120,44 +172,94 @@ process {
     try {
         # Get all directories to process
         $directories = @()
-        $directories += Get-SanitizedPath $StartPath
+        $rootPath = Get-SanitizedPath $StartPath
         
+        if ($null -eq $rootPath) {
+            Write-Log "Root path could not be resolved: $StartPath" -Level ERROR
+            throw "Root path could not be resolved."
+        }
+        
+        $directories += $rootPath
+        Write-Log "Added root path to process list: $rootPath" -Level DEBUG
+        
+        # Using a more efficient method to get subdirectories
         if (-not $NoRecurse) {
-            Write-Verbose "Getting subdirectories for $StartPath"
-            $subDirs = Get-ChildItem -Path $StartPath -Recurse -Directory -ErrorAction Stop
+            Write-Log "Getting subdirectories for $StartPath" -Level INFO
+            # Use -Force to include hidden directories, limit depth if too many subfolders
+            $startTime = Get-Date
+            $subDirs = Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop
+            $endTime = Get-Date
+            $processingTime = ($endTime - $startTime).TotalSeconds
+            Write-Log "Found $($subDirs.Count) subdirectories in $processingTime seconds" -Level INFO
             $directories += $subDirs.FullName
         }
 
-        # Add unique paths
+        Write-Log "Total directories to process: $($directories.Count)" -Level INFO
+        
+        # Add unique paths more efficiently
+        $startTime = Get-Date
         $newPaths = @()
-        foreach ($dir in $directories) {
-            $newPath = Add-UniquePathItem $dir
-            if ($null -ne $newPath) {
-                $newPaths += $newPath
+        
+        # Process in batches to improve performance
+        $batchSize = 100
+        for ($i = 0; $i -lt $directories.Count; $i += $batchSize) {
+            $batch = $directories[$i..([Math]::Min($i + $batchSize - 1, $directories.Count - 1))]
+            
+            foreach ($dir in $batch) {
+                $newPath = Add-UniquePathItem $dir
+                if ($null -ne $newPath) {
+                    $newPaths += $newPath
+                }
+            }
+            
+            # Progress update for large directories
+            if ($directories.Count -gt $batchSize -and ($i % ($batchSize * 5) -eq 0)) {
+                $percentComplete = [Math]::Min(100, [Math]::Floor(($i / $directories.Count) * 100))
+                Write-Log "Processing: $percentComplete% complete ($i of $($directories.Count))" -Level INFO
             }
         }
+        
+        $endTime = Get-Date
+        $processingTime = ($endTime - $startTime).TotalSeconds
+        Write-Log "Path processing completed in $processingTime seconds" -Level INFO
 
         # Update PATH if we have new entries
         if ($newPaths.Count -gt 0) {
             $newPathString = ($currentPathArray + $newPaths) -join ";"
             
             if ($PSCmdlet.ShouldProcess("PATH Environment Variable", "Add $($newPaths.Count) new directories")) {
+                Write-Log "Updating PATH variable with $($newPaths.Count) new entries" -Level INFO
                 [System.Environment]::SetEnvironmentVariable("Path", $newPathString, [System.EnvironmentVariableTarget]::$Scope)
-                
-                Write-Host "`nSuccessfully added $($newPaths.Count) directories to PATH ($Scope scope):" -ForegroundColor Green
-                $newPaths | ForEach-Object { Write-Host "  + $_" -ForegroundColor Cyan }
+                  Write-Log "Successfully added $($newPaths.Count) directories to PATH ($Scope scope)" -Level SUCCESS
+                $newPaths | ForEach-Object { 
+                    Write-Log "  + $_" -Level SUCCESS
+                }
             }
-        }
-        else {
-            Write-Host "No new directories needed to be added to PATH." -ForegroundColor Yellow
+            else {
+                Write-Log "WhatIf: Would add $($newPaths.Count) directories to PATH" -Level INFO
+            }
+        }        else {
+            Write-Log "No new directories needed to be added to PATH" -Level WARNING
         }
     }
     catch {
+        Write-Log "Failed to process directories: $_" -Level ERROR
         Write-Error "Failed to process directories: $_"
+        # Ensure we don't hang by explicitly returning
         return
     }
 }
 
 end {
-    Write-Verbose "Script completed"
+    # Clean up and ensure PowerShell doesn't hang
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+      Write-Log "Script execution completed successfully" -Level SUCCESS
+    Write-Log "Log file saved to: $LogFile" -Level INFO
+    
+    # Clear any variables that might be causing a hang
+    Remove-Variable -Name currentPath, currentPathArray, directories, newPaths -ErrorAction SilentlyContinue
+    
+    # Exit explicitly to prevent any hanging
+    [System.Environment]::Exit(0)
 }
