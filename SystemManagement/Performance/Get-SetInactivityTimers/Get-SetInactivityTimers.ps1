@@ -2,10 +2,10 @@
 # Script: Get-SetInactivityTimers.ps1
 # Created: 2025-04-08 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-15 21:55:00 UTC
+# Last Updated: 2025-05-09 21:45:00 UTC
 # Updated By: GitHub Copilot
-# Version: 1.4.5
-# Additional Info: Changed Format-Minutes to return 'Effectively Disabled' for timeouts over 168 hours.
+# Version: 1.5.0
+# Additional Info: Added functionality to detect Intel Context Sensing, Dell Optimizer, Elliptic Virtual Lock Sensor, and Windows Dynamic Lock.
 # =============================================================================
 
 <#
@@ -286,6 +286,339 @@ function Get-LockPolicySettings {    Write-Host "Checking Group Policy and secur
     return $settings
 }
 
+function Get-IntelContextSensing {
+    Write-Debug "Checking for Intel Context Sensing..."
+    $contextSensingInfo = @{
+        Installed = $false
+        Version = "Not installed"
+        Path = $null
+        Status = "Not present"
+    }
+    
+    try {
+        # Check for Intel Context Sensing service
+        $service = Get-Service -Name "IntelSenseS*" -ErrorAction SilentlyContinue | 
+                   Where-Object { $_.DisplayName -like "*Context*" -or $_.DisplayName -like "*Sens*" }
+        if ($service) {
+            $contextSensingInfo.Installed = $true
+            $contextSensingInfo.Status = $service.Status
+            
+            # Try to get version info
+            $path = (Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue).PathName
+            if ($path) {
+                $contextSensingInfo.Path = $path -replace '^"([^"]+)".*$', '$1'
+                if (Test-Path $contextSensingInfo.Path) {
+                    $versionInfo = (Get-Item $contextSensingInfo.Path).VersionInfo
+                    $contextSensingInfo.Version = $versionInfo.ProductVersion
+                }
+            }
+        }
+        
+        # Alternative check for Intel Context Sensing through registry
+        if (-not $contextSensingInfo.Installed) {
+            $regPaths = @(
+                "HKLM:\SOFTWARE\Intel\Intel Context Sensing",
+                "HKLM:\SOFTWARE\Intel\Sensing",
+                "HKLM:\SOFTWARE\Intel\HPSS"
+            )
+            
+            foreach ($regPath in $regPaths) {
+                if (Test-Path $regPath) {
+                    $contextSensingInfo.Installed = $true
+                    $contextSensingInfo.Status = "Installed (service not running or not detected)"
+                    break
+                }
+            }
+        }
+        
+        # Check for installed applications
+        if (-not $contextSensingInfo.Installed) {
+            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+                    Where-Object { $_.DisplayName -like "*Intel*" -and ($_.DisplayName -like "*Context*" -or $_.DisplayName -like "*Sens*") }
+            if ($apps) {
+                $contextSensingInfo.Installed = $true
+                $contextSensingInfo.Status = "Application installed"
+                $contextSensingInfo.Version = $apps[0].DisplayVersion
+            }
+        }
+    }
+    catch {
+        Write-Debug "Error checking for Intel Context Sensing: $_"
+    }
+    
+    return $contextSensingInfo
+}
+
+function Get-DellOptimizer {
+    Write-Debug "Checking for Dell Optimizer..."
+    $dellOptimizerInfo = @{
+        Installed = $false
+        Version = "Not installed"
+        Features = @()
+        Status = "Not present"
+    }
+    
+    try {
+        # Check for Dell Optimizer application
+        $appPaths = @(
+            "${env:ProgramFiles}\Dell\DellOptimizer\DellOptimizer.exe",
+            "${env:ProgramFiles(x86)}\Dell\DellOptimizer\DellOptimizer.exe"
+        )
+        
+        foreach ($path in $appPaths) {
+            if (Test-Path $path) {
+                $dellOptimizerInfo.Installed = $true
+                $versionInfo = (Get-Item $path).VersionInfo
+                $dellOptimizerInfo.Version = $versionInfo.ProductVersion
+                $dellOptimizerInfo.Status = "Installed"
+                break
+            }
+        }
+        
+        # Check for Dell Optimizer service
+        if (-not $dellOptimizerInfo.Installed) {
+            $service = Get-Service -Name "*DellOptimizer*" -ErrorAction SilentlyContinue
+            if ($service) {
+                $dellOptimizerInfo.Installed = $true
+                $dellOptimizerInfo.Status = $service.Status
+            }
+        }
+        
+        # Check registry for Dell Optimizer features
+        $regPath = "HKLM:\SOFTWARE\Dell\DellOptimizer"
+        if (Test-Path $regPath) {
+            $dellOptimizerInfo.Installed = $true
+            
+            # Check for specific features
+            $featurePaths = @{
+                "Presence Detection" = "HKLM:\SOFTWARE\Dell\DellOptimizer\PresenceDetection"
+                "Walk Away Lock" = "HKLM:\SOFTWARE\Dell\DellOptimizer\WalkAwayLock"
+                "Wake on Approach" = "HKLM:\SOFTWARE\Dell\DellOptimizer\WakeOnApproach"
+                "Intelligent Audio" = "HKLM:\SOFTWARE\Dell\DellOptimizer\IntelligentAudio"
+            }
+            
+            foreach ($feature in $featurePaths.Keys) {
+                if (Test-Path $featurePaths[$feature]) {
+                    try {
+                        $enabled = Get-ItemProperty -Path $featurePaths[$feature] -Name "Enabled" -ErrorAction SilentlyContinue
+                        if ($null -ne $enabled -and $enabled.Enabled -eq 1) {
+                            $dellOptimizerInfo.Features += "$feature (Enabled)"
+                        } 
+                        else {
+                            $dellOptimizerInfo.Features += "$feature (Disabled)"
+                        }
+                    } 
+                    catch {
+                        $dellOptimizerInfo.Features += "$feature (Status Unknown)"
+                    }
+                }
+            }
+            
+            # If features are empty but Dell Optimizer is installed
+            if ($dellOptimizerInfo.Features.Count -eq 0) {
+                $dellOptimizerInfo.Features = @("No auto-lock features detected")
+            }
+        }
+        
+        # Check installed applications as fallback
+        if (-not $dellOptimizerInfo.Installed) {
+            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+                    Where-Object { $_.DisplayName -like "*Dell Optimizer*" }
+            if ($apps) {
+                $dellOptimizerInfo.Installed = $true
+                $dellOptimizerInfo.Status = "Application installed"
+                $dellOptimizerInfo.Version = $apps[0].DisplayVersion
+            }
+        }
+    }
+    catch {
+        Write-Debug "Error checking for Dell Optimizer: $_"
+    }
+    
+    return $dellOptimizerInfo
+}
+
+function Get-EllipticSensor {
+    Write-Debug "Checking for Elliptic Virtual Lock Sensor..."
+    $ellipticInfo = @{
+        Installed = $false
+        Version = "Not installed"
+        Status = "Not present"
+    }
+    
+    try {
+        # Check for Elliptic Sensor service
+        $service = Get-Service -Name "*Elliptic*" -ErrorAction SilentlyContinue
+        if ($service) {
+            $ellipticInfo.Installed = $true
+            $ellipticInfo.Status = $service.Status
+            
+            # Try to get version info
+            $path = (Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue).PathName
+            if ($path) {
+                $ellipticInfo.Path = $path -replace '^"([^"]+)".*$', '$1'
+                if (Test-Path $ellipticInfo.Path) {
+                    $versionInfo = (Get-Item $ellipticInfo.Path).VersionInfo
+                    $ellipticInfo.Version = $versionInfo.ProductVersion
+                }
+            }
+        }
+        
+        # Check registry for Elliptic Sensor
+        $regPaths = @(
+            "HKLM:\SOFTWARE\Elliptic",
+            "HKLM:\SOFTWARE\Elliptic Labs"
+        )
+        
+        foreach ($regPath in $regPaths) {
+            if (Test-Path $regPath) {
+                $ellipticInfo.Installed = $true
+                if ($ellipticInfo.Status -eq "Not present") {
+                    $ellipticInfo.Status = "Installed (service not running or not detected)"
+                }
+                break
+            }
+        }
+        
+        # Check for device presence in device manager
+        $deviceInfo = Get-WmiObject -Class Win32_PnPEntity -ErrorAction SilentlyContinue | 
+                      Where-Object { $_.Name -like "*Elliptic*" -or $_.Name -like "*Sensor*" -and $_.Name -like "*Lock*" }
+        if ($deviceInfo) {
+            $ellipticInfo.Installed = $true
+            $ellipticInfo.Status = "Device detected"
+        }
+        
+        # Check installed applications
+        if (-not $ellipticInfo.Installed) {
+            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+                    Where-Object { $_.DisplayName -like "*Elliptic*" }
+            if ($apps) {
+                $ellipticInfo.Installed = $true
+                $ellipticInfo.Status = "Application installed"
+                $ellipticInfo.Version = $apps[0].DisplayVersion
+            }
+        }
+    }
+    catch {
+        Write-Debug "Error checking for Elliptic Virtual Lock Sensor: $_"
+    }
+    
+    return $ellipticInfo
+}
+
+function Get-WindowsDynamicLock {
+    Write-Debug "Checking for Windows Dynamic Lock..."
+    $dynamicLockInfo = @{
+        Enabled = $false
+        Status = "Not enabled"
+        RequiresBluetoothDevice = $true
+    }
+    
+    try {
+        # Check registry for Dynamic Lock setting
+        $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+        $settingPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+        
+        # Check if Dynamic Lock is enabled
+        $enabledSetting = Get-ItemProperty -Path $regPath -Name "EnableDynamicLock" -ErrorAction SilentlyContinue
+        if ($null -ne $enabledSetting -and $enabledSetting.EnableDynamicLock -eq 1) {
+            $dynamicLockInfo.Enabled = $true
+            $dynamicLockInfo.Status = "Enabled"
+        }
+        
+        # Check alternative path if not found in policies
+        if (-not $dynamicLockInfo.Enabled) {
+            $altSetting = Get-ItemProperty -Path $settingPath -Name "EnableDynamicLock" -ErrorAction SilentlyContinue
+            if ($null -ne $altSetting -and $altSetting.EnableDynamicLock -eq 1) {
+                $dynamicLockInfo.Enabled = $true
+                $dynamicLockInfo.Status = "Enabled"
+            }
+        }
+        
+        # Check via Get-ItemProperty HKCU instead
+        if (-not $dynamicLockInfo.Enabled) {
+            $userSetting = Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableDynamicLock" -ErrorAction SilentlyContinue
+            if ($null -ne $userSetting -and $userSetting.EnableDynamicLock -eq 1) {
+                $dynamicLockInfo.Enabled = $true
+                $dynamicLockInfo.Status = "Enabled"
+            }
+        }
+        
+        # Check if Dynamic Lock is available via SigninOptions
+        if (-not $dynamicLockInfo.Enabled) {
+            $signInOptions = Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\SignInOptions" -Name "DynamicLockEnabled" -ErrorAction SilentlyContinue
+            if ($null -ne $signInOptions -and $signInOptions.DynamicLockEnabled -eq 1) {
+                $dynamicLockInfo.Enabled = $true
+                $dynamicLockInfo.Status = "Enabled via Sign-in Options"
+            }
+        }
+        
+        # Check Bluetooth availability for Dynamic Lock
+        $bluetoothAvailable = $false
+        try {
+            $bluetoothDevices = Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue
+            if ($bluetoothDevices) {
+                $connectedDevices = $bluetoothDevices | Where-Object { $_.Status -eq "OK" }
+                if ($connectedDevices) {
+                    $bluetoothAvailable = $true
+                    if ($dynamicLockInfo.Enabled) {
+                        $dynamicLockInfo.Status += " with Bluetooth devices connected"
+                    }
+                }
+            }
+            
+            if (-not $bluetoothAvailable -and $dynamicLockInfo.Enabled) {
+                $dynamicLockInfo.Status += " (Warning: No Bluetooth devices detected)"
+            }
+        }
+        catch {
+            Write-Debug "Error checking Bluetooth devices: $_"
+            $dynamicLockInfo.RequiresBluetoothDevice = "Unknown (Error checking devices)"
+        }
+    }
+    catch {
+        Write-Debug "Error checking for Windows Dynamic Lock: $_"
+    }
+    
+    return $dynamicLockInfo
+}
+
+function Get-AutoLockCapabilities {
+    Write-Host "Checking for auto-lock capable hardware and software..." -ForegroundColor Cyan
+    
+    $intelContextSensing = Get-IntelContextSensing
+    $dellOptimizer = Get-DellOptimizer
+    $ellipticSensor = Get-EllipticSensor
+    $dynamicLock = Get-WindowsDynamicLock
+    
+    $autoLockCapabilities = [PSCustomObject]@{
+        IntelContextSensing = $intelContextSensing
+        DellOptimizer = $dellOptimizer
+        EllipticSensor = $ellipticSensor
+        WindowsDynamicLock = $dynamicLock
+        SupportedAutoLockMethods = @()
+    }
+    
+    # Build list of supported methods
+    if ($intelContextSensing.Installed) {
+        $autoLockCapabilities.SupportedAutoLockMethods += "Intel Context Sensing"
+    }
+    
+    if ($dellOptimizer.Installed -and $dellOptimizer.Features -match "Walk Away Lock|Presence Detection") {
+        $autoLockCapabilities.SupportedAutoLockMethods += "Dell Optimizer"
+    }
+    
+    if ($ellipticSensor.Installed) {
+        $autoLockCapabilities.SupportedAutoLockMethods += "Elliptic Sensor"
+    }
+    
+    if ($dynamicLock.Enabled) {
+        $autoLockCapabilities.SupportedAutoLockMethods += "Windows Dynamic Lock"
+    }
+    
+    return $autoLockCapabilities
+}
+
 function Set-PowerTimeout {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -339,7 +672,7 @@ function Set-PowerTimeout {
             Write-Host "All inactivity timers have been updated successfully!" -ForegroundColor Green
         }
         catch {
-            Write-Host "Error setting power settings: $_" -ForegroundColor Red
+            Write-host "Error setting power settings: $_" -ForegroundColor Red
             return $false
         }
     }
@@ -371,7 +704,7 @@ function Set-LockPolicySettings {
 
             # Set auto lock settings
             if ($PSBoundParameters.ContainsKey('AutoLockEnabled')) {
-                Write-Host "Setting auto lock enabled status..." -ForegroundColor Cyan
+                Write-host "Setting auto lock enabled status..." -ForegroundColor Cyan
                 $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System"
                 if (!(Test-Path $regPath)) {
                     New-Item -Path $regPath -Force | Out-Null
@@ -393,7 +726,7 @@ function Set-LockPolicySettings {
             return $true
         }
         catch {
-            Write-Host "Error setting Group Policy settings: $_" -ForegroundColor Red
+            Write-host "Error setting Group Policy settings: $_" -ForegroundColor Red
             return $false
         }
     }
@@ -438,6 +771,7 @@ try {
     # Get current settings
     $currentSettings = Get-PowerSettings
     $lockSettings = Get-LockPolicySettings
+    $autoLockCapabilities = Get-AutoLockCapabilities
 
     # Display current settings
     Write-Host "`nPower Plan Information:" -ForegroundColor White
@@ -476,6 +810,57 @@ try {
         }
     } else {
         Write-Warning "Could not display lock policy settings as they failed to load."
+    }
+    
+    # Display Auto-Lock Capabilities
+    if ($null -ne $autoLockCapabilities) {
+        Write-Host "`nAuto-Lock Capable Hardware and Software:" -ForegroundColor White
+        Write-Host "-------------------------------------" -ForegroundColor White
+        
+        # Intel Context Sensing
+        Write-Host "`nIntel Context Sensing:" -ForegroundColor Cyan
+        Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.IntelContextSensing.Installed) { "Yes" } else { "No" }))
+        if ($autoLockCapabilities.IntelContextSensing.Installed) {
+            Write-Host ("Status: {0}" -f $autoLockCapabilities.IntelContextSensing.Status)
+            Write-Host ("Version: {0}" -f $autoLockCapabilities.IntelContextSensing.Version)
+        }
+        
+        # Dell Optimizer
+        Write-Host "`nDell Optimizer:" -ForegroundColor Cyan
+        Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.DellOptimizer.Installed) { "Yes" } else { "No" }))
+        if ($autoLockCapabilities.DellOptimizer.Installed) {
+            Write-Host ("Status: {0}" -f $autoLockCapabilities.DellOptimizer.Status)
+            Write-Host ("Version: {0}" -f $autoLockCapabilities.DellOptimizer.Version)
+            Write-Host "Features:"
+            foreach ($feature in $autoLockCapabilities.DellOptimizer.Features) {
+                Write-Host ("  - {0}" -f $feature)
+            }
+        }
+        
+        # Elliptic Sensor
+        Write-Host "`nElliptic Virtual Lock Sensor:" -ForegroundColor Cyan
+        Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.EllipticSensor.Installed) { "Yes" } else { "No" }))
+        if ($autoLockCapabilities.EllipticSensor.Installed) {
+            Write-Host ("Status: {0}" -f $autoLockCapabilities.EllipticSensor.Status)
+            Write-Host ("Version: {0}" -f $autoLockCapabilities.EllipticSensor.Version)
+        }
+        
+        # Windows Dynamic Lock
+        Write-Host "`nWindows Dynamic Lock:" -ForegroundColor Cyan
+        Write-Host ("Enabled: {0}" -f $(if ($autoLockCapabilities.WindowsDynamicLock.Enabled) { "Yes" } else { "No" }))
+        if ($autoLockCapabilities.WindowsDynamicLock.Enabled) {
+            Write-Host ("Status: {0}" -f $autoLockCapabilities.WindowsDynamicLock.Status)
+        }
+        
+        # Summary of supported methods
+        Write-Host "`nSupported Auto-Lock Methods:" -ForegroundColor White
+        if ($autoLockCapabilities.SupportedAutoLockMethods.Count -gt 0) {
+            foreach ($method in $autoLockCapabilities.SupportedAutoLockMethods) {
+                Write-Host ("  - {0}" -f $method) -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  No auto-lock methods detected on this system" -ForegroundColor Yellow
+        }
     }
 
     # Ask if user wants to change settings (only if settings loaded)
