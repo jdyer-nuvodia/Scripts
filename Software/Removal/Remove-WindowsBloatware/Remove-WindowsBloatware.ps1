@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-09 15:30:00 UTC
+# Last Updated: 2025-05-10 15:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.7
-# Additional Info: Added removal of Elliptic Virtual Lock Sensor Service and Intel Context Sensing Service
+# Version: 1.1.10
+# Additional Info: Fixed directory removal confirmation prompts by adding Force parameter to all Directory cleanup calls
 # =============================================================================
 
 <#
@@ -103,7 +103,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
-$scriptVersion = "1.1.7"
+$scriptVersion = "1.1.10"
 
 # Function to write log entries
 function Write-Log {
@@ -146,22 +146,101 @@ function Remove-DirectorySilently {
         [string]$Path,
         
         [Parameter(Mandatory = $false)]
-        [string]$LogPrefix = ""
+        [string]$LogPrefix = "",
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipProtectedFolders,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$Force
     )
+    
+    # If global $Force is set, use it (unless overridden by parameter)
+    $useForce = if ($Force) { $true } elseif ($global:Force) { $true } else { $false }
     
     if (Test-Path $Path) {
         Write-Log "$LogPrefix Removing directory: $Path" "INFO"
-        try {
-            # Use -Force to override read-only attributes, -Recurse to remove subdirectories,
-            # -Confirm:$false to suppress confirmation, and -ErrorAction Stop to catch errors
-            Remove-Item -Path $Path -Recurse -Force -Confirm:$false -ErrorAction Stop
-            Write-Log "$LogPrefix REMOVED: Directory $Path" "SUCCESS"
-            return $true
+        
+        # Check if this is a manufacturer system folder that should be handled carefully
+        $isManufacturerFolder = ($Path -like "*\Dell*" -or $Path -like "*\Lenovo*" -or $Path -like "*\HP*")
+        
+        # If this is a manufacturer folder and we're not skipping protected items
+        # and force isn't enabled, use selective removal
+        if ($isManufacturerFolder -and -not $SkipProtectedFolders -and -not $useForce) {
+            try {
+                # Get list of files/folders in the directory
+                $items = Get-ChildItem -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+                
+                # Count how many items might be in use
+                $protectedItems = @()
+                $deletableItems = @()
+                
+                # Separate items into protected (likely in use) and deletable
+                foreach ($item in $items) {
+                    if ($item.PSIsContainer) {
+                        # It's a directory, check if it contains special protected folders
+                        if ($item.Name -like "*Command Update*" -or 
+                            $item.Name -like "*Vantage*" -or 
+                            $item.Name -like "*UpdateService*" -or
+                            $item.Name -like "*Service*") {
+                            $protectedItems += $item.FullName
+                        } else {
+                            $deletableItems += $item.FullName
+                        }
+                    } else {
+                        # It's a file, check if it's likely to be in use
+                        if ($item.Extension -eq ".dll" -or 
+                            $item.Extension -eq ".exe" -or
+                            $item.Extension -eq ".sys" -or
+                            $item.Name -like "*lock*") {
+                            # These files might be locked, skip them
+                            $protectedItems += $item.FullName
+                        } else {
+                            $deletableItems += $item.FullName
+                        }
+                    }
+                }
+                
+                # Log information about protected items
+                if ($protectedItems.Count -gt 0) {
+                    Write-Log "$LogPrefix INFO: Skipping $($protectedItems.Count) protected items in $Path" "INFO"
+                }
+                
+                # Try to delete non-protected items
+                foreach ($item in $deletableItems) {
+                    try {
+                        if (Test-Path $item) {
+                            # Use -Force and -Confirm:$false to prevent prompting
+                            Remove-Item -Path $item -Force -Confirm:$false -ErrorAction SilentlyContinue
+                        }
+                    } catch {
+                        # Silently continue if individual items can't be removed
+                    }
+                }
+                
+                Write-Log "$LogPrefix PARTIAL: Directory cleanup of $Path completed with some items skipped" "WARNING"
+                return $true
+            }
+            catch {
+                $errorMsg = $_.Exception.Message
+                Write-Log "$LogPrefix ERROR: Failed selective directory cleanup for $Path. Error: $errorMsg" "ERROR"
+                return $false
+            }
         }
-        catch {
-            $errorMsg = $_.Exception.Message
-            Write-Log "$LogPrefix ERROR: Failed to remove directory $Path. Error: $errorMsg" "ERROR"
-            return $false
+        else {
+            # Standard removal for non-manufacturer folders or when force/skip is enabled
+            try {
+                # Use -Force to override read-only attributes, -Recurse to remove subdirectories,
+                # -Confirm:$false to suppress confirmation, and -ErrorAction Stop to catch errors
+                Remove-Item -Path $Path -Recurse -Force -Confirm:$false -ErrorAction Stop
+                Write-Log "$LogPrefix REMOVED: Directory $Path" "SUCCESS"
+                return $true
+            }
+            catch {
+                $errorMsg = $_.Exception.Message
+                Write-Log "$LogPrefix ERROR: Failed to remove directory $Path. Error: $errorMsg" "ERROR"
+                return $false
+            }
         }
     }
     return $false
@@ -691,7 +770,7 @@ function Uninstall-DellPair {
             
             foreach ($filePath in $filePaths) {
                 # Use our silent removal helper function
-                Remove-DirectorySilently -Path $filePath -LogPrefix "Dell Pair cleanup:"
+                Remove-DirectorySilently -Path $filePath -LogPrefix "Dell Pair cleanup:" -Force
             }
               Write-Log "REMOVED: Dell Pair through manual cleanup completed" "SUCCESS"
             return $true
@@ -725,19 +804,32 @@ function Stop-DisableBloatwareService {
     
     Write-Log "Checking for service: $DisplayName" "INFO"
     
-    try {
-        # First try to find service by name
+    try {        # First try to find service by name
         $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
         
-        # If not found by name, try to find by display name (for when the short name is unknown)
+        # If not found by name, try to find by display name using a safer approach with WMI
         if ($null -eq $service -and -not [string]::IsNullOrEmpty($DisplayName)) {
             Write-Log "Service not found by name, searching by display name: $DisplayName" "INFO"
-            $service = Get-Service | Where-Object { $_.DisplayName -like "*$DisplayName*" } | Select-Object -First 1
-            
-            if ($null -ne $service) {
-                Write-Log "FOUND: Service with display name matching '$DisplayName' (Name: $($service.Name))" "INFO"
-                # Update the ServiceName variable to match what was found
-                $ServiceName = $service.Name
+            try {
+                # Use WMI/CIM to query services instead of Get-Service which can have permission issues
+                $foundServices = Get-CimInstance -ClassName Win32_Service -Filter "DisplayName LIKE '%$DisplayName%'" -ErrorAction SilentlyContinue
+                
+                if ($null -ne $foundServices -and ($foundServices | Measure-Object).Count -gt 0) {
+                    # Take the first matching service
+                    $foundService = $foundServices | Select-Object -First 1
+                    Write-Log "FOUND: Service with display name matching '$DisplayName' (Name: $($foundService.Name))" "INFO"
+                    
+                    # Now get the service object using the name we found
+                    $service = Get-Service -Name $foundService.Name -ErrorAction SilentlyContinue
+                    if ($null -ne $service) {
+                        # Update the ServiceName variable to match what was found
+                        $ServiceName = $service.Name
+                    }
+                }
+            }
+            catch {
+                $errorMsg = $_.Exception.Message
+                Write-Log "ERROR: Failed to search for service by display name: $errorMsg" "WARNING"
             }
         }
         
@@ -748,42 +840,139 @@ function Stop-DisableBloatwareService {
         
         Write-Log "FOUND: Service $ServiceName (DisplayName: $($service.DisplayName), Status: $($service.Status))" "INFO"
         
-        if ($PSCmdlet.ShouldProcess($DisplayName, "Stop and disable service")) {
-            # First, try to stop the service if it's running
+        if ($PSCmdlet.ShouldProcess($DisplayName, "Stop and disable service")) {            # First, try to stop the service if it's running
             if ($service.Status -eq "Running") {
                 Write-Log "STOPPING: Service $ServiceName" "INFO"
                 try {
-                    if ($Force) {
-                        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
-                    } else {
-                        Stop-Service -Name $ServiceName -ErrorAction Stop
+                    # Try multiple methods to stop the service
+                    $stopSuccess = $false
+                    
+                    # Method 1: Standard Stop-Service cmdlet
+                    try {
+                        if ($Force) {
+                            Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+                        } else {
+                            Stop-Service -Name $ServiceName -ErrorAction Stop
+                        }
+                        Write-Log "STOPPED: Service $ServiceName using standard method" "SUCCESS"
+                        $stopSuccess = $true
                     }
-                    Write-Log "STOPPED: Service $ServiceName" "SUCCESS"
+                    catch {                        $errorMsg = $_.Exception.Message
+                        Write-Log "WARNING: Standard stop failed for ${ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
+                    }
+                    
+                    # Method 2: Use WMI/CIM to stop the service if standard method failed
+                    if (-not $stopSuccess) {
+                        try {
+                            $wmiService = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$ServiceName'" -ErrorAction SilentlyContinue
+                            
+                            if ($null -ne $wmiService) {
+                                $result = $wmiService | Invoke-CimMethod -MethodName StopService
+                                if ($result.ReturnValue -eq 0) {
+                                    Write-Log "STOPPED: Service $ServiceName using WMI method" "SUCCESS"
+                                    $stopSuccess = $true
+                                }
+                                else {
+                                    Write-Log "WARNING: Failed to stop service via WMI. Return code: $($result.ReturnValue)" "WARNING"
+                                }
+                            }
+                        } 
+                        catch {                            $errorMsg = $_.Exception.Message
+                            Write-Log "WARNING: WMI stop failed for ${ServiceName}: $errorMsg" "WARNING"
+                        }
+                    }
+                    
+                    # Method 3: Use SC.exe command if both other methods failed
+                    if (-not $stopSuccess) {
+                        try {
+                            $scResult = Start-Process -FilePath "sc.exe" -ArgumentList "stop $ServiceName" -NoNewWindow -Wait -PassThru
+                            if ($scResult.ExitCode -eq 0) {
+                                Write-Log "STOPPED: Service $ServiceName using SC.exe" "SUCCESS"
+                                $stopSuccess = $true
+                            }
+                            else {
+                                Write-Log "WARNING: SC.exe stop failed for $ServiceName. Exit code: $($scResult.ExitCode)" "WARNING"
+                            }
+                        }
+                        catch {                            $errorMsg = $_.Exception.Message
+                            Write-Log "WARNING: SC.exe stop failed for ${ServiceName}: $errorMsg" "WARNING"
+                        }
+                    }
+                    
+                    if (-not $stopSuccess) {
+                        Write-Log "ERROR: Could not stop service $ServiceName after trying multiple methods" "ERROR"
+                    }
                 }
-                catch {
-                    $errorMsg = $_.Exception.Message
-                    Write-Log "ERROR: Failed to stop service $ServiceName. Error: $errorMsg" "WARNING"
+                catch {                    $errorMsg = $_.Exception.Message
+                    Write-Log "ERROR: Failed to stop service ${ServiceName}. Error: $errorMsg" "WARNING"
                 }
             }
-            
-            # Then, set the service to disabled
+              # Then, set the service to disabled
             Write-Log "DISABLING: Service $ServiceName" "INFO"
+            
+            # Try multiple methods to disable the service
+            $disableSuccess = $false
+            
             try {
-                Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
-                Write-Log "DISABLED: Service $ServiceName" "SUCCESS"
+                # Method 1: Standard Set-Service cmdlet
+                try {
+                    Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
+                    Write-Log "DISABLED: Service $ServiceName using standard method" "SUCCESS"
+                    $disableSuccess = $true
+                }
+                catch {                    $errorMsg = $_.Exception.Message
+                    Write-Log "WARNING: Standard disable failed for ${ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
+                }
+                
+                # Method 2: Use the registry directly if method 1 failed
+                if (-not $disableSuccess) {
+                    try {
+                        $regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
+                        if (Test-Path $regPath) {
+                            Set-ItemProperty -Path $regPath -Name "Start" -Value 4 -Type DWord -Force
+                            Write-Log "DISABLED: Service $ServiceName using registry method" "SUCCESS"
+                            $disableSuccess = $true
+                        }
+                        else {
+                            Write-Log "WARNING: Registry key not found for $ServiceName" "WARNING"
+                        }
+                    }
+                    catch {                        $errorMsg = $_.Exception.Message
+                        Write-Log "WARNING: Registry disable failed for ${ServiceName}: $errorMsg" "WARNING"
+                    }
+                }
+                
+                # Method 3: Use SC.exe command if both other methods failed
+                if (-not $disableSuccess) {
+                    try {
+                        $scResult = Start-Process -FilePath "sc.exe" -ArgumentList "config $ServiceName start= disabled" -NoNewWindow -Wait -PassThru
+                        if ($scResult.ExitCode -eq 0) {
+                            Write-Log "DISABLED: Service $ServiceName using SC.exe" "SUCCESS"
+                            $disableSuccess = $true
+                        }
+                        else {
+                            Write-Log "WARNING: SC.exe disable failed for $ServiceName. Exit code: $($scResult.ExitCode)" "WARNING"
+                        }
+                    }
+                    catch {                        $errorMsg = $_.Exception.Message
+                        Write-Log "WARNING: SC.exe disable failed for ${ServiceName}: $errorMsg" "WARNING"
+                    }
+                }
+                
+                if (-not $disableSuccess) {
+                    Write-Log "ERROR: Could not disable service $ServiceName after trying multiple methods" "ERROR"
+                }
             }
-            catch {
-                $errorMsg = $_.Exception.Message
-                Write-Log "ERROR: Failed to disable service $ServiceName. Error: $errorMsg" "WARNING"
+            catch {                $errorMsg = $_.Exception.Message
+                Write-Log "ERROR: Failed to disable service ${ServiceName}. Error: $errorMsg" "WARNING"
             }
         }
         else {
             Write-Log "WhatIf: Would stop and disable service: $ServiceName" "INFO"
         }
     }
-    catch {
-        $errorMsg = $_.Exception.Message
-        Write-Log "ERROR: An error occurred while processing service $ServiceName. Error: $errorMsg" "ERROR"
+    catch {        $errorMsg = $_.Exception.Message
+        Write-Log "ERROR: An error occurred while processing service ${ServiceName}. Error: $errorMsg" "ERROR"
     }
 }
 
@@ -887,19 +1076,39 @@ try {
     
     # Clean up any leftover files
     $bloatwareFolders = @(
-        "${env:ProgramFiles}\Dell",  # Not removing all Dell folders, just checking for specific ones
         "${env:ProgramFiles}\McAfee",
         "${env:ProgramFiles}\Norton",
         "${env:ProgramFiles}\Wild Tangent Games",
-        "${env:ProgramFiles(x86)}\Dell", # Not removing all Dell folders, just checking for specific ones
         "${env:ProgramFiles(x86)}\McAfee",
         "${env:ProgramFiles(x86)}\Norton",
-        "${env:ProgramFiles(x86)}\Wild Tangent Games",
-        "${env:ProgramFiles}\Lenovo", # Not removing all Lenovo folders, just checking for specific ones
-        "${env:ProgramFiles(x86)}\Lenovo" # Not removing all Lenovo folders, just checking for specific ones
+        "${env:ProgramFiles(x86)}\Wild Tangent Games"
     )
-      Write-Log "Cleaning up leftover bloatware directories..." "INFO"
+      
+    # Manufacturer folders require special handling
+    $manufacturerFolders = @(
+        "${env:ProgramFiles}\Dell",
+        "${env:ProgramFiles(x86)}\Dell",
+        "${env:ProgramFiles}\Lenovo",
+        "${env:ProgramFiles(x86)}\Lenovo",
+        "${env:ProgramFiles}\HP",
+        "${env:ProgramFiles(x86)}\HP"
+    )
+    
+    Write-Log "Cleaning up leftover bloatware directories..." "INFO"
+    
+    # First handle non-manufacturer folders (full removal)
     foreach ($folder in $bloatwareFolders) {
+        if (Test-Path $folder) {
+            # Use our helper function that guarantees no confirmation prompt
+            if ($WhatIfPreference) {
+                Write-Log "WhatIf: Would remove directory: $folder" "INFO"            } else {
+                Remove-DirectorySilently -Path $folder -Force
+            }
+        }
+    }
+    
+    # Then handle manufacturer folders (selective removal)
+    foreach ($folder in $manufacturerFolders) {
         if (Test-Path $folder) {
             # Skip Dell Command Update folders
             if (($folder -like "*Dell*") -and (Test-Path "$folder\Command Update")) {
@@ -911,12 +1120,12 @@ try {
             if (($folder -like "*Lenovo*") -and (Test-Path "$folder\Lenovo Vantage")) {
                 Write-Log "Skipping Lenovo Vantage folder: $folder\Lenovo Vantage" "INFO"
                 continue
-            }              
-            # Use our helper function that guarantees no confirmation prompt
+            }
+            
+            # Use our enhanced helper function that handles locked files
             if ($WhatIfPreference) {
-                Write-Log "WhatIf: Would remove directory: $folder" "INFO"
-            } else {
-                Remove-DirectorySilently -Path $folder
+                Write-Log "WhatIf: Would selectively clean directory: $folder" "INFO"            } else {
+                Remove-DirectorySilently -Path $folder -LogPrefix "SELECTIVE:" -Force
             }
         }
     }
