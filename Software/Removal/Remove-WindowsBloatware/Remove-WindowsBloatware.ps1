@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-08 17:38:00 UTC
+# Last Updated: 2025-05-09 15:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.6
-# Additional Info: Fixed PSScriptAnalyzer warning PSAvoidDefaultValueSwitchParameter by removing default value from Force parameter
+# Version: 1.1.7
+# Additional Info: Added removal of Elliptic Virtual Lock Sensor Service and Intel Context Sensing Service
 # =============================================================================
 
 <#
@@ -25,6 +25,7 @@ The script performs the following actions:
 4. Removes specific Dell bloatware while preserving Dell Command Update
 5. Removes specific Lenovo bloatware while preserving Lenovo Vantage
 6. Logs all activities and any errors encountered
+7. Disables and stops unnecessary system services
 
 The script will remove the following software:
 
@@ -62,6 +63,10 @@ Traditional Win32 Applications:
 - Lenovo pre-installed software EXCEPT Lenovo Vantage
 - All Dell software EXCEPT Dell Command Update
 
+Windows Services:
+- Elliptic Virtual Lock Sensor Service
+- Intel Context Sensing Service
+
 Dependencies:
 - Must be run with administrative privileges
 - Windows PowerShell 5.1 or later
@@ -98,7 +103,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
-$scriptVersion = "1.1.6"
+$scriptVersion = "1.1.7"
 
 # Function to write log entries
 function Write-Log {
@@ -697,8 +702,89 @@ function Uninstall-DellPair {
             return $false
         }
     }
+      return $false
+}
+
+# Function to stop and disable unwanted services
+function Stop-DisableBloatwareService {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$ServiceName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$DisplayName = "",
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$Force
+    )
     
-    return $false
+    if ([string]::IsNullOrEmpty($DisplayName)) {
+        $DisplayName = $ServiceName
+    }
+    
+    Write-Log "Checking for service: $DisplayName" "INFO"
+    
+    try {
+        # First try to find service by name
+        $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        
+        # If not found by name, try to find by display name (for when the short name is unknown)
+        if ($null -eq $service -and -not [string]::IsNullOrEmpty($DisplayName)) {
+            Write-Log "Service not found by name, searching by display name: $DisplayName" "INFO"
+            $service = Get-Service | Where-Object { $_.DisplayName -like "*$DisplayName*" } | Select-Object -First 1
+            
+            if ($null -ne $service) {
+                Write-Log "FOUND: Service with display name matching '$DisplayName' (Name: $($service.Name))" "INFO"
+                # Update the ServiceName variable to match what was found
+                $ServiceName = $service.Name
+            }
+        }
+        
+        if ($null -eq $service) {
+            Write-Log "NOT FOUND: Service $DisplayName is not installed" "INFO"
+            return
+        }
+        
+        Write-Log "FOUND: Service $ServiceName (DisplayName: $($service.DisplayName), Status: $($service.Status))" "INFO"
+        
+        if ($PSCmdlet.ShouldProcess($DisplayName, "Stop and disable service")) {
+            # First, try to stop the service if it's running
+            if ($service.Status -eq "Running") {
+                Write-Log "STOPPING: Service $ServiceName" "INFO"
+                try {
+                    if ($Force) {
+                        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+                    } else {
+                        Stop-Service -Name $ServiceName -ErrorAction Stop
+                    }
+                    Write-Log "STOPPED: Service $ServiceName" "SUCCESS"
+                }
+                catch {
+                    $errorMsg = $_.Exception.Message
+                    Write-Log "ERROR: Failed to stop service $ServiceName. Error: $errorMsg" "WARNING"
+                }
+            }
+            
+            # Then, set the service to disabled
+            Write-Log "DISABLING: Service $ServiceName" "INFO"
+            try {
+                Set-Service -Name $ServiceName -StartupType Disabled -ErrorAction Stop
+                Write-Log "DISABLED: Service $ServiceName" "SUCCESS"
+            }
+            catch {
+                $errorMsg = $_.Exception.Message
+                Write-Log "ERROR: Failed to disable service $ServiceName. Error: $errorMsg" "WARNING"
+            }
+        }
+        else {
+            Write-Log "WhatIf: Would stop and disable service: $ServiceName" "INFO"
+        }
+    }
+    catch {
+        $errorMsg = $_.Exception.Message
+        Write-Log "ERROR: An error occurred while processing service $ServiceName. Error: $errorMsg" "ERROR"
+    }
 }
 
 # Start script execution
@@ -783,6 +869,21 @@ try {
     # Remove Lenovo bloatware except Vantage
     Write-Log "Removing Lenovo bloatware (except Vantage)..." "INFO"
     Remove-LenovoBloatware
+    
+    # Remove problematic and unnecessary services
+    Write-Log "Stopping and disabling bloatware services..." "INFO"    # List of services to stop and disable
+    $bloatwareServices = @(
+        # Service name, Display name (for logs)
+        # Using common service names but also listing full display names for better matching
+        @{ Name = "ENSS"; DisplayName = "Elliptic Virtual Lock Sensor Service" },
+        @{ Name = "EllipticVS"; DisplayName = "Elliptic Virtual Lock Sensor Service" },
+        @{ Name = "ICSS"; DisplayName = "Intel Context Sensing Service" },
+        @{ Name = "IntelCSS"; DisplayName = "Intel Context Sensing Service" }
+    )
+    
+    foreach ($service in $bloatwareServices) {
+        Stop-DisableBloatwareService -ServiceName $service.Name -DisplayName $service.DisplayName -Force:$Force
+    }
     
     # Clean up any leftover files
     $bloatwareFolders = @(
