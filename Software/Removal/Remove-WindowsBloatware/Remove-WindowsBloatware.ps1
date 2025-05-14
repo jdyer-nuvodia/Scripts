@@ -2,7 +2,7 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-14 21:30:00 UTC
+# Last Updated: 2025-05-14 18:30:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.1.11
 # Additional Info: Added Microsoft OneNote for Windows 10 to the list of UWP bloatware applications to remove
