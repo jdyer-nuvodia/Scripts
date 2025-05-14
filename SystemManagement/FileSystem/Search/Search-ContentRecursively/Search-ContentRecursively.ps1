@@ -2,47 +2,64 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-22 16:42:00 UTC
+# Last Updated: 2025-05-14 18:56:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Modified to ignore log files in script directory
+# Version: 2.0.0
+# Additional Info: Added support for multiple search/replace terms and automatic replacement
 # =============================================================================
 
 <#
 .SYNOPSIS
-Searches through directories and files recursively for a specified keyword.
+Searches through directories and files recursively for specified keywords and optionally replaces them.
 
 .DESCRIPTION
 This script performs a recursive search through directories and files, looking for
-matches of a specified keyword. It searches both file/directory names and file contents.
-Results are displayed with color coding for better visibility.
+matches of specified keywords. It searches both file/directory names and file contents.
+Results are displayed with color coding for better visibility. The script can also
+replace found keywords with specified replacement strings.
 
-.PARAMETER Keyword
-The search term to look for in file names and content.
+.PARAMETER SearchReplacePairs
+A hashtable containing search terms as keys and their replacement values.
+Example: @{"oldtext"="newtext"; "anotherold"="anothernew"}
 
 .PARAMETER StartPath
 The root directory path where the search should begin.
 
+.PARAMETER AutoReplace
+When specified, automatically performs replacements without prompting for confirmation.
+
 .EXAMPLE
-.\Search-ContentRecursively.ps1 -Keyword "ConfigMgr" -StartPath "C:\Scripts"
-Searches for "ConfigMgr" in the specified directory and all subdirectories
+.\Search-ContentRecursively.ps1 -SearchReplacePairs @{"ConfigMgr"="SCCM"} -StartPath "C:\Scripts"
+Searches for "ConfigMgr" in the specified directory and prompts to replace with "SCCM"
+
+.EXAMPLE
+.\Search-ContentRecursively.ps1 -SearchReplacePairs @{"jdyer-nuvodia"="moo"; "jdyer\OneDrive - Nuvodia\"="moo"} -StartPath "C:\Github" -AutoReplace
+Searches for both terms and automatically replaces them with "moo" without prompting
 
 .EXAMPLE
 .\Search-ContentRecursively.ps1 -Keyword "password" -StartPath "."
-Searches for "password" in the current directory and all subdirectories
+Searches for "password" in the current directory (backward compatibility)
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true,
+    [Parameter(Mandatory = $false,
         Position = 0,
-        HelpMessage = "Enter the keyword to search for")]
+        HelpMessage = "Enter the keyword to search for (for backward compatibility)")]
     [string]$Keyword,
 
     [Parameter(Mandatory = $true,
         Position = 1,
         HelpMessage = "Enter the starting directory path")]
-    [string]$StartPath
+    [string]$StartPath,
+    
+    [Parameter(Mandatory = $false,
+        HelpMessage = "Hashtable of search terms and their replacements")]
+    [hashtable]$SearchReplacePairs,
+    
+    [Parameter(Mandatory = $false,
+        HelpMessage = "Automatically replace without prompting")]
+    [switch]$AutoReplace
 )
 
 # Define helper function first
@@ -71,23 +88,33 @@ try {
         Write-ColorOutput "Error: The specified path '$StartPath' does not exist." -ForegroundColor Red
         exit 1
     }
-
-    Write-ColorOutput "Starting search for keyword '$Keyword' in path '$StartPath'..." -ForegroundColor Cyan
-
-    Write-ColorOutput "`nSearching in metadata..." -ForegroundColor White
+    
+    # Handle parameters - support both new hashtable and legacy keyword parameter
+    if (-not $SearchReplacePairs -and $Keyword) {
+        $SearchReplacePairs = @{ $Keyword = "" }  # Empty replacement will be filled during interactive prompt
+    }
+    elseif (-not $SearchReplacePairs -and -not $Keyword) {
+        Write-ColorOutput "Error: Either -Keyword or -SearchReplacePairs must be provided." -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-ColorOutput "Starting search in path '$StartPath' for keywords: '$($SearchReplacePairs.Keys -join "', '")'..." -ForegroundColor Cyan    Write-ColorOutput "`nSearching in metadata..." -ForegroundColor White
     try {
         $metadataMatches = Get-ChildItem -Path $StartPath -Recurse | ForEach-Object {
             $item = $_
             $metadata = Get-ItemProperty -Path $item.FullName -ErrorAction SilentlyContinue
             if ($metadata) {
-                $props = $metadata.PSObject.Properties | 
-                    Where-Object { $_.Value -is [string] -and $_.Value -match $Keyword }
-                if ($props) {
-                    foreach ($prop in $props) {
-                        [PSCustomObject]@{
-                            File = $item.FullName
-                            Property = $prop.Name
-                            Value = $prop.Value
+                foreach ($searchTerm in $SearchReplacePairs.Keys) {
+                    $props = $metadata.PSObject.Properties | 
+                        Where-Object { $_.Value -is [string] -and $_.Value -match $searchTerm }
+                    if ($props) {
+                        foreach ($prop in $props) {
+                            [PSCustomObject]@{
+                                File = $item.FullName
+                                Property = $prop.Name
+                                Value = $prop.Value
+                                SearchTerm = $searchTerm
+                            }
                         }
                     }
                 }
@@ -105,12 +132,23 @@ try {
         }
     } catch {
         Write-ColorOutput "Error occurred while searching metadata: $_" -ForegroundColor Red
-    }
-
-    # Search in file and directory names
+    }    # Search in file and directory names
     Write-ColorOutput "`nSearching in file and directory names..." -ForegroundColor White
-    $nameMatches = Get-ChildItem -Path $StartPath -Recurse | 
-        Where-Object { $_.Name -like "*$Keyword*" }
+    $nameMatches = @()
+    foreach ($searchTerm in $SearchReplacePairs.Keys) {
+        $foundItems = Get-ChildItem -Path $StartPath -Recurse | 
+            Where-Object { $_.Name -like "*$searchTerm*" }
+        
+        if ($foundItems) {
+            foreach ($match in $foundItems) {                $nameMatches += [PSCustomObject]@{
+                    FullName = $match.FullName
+                    Name = $match.Name
+                    Type = if ($match.PSIsContainer) { "Directory" } else { "File" }
+                    SearchTerm = $searchTerm
+                }
+            }
+        }
+    }
 
     if ($nameMatches) {
         Write-ColorOutput "Found matches in names:" -ForegroundColor Green
@@ -119,9 +157,7 @@ try {
         }
     } else {
         Write-ColorOutput "No matches found in file or directory names." -ForegroundColor DarkGray
-    }
-
-    # Search in file contents
+    }    # Search in file contents
     Write-ColorOutput "`nSearching in file contents..." -ForegroundColor White
     try {
         $contentMatches = Get-ChildItem -Path $StartPath -Recurse -File |
@@ -132,17 +168,26 @@ try {
             ForEach-Object {
                 $file = $_
                 $lineNumber = 1
-                Get-Content $file.FullName -ErrorAction SilentlyContinue | 
-                    ForEach-Object {
-                        if ($_ -match $Keyword) {
-                            [PSCustomObject]@{
-                                File = $file.FullName
-                                LineNumber = $lineNumber
-                                Line = $_
+                
+                # Get file content once to avoid multiple reads for performance
+                $fileContent = Get-Content $file.FullName -ErrorAction SilentlyContinue
+                
+                if ($fileContent) {
+                    foreach ($searchTerm in $SearchReplacePairs.Keys) {
+                        $lineNumber = 1
+                        foreach ($line in $fileContent) {
+                            if ($line -match $searchTerm) {
+                                [PSCustomObject]@{
+                                    File = $file.FullName
+                                    LineNumber = $lineNumber
+                                    Line = $line
+                                    SearchTerm = $searchTerm
+                                }
                             }
+                            $lineNumber++
                         }
-                        $lineNumber++
                     }
+                }
             }
 
         if ($contentMatches) {
@@ -158,43 +203,78 @@ try {
         Write-ColorOutput "Error occurred while searching file contents: $_" -ForegroundColor Red
     }
 
-    Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
-
-    # Offer replacement if matches were found
+    Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan    # Offer replacement if matches were found
     if ($contentMatches -or $nameMatches -or $metadataMatches) {
-        $confirmation = Read-Host "`nWould you like to replace all instances of '$Keyword'? (Y/N)"
-        if ($confirmation -eq 'Y') {
-            $replaceWith = Read-Host "Enter the replacement string"
-            
-            Write-ColorOutput "`nPerforming replacements..." -ForegroundColor Cyan
-            
-            # Replace in file contents
-            if ($contentMatches) {
-                $contentMatches | Select-Object -ExpandProperty File -Unique | ForEach-Object {
-                    $filePath = $_
-                    try {
-                        (Get-Content $filePath) | 
-                            ForEach-Object { $_ -replace [regex]::Escape($Keyword), $replaceWith } |
-                            Set-Content $filePath
-                        Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
-                    }
-                    catch {
-                        Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
+        # Determine if we need to prompt or auto-replace
+        $performReplacements = $AutoReplace
+        
+        if (-not $AutoReplace) {
+            foreach ($searchTerm in $SearchReplacePairs.Keys) {
+                $replaceWith = $SearchReplacePairs[$searchTerm]
+                if ([string]::IsNullOrEmpty($replaceWith)) {
+                    $confirmation = Read-Host "`nWould you like to replace all instances of '$searchTerm'? (Y/N)"
+                    if ($confirmation -eq 'Y') {
+                        $replaceWith = Read-Host "Enter the replacement string"
+                        $SearchReplacePairs[$searchTerm] = $replaceWith
+                        $performReplacements = $true
                     }
                 }
+                else {
+                    $confirmation = Read-Host "`nWould you like to replace all instances of '$searchTerm' with '$replaceWith'? (Y/N)"
+                    $performReplacements = $confirmation -eq 'Y'
+                }
+                
+                if (-not $performReplacements) {
+                    break
+                }
             }
-
-            # Rename files and folders
-            if ($nameMatches) {
-                $nameMatches | ForEach-Object {
-                    try {
-                        $newName = $_.Name -replace [regex]::Escape($Keyword), $replaceWith
-                        $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
-                        Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
-                        Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
+        }
+        
+        if ($performReplacements) {
+            Write-ColorOutput "`nPerforming replacements..." -ForegroundColor Cyan
+            
+            # Process each search term
+            foreach ($searchTerm in $SearchReplacePairs.Keys) {
+                $replaceWith = $SearchReplacePairs[$searchTerm]
+                
+                # Skip if replacement is empty and this is auto-replace mode
+                if ([string]::IsNullOrEmpty($replaceWith) -and $AutoReplace) {
+                    Write-ColorOutput "Skipping '$searchTerm' as no replacement was provided." -ForegroundColor Yellow
+                    continue
+                }
+                
+                Write-ColorOutput "Replacing '$searchTerm' with '$replaceWith'..." -ForegroundColor White
+                
+                # Replace in file contents
+                $termContentMatches = $contentMatches | Where-Object { $_.SearchTerm -eq $searchTerm }
+                if ($termContentMatches) {
+                    $termContentMatches | Select-Object -ExpandProperty File -Unique | ForEach-Object {
+                        $filePath = $_
+                        try {
+                            (Get-Content $filePath) | 
+                                ForEach-Object { $_ -replace [regex]::Escape($searchTerm), $replaceWith } |
+                                Set-Content $filePath
+                            Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
+                        }
+                        catch {
+                            Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
+                        }
                     }
-                    catch {
-                        Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
+                }
+
+                # Rename files and folders
+                $termNameMatches = $nameMatches | Where-Object { $_.SearchTerm -eq $searchTerm }
+                if ($termNameMatches) {
+                    $termNameMatches | ForEach-Object {
+                        try {
+                            $newName = $_.Name -replace [regex]::Escape($searchTerm), $replaceWith
+                            $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
+                            Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
+                            Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
+                        }
+                        catch {
+                            Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
+                        }
                     }
                 }
             }
