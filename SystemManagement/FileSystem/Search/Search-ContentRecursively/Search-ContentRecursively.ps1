@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-14 20:28:00 UTC
+# Last Updated: 2025-05-14 20:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.1
-# Additional Info: Fixed formatting issue causing parameter binding errors
+# Version: 2.0.2
+# Additional Info: Fixed regex pattern handling for backslashes in search terms
 # =============================================================================
 
 <#
@@ -104,10 +104,11 @@ try {
         $metadataMatches = Get-ChildItem -Path $StartPath -Recurse | ForEach-Object {
             $item = $_
             $metadata = Get-ItemProperty -Path $item.FullName -ErrorAction SilentlyContinue
-            if ($metadata) {
-                foreach ($searchTerm in $SearchReplacePairs.Keys) {
+            if ($metadata) {                foreach ($searchTerm in $SearchReplacePairs.Keys) {
+                    # Escape the search term for regex pattern matching
+                    $escapedSearchTerm = [regex]::Escape($searchTerm)
                     $props = $metadata.PSObject.Properties | 
-                        Where-Object { $_.Value -is [string] -and $_.Value -match $searchTerm }
+                        Where-Object { $_.Value -is [string] -and $_.Value -match $escapedSearchTerm }
                     if ($props) {
                         foreach ($prop in $props) {
                             [PSCustomObject]@{
@@ -174,11 +175,12 @@ try {
                 # Get file content once to avoid multiple reads for performance
                 $fileContent = Get-Content $file.FullName -ErrorAction SilentlyContinue
                 
-                if ($fileContent) {
-                    foreach ($searchTerm in $SearchReplacePairs.Keys) {
+                if ($fileContent) {                    foreach ($searchTerm in $SearchReplacePairs.Keys) {
                         $lineNumber = 1
+                        # Escape the search term for regex pattern matching
+                        $escapedSearchTerm = [regex]::Escape($searchTerm)
                         foreach ($line in $fileContent) {
-                            if ($line -match $searchTerm) {
+                            if ($line -match $escapedSearchTerm) {
                                 [PSCustomObject]@{
                                     File = $file.FullName
                                     LineNumber = $lineNumber
