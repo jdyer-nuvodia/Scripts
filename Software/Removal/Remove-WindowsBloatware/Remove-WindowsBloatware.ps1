@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-10 15:45:00 UTC
+# Last Updated: 2025-05-14 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.10
-# Additional Info: Fixed directory removal confirmation prompts by adding Force parameter to all Directory cleanup calls
+# Version: 1.1.11
+# Additional Info: Added Microsoft OneNote for Windows 10 to the list of UWP bloatware applications to remove
 # =============================================================================
 
 <#
@@ -50,6 +50,7 @@ UWP Applications (Microsoft Store Apps):
 - Microsoft Xbox apps (TCUI, App, GameOverlay, GamingOverlay, IdentityProvider, SpeechToTextOverlay)
 - Microsoft Your Phone
 - Microsoft Zune Music and Video
+- Microsoft OneNote for Windows 10
 - Candy Crush games (Saga, Soda Saga, Friends)
 
 Traditional Win32 Applications:
@@ -103,7 +104,7 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
 $logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
-$scriptVersion = "1.1.10"
+$scriptVersion = "1.1.11"
 
 # Function to write log entries
 function Write-Log {
@@ -1007,10 +1008,10 @@ try {
         "Microsoft.XboxGameOverlay",
         "Microsoft.XboxGamingOverlay",
         "Microsoft.XboxIdentityProvider",
-        "Microsoft.XboxSpeechToTextOverlay",
-        "Microsoft.YourPhone",
+        "Microsoft.XboxSpeechToTextOverlay",        "Microsoft.YourPhone",
         "Microsoft.ZuneMusic",
         "Microsoft.ZuneVideo",
+        "Microsoft.Office.OneNote",
         "king.com.CandyCrushSaga",
         "king.com.CandyCrushSodaSaga",
         "king.com.CandyCrushFriends"
