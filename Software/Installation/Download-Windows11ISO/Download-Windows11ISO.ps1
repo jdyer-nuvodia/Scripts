@@ -2,10 +2,10 @@
 # Script: Download-Windows11ISO.ps1
 # Created: 2025-05-14 18:31:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-14 18:35:00 UTC
+# Last Updated: 2025-05-14 20:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Downloads Windows 11 24H2 ISO from Microsoft's official site with optimized download performance
+# Version: 1.1.3
+# Additional Info: Downloads Windows 11 24H2 ISO from Microsoft's official site with optimized download performance (fixed PSScriptAnalyzer issues)
 # =============================================================================
 
 <#
@@ -37,6 +37,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "Continue"
 
+# Load required assemblies
+Add-Type -AssemblyName System.Net.Http
+
 # Script variables
 $destinationFolder = "C:\Temp"
 $isoFileName = "Windows11_24H2.iso"
@@ -46,11 +49,11 @@ $logPath = Join-Path -Path $PSScriptRoot -ChildPath $logFileName
 
 # Windows 11 24H2 download URL - Microsoft's official link
 # Note: Microsoft sometimes changes URLs, so this might need updating
-$downloadUrl = "https://software-static.download.prss.microsoft.com/dbazure/988969d5-f34g-4e03-ac9d-1f9786c66751/22631.3447.240510-1230.24H2_ZN_RELEASE_SVC_PROD1_CLIENTPRO_OEMRET_x64FRE_en-us.iso"
+$downloadUrl = "https://software.download.prss.microsoft.com/dbazure/Win11_24H2_English_x64.iso?t=67b30897-2be6-43d9-84e7-deac8e3d2aaf&P1=1747334540&P2=601&P3=2&P4=Lrm%2bfKD9uFLxAagpY8i9Jx6%2bnZURyKtenVU0zMdfRWSznot2U30ok%2bc5SfPPtrFzhASYF0B8SjjSLN00W%2bwYJGq5izxvfC6ulMHEFT%2bqLVbe4q4qnkncWd%2bdq5qU9O8UrYv%2bouQ9gLVuE2kZbSlJB37VzLazzRVCAsoBmlpPomSRY5sV36LEk7zzDPrbRNBtbUZ9S%2fZySY1gYKlfSMdORI1PYNyo%2fw3sK3BFlChuZHojHlJCSyzkgJ6X2fXEZYVKoRy4ndRZCL%2bSViPEztzHHTlDMPLMTN%2fTbJdYpEOV0gEhVX4AuuAXmANVzLAyHx0EZAEKp1GESUHAN72qvk8ZYQ%3d%3d"
 
 # Expected SHA-256 hash of the ISO file
 # This is a placeholder - you should replace it with the actual hash from Microsoft
-$expectedHash = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+$expectedHash = "B56B911BF18A2CEAEB3904D87E7C770BDF92D3099599D61AC2497B91BF190B11"
 
 # Performance optimization settings
 $maxConcurrentThreads = [System.Environment]::ProcessorCount
@@ -59,12 +62,11 @@ $skipHashVerificationIfExists = $false # Set to $true to skip verification of ex
 
 # Function to log messages
 function Write-Log {
-    param (
-        [Parameter(Mandatory = $true)]
+    param (        [Parameter(Mandatory = $true)]
         [string]$Message,
         
         [Parameter(Mandatory = $false)]
-        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
+        [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG", "PROCESS")]
         [string]$Level = "INFO"
     )
     
@@ -87,7 +89,7 @@ function Write-Log {
 }
 
 # Function to verify file using SHA-256
-function Verify-FileHash {
+function Test-FileHash {
     param (
         [Parameter(Mandatory = $true)]
         [string]$FilePath,
@@ -132,7 +134,7 @@ try {
         else {
             Write-Log -Message "Verifying existing file..." -Level "PROCESS"
             
-            if (Verify-FileHash -FilePath $destinationPath -ExpectedHash $expectedHash) {
+            if (Test-FileHash -FilePath $destinationPath -ExpectedHash $expectedHash) {
                 Write-Log -Message "Existing file is valid. No need to download again." -Level "SUCCESS"
                 exit 0
             }
@@ -224,13 +226,11 @@ try {
         } while ($bytesRead -gt 0)
         
         Write-Progress -Activity "Downloading Windows 11 24H2 ISO" -Completed
-        
-        $downloadTime = $downloadStopwatch.Elapsed
-        $totalMB = [Math]::Round($totalBytesRead / 1MB, 2)
+          $downloadTime = $downloadStopwatch.Elapsed
         $averageSpeed = [Math]::Round($totalBytesRead / $downloadStopwatch.Elapsed.TotalSeconds / 1MB, 2)
         
         Write-Log -Message "Download completed successfully in $($downloadTime.ToString())" -Level "SUCCESS"
-        Write-Log -Message "Average download speed: $averageSpeed MB/s" -Level "SUCCESS"
+        Write-Log -Message "Downloaded $([Math]::Round($totalBytesRead / 1MB, 2)) MB at $averageSpeed MB/s" -Level "SUCCESS"
     }
     catch {
         Write-Log -Message "Download failed: $($_.Exception.Message)" -Level "ERROR"
@@ -251,7 +251,7 @@ try {
         $fileSize = (Get-Item -Path $destinationPath).Length / 1GB
         Write-Log -Message "Download completed. File size: $([Math]::Round($fileSize, 2)) GB" -Level "SUCCESS"
         
-        if (Verify-FileHash -FilePath $destinationPath -ExpectedHash $expectedHash) {
+        if (Test-FileHash -FilePath $destinationPath -ExpectedHash $expectedHash) {
             Write-Log -Message "Windows 11 24H2 ISO has been successfully downloaded and verified." -Level "SUCCESS"
             Write-Log -Message "ISO is available at: $destinationPath" -Level "SUCCESS"
         }
