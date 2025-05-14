@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-14 18:56:00 UTC
+# Last Updated: 2025-05-14 20:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.0
-# Additional Info: Added support for multiple search/replace terms and automatic replacement
+# Version: 2.0.1
+# Additional Info: Fixed formatting issue causing parameter binding errors
 # =============================================================================
 
 <#
@@ -98,7 +98,8 @@ try {
         exit 1
     }
     
-    Write-ColorOutput "Starting search in path '$StartPath' for keywords: '$($SearchReplacePairs.Keys -join "', '")'..." -ForegroundColor Cyan    Write-ColorOutput "`nSearching in metadata..." -ForegroundColor White
+    Write-ColorOutput "Starting search in path '$StartPath' for keywords: '$($SearchReplacePairs.Keys -join "', '")'..." -ForegroundColor Cyan
+    Write-ColorOutput "`nSearching in metadata..." -ForegroundColor White
     try {
         $metadataMatches = Get-ChildItem -Path $StartPath -Recurse | ForEach-Object {
             $item = $_
@@ -154,10 +155,11 @@ try {
         Write-ColorOutput "Found matches in names:" -ForegroundColor Green
         foreach ($match in $nameMatches) {
             Write-ColorOutput "  $($match.FullName)" -ForegroundColor White
-        }
-    } else {
+        }    } else {
         Write-ColorOutput "No matches found in file or directory names." -ForegroundColor DarkGray
-    }    # Search in file contents
+    }
+    
+    # Search in file contents
     Write-ColorOutput "`nSearching in file contents..." -ForegroundColor White
     try {
         $contentMatches = Get-ChildItem -Path $StartPath -Recurse -File |
@@ -203,7 +205,9 @@ try {
         Write-ColorOutput "Error occurred while searching file contents: $_" -ForegroundColor Red
     }
 
-    Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan    # Offer replacement if matches were found
+    Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
+    
+    # Offer replacement if matches were found
     if ($contentMatches -or $nameMatches -or $metadataMatches) {
         # Determine if we need to prompt or auto-replace
         $performReplacements = $AutoReplace
