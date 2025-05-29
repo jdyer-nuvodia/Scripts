@@ -2,10 +2,10 @@
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-29 20:20:00 UTC
+# Last Updated: 2025-05-29 20:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Fixed parameter mismatch in Set-Ownership function call
+# Version: 1.3.2
+# Additional Info: Fixed incorrect takeown command (switched from icacls to takeown.exe)
 # =============================================================================
 
 <#
@@ -52,10 +52,9 @@ function Set-Ownership {
     )
     
     Write-Host "Taking ownership of path: $StartPath" -ForegroundColor Cyan
-    
-    try {
-        # Take ownership using icacls command
-        $takeOwnResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$StartPath`" /takeown /T /C /Q" -NoNewWindow -PassThru -Wait
+      try {
+        # Take ownership using takeown command
+        $takeOwnResult = Start-Process -FilePath "takeown.exe" -ArgumentList "/F `"$StartPath`" /R /D Y" -NoNewWindow -PassThru -Wait
         if ($takeOwnResult.ExitCode -ne 0) {
             Write-Host "Warning: Failed to take ownership of $StartPath (Exit code: $($takeOwnResult.ExitCode))" -ForegroundColor Yellow
         }
