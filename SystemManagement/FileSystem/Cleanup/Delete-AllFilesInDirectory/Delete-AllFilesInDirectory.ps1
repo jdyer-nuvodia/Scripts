@@ -2,10 +2,10 @@
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:32:00 UTC
+# Last Updated: 2025-05-29 20:20:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added SupportsShouldProcess for safer file deletion
+# Version: 1.3.1
+# Additional Info: Fixed parameter mismatch in Set-Ownership function call
 # =============================================================================
 
 <#
@@ -80,7 +80,7 @@ Write-Host "Target directory: $TargetPath" -ForegroundColor Cyan
 try {
     # Step 1: Take ownership of the target directory and all contents
     Write-Host "Taking ownership of all files and folders..." -ForegroundColor Cyan
-    $ownershipResult = Set-Ownership -Path $TargetPath
+    $ownershipResult = Set-Ownership -StartPath $TargetPath
     
     if (-not $ownershipResult) {
         Write-Host "Continuing with deletion despite ownership issues. Some files may be skipped." -ForegroundColor Yellow
