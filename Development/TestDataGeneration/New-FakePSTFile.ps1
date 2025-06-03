@@ -2,10 +2,10 @@
 # Script: New-FakePSTFile.ps1
 # Created: 2025-06-03 17:05:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-03 17:12:53 UTC
+# Last Updated: 2025-06-03 17:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Initial creation - Generate fake PST files for testing purposes
+# Version: 1.0.2
+# Additional Info: Fixed SaveChanges() method error in COM object handling
 # =============================================================================
 
 <#
@@ -231,16 +231,16 @@ try {
 
         if (-not $FakeStore) {
             throw "Failed to locate the newly created PST in Outlook stores"
-        }
-
-        # Rename root folder
+        }        # Set PST display name
         Write-LogMessage -Message "Setting PST display name to: $PstDisplayName" -Level "Info"
-        $RootFolder = $FakeStore.GetRootFolder()
-        $RootFolder.Name = $PstDisplayName
-        $RootFolder.SaveChanges()
-
-        # Create folders
+        try {
+            $FakeStore.DisplayName = $PstDisplayName
+        }
+        catch {
+            Write-LogMessage -Message "Warning: Could not set PST display name. Using default name." -Level "Warning"
+        }        # Create folders
         Write-LogMessage -Message "Creating $($FolderNames.Count) folders in PST" -Level "Info"
+        $RootFolder = $FakeStore.GetRootFolder()
         $FolderObjects = @{}
         foreach ($FolderName in $FolderNames) {
             Write-LogMessage -Message "Creating folder: $FolderName" -Level "Debug"
