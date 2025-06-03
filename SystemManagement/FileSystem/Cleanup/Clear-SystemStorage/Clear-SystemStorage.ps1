@@ -2,10 +2,10 @@
 # Script: Clear-SystemStorage.ps1
 # Created: 2025-03-11 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-20 22:05:00 UTC
+# Last Updated: 2025-06-03 20:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.2
-# Additional Info: Fixed final drive space display in console output
+# Version: 1.6.1
+# Additional Info: Replaced 'Empty-RecycleBin' with 'Clear-RecycleBinContents' to use approved PowerShell verb
 # =============================================================================
 
 <#
@@ -74,16 +74,16 @@ function Show-DriveInfo {
         [object]$Volume
     )
     
-    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
-    Write-Host ""
+    Write-Log "`nDrive Volume Details:" -Color Green
+    Write-Log "------------------------" -Color Green
+    Write-Log "Drive Letter: $($Volume.DriveLetter)" -Color Cyan
+    Write-Log "Drive Label: $($Volume.FileSystemLabel)" -Color Cyan
+    Write-Log "File System: $($Volume.FileSystem)" -Color Cyan
+    Write-Log "Drive Type: $($Volume.DriveType)" -Color Cyan
+    Write-Log "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -Color Cyan
+    Write-Log "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -Color Cyan
+    Write-Log "Health Status: $($Volume.HealthStatus)" -Color Cyan
+    Write-Log ""
 }
 function Write-StatusMessage {
     param(
@@ -204,23 +204,28 @@ function Remove-TempFiles {
     return $removedFiles.Count
 }
 
-function Clear-RecycleBin {
+function Clear-RecycleBinContents {
     Write-StatusMessage "Clearing Recycle Bin..." -Color Cyan
     try {
-        $shell = New-Object -ComObject Shell.Application
-        $recycleBin = $shell.NameSpace(0xa)
-        $recycleBin.Items() | ForEach-Object { 
-            Remove-Item $_.Path -Force -Recurse
+        # Use the built-in cmdlet if available (PowerShell 5.1 and later)
+        if (Get-Command -Name Clear-RecycleBin -ErrorAction SilentlyContinue) {
+            Clear-RecycleBin -Force -ErrorAction Stop
+        }
+        else {
+            # Fallback for older PowerShell versions
+            $shell = New-Object -ComObject Shell.Application
+            $recycleBin = $shell.NameSpace(0xa)
+            $recycleBin.Items() | ForEach-Object { 
+                Remove-Item $_.Path -Force -Recurse
+            }
+            if ($null -ne $shell) {
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+            }
         }
         Write-StatusMessage "Recycle Bin cleared successfully." -Color Green
     }
     catch {
         Write-StatusMessage "Error clearing Recycle Bin: $_" -Color Yellow
-    }
-    finally {
-        if ($null -ne $shell) {
-            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
-        }
     }
 }
 
@@ -420,11 +425,9 @@ try {
     }
     catch {
         Write-Log "Error accessing initial drive information: $_" -Color Red
-    }
-
-    # Perform cleanup operations
+    }    # Perform cleanup operations
     Remove-TempFiles
-    Clear-RecycleBin
+    Clear-RecycleBinContents
     Clear-ShadowCopies
     Remove-WindowsErrorReports
     Clear-BrowserCaches
@@ -436,7 +439,7 @@ try {
         $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter
         if ($volumes.Count -gt 0) {
             foreach ($volume in $volumes) {
-                Write-StatusMessage "Final drive space for $($volume.DriveLetter):" -Color Yellow
+                Write-Log "Final drive space for $($volume.DriveLetter):" -Color Yellow
                 Show-DriveInfo -Volume $volume
             }
         }
