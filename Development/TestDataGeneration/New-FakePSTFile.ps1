@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: New-FakePSTFile.ps1
-# Created: 2025-06-03 21:21:53 UTC
+# Created: 2025-06-03 17:05:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-03 21:21:53 UTC
+# Last Updated: 2025-06-03 17:12:53 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
+# Version: 1.0.1
 # Additional Info: Initial creation - Generate fake PST files for testing purposes
 # =============================================================================
 
@@ -62,7 +62,7 @@
     Shows what the script would do without actually creating the PST file.
 
 .EXAMPLE
-    .\New-FakePSTFile.ps1 -PstPath "D:\TestData\CompanyEmails_2024.pst" -PstDisplayName "Company Test Archive" -FolderNames @('Inbox', 'Sent Items', 'Projects', 'HR Communications', 'IT Support', 'Sales Leads') -MessagesPerFolder 250 -DateRangeDays 365 -Verbose
+    .\New-FakePSTFile.ps1 -PstPath "C:\Temp\CompanyEmails_2025.pst" -PstDisplayName "Company Test Archive" -FolderNames @('Inbox', 'Sent Items', 'Projects', 'HR Communications', 'IT Support', 'Sales Leads') -MessagesPerFolder 250 -DateRangeDays 365 -Verbose
     Creates a comprehensive test PST file with 6 folders containing 250 messages each (1500 total), spanning one year of message dates, with verbose output for detailed progress tracking. This example demonstrates all available parameters to create a realistic corporate email archive for testing purposes.
 
 .NOTES
