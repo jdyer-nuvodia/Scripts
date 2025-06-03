@@ -2,10 +2,10 @@
 # Script: New-FakePSTFile.ps1
 # Created: 2025-06-03 17:05:53 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-03 17:15:00 UTC
+# Last Updated: 2025-06-03 17:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.2
-# Additional Info: Fixed SaveChanges() method error in COM object handling
+# Version: 1.0.3
+# Additional Info: Fixed PST creation method and improved store mounting reliability
 # =============================================================================
 
 <#
@@ -211,23 +211,37 @@ try {
         # Initialize Outlook COM object
         Write-LogMessage -Message "Initializing Outlook COM object" -Level "Info"
         $Outlook = New-Object -ComObject Outlook.Application
-        $Namespace = $Outlook.GetNamespace("MAPI")
-
-        # Create new PST file
+        $Namespace = $Outlook.GetNamespace("MAPI")        # Create new PST file
         Write-LogMessage -Message "Creating new PST file: $PstPath" -Level "Info"
-        $Namespace.AddStoreEx($PstPath, 3)  # 3 = olStoreUnicode
+        
+        # Use Outlook's proper method to create a new PST data file
+        # The AddStoreEx method with olStoreDefault (1) creates a new PST if it doesn't exist
+        $Namespace.AddStoreEx($PstPath, 1)  # 1 = olStoreDefault (creates new PST)        # Wait for PST to be mounted and available
+        Write-LogMessage -Message "Waiting for PST to be mounted in Outlook..." -Level "Info"
+        Start-Sleep -Seconds 5
 
-        # Wait for PST to be mounted
-        Start-Sleep -Seconds 3
-
-        # Find the newly created store
+        # Find the newly created store with retry logic
         $FakeStore = $null
-        foreach ($Store in $Namespace.Stores) {
-            if ($Store.FilePath -ieq $PstPath) {
-                $FakeStore = $Store
-                break
+        $MaxRetries = 10
+        $RetryCount = 0
+        
+        do {
+            $RetryCount++
+            Write-LogMessage -Message "Attempting to locate PST store (attempt $RetryCount of $MaxRetries)" -Level "Debug"
+            
+            foreach ($Store in $Namespace.Stores) {
+                Write-LogMessage -Message "Checking store: $($Store.DisplayName) at path: $($Store.FilePath)" -Level "Debug"
+                if ($Store.FilePath -ieq $PstPath) {
+                    $FakeStore = $Store
+                    break
+                }
             }
-        }
+            
+            if (-not $FakeStore -and $RetryCount -lt $MaxRetries) {
+                Write-LogMessage -Message "PST not found yet, waiting 2 more seconds..." -Level "Debug"
+                Start-Sleep -Seconds 2
+            }
+        } while (-not $FakeStore -and $RetryCount -lt $MaxRetries)
 
         if (-not $FakeStore) {
             throw "Failed to locate the newly created PST in Outlook stores"
