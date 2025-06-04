@@ -56,7 +56,7 @@ param(
     [string]$PSTPath = "C:\Temp\RandomData.pst",
 
     [Parameter(Mandatory = $false)]
-    [ValidateRange(1, 1000)]
+    [ValidateRange(1, 100000)]
     [int]$EmailCount = 10
 )
 
@@ -580,8 +580,8 @@ try {
         throw "PST file path cannot be empty"
     }
 
-    if ($EmailCount -lt 1 -or $EmailCount -gt 1000) {
-        throw "Number of emails must be between 1 and 1000"
+    if ($EmailCount -lt 1 -or $EmailCount -gt 100000) {
+        throw "Number of emails must be between 1 and 100000"
     }
 
     # Check if PST file already exists
