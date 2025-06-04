@@ -1,358 +1,616 @@
-# =============================================================================
+﻿# =============================================================================
 # Script: New-FakePSTFile.ps1
-# Created: 2025-06-03 17:05:53 UTC
+# Created: 2025-06-03 21:25:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-03 17:23:00 UTC
+# Last Updated: 2025-06-04 17:47:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.3
-# Additional Info: Fixed PST creation method and improved store mounting reliability
-# =============================================================================
+# Version: 2.7.0
+# Additional Info: Fixed email creation to use targetFolder.Items.Add() instead of CreateItem() to create proper received emails instead of drafts
+# ===================================================================================================================================================
 
 <#
 .SYNOPSIS
-    Generate a new PST file with fake email messages for testing purposes.
+Creates a new PST file with random test data for development and testing purposes.
 
 .DESCRIPTION
-    This script creates a new Outlook PST file and populates it with randomly generated email messages
-    for testing, development, or training purposes. The script uses Outlook COM automation to create
-    folders within the PST and generate realistic-looking email messages with randomized senders,
-    recipients, subjects, bodies, and timestamps. All generated data is fake and safe for testing
-    environments without exposing real email data.
+This script creates a new Outlook PST file at a specified location and populates it with random email data.
+The script creates an Inbox folder and adds a configurable number of test emails with random subjects and bodies.
+This is useful for testing applications that process PST files or for creating sample data for development.
+The script includes -WhatIf functionality to preview actions before execution and comprehensive logging.
 
-.PARAMETER PstPath
-    The full path including filename where the new PST file will be created.
-    Default: C:\Temp\FakeEmails.pst
+PREREQUISITES:
+- Microsoft Outlook must be installed and properly configured
+- Outlook Interop Assembly must be available
+- Script must be run with appropriate permissions to create files
 
-.PARAMETER PstDisplayName
-    The display name to assign to the PST within Outlook.
-    Default: FakeEmailArchive
+The script will automatically check for these prerequisites before attempting to create the PST file.
 
-.PARAMETER FolderNames
-    Array of folder names to create within the PST. Multiple folders can be specified.
-    Default: @('TestInbox', 'TestSent', 'TestArchive')
+.PARAMETER PSTPath
+The full path where the new PST file will be created. Default is "C:\Temp\RandomData.pst"
 
-.PARAMETER MessagesPerFolder
-    Number of fake messages to generate in each folder.
-    Default: 50
-
-.PARAMETER DateRangeDays
-    Number of days in the past from which to randomly select message dates.
-    Default: 60
+.PARAMETER EmailCount
+The total number of random emails to create and distribute across all folders in the PST file. Default is 10
 
 .PARAMETER WhatIf
-    Shows what would happen if the cmdlet runs without actually executing the changes.
+Shows what would happen if the cmdlet runs without actually executing the operations
 
 .PARAMETER Verbose
-    Provides detailed output during script execution.
+Enables verbose output for detailed operation information
 
 .EXAMPLE
-    .\New-FakePSTFile.ps1
-    Creates a PST file at C:\Temp\FakeEmails.pst with default settings.
+.\New-FakePSTFile.ps1
+Creates a PST file at the default location with 10 random emails distributed across folders
 
 .EXAMPLE
-    .\New-FakePSTFile.ps1 -PstPath "D:\TestData\MyTest.pst" -MessagesPerFolder 100 -Verbose
-    Creates a PST file at the specified path with 100 messages per folder and verbose output.
+.\New-FakePSTFile.ps1 -PSTPath "C:\Temp\Sample.pst" -EmailCount 1000
+Creates a PST file at the specified location with 1000 random emails distributed across folders
 
 .EXAMPLE
-    .\New-FakePSTFile.ps1 -FolderNames @('Inbox', 'Sent Items', 'Archive', 'Projects') -DateRangeDays 365
-    Creates a PST with custom folder names and message dates spanning one year.
-
-.EXAMPLE
-    .\New-FakePSTFile.ps1 -WhatIf
-    Shows what the script would do without actually creating the PST file.
-
-.EXAMPLE
-    .\New-FakePSTFile.ps1 -PstPath "C:\Temp\CompanyEmails_2025.pst" -PstDisplayName "Company Test Archive" -FolderNames @('Inbox', 'Sent Items', 'Projects', 'HR Communications', 'IT Support', 'Sales Leads') -MessagesPerFolder 250 -DateRangeDays 365 -Verbose
-    Creates a comprehensive test PST file with 6 folders containing 250 messages each (1500 total), spanning one year of message dates, with verbose output for detailed progress tracking. This example demonstrates all available parameters to create a realistic corporate email archive for testing purposes.
-
-.NOTES
-    Requires:
-    - Microsoft Outlook installed and configured on the local machine
-    - PowerShell execution policy that allows script execution
-    - Sufficient disk space for the PST file
-    
-    The script uses Outlook COM automation, so Outlook must be installed but does not need
-    to have an active Exchange connection. The script will create a standalone PST file.
+.\New-FakePSTFile.ps1 -WhatIf
+Shows what would happen without actually creating the PST file
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
-param (
+param(
     [Parameter(Mandatory = $false)]
-    [ValidateScript({
-        $directory = Split-Path -Path $_ -Parent
-        if (-not (Test-Path -Path $directory)) {
-            throw "Directory '$directory' does not exist. Please create the directory first or specify a valid path."
-        }
-        $true
-    })]
-    [string]$PstPath = "C:\Temp\FakeEmails.pst",
+    [string]$PSTPath = "C:\Temp\RandomData.pst",
 
     [Parameter(Mandatory = $false)]
-    [ValidateLength(1, 50)]
-    [string]$PstDisplayName = "FakeEmailArchive",
-
-    [Parameter(Mandatory = $false)]
-    [ValidateCount(1, 20)]
-    [string[]]$FolderNames = @('TestInbox', 'TestSent', 'TestArchive'),
-
-    [Parameter(Mandatory = $false)]
-    [ValidateRange(1, 10000)]
-    [int]$MessagesPerFolder = 50,
-
-    [Parameter(Mandatory = $false)]
-    [ValidateRange(1, 3650)]
-    [int]$DateRangeDays = 60
+    [ValidateRange(1, 1000)]
+    [int]$EmailCount = 10
 )
 
-# Initialize logging
-$ScriptName = [System.IO.Path]::GetFileNameWithoutExtension($MyInvocation.MyCommand.Name)
-$ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ComputerName = $env:COMPUTERNAME
-$LogTimestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
-$LogFileName = "${ScriptName}_${ComputerName}_${LogTimestamp}.log"
-$LogPath = Join-Path -Path $ScriptPath -ChildPath $LogFileName
+# Initialize variables
+$scriptName = $MyInvocation.MyCommand.Name
+$scriptPath = $MyInvocation.MyCommand.Path | Split-Path -Parent
+$systemName = $env:COMPUTERNAME
+$timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+$logFileName = "{0}_{1}_{2}_UTC.log" -f $scriptName.Replace('.ps1', ''), $systemName, $timestamp
+$logPath = Join-Path -Path $scriptPath -ChildPath $logFileName
+$startTime = Get-Date
 
-# Logging function
-function Write-LogMessage {
+# Function to write colored output and log
+function Write-ColoredOutput {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $false)]
-        [ValidateSet('Info', 'Warning', 'Error', 'Success', 'Debug')]
-        [string]$Level = 'Info'
+        [ValidateSet('White', 'Cyan', 'Green', 'Yellow', 'Red', 'Magenta', 'DarkGray')]
+        [string]$Color = 'White',
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoLog
     )
-    
-    $Timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss UTC")
-    $LogEntry = "[$Timestamp] [$Level] $Message"
-    
-    # Write to log file
-    Add-Content -Path $LogPath -Value $LogEntry -Encoding UTF8
-      # Write to console with appropriate color
-    switch ($Level) {
-        'Info' { Write-Information $Message -InformationAction Continue }
-        'Warning' { Write-Warning $Message }
-        'Error' { Write-Error $Message }
-        'Success' { Write-Information $Message -InformationAction Continue }
-        'Debug' { Write-Verbose $Message }
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+    $logMessage = "[$timestamp] $Message"
+
+    # Write to console with color
+    Microsoft.PowerShell.Utility\Write-Host $Message -ForegroundColor $Color
+
+    if (-not $NoLog) {
+        Add-Content -Path $logPath -Value $logMessage -ErrorAction SilentlyContinue
     }
 }
 
-# Sample data arrays for randomization
-$SampleRecipients = @(
-    'support@contoso.com',
-    'marketing@acme.org',
-    'user1@example.com',
-    'user2@example.com',
-    'qa@testdomain.net',
-    'admin@fakeco.com',
-    'info@samplecorp.com',
-    'contact@demo.org',
-    'help@placeholder.org',
-    'team@testco.com'
-)
+# Function to test Outlook prerequisite
+function Test-OutlookPrerequisite {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [bool]$SkipCOMTest = $false
+    )
 
-$SampleSubjects = @(
-    'Monthly Report - {0}',
-    'Reminder: Meeting scheduled for {0}',
-    'Re: Your Request #{0}',
-    'Action Required: Policy Update',
-    'Welcome to the Team, {0}',
-    'System Maintenance Notice - {0}',
-    'Invoice #{0} - Payment Due',
-    'Project Update: Phase {0} Complete',
-    'Security Alert: Account Activity on {0}',
-    'Newsletter: Week of {0}'
-)
+    Write-ColoredOutput -Message "Checking Outlook prerequisites..." -Color Cyan
 
-$SampleBodies = @(
-    "Hello,`r`n`r`nThis is a test email generated on {0}. Please disregard this message as it is for testing purposes only.`r`n`r`nBest regards,`r`nAutomated Test System",
-    "Dear Recipient,`r`n`r`nYour ticket #{0} has been received and is currently being processed by our team. Expected resolution: {1}.`r`n`r`nThank you for your patience,`r`nSupport Team",
-    "Team,`r`n`r`nWe wanted to inform you about the upcoming system maintenance scheduled for {0}. Please plan accordingly.`r`n`r`nRegards,`r`nOperations Team",
-    "Hello,`r`n`r`nCongratulations! Your order #{0} has been processed and shipped. Expected delivery date: {1}.`r`n`r`nThank you for your business,`r`nSales Team",
-    "Dear Team Members,`r`n`r`nPlease find attached the Q{0} performance metrics. Review the data and let me know if you have any questions.`r`n`r`nBest,`r`nManagement",
-    "Hi there,`r`n`r`nThis is a friendly reminder about the meeting scheduled for {0}. Please confirm your attendance.`r`n`r`nThanks,`r`nAdmin Assistant",
-    "Dear User,`r`n`r`nYour account password will expire on {0}. Please update your password to avoid any service interruption.`r`n`r`nSecurity Team",
-    "Hello,`r`n`r`nWe have detected unusual activity on your account on {0}. If this was not you, please contact support immediately.`r`n`r`nSecurity Department"
-)
+    # Comprehensive check for Outlook installation in Program Files directories
+    $programFilesPaths = @(
+        $env:ProgramFiles,
+        ${env:ProgramFiles(x86)}
+    )
 
-# Helper function to get random item from array
-function Get-RandomArrayItem {
-    param([array]$Array)
-    return $Array | Get-Random
-}
+    $outlookPaths = @()
 
-# Start logging
-Write-LogMessage -Message "Starting New-FakePSTFile script execution" -Level "Info"
-Write-LogMessage -Message "PST Path: $PstPath" -Level "Debug"
-Write-LogMessage -Message "Display Name: $PstDisplayName" -Level "Debug"
-Write-LogMessage -Message "Folders: $($FolderNames -join ', ')" -Level "Debug"
-Write-LogMessage -Message "Messages per folder: $MessagesPerFolder" -Level "Debug"
+    # Build comprehensive list of potential Outlook paths
+    foreach ($programPath in $programFilesPaths) {
+        if ($programPath -and (Test-Path -Path $programPath)) {
+            # Office versions and their typical paths
+            $officeVersions = @(
+                "Microsoft Office\root\Office16",    # Office 2016/2019/2021/365 Click-to-Run
+                "Microsoft Office\Office16",         # Office 2016 MSI
+                "Microsoft Office\root\Office15",    # Office 2013 Click-to-Run
+                "Microsoft Office\Office15",         # Office 2013 MSI
+                "Microsoft Office\root\Office14",    # Office 2010 Click-to-Run
+                "Microsoft Office\Office14",         # Office 2010 MSI
+                "Microsoft Office\OFFICE12",         # Office 2007
+                "Microsoft Office\OFFICE11"          # Office 2003
+            )
 
-try {
-    # Check if target directory exists
-    $TargetDirectory = Split-Path -Path $PstPath -Parent
-    if (-not (Test-Path -Path $TargetDirectory)) {
-        if ($PSCmdlet.ShouldProcess($TargetDirectory, "Create directory")) {
-            Write-LogMessage -Message "Creating target directory: $TargetDirectory" -Level "Info"
-            New-Item -Path $TargetDirectory -ItemType Directory -Force | Out-Null
+            foreach ($version in $officeVersions) {
+                $fullPath = Join-Path -Path $programPath -ChildPath "$version\OUTLOOK.EXE"
+                $outlookPaths += $fullPath
+            }
         }
     }
 
-    # Check if PST already exists
-    if (Test-Path -Path $PstPath) {
-        if ($PSCmdlet.ShouldProcess($PstPath, "Remove existing PST file")) {
-            Write-LogMessage -Message "Removing existing PST file: $PstPath" -Level "Warning"
-            Remove-Item -Path $PstPath -Force
+    # Also check for standalone Outlook installations
+    foreach ($programPath in $programFilesPaths) {
+        if ($programPath -and (Test-Path -Path $programPath)) {
+            $standalonePaths = @(
+                "Microsoft Outlook\OUTLOOK.EXE",
+                "Outlook\OUTLOOK.EXE"
+            )
+
+            foreach ($standalone in $standalonePaths) {
+                $fullPath = Join-Path -Path $programPath -ChildPath $standalone
+                $outlookPaths += $fullPath
+            }
         }
     }
 
-    if ($PSCmdlet.ShouldProcess($PstPath, "Create new PST file with $($FolderNames.Count) folders and $MessagesPerFolder messages per folder")) {
-        # Initialize Outlook COM object
-        Write-LogMessage -Message "Initializing Outlook COM object" -Level "Info"
-        $Outlook = New-Object -ComObject Outlook.Application
-        $Namespace = $Outlook.GetNamespace("MAPI")        # Create new PST file
-        Write-LogMessage -Message "Creating new PST file: $PstPath" -Level "Info"
-        
-        # Use Outlook's proper method to create a new PST data file
-        # The AddStoreEx method with olStoreDefault (1) creates a new PST if it doesn't exist
-        $Namespace.AddStoreEx($PstPath, 1)  # 1 = olStoreDefault (creates new PST)        # Wait for PST to be mounted and available
-        Write-LogMessage -Message "Waiting for PST to be mounted in Outlook..." -Level "Info"
-        Start-Sleep -Seconds 5
+    # Check each potential path
+    $outlookInstalled = $false
 
-        # Find the newly created store with retry logic
-        $FakeStore = $null
-        $MaxRetries = 10
-        $RetryCount = 0
-        
-        do {
-            $RetryCount++
-            Write-LogMessage -Message "Attempting to locate PST store (attempt $RetryCount of $MaxRetries)" -Level "Debug"
-            
-            foreach ($Store in $Namespace.Stores) {
-                Write-LogMessage -Message "Checking store: $($Store.DisplayName) at path: $($Store.FilePath)" -Level "Debug"
-                if ($Store.FilePath -ieq $PstPath) {
-                    $FakeStore = $Store
-                    break
-                }
-            }
-            
-            if (-not $FakeStore -and $RetryCount -lt $MaxRetries) {
-                Write-LogMessage -Message "PST not found yet, waiting 2 more seconds..." -Level "Debug"
-                Start-Sleep -Seconds 2
-            }
-        } while (-not $FakeStore -and $RetryCount -lt $MaxRetries)
+    Write-ColoredOutput -Message "Searching for Outlook executable in Program Files directories..." -Color Cyan
 
-        if (-not $FakeStore) {
-            throw "Failed to locate the newly created PST in Outlook stores"
-        }        # Set PST display name
-        Write-LogMessage -Message "Setting PST display name to: $PstDisplayName" -Level "Info"
+    foreach ($path in $outlookPaths) {
+        Write-Verbose "Checking path: $path"
+        if (Test-Path -Path $path -PathType Leaf) {
+            $outlookInstalled = $true
+            $fileInfo = Get-Item -Path $path
+            Write-ColoredOutput -Message "Found Outlook installation at: $path" -Color Green
+            Write-ColoredOutput -Message "Version: $($fileInfo.VersionInfo.FileVersion)" -Color DarkGray
+            Write-ColoredOutput -Message "Product: $($fileInfo.VersionInfo.ProductName)" -Color DarkGray
+            break
+        }
+    }
+
+    if (-not $outlookInstalled) {
+        Write-ColoredOutput -Message "WARNING: Outlook executable not found in standard Program Files locations" -Color Yellow
+        Write-ColoredOutput -Message "Checked paths in:" -Color DarkGray
+        Write-ColoredOutput -Message "  - $env:ProgramFiles" -Color DarkGray
+        if ($env:ProgramFiles -ne ${env:ProgramFiles(x86)}) {
+            Write-ColoredOutput -Message "  - ${env:ProgramFiles(x86)}" -Color DarkGray
+        }
+    }
+
+    # Check Windows Registry for Outlook installation
+    Write-ColoredOutput -Message "Checking Windows Registry for Outlook registration..." -Color Cyan
+
+    $registryPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration",
+        "HKLM:\SOFTWARE\Microsoft\Office\16.0\Outlook",
+        "HKLM:\SOFTWARE\Microsoft\Office\15.0\Outlook",
+        "HKLM:\SOFTWARE\Microsoft\Office\14.0\Outlook",
+        "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Office\16.0\Outlook",
+        "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Office\15.0\Outlook",
+        "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Office\14.0\Outlook"
+    )
+
+    $registryFound = $false
+    foreach ($regPath in $registryPaths) {
+        if (Test-Path -Path $regPath) {
+            $registryFound = $true
+            Write-ColoredOutput -Message "Found Outlook registry entry at: $regPath" -Color Green
+            break
+        }
+    }
+
+    if (-not $registryFound) {
+        Write-ColoredOutput -Message "WARNING: No Outlook registry entries found" -Color Yellow
+    }
+
+    # Test COM interface if not skipped
+    if (-not $SkipCOMTest) {
+        Write-ColoredOutput -Message "Testing Outlook COM interface..." -Color Cyan
+
         try {
-            $FakeStore.DisplayName = $PstDisplayName
+            $testOutlook = New-Object -ComObject Outlook.Application
+            Write-ColoredOutput -Message "Outlook COM interface test successful" -Color Green
+
+            # Clean up test object
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($testOutlook) | Out-Null
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+
+            return $true
         }
         catch {
-            Write-LogMessage -Message "Warning: Could not set PST display name. Using default name." -Level "Warning"
-        }        # Create folders
-        Write-LogMessage -Message "Creating $($FolderNames.Count) folders in PST" -Level "Info"
-        $RootFolder = $FakeStore.GetRootFolder()
-        $FolderObjects = @{}
-        foreach ($FolderName in $FolderNames) {
-            Write-LogMessage -Message "Creating folder: $FolderName" -Level "Debug"
-            $NewFolder = $RootFolder.Folders.Add($FolderName, 6)  # 6 = olFolderInbox
-            $FolderObjects[$FolderName] = $NewFolder
+            Write-ColoredOutput -Message "ERROR: Outlook COM interface test failed: $($_.Exception.Message)" -Color Red
+            return $false
         }
-
-        # Generate fake messages
-        $TotalMessages = $MessagesPerFolder * $FolderNames.Count
-        Write-LogMessage -Message "Generating $TotalMessages fake messages ($MessagesPerFolder per folder)" -Level "Info"
-        
-        $MessageCount = 0
-        for ($i = 1; $i -le $MessagesPerFolder; $i++) {
-            foreach ($FolderName in $FolderNames) {
-                $MessageCount++
-                if ($MessageCount % 10 -eq 0) {
-                    Write-LogMessage -Message "Generated $MessageCount of $TotalMessages messages" -Level "Debug"
-                }
-
-                $Folder = $FolderObjects[$FolderName]
-                
-                # Create new mail item
-                $Mail = $Outlook.CreateItem(0)  # 0 = olMailItem                # Generate random data
-                $ToAddress = Get-RandomArrayItem -Array $SampleRecipients
-                
-                # Generate subject with placeholder
-                $SubjectTemplate = Get-RandomArrayItem -Array $SampleSubjects
-                $SubjectPlaceholder = Get-Random -Minimum 1000 -Maximum 9999
-                $Subject = $SubjectTemplate -f $SubjectPlaceholder
-
-                # Generate random date within specified range
-                $RandomDate = (Get-Date).AddDays(-1 * (Get-Random -Minimum 0 -Maximum $DateRangeDays))
-                $FormattedDate = $RandomDate.ToString("MM/dd/yyyy")
-                
-                # Generate body with placeholders
-                $BodyTemplate = Get-RandomArrayItem -Array $SampleBodies
-                $BodyPlaceHolder1 = Get-Random -Minimum 100000 -Maximum 999999
-                $BodyPlaceHolder2 = (Get-Date).AddDays((Get-Random -Minimum 1 -Maximum 30)).ToString("MM/dd/yyyy")
-                $Body = $BodyTemplate -f $FormattedDate, $BodyPlaceHolder1, $BodyPlaceHolder2
-
-                # Set mail properties
-                $Mail.Subject = $Subject
-                $Mail.Body = $Body
-                $Mail.To = $ToAddress
-
-                # Set received time using property accessor
-                $PropertyAccessor = $Mail.PropertyAccessor
-                $PR_CLIENT_SUBMIT_TIME = "http://schemas.microsoft.com/mapi/proptag/0x00390040"
-                $PropertyAccessor.SetProperty($PR_CLIENT_SUBMIT_TIME, $RandomDate.ToFileTime())
-
-                # Move to folder and save
-                $Mail.Move($Folder) | Out-Null
-                $Mail.Save()
-                
-                # Release COM object
-                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Mail) | Out-Null
-            }
-        }
-
-        Write-LogMessage -Message "Successfully generated all $TotalMessages fake messages" -Level "Success"
-
-        # Clean up: remove store from Outlook session
-        Write-LogMessage -Message "Dismounting PST from Outlook session" -Level "Info"
-        $Namespace.RemoveStore($RootFolder)
-
-        # Release COM objects
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($RootFolder) | Out-Null
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($FakeStore) | Out-Null
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Namespace) | Out-Null
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Outlook) | Out-Null        Write-LogMessage -Message "Fake PST file created successfully at: $PstPath" -Level "Success"
-        Write-Information "`nSUCCESS: Fake PST file created successfully!" -InformationAction Continue
-        Write-Information "Location: $PstPath" -InformationAction Continue
-        Write-Information "Folders created: $($FolderNames.Count)" -InformationAction Continue
-        Write-Information "Total messages: $TotalMessages" -InformationAction Continue
-        Write-Information "Log file: $LogPath" -InformationAction Continue
+    }
+    else {
+        Write-ColoredOutput -Message "COM interface test skipped as requested" -Color DarkGray
+        return ($outlookInstalled -or $registryFound)
     }
 }
-catch {
-    $ErrorMessage = "Error creating fake PST file: $($_.Exception.Message)"
-    Write-LogMessage -Message $ErrorMessage -Level "Error"
-    Write-LogMessage -Message "Stack trace: $($_.ScriptStackTrace)" -Level "Error"
-    
-    # Clean up COM objects in case of error
-    try {
-        if ($Outlook) {
-            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Outlook) | Out-Null
+
+# Function to generate random string
+function Get-RandomString {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [int]$Length = 8
+    )
+
+    $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    $randomString = ""
+
+    for ($i = 1; $i -le $Length; $i++) {
+        $randomString += $chars[(Get-Random -Maximum $chars.Length)]
+    }
+
+    return $randomString
+}
+
+# Main function to create PST file with data
+function New-PSTFileWithData {
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [int]$EmailCount,
+
+        [Parameter(Mandatory = $false)]
+        [bool]$IsWhatIfMode = $false
+    )
+
+    try {        if (-not $IsWhatIfMode) {
+            if ($PSCmdlet.ShouldProcess($FilePath, "Create PST file with $EmailCount emails")) {
+                Write-ColoredOutput -Message "Creating PST file with $EmailCount emails at: $FilePath" -Color Green
+
+            # Test Outlook prerequisites first
+            if (-not (Test-OutlookPrerequisite)) {
+                throw "Outlook prerequisites not met. Please install and configure Microsoft Outlook."
+            }
+
+            # Delete existing file if it exists
+            if (Test-Path -Path $FilePath) {
+                Write-ColoredOutput -Message "Removing existing PST file..." -Color Yellow
+                Remove-Item -Path $FilePath -Force
+            }
+
+            # Ensure target directory exists
+            $targetDir = Split-Path -Path $FilePath -Parent
+            if (-not (Test-Path -Path $targetDir)) {
+                Write-ColoredOutput -Message "Creating target directory: $targetDir" -Color Cyan
+                New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
+            }
+
+            # Create Outlook application object
+            Write-ColoredOutput -Message "Initializing Outlook COM interface..." -Color Cyan
+            $outlook = New-Object -ComObject Outlook.Application
+
+            Write-ColoredOutput -Message "Outlook application object created successfully" -Color Green
+
+            # Get namespace
+            $namespace = $outlook.GetNamespace("MAPI")
+
+            # Create new PST file
+            Write-ColoredOutput -Message "Adding new PST data store..." -Color Cyan
+            $namespace.AddStore($FilePath)
+
+            # Find the newly created PST store
+            $store = $namespace.Stores | Where-Object { $_.FilePath -eq $FilePath }
+            if (-not $store) {
+                throw "Failed to create or access PST file: $FilePath"
+            }
+
+            Write-ColoredOutput -Message "PST store created successfully: $($store.DisplayName)" -Color Green
+
+            # Get root folder
+            $rootFolder = $store.GetRootFolder()
+            Write-ColoredOutput -Message "Root folder accessed: $($rootFolder.Name)" -Color DarkGray
+
+            # Ensure default folders exist (create Inbox if it doesn't exist)
+            Write-ColoredOutput -Message "Setting up default folder structure..." -Color Cyan
+
+            # Check if Inbox exists, create if not
+            $inbox = $rootFolder.Folders | Where-Object { $_.Name -eq "Inbox" }
+            if (-not $inbox) {
+                Write-ColoredOutput -Message "Creating Inbox folder..." -Color DarkGray
+                $inbox = $rootFolder.Folders.Add("Inbox")
+            }
+
+            Write-ColoredOutput -Message "PST folder structure initialized successfully" -Color Green            # Create custom folders for sample organization
+            Write-ColoredOutput -Message "Creating custom sample folders..." -Color Cyan
+            $customFolders = @("Important", "Projects", "Personal", "Archive")
+            $allFolders = @{"Inbox" = $inbox}
+
+            foreach ($customFolderName in $customFolders) {
+                try {
+                    # Check if folder already exists
+                    $existingCustomFolder = $rootFolder.Folders | Where-Object { $_.Name -eq $customFolderName }
+
+                    if (-not $existingCustomFolder) {
+                        Write-ColoredOutput -Message "Creating custom folder: $customFolderName" -Color DarkGray
+                        $newCustomFolder = $rootFolder.Folders.Add($customFolderName)
+                        $allFolders[$customFolderName] = $newCustomFolder
+                    }
+                    else {
+                        Write-ColoredOutput -Message "Custom folder already exists: $customFolderName" -Color DarkGray
+                        $allFolders[$customFolderName] = $existingCustomFolder
+                    }
+                }
+                catch {
+                    Write-ColoredOutput -Message "WARNING: Could not create custom folder '$customFolderName': $($_.Exception.Message)" -Color Yellow
+                }
+            }
+
+            # Randomly distribute emails across all folders
+            $folderNames = $allFolders.Keys
+            Write-ColoredOutput -Message "Randomly distributing $EmailCount emails across all folders ($($folderNames -join ', '))..." -Color Cyan
+
+            # Create random distribution array
+            $folderDistribution = @{}
+            foreach ($folderName in $folderNames) {
+                $folderDistribution[$folderName] = 0
+            }
+
+            # Randomly assign each email to a folder
+            for ($i = 1; $i -le $EmailCount; $i++) {
+                $randomFolder = $folderNames | Get-Random
+                $folderDistribution[$randomFolder]++
+            }            # Display distribution
+            Write-ColoredOutput -Message "Email distribution plan:" -Color Cyan
+            foreach ($folderName in $folderNames) {
+                $count = $folderDistribution[$folderName]
+                Write-ColoredOutput -Message "  $folderName`: $count emails" -Color DarkGray
+            }
+
+            # Sample data arrays for email generation
+            $sampleSubjects = @(
+                "Meeting Follow-up", "Project Update", "Weekly Report", "Action Items",
+                "Budget Review", "Client Feedback", "Team Announcement", "Schedule Change",
+                "Important Notice", "Document Review", "Status Update", "Planning Session",
+                "Quarterly Results", "System Maintenance", "Policy Changes", "Training Session"
+            )
+
+            $sampleSenders = @(
+                "john.doe@company.com", "jane.smith@company.com", "mike.johnson@client.com",
+                "sarah.wilson@partner.org", "david.brown@vendor.net", "lisa.davis@consultant.biz",
+                "admin@system.local", "support@vendor.com", "manager@department.org"
+            )
+
+            $sampleBodies = @(
+                "Please find the attached document for your review. Let me know if you have any questions or concerns.",
+                "Following up on our meeting yesterday. Here are the action items we discussed.",
+                "This is the weekly status report for the project. All milestones are on track.",
+                "I wanted to update you on the latest developments regarding the budget review.",
+                "The client has provided feedback on the proposal. Please see the details below.",
+                "Please be aware of the schedule changes for next week's meetings.",
+                "The quarterly review is scheduled for next month. Please prepare your reports accordingly.",
+                "System maintenance is planned for this weekend. Please plan accordingly.",                "New company policies have been updated. Please review at your earliest convenience."
+            )
+
+            $totalSuccessfulEmails = 0
+
+            # Create emails for each folder according to distribution
+            foreach ($folderName in $folderNames) {
+                $emailsForThisFolder = $folderDistribution[$folderName]
+
+                if ($emailsForThisFolder -eq 0) {
+                    Write-ColoredOutput -Message "Skipping $folderName (no emails assigned)" -Color DarkGray
+                    continue
+                }
+
+                Write-ColoredOutput -Message "Creating $emailsForThisFolder emails for $folderName..." -Color Cyan
+                $folderSuccessCount = 0
+                $targetFolder = $allFolders[$folderName]
+
+                for ($j = 1; $j -le $emailsForThisFolder; $j++) {
+                    try {                        # Get random content
+                        $randomSubject = $sampleSubjects | Get-Random
+                        $randomSender = $sampleSenders | Get-Random
+                        $randomBody = $sampleBodies | Get-Random
+
+                        # Create email item directly in the target folder as a received email (not draft)
+                        $mailItem = $targetFolder.Items.Add("IPM.Note")
+
+                        # Set email properties with folder context
+                        if ($folderName -eq "Inbox") {
+                            $mailItem.Subject = "$randomSubject"
+                            $mailItem.Body = "$randomBody`n`nGenerated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
+                        } else {
+                            $mailItem.Subject = "[$folderName] $randomSubject"
+                            $mailItem.Body = "$randomBody`n`nFolder Category: $folderName`nGenerated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
+
+                            # Add category to help identify the intended folder
+                            try {
+                                $mailItem.Categories = $folderName
+                            } catch {
+                                Write-Verbose "Could not set category: $($_.Exception.Message)"
+                            }
+                        }
+
+                        $mailItem.To = "testuser@example.com"
+
+                        # Set sender information
+                        try {
+                            $mailItem.SenderName = ($randomSender -split '@')[0] -replace '\.', ' '
+                            $mailItem.SenderEmailAddress = $randomSender
+                        } catch {
+                            Write-Verbose "Could not set sender information: $($_.Exception.Message)"
+                        }
+
+                        # Set random past dates (SentOn should be before ReceivedTime)
+                        $daysBack = Get-Random -Minimum 1 -Maximum 90
+                        $hoursBack = Get-Random -Minimum 1 -Maximum 24
+                        $minutesBack = Get-Random -Minimum 1 -Maximum 60
+                        $randomSentDate = (Get-Date).AddDays(-$daysBack).AddHours(-$hoursBack).AddMinutes(-$minutesBack)
+                        $randomReceivedDate = $randomSentDate.AddMinutes((Get-Random -Minimum 1 -Maximum 30))
+                        
+                        try {
+                            $mailItem.SentOn = $randomSentDate
+                            $mailItem.ReceivedTime = $randomReceivedDate
+                            $mailItem.CreationTime = $randomReceivedDate
+                        } catch {
+                            Write-Verbose "Could not set date properties: $($_.Exception.Message)"
+                        }
+
+                        # Set read status randomly for more realistic data
+                        try {
+                            $mailItem.UnRead = (Get-Random -Maximum 2) -eq 1  # Randomly mark some as unread
+                        } catch {
+                            Write-Verbose "Could not set read status: $($_.Exception.Message)"
+                        }
+
+                        # Set importance randomly for more realistic data
+                        try {
+                            $mailItem.Importance = Get-Random -Minimum 0 -Maximum 3  # 0=Low, 1=Normal, 2=High
+                        } catch {
+                            Write-Verbose "Could not set importance: $($_.Exception.Message)"
+                        }                        # Save the email (it's already in the correct folder as a received email)
+                        $mailItem.Save()
+
+                        $folderSuccessCount++
+                        $totalSuccessfulEmails++
+
+                        # Clean up
+                        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($mailItem) | Out-Null
+
+                        if ($j % 5 -eq 0 -or $j -eq $emailsForThisFolder) {
+                            Write-ColoredOutput -Message "  Created email $j of $emailsForThisFolder for $folderName" -Color DarkGray
+                        }
+                    }
+                    catch {
+                        Write-ColoredOutput -Message "  WARNING: Failed to create email $j for $folderName`: $($_.Exception.Message)" -Color Yellow
+                    }
+                }
+
+                if ($folderSuccessCount -gt 0) {
+                    Write-ColoredOutput -Message "Successfully created $folderSuccessCount emails for $folderName" -Color Green
+                }
+            }
+
+            Write-ColoredOutput -Message "PST file creation completed: $FilePath" -Color Green
+
+            # Summary of what was created            Write-Output ""
+            Write-ColoredOutput -Message "=== Summary ===" -Color Green
+            Write-ColoredOutput -Message "✓ PST file created with folder structure" -Color Green
+            Write-ColoredOutput -Message "✓ $totalSuccessfulEmails of $EmailCount emails created and saved to PST folders" -Color Green
+            Write-ColoredOutput -Message "✓ Emails distributed across PST folders (not in default mailbox)" -Color Green
+            Write-Output ""
+            Write-ColoredOutput -Message "PST file ready for use: $FilePath" -Color Cyan
+            Write-ColoredOutput -Message "You can now import this PST file into Outlook or other applications" -Color Cyan            # Optional: Remove the PST from Outlook profile (keep file but remove from profile)
+            # This prevents the test PST from remaining in the user's Outlook
+            Write-ColoredOutput -Message "Removing PST from Outlook profile (file remains on disk)..." -Color Cyan
+            try {
+                $namespace.RemoveStore($store.GetRootFolder())
+                Write-ColoredOutput -Message "PST removed from Outlook profile successfully" -Color Green
+            }
+            catch {
+                Write-ColoredOutput -Message "WARNING: Could not remove PST from profile: $($_.Exception.Message)" -Color Yellow
+                Write-ColoredOutput -Message "You may need to manually remove it from Outlook" -Color Yellow
+            }}
+        }
+        else {
+            Write-ColoredOutput -Message "WHATIF: Would create PST file at $FilePath with $EmailCount emails randomly distributed across folders" -Color Magenta
         }
     }
     catch {
-        Write-LogMessage -Message "Error cleaning up COM objects: $($_.Exception.Message)" -Level "Warning"
+        Write-ColoredOutput -Message "ERROR: $($_.Exception.Message)" -Color Red
+        throw
+    }    finally {
+        # Clean up COM objects - be more careful with cleanup order
+        try {
+            if ($allFolders) {
+                foreach ($folderObj in $allFolders.Values) {
+                    try {
+                        if ($folderObj -and [System.Runtime.Interopservices.Marshal]::IsComObject($folderObj)) {
+                            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($folderObj) | Out-Null
+                        }
+                    }
+                    catch {
+                        Write-Verbose "Folder cleanup warning: $($_.Exception.Message)"
+                    }
+                }
+            }
+            if ($inbox -and [System.Runtime.Interopservices.Marshal]::IsComObject($inbox)) {
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($inbox) | Out-Null
+            }
+            if ($rootFolder -and [System.Runtime.Interopservices.Marshal]::IsComObject($rootFolder)) {
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($rootFolder) | Out-Null
+            }
+            if ($store -and [System.Runtime.Interopservices.Marshal]::IsComObject($store)) {
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($store) | Out-Null
+            }
+            if ($namespace -and [System.Runtime.Interopservices.Marshal]::IsComObject($namespace)) {
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($namespace) | Out-Null
+            }
+            if ($outlook -and [System.Runtime.Interopservices.Marshal]::IsComObject($outlook)) {
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
+            }
+        }
+        catch {
+            Write-Verbose "COM cleanup warning: $($_.Exception.Message)"
+        }
+        finally {
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+        }
     }
-    
-    throw $_
+}
+
+# Main execution block
+try {
+    # Initialize log file
+    Write-ColoredOutput -Message "=== New-FakePSTFile.ps1 Execution Started ===" -Color White
+    Write-ColoredOutput -Message "Script Version: 2.5.0" -Color White
+    Write-ColoredOutput -Message "Execution Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" -Color White
+    Write-ColoredOutput -Message "System: $systemName" -Color White
+    Write-ColoredOutput -Message "Log File: $logPath" -Color White
+    Write-ColoredOutput -Message "Target PST Path: $PSTPath" -Color White
+    Write-ColoredOutput -Message "Number of Emails: $EmailCount" -Color White
+    Write-ColoredOutput -Message "WhatIf Mode: $($PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf'])" -Color White
+    Write-ColoredOutput -Message "===========================================" -Color White
+
+    # Validate parameters
+    if ([string]::IsNullOrWhiteSpace($PSTPath)) {
+        throw "PST file path cannot be empty"
+    }
+
+    if ($EmailCount -lt 1 -or $EmailCount -gt 1000) {
+        throw "Number of emails must be between 1 and 1000"
+    }
+
+    # Check if PST file already exists
+    if (Test-Path -Path $PSTPath) {
+        if ($PSCmdlet.ShouldProcess($PSTPath, "Overwrite existing PST file")) {
+            Write-ColoredOutput -Message "WARNING: PST file already exists and will be overwritten: $PSTPath" -Color Yellow
+        }
+        else {
+            Write-ColoredOutput -Message "WHATIF: Would overwrite existing PST file: $PSTPath" -Color Magenta
+        }
+    }
+
+    # Create the PST file with data
+    $isWhatIfMode = $PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf']
+    New-PSTFileWithData -FilePath $PSTPath -EmailCount $EmailCount -IsWhatIfMode $isWhatIfMode
+
+    $endTime = Get-Date
+    $duration = $endTime - $startTime
+
+    Write-ColoredOutput -Message "=== Execution Completed Successfully ===" -Color Green
+    Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds" -Color Green
+}
+catch {
+    $endTime = Get-Date
+    $duration = $endTime - $startTime
+
+    Write-ColoredOutput -Message "=== Execution Failed ===" -Color Red
+    Write-ColoredOutput -Message "ERROR: $($_.Exception.Message)" -Color Red
+    Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds" -Color Red
+
+    exit 1
 }
 finally {
-    Write-LogMessage -Message "Script execution completed" -Level "Info"
-    
-    # Force garbage collection to clean up COM objects
-    [System.GC]::Collect()
-    [System.GC]::WaitForPendingFinalizers()
+    Write-ColoredOutput -Message "Log file saved to: $logPath" -Color DarkGray
 }
