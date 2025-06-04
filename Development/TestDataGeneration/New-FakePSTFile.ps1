@@ -2,10 +2,10 @@
 # Script: New-FakePSTFile.ps1
 # Created: 2025-06-03 21:25:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-04 17:47:00 UTC
+# Last Updated: 2025-06-04 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.7.0
-# Additional Info: Fixed email creation to use targetFolder.Items.Add() instead of CreateItem() to create proper received emails instead of drafts
+# Version: 2.8.0
+# Additional Info: Reverted email creation back to using CreateItem() method as requested
 # ===================================================================================================================================================
 
 <#
@@ -411,8 +411,8 @@ function New-PSTFileWithData {
                         $randomSender = $sampleSenders | Get-Random
                         $randomBody = $sampleBodies | Get-Random
 
-                        # Create email item directly in the target folder as a received email (not draft)
-                        $mailItem = $targetFolder.Items.Add("IPM.Note")
+                        # Create email item using CreateItem method
+                        $mailItem = $outlook.CreateItem(0)  # 0 = olMailItem
 
                         # Set email properties with folder context
                         if ($folderName -eq "Inbox") {
@@ -467,8 +467,11 @@ function New-PSTFileWithData {
                             $mailItem.Importance = Get-Random -Minimum 0 -Maximum 3  # 0=Low, 1=Normal, 2=High
                         } catch {
                             Write-Verbose "Could not set importance: $($_.Exception.Message)"
-                        }                        # Save the email (it's already in the correct folder as a received email)
+                        }                        # Save the email first
                         $mailItem.Save()
+
+                        # Move the email to the target folder
+                        $mailItem = $mailItem.Move($targetFolder)
 
                         $folderSuccessCount++
                         $totalSuccessfulEmails++
@@ -563,7 +566,7 @@ function New-PSTFileWithData {
 try {
     # Initialize log file
     Write-ColoredOutput -Message "=== New-FakePSTFile.ps1 Execution Started ===" -Color White
-    Write-ColoredOutput -Message "Script Version: 2.5.0" -Color White
+    Write-ColoredOutput -Message "Script Version: 2.8.0" -Color White
     Write-ColoredOutput -Message "Execution Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" -Color White
     Write-ColoredOutput -Message "System: $systemName" -Color White
     Write-ColoredOutput -Message "Log File: $logPath" -Color White
