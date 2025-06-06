@@ -2,10 +2,10 @@
 # Script: Install-FromDriveRoot.ps1
 # Created: 2025-05-07 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-07 21:45:00 UTC
+# Last Updated: 2025-06-06 17:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial script creation
+# Version: 1.0.2
+# Additional Info: Replaced Write-Host with Write-Information for automated execution
 # =============================================================================
 
 <#
@@ -46,43 +46,55 @@ param()
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $driveRoot = (Get-Item $scriptDir).PSDrive.Root
 
-# Create log file
+# Create log file in the same directory as the script
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
-$logFile = "$PSScriptRoot\Install-FromDriveRoot_${computerName}_${utcTimestamp}.log"
+$logFile = Join-Path -Path $scriptDir -ChildPath "Install-FromDriveRoot_${computerName}_${utcTimestamp}.log"
 
 # Function to write log entries
 function Write-Log {
     param (
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $false)]
         [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
         [string]$Level = "INFO"
     )
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "$timestamp [$Level] $Message"
-    
-    # Output to console with colors
+    $logEntry = "$timestamp [$Level] $Message"    # Output to console for automated execution
     switch ($Level) {
-        "INFO"    { Write-Host $logEntry -ForegroundColor White }
-        "WARNING" { Write-Host $logEntry -ForegroundColor Yellow }
-        "ERROR"   { Write-Host $logEntry -ForegroundColor Red }
-        "SUCCESS" { Write-Host $logEntry -ForegroundColor Green }
-        "DEBUG"   { Write-Host $logEntry -ForegroundColor Magenta }
-        Default   { Write-Host $logEntry -ForegroundColor DarkGray }
+        "INFO"    { Write-Information $logEntry -InformationAction Continue }
+        "WARNING" { Write-Warning $logEntry }
+        "ERROR"   { Write-Error $logEntry }
+        "SUCCESS" { Write-Information $logEntry -InformationAction Continue }
+        "DEBUG"   { Write-Verbose $logEntry }
+        Default   { Write-Information $logEntry -InformationAction Continue }
     }
-    
+
     # Create log directory if it does not exist
     $logDir = Split-Path -Path $logFile -Parent
-    if (-not (Test-Path -Path $logDir)) {
-        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    if (-not [string]::IsNullOrEmpty($logDir) -and -not (Test-Path -Path $logDir)) {
+        try {
+            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+        }
+        catch {
+            # Log creation failed, but continue execution
+            Write-Verbose "Could not create log directory: $($_.Exception.Message)"
+        }
     }
-    
+
     # Write to log file
-    Add-Content -Path $logFile -Value $logEntry
+    if (-not [string]::IsNullOrEmpty($logFile)) {
+        try {
+            Add-Content -Path $logFile -Value $logEntry -ErrorAction SilentlyContinue
+        }
+        catch {
+            # Silently continue if we cannot write to log file
+            Write-Verbose "Could not write to log file: $($_.Exception.Message)"
+        }
+    }
 }
 
 Write-Log "Script started. Looking for installers in $driveRoot" "INFO"
@@ -97,11 +109,11 @@ if ($null -eq $installer) {
     Write-Log "Found installer: $($installer.FullName)" "INFO"
     # Adjust the silent switch as needed for your installer
     $arguments = "/silent"
-    
+
     if ($PSCmdlet.ShouldProcess($installer.FullName, "Run installer with arguments: $arguments")) {
         Write-Log "Starting installation process with arguments: $arguments" "INFO"
         $process = Start-Process -FilePath $installer.FullName -ArgumentList $arguments -Wait -PassThru
-        
+
         if ($process.ExitCode -eq 0) {
             Write-Log "Installation completed successfully." "SUCCESS"
             exit 0
