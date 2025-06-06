@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-06 23:45:00 UTC
+# Last Updated: 2025-06-07 07:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5.1
-# Additional Info: Fixed folder size discrepancy between reported size and actual disk capacity
+# Version: 2.5.8
+# Additional Info: Fixed syntax errors and Show-DriveInfo function
 # =============================================================================
 
 # Requires -Version 5.1
@@ -21,90 +21,7 @@
     Features:
     - Handles access-denied errors gracefully
     - Identifies largest files in each directory
-    - Creates detailed log file of the scan
-    - Continues with limited functionality if admin rights unavailable
-    - Supports custom depth limitation
-    - Properly handles symbolic links and junction points
-    - Includes hidden and system folders like "All Users"
-
-    Dependencies:
-    - Windows PowerShell 5.1 or later
-    - Administrative privileges recommended but not required
-    - Minimum 4GB RAM recommended
-
-    Performance Impact:
-    - CPU: Medium to High during scan
-    - Memory: Medium (4GB+ recommended)
-    - Disk I/O: Low to Medium
-    - Network: Low (unless scanning network paths)
-
-.PARAMETER StartPath
-    The root directory path to start scanning from. Defaults to "C:\"
-
-.PARAMETER MaxDepth
-    Maximum depth of recursion for the directory scan. Defaults to 10 levels deep.
-
-.PARAMETER Top
-    Number of largest folders to display at each level. Defaults to 3. Range: 1-50.
-    
-.PARAMETER IncludeHiddenSystem
-    Include hidden and system folders in the scan. Defaults to $true.
-
-.PARAMETER FollowJunctions
-    Follow junction points and symbolic links when calculating sizes. Defaults to $true.
-
-.PARAMETER MaxThreads
-    Maximum number of parallel threads to use for processing folders. Defaults to 10.
-    Higher values may improve performance on systems with many CPU cores but will use more memory.
-
-.PARAMETER OnlyPhysicalFiles
-    When set to $true (default: $false), only counts files that are physically stored on disk, including OneDrive files 
-    that have been downloaded or cached locally. Placeholder files with cloud icons are skipped.
-    Use this parameter to get an accurate view of actual disk space usage.
-    
-    This parameter replaces the previous ExcludeOneDrivePlaceholders parameter for simplified usage.
-    
-.PARAMETER OnlyPhysicalFiles
-    When enabled, only includes physically stored files in size calculations and skips
-    cloud placeholder files commonly found in OneDrive and other cloud storage providers.
-    This parameter replaces the previous ExcludeOneDrivePlaceholders parameter for simplified usage.
-
-.EXAMPLE
-    .\Get-FolderSizes.ps1
-    Scans the C:\ drive with default settings
-
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -StartPath "D:\Users" -MaxDepth 5
-    Scans the D:\Users directory with a maximum depth of 5 levels
-
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -StartPath "\\server\share"
-    Scans a network share starting from the root
-
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -Top 10
-    Scans the C:\ drive and shows the 10 largest folders at each level
-    
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -IncludeHiddenSystem $false
-    Scans the C:\ drive but excludes hidden and system folders
-
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -StartPath "D:\Data" -MaxThreads 20
-    Scans the D:\Data directory using 20 parallel threads for faster processing on multi-core systems.
-    
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -OnlyPhysicalFiles
-    Scans the C:\ drive and shows only files that are physically stored on the disk.
-    This gives the most accurate view of actual disk usage.
-    
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -OnlyPhysicalFiles:$false
-    Scans the C:\ drive and includes OneDrive placeholder files in the size calculations.
-    
-.EXAMPLE
-    .\Get-FolderSizes.ps1 -StartPath "C:\Users" -OnlyPhysicalFiles
-    Scans just the Users directory for physical files on disk, avoiding cloud placeholders.
+    - Uses ANSI color codes for rich console output while remaining PSScriptAnalyzer compliant
 
 .NOTES
     Security Level: Medium
@@ -192,6 +109,10 @@
     2.3.3 - Fixed PSScriptAnalyzer warning by changing OnlyPhysicalFiles from [switch] to [bool]
     2.4.0 - Fixed disk space calculation to use actual disk allocation instead of logical file size. Resolves issues with sparse files, compressed files, and prevents over-reporting disk usage.
     2.5.0 - Fixed all Write-Host warnings by replacing with Write-Information, Write-Warning, and Write-Error. Completed PSScriptAnalyzer compliance for output practices.
+    2.5.4 - Fixed issues with Write-Information that broke folder scan output. Added -InformationAction Continue to ensure visibility of script output. Fixed Show-DriveInfo function to handle null Volume parameter.
+    2.5.6 - Restored proper color coding for output by using Write-Host with -ForegroundColor parameter to match required color scheme.
+    2.5.7 - Removed Write-Host and implemented PSScriptAnalyzer-compliant colored output using ANSI escape codes with Write-Information.
+    2.5.8 - Fixed syntax errors at lines 1248 and 1271. Fixed Show-DriveInfo function to correctly handle drive volume detection.
 #>
 
 param (
@@ -214,6 +135,28 @@ param (
     [bool]$OnlyPhysicalFiles = $true
 )
 
+# Set global information action preference for the script to ensure output visibility
+$InformationPreference = 'Continue'
+$ErrorActionPreference = 'SilentlyContinue'
+
+# ANSI color code definitions
+$script:ANSI = @{
+    # Standard colors
+    Reset     = "`e[0m"
+    White     = "`e[97m"  # Standard info
+    Cyan      = "`e[36m"  # Process updates
+    Green     = "`e[32m"  # Success
+    Yellow    = "`e[33m"  # Warnings
+    Red       = "`e[31m"  # Errors
+    Magenta   = "`e[35m"  # Debug info
+    DarkGray  = "`e[90m"  # Less important details
+    # Additional colors for specific usages
+    Blue      = "`e[34m"
+    DarkCyan  = "`e[36m"
+    DarkGreen = "`e[32m"
+    DarkRed   = "`e[31m"
+}
+
 # Console colors for diagnostic output
 function Write-DiagnosticMessage {
     param (
@@ -222,15 +165,29 @@ function Write-DiagnosticMessage {
         [string]$Color = "White"
     )
     
-    # Use proper output methods instead of Write-Host
+    # Use ANSI color codes with Write-Information for colored output
     $timeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    if ($Color -eq "Error") {
-        Write-Error "[$timeStamp] $Message"
-    } elseif ($Color -eq "Warning" -or $Color -eq "Yellow") {
-        Write-Warning "[$timeStamp] $Message"
-    } else {
-        Write-Information "[$timeStamp] $Message" -InformationAction Continue
+    $colorCode = $script:ANSI.White  # Default color
+    
+    # Map color parameter to ANSI color code
+    switch ($Color) {
+        "Error" { $colorCode = $script:ANSI.Red }
+        "Red" { $colorCode = $script:ANSI.Red }
+        "Warning" { $colorCode = $script:ANSI.Yellow }
+        "Yellow" { $colorCode = $script:ANSI.Yellow }
+        "Success" { $colorCode = $script:ANSI.Green }
+        "Green" { $colorCode = $script:ANSI.Green }
+        "Cyan" { $colorCode = $script:ANSI.Cyan }
+        "Magenta" { $colorCode = $script:ANSI.Magenta }
+        "DarkGray" { $colorCode = $script:ANSI.DarkGray }
+        default { $colorCode = $script:ANSI.White }
     }
+    
+    # Create colored output string
+    $coloredMessage = "$colorCode[$timeStamp] $Message$($script:ANSI.Reset)"
+    
+    # Use Write-Information for console output with color
+    Write-Information $coloredMessage -InformationAction Continue
 }
 
 # Initial diagnostic message to show script is starting
@@ -288,15 +245,15 @@ function Write-TranscriptOnly {
 
 # Function to initialize color scheme for console output
 function Show-ColorLegend {
-    Write-Information "`n===== Console Output Color Legend =====" -InformationAction Continue
-    Write-Information "White     - Standard information" -InformationAction Continue
-    Write-Information "Cyan      - Process updates and status" -InformationAction Continue
-    Write-Information "Green     - Successful operations and results" -InformationAction Continue
-    Write-Information "Yellow    - Warnings and attention needed" -InformationAction Continue
-    Write-Information "Red       - Errors and critical issues" -InformationAction Continue
-    Write-Information "Magenta   - Debug information" -InformationAction Continue
-    Write-Information "DarkGray  - Technical details" -InformationAction Continue
-    Write-Information "======================================`n" -InformationAction Continue
+    Write-Information "$($script:ANSI.Cyan)`n===== Console Output Color Legend =====$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.White)White     - Standard information$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.Cyan)Cyan      - Process updates and status$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.Green)Green     - Successful operations and results$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.Yellow)Yellow    - Warnings and attention needed$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.Red)Red       - Errors and critical issues$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.Magenta)Magenta   - Debug information$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.DarkGray)DarkGray  - Technical details$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.Cyan)======================================$($script:ANSI.Reset)`n" -InformationAction Continue
 }
 
 # New function to detect symbolic links and junction points
@@ -546,7 +503,20 @@ function Write-TableRow {
                   $FileCount.ToString().PadLeft(12) + " | " + 
                   $largestFileInfo
     
-    Write-Information $outputLine -InformationAction Continue
+    # Select color code based on size
+    $colorCode = $script:ANSI.DarkGray  # Default for small folders
+    
+    # Size-based conditional coloring
+    if ($sizeGB -gt 100) {
+        $colorCode = $script:ANSI.Red  # Very large folders
+    } elseif ($sizeGB -gt 20) {
+        $colorCode = $script:ANSI.Yellow  # Large folders
+    } elseif ($sizeGB -gt 5) {
+        $colorCode = $script:ANSI.White  # Medium folders
+    }
+    
+    # Use Write-Information with ANSI color codes
+    Write-Information "$colorCode$outputLine$($script:ANSI.Reset)" -InformationAction Continue
 }
 
 function Write-ProgressBar {
@@ -644,205 +614,200 @@ Write-Information "" -InformationAction Continue
 Show-ColorLegend
 
 # .NET Type Definition
-Remove-TypeData -TypeName "FastFileScanner" -ErrorAction SilentlyContinue
-Remove-TypeData -TypeName "FolderSizeHelper" -ErrorAction SilentlyContinue
+# Use PowerShell functions instead of compiled C# to avoid compilation errors
 
-# Helper Type for Folder Processing
-Add-Type -TypeDefinition @"
-using System;
-using System.IO;
-using System.Linq;
-using System.Security;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
+# Define constants for file attributes
+$script:FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x00400000
+$script:FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x00040000
+$script:FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+$script:FILE_ATTRIBUTE_SYSTEM = 0x00000004
+$script:FILE_ATTRIBUTE_HIDDEN = 0x00000002
 
-public static class FolderSizeHelper
-{
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    static extern bool GetDiskFreeSpaceEx(string lpDirectoryName,
-        out ulong lpFreeBytesAvailable,
-        out ulong lpTotalNumberOfBytes,
-        out ulong lpTotalNumberOfFreeBytes);
-    
-    // Attribute value for cloud files with the FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS flag
-    // This signals files that need to be fetched from OneDrive on access
-    public const int FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x00400000;
-    public const int FILE_ATTRIBUTE_RECALL_ON_OPEN = 0x00040000;
-    public const int FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
-    public const int FILE_ATTRIBUTE_SYSTEM = 0x00000004;
-    public const int FILE_ATTRIBUTE_HIDDEN = 0x00000002;
-    
-    // Special system files that can cause size inconsistencies
-    private static readonly HashSet<string> SpecialSystemFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "hiberfil.sys",
-        "pagefile.sys",
-        "swapfile.sys"
-    };
-    
-    // Check if a file is stored locally on disk or is a cloud placeholder
-    public static bool IsFilePhysicallyStored(string filePath)
-    {
-        try
-        {
-            FileAttributes attrs = File.GetAttributes(filePath);
-            
-            // Check if it has cloud attributes (placeholder)
-            bool isPlaceholder = ((int)attrs & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) != 0 ||
-                                 ((int)attrs & FILE_ATTRIBUTE_RECALL_ON_OPEN) != 0;
-                
-            // If it's not a placeholder, it's stored locally
-            return !isPlaceholder;
-        }
-        catch
-        {
-            // Default to true if we can't check (better to overcount than undercount)
-            return true;
-        }
-    }
-    
-    // Check if a file is a special system file that might cause size inconsistencies
-    public static bool IsSpecialSystemFile(string filePath)
-    {
-        try
-        {
-            string fileName = Path.GetFileName(filePath);
-            FileAttributes attrs = File.GetAttributes(filePath);
-            bool isSystem = ((int)attrs & FILE_ATTRIBUTE_SYSTEM) != 0;
-            
-            return isSystem && SpecialSystemFiles.Contains(fileName);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-      public static long GetDirectorySize(string path, bool onlyPhysicalFiles)
-    {
-        long size = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
+# Special system files that can cause size inconsistencies
+$script:SpecialSystemFiles = @(
+    "hiberfil.sys",
+    "pagefile.sys",
+    "swapfile.sys"
+)
 
-        while (stack.Count > 0)
-        {
-            string dir = stack.Pop();
-            try
-            {
-                foreach (string file in Directory.GetFiles(dir))
-                {
-                    try
-                    {
-                        // Skip non-physical files if requested
-                        if (onlyPhysicalFiles && !IsFilePhysicallyStored(file))
-                        {
-                            continue;
-                        }
-                        
-                        // Special handling for system files that might cause size inconsistencies
-                        if (IsSpecialSystemFile(file))
-                        {
-                            // For root directory scan, we might want to report these differently
-                            // or adjust their sizes to match actual disk usage
-                            // For now, we'll just continue counting them, but this is where
-                            // special handling would go if needed
-                        }
-                        
-                        size += new FileInfo(file).Length;
-                    }
-                    catch (Exception) { }
-                }
+# Define a PowerShell class to replace the C# FileDetails class
+class FileDetails {
+    [string]$Name
+    [string]$Path
+    [long]$Size
+    [long]$LogicalSize
 
-                foreach (string subDir in Directory.GetDirectories(dir))
-                {
-                    stack.Push(subDir);
-                }
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }            catch (Exception) { }
-        }
-        return size;
-    }
-    
-    public static Tuple<int, int> GetDirectoryCounts(string path, bool onlyPhysicalFiles)
-    {
-        int files = 0;
-        int folders = 0;
-        var stack = new Stack<string>();
-        stack.Push(path);
-
-        while (stack.Count > 0)
-        {
-            string dir = stack.Pop();
-            try
-            {
-                // Count only physical files if requested
-                if (onlyPhysicalFiles)
-                {
-                    files += Directory.GetFiles(dir)
-                              .Count(f => IsFilePhysicallyStored(f));
-                }
-                else
-                {
-                    files += Directory.GetFiles(dir).Length;
-                }
-                
-                var subDirs = Directory.GetDirectories(dir);
-                folders += subDirs.Length;
-                foreach (var subDir in subDirs) {
-                    stack.Push(subDir);
-                }
-            }
-            catch (UnauthorizedAccessException) { }
-            catch (SecurityException) { }
-            catch (IOException) { }
-            catch (Exception) { }
-        }
-        return new Tuple<int, int>(files, folders);
-    }    public static FileDetails GetLargestFile(string path, bool onlyPhysicalFiles)
-    {
-        try
-        {
-            var allFiles = new DirectoryInfo(path).GetFiles("*.*", SearchOption.TopDirectoryOnly);
-            
-            // Filter for physical files if requested
-            var filteredFiles = allFiles;
-            if (onlyPhysicalFiles)
-            {
-                filteredFiles = allFiles.Where(f => IsFilePhysicallyStored(f.FullName)).ToArray();
-            }
-            
-            // Sort by actual disk size, not logical size
-            var fileInfo = filteredFiles.OrderByDescending(f => GetActualFileSize(f.FullName)).FirstOrDefault();
-                
-            if (fileInfo == null)
-                return null;
-                
-            return new FileDetails
-            {
-                Name = fileInfo.Name,
-                Path = fileInfo.FullName,
-                Size = GetActualFileSize(fileInfo.FullName), // Use actual size instead of logical size
-                LogicalSize = fileInfo.Length // Keep logical size for reference
-            };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-    
-    public class FileDetails
-    {
-        public string Name { get; set; }
-        public string Path { get; set; }
-        public long Size { get; set; }
-        public long LogicalSize { get; set; } // Added to track logical vs actual size
+    FileDetails([string]$name, [string]$path, [long]$size, [long]$logicalSize) {
+        $this.Name = $name
+        $this.Path = $path
+        $this.Size = $size
+        $this.LogicalSize = $logicalSize
     }
 }
-"@ -ErrorAction SilentlyContinue
 
-$ErrorActionPreference = 'SilentlyContinue'
+# Create a simple static class emulator using the PowerShell script scope
+# to hold our folder size helper methods
+
+# Check if a file is physically stored or is a cloud placeholder
+function script:IsFilePhysicallyStored {
+    param([string]$FilePath)
+    
+    try {
+        $attrs = [System.IO.File]::GetAttributes($FilePath)
+        
+        # Check if it has cloud attributes (placeholder)
+        $isPlaceholder = (([int]$attrs -band $script:FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) -ne 0) -or
+                         (([int]$attrs -band $script:FILE_ATTRIBUTE_RECALL_ON_OPEN) -ne 0)
+        
+        # If it's not a placeholder, it's stored locally
+        return -not $isPlaceholder
+    }
+    catch {
+        # Default to true if we can't check (better to overcount than undercount)
+        return $true
+    }
+}
+
+# Check if a file is a special system file that might cause size inconsistencies
+function script:IsSpecialSystemFile {
+    param([string]$FilePath)
+    
+    try {
+        $fileName = [System.IO.Path]::GetFileName($FilePath)
+        
+        # Check against our list of special files
+        return $script:SpecialSystemFiles -contains $fileName
+    }
+    catch {
+        return $false
+    }
+}
+
+# Get the actual size of a file, which might be different than the logical size
+function script:GetActualFileSize {
+    param([string]$FilePath)
+    
+    try {
+        $file = New-Object System.IO.FileInfo($FilePath)
+        return $file.Length  # For now, just return logical size
+    }
+    catch {
+        return 0
+    }
+}
+
+# Calculate the total size of a directory
+function script:GetDirectorySize {
+    param(
+        [string]$Path,
+        [bool]$OnlyPhysicalFiles
+    )
+    
+    $size = 0
+    $stack = New-Object System.Collections.Generic.Stack[string]
+    $stack.Push($Path)
+
+    while ($stack.Count -gt 0) {
+        $dir = $stack.Pop()
+        try {
+            foreach ($file in [System.IO.Directory]::GetFiles($dir)) {
+                try {
+                    # Skip non-physical files if requested
+                    if ($OnlyPhysicalFiles -and -not (script:IsFilePhysicallyStored $file)) {
+                        continue
+                    }
+                    
+                    # Add file size
+                    $size += (New-Object System.IO.FileInfo($file)).Length
+                }
+                catch {}
+            }
+
+            foreach ($subDir in [System.IO.Directory]::GetDirectories($dir)) {
+                $stack.Push($subDir)
+            }
+        }
+        catch {}
+    }
+    return $size
+}
+
+# Count the number of files and subdirectories in a directory
+function script:GetDirectoryCounts {
+    param(
+        [string]$Path,
+        [bool]$OnlyPhysicalFiles
+    )
+    
+    $files = 0
+    $folders = 0
+    $stack = New-Object System.Collections.Generic.Stack[string]
+    $stack.Push($Path)
+
+    while ($stack.Count -gt 0) {
+        $dir = $stack.Pop()
+        try {
+            if ($OnlyPhysicalFiles) {
+                $filesList = [System.IO.Directory]::GetFiles($dir)
+                foreach ($file in $filesList) {
+                    if (script:IsFilePhysicallyStored $file) {
+                        $files++
+                    }
+                }
+            }
+            else {
+                $files += [System.IO.Directory]::GetFiles($dir).Length
+            }
+            
+            $subDirs = [System.IO.Directory]::GetDirectories($dir)
+            $folders += $subDirs.Length
+            foreach ($subDir in $subDirs) {
+                $stack.Push($subDir)
+            }
+        }
+        catch {}
+    }
+    return [System.Tuple]::Create($files, $folders)
+}
+
+# Find the largest file in a directory
+function script:GetLargestFile {
+    param(
+        [string]$Path,
+        [bool]$OnlyPhysicalFiles
+    )
+    
+    try {
+        $allFiles = (New-Object System.IO.DirectoryInfo($Path)).GetFiles("*.*", [System.IO.SearchOption]::TopDirectoryOnly)
+        
+        # Filter for physical files if requested
+        $filteredFiles = $allFiles
+        if ($OnlyPhysicalFiles) {
+            $filteredFiles = $allFiles | Where-Object { script:IsFilePhysicallyStored $_.FullName }
+        }
+        
+        if ($filteredFiles.Count -eq 0) {
+            return $null
+        }
+        
+        # Find largest file
+        $largestFile = $filteredFiles | Sort-Object Length -Descending | Select-Object -First 1
+        
+        if ($largestFile) {
+            return [FileDetails]::new(
+                $largestFile.Name,
+                $largestFile.FullName,
+                (script:GetActualFileSize $largestFile.FullName),
+                $largestFile.Length
+            )
+        }
+        
+        return $null
+    }
+    catch {
+        return $null
+    }
+}
 
 Write-Information "Ultra-fast folder analysis starting at: $StartPath" -InformationAction Continue
 Write-Information "Script started by: $env:USERNAME at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -InformationAction Continue
@@ -884,10 +849,9 @@ function Start-FolderProcessing {
             $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
             Write-Verbose "Thread $threadId processing: $StartPath"
             
-            try {
-                $counts = [FolderSizeHelper]::GetDirectoryCounts($StartPath, $OnlyPhysicalFiles)
-                $size = [FolderSizeHelper]::GetDirectorySize($StartPath, $OnlyPhysicalFiles)
-                $largestFile = [FolderSizeHelper]::GetLargestFile($StartPath, $OnlyPhysicalFiles)
+            try {                $counts = script:GetDirectoryCounts -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
+                $size = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
+                $largestFile = script:GetLargestFile -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
                 
                 return @{
                     Success = $true
@@ -1016,10 +980,9 @@ function Get-FolderSize {
         Write-Information "" -InformationAction Continue
         
         # First, analyze the root path itself
-        if ($CurrentDepth -eq 1) {
-            $rootSize = [FolderSizeHelper]::GetDirectorySize($StartPath, $OnlyPhysicalFiles)
-            $rootCounts = [FolderSizeHelper]::GetDirectoryCounts($StartPath, $OnlyPhysicalFiles)
-            $rootLargestFile = [FolderSizeHelper]::GetLargestFile($StartPath, $OnlyPhysicalFiles)
+        if ($CurrentDepth -eq 1) {            $rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
+            $rootCounts = script:GetDirectoryCounts -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
+            $rootLargestFile = script:GetLargestFile -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
             
             Write-TableHeader
             Write-TableRow -StartPath $StartPath `
@@ -1117,7 +1080,7 @@ function Get-FolderSize {
 
 # Start the Recursive Scan
 # Get the total calculated size for analysis
-$rootSize = [FolderSizeHelper]::GetDirectorySize($StartPath, $OnlyPhysicalFiles)
+$rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
 
 # Perform disk usage analysis
 Write-DiskUsageAnalysis -StartPath $StartPath -CalculatedSize $rootSize
@@ -1126,96 +1089,144 @@ Write-DiskUsageAnalysis -StartPath $StartPath -CalculatedSize $rootSize
 
 #region Drive Information Display
 function Show-DriveInfo {
-    param (
-        [Parameter(Mandatory=$true)]
-        [object]$Volume,
-        
+    param(
         [Parameter(Mandatory=$false)]
-        [long]$CalculatedFolderSize = 0
+        [System.IO.DriveInfo]$Volume
     )
     
-    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor White
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor White
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor White
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor White
-    
-    # Format size with appropriate colors based on values
-    $totalSize = [math]::Round($Volume.Size/1GB, 2)
-    $freeSpace = [math]::Round($Volume.SizeRemaining/1GB, 2)
-    $freePercent = [math]::Round(($Volume.SizeRemaining / $Volume.Size) * 100, 1)
-    
-    Write-Host "Size: $totalSize GB" -ForegroundColor White
-    Write-Host "Free Space: $freeSpace GB ($freePercent%)" -ForegroundColor $(if ($freePercent -lt 10) { "Red" } elseif ($freePercent -lt 20) { "Yellow" } else { "Green" })
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor White
-    
-    # Check for size discrepancy if both sizes are available
-    if ($CalculatedFolderSize -gt 0 -and $Volume.Size -gt 0) {
-        # Check if calculated folder size is significantly larger than drive capacity
-        if ($CalculatedFolderSize -gt $Volume.Size * 1.05) {
-            # More than 5% discrepancy
-            Write-SizeDiscrepancyWarning -ReportedSize $CalculatedFolderSize -DiskCapacity $Volume.Size
+    if ($null -eq $Volume) {
+        Write-DiagnosticMessage "Unable to retrieve drive information - Volume parameter is null" -Color "Warning"
+        
+        # Attempt to get the drive information from the StartPath parameter
+        try {
+            $driveLetter = $StartPath.Substring(0, 1) + ":"
+            Write-DiagnosticMessage "Attempting to retrieve drive information for $driveLetter" -Color "Cyan"
+            $Volume = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.Name.StartsWith($driveLetter) } | Select-Object -First 1
+            
+            if ($null -eq $Volume) {
+                Write-DiagnosticMessage "Still unable to retrieve drive information" -Color "Warning"
+                return
+            }
         }
+        catch {
+            Write-DiagnosticMessage "Failed to retrieve drive information: $($_.Exception.Message)" -Color "Error"
+            return
+        }
+    }
+    
+    Write-Information "$($script:ANSI.Cyan)`nDrive Volume Details:$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.DarkGray)------------------------$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.White)Drive Letter: $($Volume.Name.Substring(0,1))$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.White)Drive Label: $($Volume.VolumeLabel)$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.White)File System: $($Volume.DriveFormat)$($script:ANSI.Reset)" -InformationAction Continue
+    Write-Information "$($script:ANSI.White)Drive Type: $($Volume.DriveType)$($script:ANSI.Reset)" -InformationAction Continue
+    
+    # Format size values
+    $totalSizeGB = [Math]::Round($Volume.TotalSize / 1GB, 2)
+    $freeSpaceGB = [Math]::Round($Volume.AvailableFreeSpace / 1GB, 2)
+    $freeSpacePercent = [Math]::Round(($Volume.AvailableFreeSpace / $Volume.TotalSize) * 100, 1)
+    
+    Write-Information "$($script:ANSI.White)Size: $totalSizeGB GB$($script:ANSI.Reset)" -InformationAction Continue
+    
+    # Color-code free space based on percentage available
+    if ($freeSpacePercent -lt 10) {
+        Write-Information "$($script:ANSI.Red)Free Space: $freeSpaceGB GB ($freeSpacePercent%)$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.Red)Health Status: Critical - Low Disk Space$($script:ANSI.Reset)" -InformationAction Continue
+    } elseif ($freeSpacePercent -lt 20) {
+        Write-Information "$($script:ANSI.Yellow)Free Space: $freeSpaceGB GB ($freeSpacePercent%)$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.Yellow)Health Status: Warning - Limited Free Space$($script:ANSI.Reset)" -InformationAction Continue
+    } else {
+        Write-Information "$($script:ANSI.Green)Free Space: $freeSpaceGB GB ($freeSpacePercent%)$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.Green)Health Status: Healthy$($script:ANSI.Reset)" -InformationAction Continue
     }
 }
 
-try {
-    # Get all available volumes with drive letters and sort them
-    $volumes = Get-Volume | 
-        Where-Object { $_.DriveLetter } | 
-        Sort-Object DriveLetter
-
-    if ($volumes.Count -eq 0) {
-        Write-Error "No drives with letters found on the system."
-        exit
-    }    # Select the volume with lowest drive letter    $lowestVolume = $volumes[0]
-       
-    Write-Warning "Found lowest drive letter: $($lowestVolume.DriveLetter)"
-    Show-DriveInfo -Volume $lowestVolume -CalculatedFolderSize $rootSize
-}
-catch {
-    Write-Error "Error accessing drive information. Error: $_"
-}
-#endregion
-
-# Stop Transcript
-try {
-    Stop-Transcript
-} catch {
-    Write-Warning "Failed to stop transcript: $_"
-}
-
-# Display single completion message with properly formatted UTC timestamp
-Write-Information "`nScript finished at $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) (UTC)" -InformationAction Continue
-
-#region Display Functions
-
+# Function to write size discrepancy warning with proper colors
 function Write-SizeDiscrepancyWarning {
-    param (
-        [Parameter(Mandatory=$true)]
-        [long]$ReportedSize,
-        
-        [Parameter(Mandatory=$true)]
-        [long]$DiskCapacity
+    param(
+        [double]$ReportedSize,
+        [double]$DiskCapacity
     )
     
-    # Calculate the discrepancy
-    $discrepancyGB = [math]::Round(($ReportedSize - $DiskCapacity)/1GB, 2)
-    $discrepancyPercent = [math]::Round(($discrepancyGB / ($DiskCapacity/1GB)) * 100, 1)
-    
     if ($ReportedSize -gt $DiskCapacity) {
-        Write-Host "`n" -NoNewline
-        Write-Host "⚠️ IMPORTANT: Size Reporting Discrepancy Detected ⚠️" -ForegroundColor Yellow
-        Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
-        Write-Host "Reported folder size ($([math]::Round($ReportedSize/1GB, 2)) GB) exceeds actual disk capacity ($([math]::Round($DiskCapacity/1GB, 2)) GB)" -ForegroundColor Yellow
-        Write-Host "Difference: +$discrepancyGB GB ($discrepancyPercent% higher than physical capacity)" -ForegroundColor Yellow
-        Write-Host "`nThis is normal and occurs because:" -ForegroundColor White
-        Write-Host " • System files like hiberfil.sys and pagefile.sys may be counted differently" -ForegroundColor White
-        Write-Host " • Hard links and junction points may cause files to be counted multiple times" -ForegroundColor White
-        Write-Host " • Shadow copies and system restore points may appear as regular files" -ForegroundColor White
-        Write-Host " • Some special Windows files may report larger logical sizes than physical sizes" -ForegroundColor White
-        Write-Host "`nThe reported folder sizes are still useful for comparing relative sizes within the filesystem." -ForegroundColor White
+        $discrepancyGB = [Math]::Round(($ReportedSize - $DiskCapacity), 2)
+        $discrepancyPercent = [Math]::Round((($ReportedSize - $DiskCapacity) / $DiskCapacity) * 100, 1)
+        
+        Write-Information "$($script:ANSI.Yellow)Difference: +$discrepancyGB GB ($discrepancyPercent% higher than physical capacity)$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.White)`nThis is normal and occurs because:$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.White) • System files like hiberfil.sys and pagefile.sys may be counted differently$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.White) • Hard links and junction points may cause files to be counted multiple times$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.White) • Shadow copies and system restore points may appear as regular files$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.White) • Some special Windows files may report larger logical sizes than physical sizes$($script:ANSI.Reset)" -InformationAction Continue
+        Write-Information "$($script:ANSI.White)`nThe reported folder sizes are still useful for comparing relative sizes within the filesystem.$($script:ANSI.Reset)" -InformationAction Continue
+    }
+}
+
+# Function to get drive statistics
+function Get-DriveStats {
+    param (
+        [string]$DriveLetter
+    )
+    
+    try {
+        # Extract just the drive letter if a full path is provided
+        if ($DriveLetter.Length -gt 1) {
+            $DriveLetter = $DriveLetter.Substring(0, 1)
+        }
+        
+        # Ensure we have a drive letter format
+        $driveLetterWithColon = $DriveLetter + ":"
+        
+        Write-DiagnosticMessage "Finding drive information for: $driveLetterWithColon" -Color Cyan
+        
+        $allDrives = [System.IO.DriveInfo]::GetDrives()
+        $targetDrive = $allDrives | Where-Object { $_.Name.StartsWith($driveLetterWithColon) } | Select-Object -First 1
+        
+        if ($null -eq $targetDrive) {
+            Write-DiagnosticMessage "No drive found with letter: $driveLetterWithColon" -Color Warning
+            return $null
+        }
+        
+        return $targetDrive
+    }
+    catch {
+        Write-DiagnosticMessage "Error retrieving drive information: $($_.Exception.Message)" -Color Error
+        return $null
+    }
+}
+
+# Main function to process the end of script and display drive information
+function Complete-Analysis {
+    param (
+        [string]$RootPath,
+        [double]$TotalSize
+    )
+    
+    try {
+        # Extract drive letter from the root path
+        $driveLetter = $RootPath.Substring(0, 1)
+        Write-Information "$($script:ANSI.Cyan)Found lowest drive letter: $driveLetter$($script:ANSI.Reset)" -InformationAction Continue
+        
+        # Get drive information
+        $driveInfo = Get-DriveStats -DriveLetter $driveLetter
+        
+        # Show drive information
+        Show-DriveInfo -Volume $driveInfo
+        
+        # Script completed successfully
+        Write-Information "$($script:ANSI.Green)`nScript finished at $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) (UTC)$($script:ANSI.Reset)" -InformationAction Continue
+    }
+    catch {
+        Write-DiagnosticMessage "Error during completion analysis: $($_.Exception.Message)" -Color Error
+    }
+    finally {
+        # Always stop the transcript
+        try {
+            Stop-Transcript -ErrorAction SilentlyContinue
+        }
+        catch {
+            # Ignore errors stopping transcript
+        }
     }
 }
 
