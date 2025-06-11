@@ -2,13 +2,11 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-11 22:38:00 UTC
+# Last Updated: 2025-06-11 23:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.12.0
-# Additional Info: Replaced all Write-Host with Write-Information for better compliance with PSScriptAnalyzer
+# Version: 2.13.0
+# Additional Info: Enhanced progress bars for better visibility during script execution
 # =============================================================================
-
-# Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -491,17 +489,27 @@ function Write-ProgressBar {
     param (
         [int]$Completed,
         [int]$Total,
-        [int]$Width = 50
+        [int]$Width = 50,
+        [string]$Activity = "Processing Folders",
+        [int]$Id = 2,
+        [string]$CurrentOperation = ""
     )
 
     $percentComplete = [math]::Min(100, [math]::Floor(($Completed / $Total) * 100))
     $filledWidth = [math]::Floor($Width * ($percentComplete / 100))
     $bar = "[" + ("=" * $filledWidth).PadRight($Width) + "] $percentComplete% | Completed processing $Completed of $Total folders"
 
-    # For progress indication, we'll use Write-Progress
-    Write-Progress -Activity "Processing Folders" -Status $bar -PercentComplete $percentComplete -Id 2
+    # For progress indication, we'll use Write-Progress - completely PSScriptAnalyzer compliant
+    Write-Progress -Activity $Activity -Status $bar -PercentComplete $percentComplete -Id $Id -CurrentOperation $CurrentOperation
+    
+    # Write a diagnostic message every 10% completion as well
+    if ($percentComplete % 10 -eq 0 -and $percentComplete -gt 0) {
+        Write-DiagnosticMessage "Progress: $percentComplete% complete. Processed $Completed of $Total folders." -Color "Cyan"
+    }
+    
     if ($Completed -eq $Total) {
-        Write-Progress -Activity "Processing Folders" -Completed -Id 2
+        Write-Progress -Activity $Activity -Completed -Id $Id
+        Write-DiagnosticMessage "Folder processing complete. Total folders processed: $Total" -Color "Green"
     }
 }
 
@@ -975,22 +983,17 @@ function Start-FolderProcessing {
     Write-Information "Total Folders to Process: $totalFolders" -InformationAction Continue
     Write-Information "Only Physical Files: $OnlyPhysicalFiles" -InformationAction Continue
     Write-Information "Follow Junctions: $FollowJunctions" -InformationAction Continue
-    Write-Information "Active Runspaces: 0/$MaxThreads" -InformationAction Continue
-
-    # Create and start the stopwatch for timing updates
+    Write-Information "Active Runspaces: 0/$MaxThreads" -InformationAction Continue    # Create and start the stopwatch for timing updates
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $lastUpdate = 0
-
+    
     foreach ($folder in $Folders) {
         $ps = [powershell]::Create()
         $ps.RunspacePool = $RunspacePool
-        $activeRunspaces++
-
-        # Calculate progress percentage with a maximum of 100
-        $progressPercent = [Math]::Min(100, [Math]::Round(($activeRunspaces / $MaxThreads) * 100))
-          # Update progress bar every 500ms
+        $activeRunspaces++        # Update progress bar every 500ms
         if ($stopwatch.ElapsedMilliseconds - $lastUpdate -gt 500) {
-            Write-Progress -Activity "Setting up folder processing" -Status "Initializing: $activeRunspaces/$MaxThreads active threads" -PercentComplete $progressPercent -Id 1
+            # Use our enhanced Write-ProgressBar function for initialization progress
+            Write-ProgressBar -Completed $activeRunspaces -Total $totalFolders -Activity "Initializing Folder Scanning" -Id 1 -CurrentOperation "Creating runspace threads: $activeRunspaces/$MaxThreads active"
             Write-Information "Preparing to scan folders: $activeRunspaces/$totalFolders" -InformationAction Continue
             $lastUpdate = $stopwatch.ElapsedMilliseconds
         }
@@ -1032,9 +1035,7 @@ function Start-FolderProcessing {
             Folder = $folder.FullName
             StartTime = [DateTime]::Now
         }
-    }    Write-Information "`nProcessing folders in parallel..." -InformationAction Continue
-
-    # Reset counters for result processing
+    }    Write-Information "`nProcessing folders in parallel..." -InformationAction Continue    # Reset counters for result processing
     $processedCount = 0
     $completedFolders = 0
     $totalSize = 0
@@ -1043,16 +1044,17 @@ function Start-FolderProcessing {
     $lastProgressUpdate = 0
 
     foreach ($r in $Runspaces) {
-        try {
-            $processedCount++
-            $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
-              # Update progress display periodically
+        try {            $processedCount++
+            
+            # Update progress display periodically but use our enhanced progress bar
             if ($stopwatch.ElapsedMilliseconds - $lastProgressUpdate -gt 300) {
-                Write-Progress -Activity "Processing Folders" -Status "Progress: $processedCount of $totalFolders folders ($percentComplete%)" -PercentComplete $percentComplete -Id 1
-
+                # Use our enhanced Write-ProgressBar function for better visibility
+                $totalSizeGB = [math]::Round($totalSize / 1GB, 2)
+                $currentOperation = "Current Stats: $completedFolders processed | $totalFiles files | $totalSizeGB GB"
+                Write-ProgressBar -Completed $processedCount -Total $totalFolders -Activity "Scanning Folders" -Id 1 -CurrentOperation $currentOperation
+                
                 # Show real-time stats periodically (not every single folder)
                 if ($processedCount % 5 -eq 0 -or $processedCount -eq $totalFolders) {
-                    $totalSizeGB = [math]::Round($totalSize / 1GB, 2)
                     $statusMsg = "Processed: $completedFolders/$totalFolders folders | $totalFiles files | $totalSizeGB GB"
                     Write-Information $statusMsg -InformationAction Continue
                 }
@@ -1087,7 +1089,8 @@ function Start-FolderProcessing {
             $r.Instance.Dispose()
         }
     }
-      Write-Progress -Activity "Processing Folders" -Completed -Id 1
+      # Complete the progress bar using our enhanced function
+      Write-ProgressBar -Completed $totalFolders -Total $totalFolders -Activity "Folder Processing Complete" -Id 1
     Write-Information " " -InformationAction Continue
 
     Write-Information "`nParallel Processing Summary:" -InformationAction Continue
