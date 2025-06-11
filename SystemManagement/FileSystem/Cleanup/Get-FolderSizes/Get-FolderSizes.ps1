@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-07 07:30:00 UTC
+# Last Updated: 2025-06-06 23:59:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5.8
-# Additional Info: Fixed syntax errors and Show-DriveInfo function
+# Version: 2.6.1
+# Additional Info: Activated unused functions for better OneDrive support
 # =============================================================================
 
 # Requires -Version 5.1
@@ -496,8 +496,7 @@ function Write-TableRow {
     } else {
         "No files found"
     }
-    
-    $outputLine = $StartPath.PadRight(50) + " | " + 
+      $outputLine = $StartPath.PadRight(50) + " | " + 
                   $sizeGB.PadLeft(11) + " | " + 
                   $SubfolderCount.ToString().PadLeft(15) + " | " + 
                   $FileCount.ToString().PadLeft(12) + " | " + 
@@ -514,8 +513,7 @@ function Write-TableRow {
     } elseif ($sizeGB -gt 5) {
         $colorCode = $script:ANSI.White  # Medium folders
     }
-    
-    # Use Write-Information with ANSI color codes
+      # Use Write-Information with ANSI color codes
     Write-Information "$colorCode$outputLine$($script:ANSI.Reset)" -InformationAction Continue
 }
 
@@ -551,32 +549,19 @@ function Write-DiskUsageAnalysis {
             $totalDiskSize = [long]$driveInfo.Size
             $freeDiskSpace = [long]$driveInfo.FreeSpace
             $usedDiskSpace = $totalDiskSize - $freeDiskSpace
-            
-            $calculatedGB = [math]::Round($CalculatedSize / 1GB, 2)
+              $calculatedGB = [math]::Round($CalculatedSize / 1GB, 2)
             $actualUsedGB = [math]::Round($usedDiskSpace / 1GB, 2)
             $totalDiskGB = [math]::Round($totalDiskSize / 1GB, 2)
-              Write-Information "`n=== Disk Usage Analysis ===" -InformationAction Continue
+              
+            Write-Information "`n=== Disk Usage Analysis ===" -InformationAction Continue
             Write-Information "Drive: $($driveInfo.DeviceID)" -InformationAction Continue
             Write-Information "Total Disk Size: $totalDiskGB GB" -InformationAction Continue
             Write-Information "Actual Used Space: $actualUsedGB GB" -InformationAction Continue
-            Write-Information "Script Calculated: $calculatedGB GB" -InformationAction Continue
+            Write-Information "Script Calculated: $calculatedGB GB" -InformationAction Continue            $difference = $calculatedGB - $actualUsedGB
             
-            $difference = $calculatedGB - $actualUsedGB
             if ([math]::Abs($difference) -gt 5) {
-                Write-Warning "Difference: $([math]::Round($difference, 2)) GB"
-                
-                if ($difference -gt 0) {
-                    Write-Warning "`nPossible reasons for over-reporting:"
-                    Write-Information "- Sparse files (hibernation/page files) showing logical vs actual size" -InformationAction Continue
-                    Write-Information "- NTFS compression reducing actual disk usage" -InformationAction Continue
-                    Write-Information "- Hard links causing duplicate counting" -InformationAction Continue
-                    Write-Information "- Junction points creating circular references" -InformationAction Continue
-                } else {
-                    Write-Warning "`nPossible reasons for under-reporting:"
-                    Write-Information "- Access denied to some system directories" -InformationAction Continue
-                    Write-Information "- File system metadata and journal overhead" -InformationAction Continue
-                    Write-Information "- Reserved disk space not included in calculations" -InformationAction Continue
-                }
+                # Use the dedicated function for size discrepancy reporting
+                Write-SizeDiscrepancyWarning -ReportedSize $calculatedGB -DiskCapacity $actualUsedGB
             } else {
                 Write-Information "Calculation accuracy: Good (within 5GB)" -InformationAction Continue
             }
@@ -653,6 +638,26 @@ function script:IsFilePhysicallyStored {
     param([string]$FilePath)
     
     try {
+        # First check if this is in an OneDrive folder
+        if ($FilePath -match "OneDrive -") {
+            # Use Get-PathType to determine if it's a placeholder or local file
+            $dirPath = [System.IO.Path]::GetDirectoryName($FilePath)
+            $pathType = Get-PathType -InputPath $dirPath
+            
+            # If the path is detected as OneDrive, we need to check file attributes
+            if ($pathType.IsOneDrive) {
+                $attrs = [System.IO.File]::GetAttributes($FilePath)
+                
+                # Check if it has cloud attributes (placeholder)
+                $isPlaceholder = (([int]$attrs -band $script:FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) -ne 0) -or
+                                 (([int]$attrs -band $script:FILE_ATTRIBUTE_RECALL_ON_OPEN) -ne 0)
+                
+                # If it's not a placeholder, it's stored locally
+                return -not $isPlaceholder
+            }
+        }
+        
+        # For non-OneDrive files or if OneDrive check fails, check attributes directly
         $attrs = [System.IO.File]::GetAttributes($FilePath)
         
         # Check if it has cloud attributes (placeholder)
@@ -1202,8 +1207,7 @@ function Complete-Analysis {
         [double]$TotalSize
     )
     
-    try {
-        # Extract drive letter from the root path
+    try {        # Extract drive letter from the root path
         $driveLetter = $RootPath.Substring(0, 1)
         Write-Information "$($script:ANSI.Cyan)Found lowest drive letter: $driveLetter$($script:ANSI.Reset)" -InformationAction Continue
         
@@ -1218,10 +1222,10 @@ function Complete-Analysis {
     }
     catch {
         Write-DiagnosticMessage "Error during completion analysis: $($_.Exception.Message)" -Color Error
-    }
-    finally {
+    }    finally {
         # Always stop the transcript
         try {
+            Write-Information "$($script:ANSI.Cyan)Transcript stopped, output file is $script:TranscriptFile$($script:ANSI.Reset)" -InformationAction Continue
             Stop-Transcript -ErrorAction SilentlyContinue
         }
         catch {
