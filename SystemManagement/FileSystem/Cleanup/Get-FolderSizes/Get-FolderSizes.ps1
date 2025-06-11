@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-11 23:55:00 UTC
+# Last Updated: 2025-06-11 22:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.9.7
-# Additional Info: Fixed all PSScriptAnalyzer issues including syntax errors, positional parameters, output types, and ShouldProcess implementation
+# Version: 2.10.1
+# Additional Info: Fixed PSScriptAnalyzer issues including trailing whitespace and FollowJunctions parameter implementation
 # =============================================================================
 
 # Requires -Version 5.1
@@ -769,7 +769,8 @@ function script:GetActualFileSize {
 function script:GetDirectorySize {
     param(
         [string]$Path,
-        [bool]$OnlyPhysicalFiles
+        [bool]$OnlyPhysicalFiles,
+        [bool]$FollowJunctions = $true
     )
 
     $size = 0
@@ -779,7 +780,8 @@ function script:GetDirectorySize {
     while ($stack.Count -gt 0) {
         $dir = $stack.Pop()
         try {
-            foreach ($file in [System.IO.Directory]::GetFiles($dir)) {                try {
+            foreach ($file in [System.IO.Directory]::GetFiles($dir)) {
+                try {
                     # Skip non-physical files if requested
                     if ($OnlyPhysicalFiles -and -not (script:IsFilePhysicallyStored $file)) {
                         continue
@@ -792,7 +794,18 @@ function script:GetDirectorySize {
                     # Log error but continue processing
                     Write-Verbose "Error processing file $file`: $($_.Exception.Message)"
                 }
-            }            foreach ($subDir in [System.IO.Directory]::GetDirectories($dir)) {
+            }
+
+            foreach ($subDir in [System.IO.Directory]::GetDirectories($dir)) {
+                # Check if it's a junction point or symbolic link
+                $dirInfo = New-Object System.IO.DirectoryInfo($subDir)
+                $isReparsePoint = $dirInfo.Attributes.ToString() -match 'ReparsePoint'
+
+                # Skip junction points if not following them
+                if ($isReparsePoint -and -not $FollowJunctions) {
+                    continue
+                }
+
                 $stack.Push($subDir)
             }
         }
@@ -807,7 +820,8 @@ function script:GetDirectorySize {
 function script:GetDirectoryCounts {
     param(
         [string]$Path,
-        [bool]$OnlyPhysicalFiles
+        [bool]$OnlyPhysicalFiles,
+        [bool]$FollowJunctions = $true
     )
 
     $files = 0
@@ -817,7 +831,8 @@ function script:GetDirectoryCounts {
 
     while ($stack.Count -gt 0) {
         $dir = $stack.Pop()
-        try {            if ($OnlyPhysicalFiles) {
+        try {
+            if ($OnlyPhysicalFiles) {
                 $filesList = [System.IO.Directory]::GetFiles($dir)
                 foreach ($file in $filesList) {
                     if (script:IsFilePhysicallyStored $file) {
@@ -830,8 +845,17 @@ function script:GetDirectoryCounts {
             }
 
             $subDirs = [System.IO.Directory]::GetDirectories($dir)
-            $folders += $subDirs.Length
             foreach ($subDir in $subDirs) {
+                # Check if it's a junction point or symbolic link
+                $dirInfo = New-Object System.IO.DirectoryInfo($subDir)
+                $isReparsePoint = $dirInfo.Attributes.ToString() -match 'ReparsePoint'
+
+                # Skip junction points if not following them
+                if ($isReparsePoint -and -not $FollowJunctions) {
+                    continue
+                }
+
+                $folders++
                 $stack.Push($subDir)
             }
         }
@@ -846,31 +870,66 @@ function script:GetDirectoryCounts {
 function script:GetLargestFile {
     param(
         [string]$Path,
-        [bool]$OnlyPhysicalFiles
+        [bool]$OnlyPhysicalFiles,
+        [bool]$FollowJunctions = $true
     )
 
     try {
-        $allFiles = (New-Object System.IO.DirectoryInfo($Path)).GetFiles("*.*", [System.IO.SearchOption]::TopDirectoryOnly)
+        # This will be our largest file across all directories
+        $largestFileInfo = $null
+        $largestFileSize = 0
 
-        # Filter for physical files if requested
-        $filteredFiles = $allFiles
-        if ($OnlyPhysicalFiles) {
-            $filteredFiles = $allFiles | Where-Object { script:IsFilePhysicallyStored $_.FullName }
+        # Use a stack for depth-first traversal
+        $stack = New-Object System.Collections.Generic.Stack[string]
+        $stack.Push($Path)
+
+        while ($stack.Count -gt 0) {
+            $currentDir = $stack.Pop()
+
+            try {
+                # Get files in the current directory
+                $allFiles = (New-Object System.IO.DirectoryInfo($currentDir)).GetFiles("*.*", [System.IO.SearchOption]::TopDirectoryOnly)
+
+                # Filter for physical files if requested
+                $filteredFiles = $allFiles
+                if ($OnlyPhysicalFiles) {
+                    $filteredFiles = $allFiles | Where-Object { script:IsFilePhysicallyStored $_.FullName }
+                }
+
+                # Find largest file in current directory
+                $currentDirLargestFile = $filteredFiles | Sort-Object Length -Descending | Select-Object -First 1
+
+                if ($currentDirLargestFile -and $currentDirLargestFile.Length -gt $largestFileSize) {
+                    $largestFileInfo = $currentDirLargestFile
+                    $largestFileSize = $currentDirLargestFile.Length
+                }
+
+                # Process subdirectories
+                $subDirs = (New-Object System.IO.DirectoryInfo($currentDir)).GetDirectories()
+                foreach ($subDir in $subDirs) {
+                    # Check if it's a junction point or symbolic link
+                    $isReparsePoint = $subDir.Attributes.ToString() -match 'ReparsePoint'
+
+                    # Skip junction points if not following them
+                    if ($isReparsePoint -and -not $FollowJunctions) {
+                        continue
+                    }
+
+                    $stack.Push($subDir.FullName)
+                }
+            }
+            catch {
+                Write-Verbose "Error accessing directory $currentDir`: $($_.Exception.Message)"
+                continue
+            }
         }
 
-        if ($filteredFiles.Count -eq 0) {
-            return $null
-        }
-
-        # Find largest file
-        $largestFile = $filteredFiles | Sort-Object Length -Descending | Select-Object -First 1
-
-        if ($largestFile) {
+        if ($largestFileInfo) {
             return [FileDetails]::new(
-                $largestFile.Name,
-                $largestFile.FullName,
-                (script:GetActualFileSize $largestFile.FullName),
-                $largestFile.Length
+                $largestFileInfo.Name,
+                $largestFileInfo.FullName,
+                (script:GetActualFileSize $largestFileInfo.FullName),
+                $largestFileInfo.Length
             )
         }
 
@@ -895,7 +954,8 @@ function Start-FolderProcessing {
     param(
         [array]$Folders,
         [int]$MaxThreads,
-        [bool]$OnlyPhysicalFiles
+        [bool]$OnlyPhysicalFiles,
+        [bool]$FollowJunctions
     )
 
     if (-not $PSCmdlet.ShouldProcess("$($Folders.Count) folders with $MaxThreads threads", "Start parallel folder processing")) {
@@ -922,14 +982,15 @@ function Start-FolderProcessing {
         $progressPercent = [Math]::Min(100, [Math]::Round(($activeRunspaces / $MaxThreads) * 100))
         Write-Progress -Activity "Processing Folders" -Status "Active Runspaces: $activeRunspaces/$MaxThreads" -PercentComplete $progressPercent -Id 1
         [void]$ps.AddScript({
-            param($StartPath, $OnlyPhysicalFiles)
+            param($StartPath, $OnlyPhysicalFiles, $FollowJunctions)
 
             $threadId = [System.Threading.Thread]::CurrentThread.ManagedThreadId
             Write-Verbose "Thread $threadId processing: $StartPath"
 
-            try {                $counts = script:GetDirectoryCounts -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
-                $size = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
-                $largestFile = script:GetLargestFile -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
+            try {
+                $counts = script:GetDirectoryCounts -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
+                $size = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
+                $largestFile = script:GetLargestFile -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
 
                 return @{
                     Success = $true
@@ -949,7 +1010,7 @@ function Start-FolderProcessing {
                     ThreadId = $threadId
                 }
             }
-        }).AddArgument($folder.FullName).AddArgument($OnlyPhysicalFiles)
+        }).AddArgument($folder.FullName).AddArgument($OnlyPhysicalFiles).AddArgument($FollowJunctions)
 
         $Runspaces += [PSCustomObject]@{
             Instance = $ps
@@ -1060,9 +1121,9 @@ function Get-FolderSize {
         Write-Information "" -InformationAction Continue
 
         # First, analyze the root path itself
-        if ($CurrentDepth -eq 1) {            $rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
-            $rootCounts = script:GetDirectoryCounts -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
-            $rootLargestFile = script:GetLargestFile -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
+        if ($CurrentDepth -eq 1) {            $rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
+            $rootCounts = script:GetDirectoryCounts -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
+            $rootLargestFile = script:GetLargestFile -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
 
             Write-TableHeader
             Write-TableRow -StartPath $StartPath `
@@ -1230,7 +1291,7 @@ function Get-FolderSize {
 
 # Start the Recursive Scan
 # Get the total calculated size for analysis
-$rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles
+$rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
 
 # Perform disk usage analysis
 Write-DiskUsageAnalysis -StartPath $StartPath -CalculatedSize $rootSize
