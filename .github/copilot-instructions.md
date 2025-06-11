@@ -20,6 +20,8 @@ Always run PSScriptAnalyzer on the code before finalizing it. If any issues are 
 
 Do NOT ignore any PSScriptAnalyzer warnings, information, or errors. All scripts must pass PSScriptAnalyzer without any issues; including write-host warnings; my scripts must be able to run unattended.
 
+DO NOT USE Write-Host in scripts!
+
 ALWAYS use named parameters instead of positional parameters when calling a command in a script.
 
 All scripts that have logs should save the log to the same folder as the script and should have the system name it's being run on and a UTC timestamp to the filename of the log.
