@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-11 22:15:00 UTC
+# Last Updated: 2025-06-11 22:38:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.10.1
-# Additional Info: Fixed PSScriptAnalyzer issues including trailing whitespace and FollowJunctions parameter implementation
+# Version: 2.12.0
+# Additional Info: Replaced all Write-Host with Write-Information for better compliance with PSScriptAnalyzer
 # =============================================================================
 
 # Requires -Version 5.1
@@ -498,7 +498,7 @@ function Write-ProgressBar {
     $filledWidth = [math]::Floor($Width * ($percentComplete / 100))
     $bar = "[" + ("=" * $filledWidth).PadRight($Width) + "] $percentComplete% | Completed processing $Completed of $Total folders"
 
-    # For progress indication, we'll use Write-Progress instead of Write-Host
+    # For progress indication, we'll use Write-Progress
     Write-Progress -Activity "Processing Folders" -Status $bar -PercentComplete $percentComplete -Id 2
     if ($Completed -eq $Total) {
         Write-Progress -Activity "Processing Folders" -Completed -Id 2
@@ -969,18 +969,32 @@ function Start-FolderProcessing {
     $activeRunspaces = 0
     $processedCount = 0
     $totalFolders = $Folders.Count
-      Write-Information "`nParallel Processing Configuration:" -InformationAction Continue
+      # Display initial processing info with distinctive color
+    Write-Information "`nParallel Processing Configuration:" -InformationAction Continue
     Write-Information "Maximum Threads: $MaxThreads" -InformationAction Continue
     Write-Information "Total Folders to Process: $totalFolders" -InformationAction Continue
     Write-Information "Only Physical Files: $OnlyPhysicalFiles" -InformationAction Continue
-      foreach ($folder in $Folders) {
+    Write-Information "Follow Junctions: $FollowJunctions" -InformationAction Continue
+    Write-Information "Active Runspaces: 0/$MaxThreads" -InformationAction Continue
+
+    # Create and start the stopwatch for timing updates
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $lastUpdate = 0
+
+    foreach ($folder in $Folders) {
         $ps = [powershell]::Create()
         $ps.RunspacePool = $RunspacePool
         $activeRunspaces++
 
         # Calculate progress percentage with a maximum of 100
         $progressPercent = [Math]::Min(100, [Math]::Round(($activeRunspaces / $MaxThreads) * 100))
-        Write-Progress -Activity "Processing Folders" -Status "Active Runspaces: $activeRunspaces/$MaxThreads" -PercentComplete $progressPercent -Id 1
+          # Update progress bar every 500ms
+        if ($stopwatch.ElapsedMilliseconds - $lastUpdate -gt 500) {
+            Write-Progress -Activity "Setting up folder processing" -Status "Initializing: $activeRunspaces/$MaxThreads active threads" -PercentComplete $progressPercent -Id 1
+            Write-Information "Preparing to scan folders: $activeRunspaces/$totalFolders" -InformationAction Continue
+            $lastUpdate = $stopwatch.ElapsedMilliseconds
+        }
+
         [void]$ps.AddScript({
             param($StartPath, $OnlyPhysicalFiles, $FollowJunctions)
 
@@ -1018,24 +1032,41 @@ function Start-FolderProcessing {
             Folder = $folder.FullName
             StartTime = [DateTime]::Now
         }
-    }
+    }    Write-Information "`nProcessing folders in parallel..." -InformationAction Continue
 
-    Write-TranscriptOnly "`n`nProcessing Results:"
+    # Reset counters for result processing
+    $processedCount = 0
+    $completedFolders = 0
+    $totalSize = 0
+    $totalFiles = 0
+    $totalFolderCount = 0
+    $lastProgressUpdate = 0
 
     foreach ($r in $Runspaces) {
         try {
             $processedCount++
             $percentComplete = [math]::Round(($processedCount / $totalFolders) * 100, 1)
+              # Update progress display periodically
+            if ($stopwatch.ElapsedMilliseconds - $lastProgressUpdate -gt 300) {
+                Write-Progress -Activity "Processing Folders" -Status "Progress: $processedCount of $totalFolders folders ($percentComplete%)" -PercentComplete $percentComplete -Id 1
+
+                # Show real-time stats periodically (not every single folder)
+                if ($processedCount % 5 -eq 0 -or $processedCount -eq $totalFolders) {
+                    $totalSizeGB = [math]::Round($totalSize / 1GB, 2)
+                    $statusMsg = "Processed: $completedFolders/$totalFolders folders | $totalFiles files | $totalSizeGB GB"
+                    Write-Information $statusMsg -InformationAction Continue
+                }
+
+                $lastProgressUpdate = $stopwatch.ElapsedMilliseconds
+            }
 
             $result = $r.Instance.EndInvoke($r.Handle)
-            $processingTime = ([DateTime]::Now - $r.StartTime).TotalSeconds
-
-            # Log detailed progress to transcript only
-            Write-TranscriptOnly "`nProgress: $processedCount/$totalFolders ($percentComplete%)"
-            Write-TranscriptOnly "Processing: $($r.Folder)"
 
             if ($result.Success) {
-                Write-TranscriptOnly "Thread $($result.ThreadId) completed: $($result.StartPath) in $($processingTime.ToString('0.00'))s"
+                $completedFolders++
+                $totalSize += $result.Size
+                $totalFiles += $result.FileCount
+                $totalFolderCount += $result.FolderCount
 
                 $FolderSizeMap[$result.StartPath] = @{
                     Size = $result.Size
@@ -1043,7 +1074,7 @@ function Start-FolderProcessing {
                     FolderCount = $result.FolderCount
                     LargestFile = $result.LargestFile
                 }
-            }            else {
+            } else {
                 Write-Error "Thread $($result.ThreadId) failed: $($r.Folder) - $($result.Error)"
             }
             $activeRunspaces--
@@ -1056,9 +1087,12 @@ function Start-FolderProcessing {
             $r.Instance.Dispose()
         }
     }
-    Write-Information -MessageData "`n`nParallel Processing Summary:" -InformationAction Continue
-    Write-Information -MessageData "Total Folders Processed: $processedCount" -InformationAction Continue
-    Write-Information -MessageData "Maximum Concurrent Threads: $MaxThreads" -InformationAction Continue
+      Write-Progress -Activity "Processing Folders" -Completed -Id 1
+    Write-Information " " -InformationAction Continue
+
+    Write-Information "`nParallel Processing Summary:" -InformationAction Continue
+    Write-Information "Total Folders Processed: $processedCount" -InformationAction Continue
+    Write-Information "Maximum Concurrent Threads: $MaxThreads" -InformationAction Continue
 
     $RunspacePool.Close()
     $RunspacePool.Dispose()
