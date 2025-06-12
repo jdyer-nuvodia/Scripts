@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-12 18:58:00 UTC
+# Last Updated: 2025-06-12 19:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.20.1
-# Additional Info: Fixed transcript file release issues and improved recursive scan progress reporting
+# Version: 2.20.2
+# Additional Info: Fixed parameter binding errors and syntax issues in progress reporting
 # =============================================================================
 
 <#
@@ -264,7 +264,7 @@ function Stop-TranscriptSafely {
                 [System.GC]::Collect(2, [System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
                 [System.GC]::WaitForPendingFinalizers()
                 Write-Verbose "Aggressive garbage collection completed."
-                
+
                 # Force runspace cleanup - this is critical as runspaces can hold transcript handles
                 $runspaces = [runspacefactory]::Runspaces
                 if ($runspaces.Count -gt 0) {
@@ -305,7 +305,7 @@ function Stop-TranscriptSafely {
                 # Final garbage collection sweep
                 [System.GC]::Collect(2, [System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
                 [System.GC]::WaitForPendingFinalizers()
-                
+
                 # Set the flag to inactive *after* successful stop
                 $script:transcriptActive = $false
                 Write-DiagnosticMessage "Transcript stopped successfully." -Color DarkGray
@@ -337,12 +337,12 @@ function Stop-TranscriptSafely {
                 } catch {
                     Write-Verbose "Reflection-based transcript closure failed: $_"
                 }
-                
+
                 # Even if stopping failed, mark as inactive to prevent retry loops
                 $script:transcriptActive = $false
                 Write-Verbose "Transcript marked as inactive despite error during stop."
             }
-            
+
             # No matter what happened, do one final GC collection
             [System.GC]::Collect(2, [System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
             [System.GC]::WaitForPendingFinalizers()
@@ -642,7 +642,8 @@ function Write-TableRow {
 
 function Write-ProgressBar {
     param (
-        [int]$Completed,        [int]$Total,
+        [int]$Completed,
+        [int]$Total,
         [int]$Width = 50,
         [string]$Activity = "Processing Folders",
         [int]$Id = 2,
@@ -1515,59 +1516,61 @@ function Get-FolderSize {
             $script:recursiveUpdateFrequency = 50 # Milliseconds between updates - very frequent
             $script:recursiveStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             $TotalDepths = $script:totalEstimatedFolders
-            
+
             # Clear any previous progress bar
             if ($script:UseProgressBars) {
-                Write-ProgressBar -Completed 100 -Total 100 -Activity "Previous Operation" -Id 3 -Completed $true
+                # Complete previous progress bar
+                Write-Progress -Activity "Previous Operation" -Id 3 -Completed
             }
-            
+
             Write-DiagnosticMessage "Starting recursive scan with estimated $script:totalEstimatedFolders folders to process" -Color "Cyan"
             Write-Information "`n$($script:ANSI.Cyan)Starting recursive folder analysis...$($script:ANSI.Reset)" -InformationAction Continue
-            
+
             # Initialize the progress bar immediately with high visibility
             if ($script:UseProgressBars) {
                 # Force display with initial values
                 Write-ProgressBar -Completed 0 -Total $TotalDepths -Activity "Recursive Folder Analysis" -Id 3 -CurrentOperation "Starting recursive scan..." -Status "Initializing folder analysis..." -ParentId -1                # Store values for passing to background job
                 $updateFrequency = $script:recursiveUpdateFrequency
                 $estimatedTotal = $script:totalEstimatedFolders
-                
+
                 # Create a job to update the progress bar regularly regardless of scanning state
                 $script:progressUpdateJob = Start-Job -ScriptBlock {
                     # No need for parameters, use Using: scope instead
-                    
+
                     # Access variables from parent scope with Using: modifier
                     $localFrequency = $Using:updateFrequency
                     $localTotal = $Using:estimatedTotal
-                    
+
                     $count = 0
                     while ($count -lt $localTotal) {
                         $count++
                         # Send update data via job output
                         [PSCustomObject]@{ Count = $count; Total = $localTotal }
-                        Start-Sleep -Milliseconds $localFrequency                        if ($count -ge $localTotal) { break }
+                        Start-Sleep -Milliseconds $localFrequency
+                        if ($count -ge $localTotal) { break }
                     }
                 } # No ArgumentList needed as we're using Using: scope modifier
-                
+
                 # Write initial console message with high visibility
                 Write-Information "`n$($script:ANSI.Yellow)Recursive scan progress: 0% | Depth 1/$MaxDepth | 0/$TotalDepths folders | 0 GB$($script:ANSI.Reset)" -InformationAction Continue
             }
         }        # Update progress for current depth with enhanced statistics
         $script:processedFolders++
         $script:totalRecursiveFolders++
-        
+
         # CRITICAL: Almost always update the progress bar (50ms intervals)
         # This is crucial for ensuring continuous updates throughout the scan
         # The previous 100ms interval was too long, causing the appearance of stalling
         if ($script:UseProgressBars -and
-            ($script:recursiveStopwatch.ElapsedMilliseconds - $script:lastRecursiveProgressUpdate -gt 50 -or 
-             $CurrentDepth -eq 1 -or 
+            ($script:recursiveStopwatch.ElapsedMilliseconds - $script:lastRecursiveProgressUpdate -gt 50 -or
+             $CurrentDepth -eq 1 -or
              $script:processedFolders % 2 -eq 0)) { # Update on every other folder regardless of time
-            
+
             # Calculate progress metrics
             $totalSizeGB = [math]::Round($script:totalRecursiveSize / 1GB, 2)
             $progressPercentage = [Math]::Min(100, [Math]::Floor(($script:processedFolders / $TotalDepths) * 100))
             $timeElapsed = $script:recursiveStopwatch.Elapsed.ToString("hh\:mm\:ss")
-            
+
             # Create formatted progress description with all key metrics
             $progressDescription = "Folders: $script:totalRecursiveFolders | Files: $script:totalRecursiveFiles | Size: $totalSizeGB GB | Time: $timeElapsed"
 
@@ -1576,7 +1579,7 @@ function Get-FolderSize {
 
             # Create a more visible status message for the progress bar
             $statusMessage = "Recursive scan: $progressPercentage% | Depth: $CurrentDepth/$MaxDepth | Path: $shortenedPath"
-            
+
             # Use our enhanced progress bar with same format as initial scanning but more visibility
             # Force completed increment to ensure visible progress
             $adjustedProcessed = [Math]::Max($script:processedFolders, ($script:lastRecursiveProgressUpdate / 50) + 1)
@@ -1596,7 +1599,7 @@ function Get-FolderSize {
                     Write-Information "$($script:ANSI.Cyan)Scanning: $shortenedPath | $script:totalRecursiveFiles files | $totalSizeGB GB$($script:ANSI.Reset)" -InformationAction Continue
                 }
             }
-            
+
             # Force progress bar completion if we're at 90% or close to avoid stalling appearance
             # Lower threshold (90% vs 95%) ensures users see completion sooner
             if ($progressPercentage -ge 90) {
@@ -1607,7 +1610,7 @@ function Get-FolderSize {
             # Update timestamp for next progress update
             $script:lastRecursiveProgressUpdate = $script:recursiveStopwatch.ElapsedMilliseconds
         }
-        
+
         # Force an update at least every second regardless of other conditions
         # This ensures progress is always shown even during long operations
         if ($script:recursiveStopwatch.ElapsedMilliseconds - $script:lastRecursiveProgressUpdate -gt 1000) {
@@ -1834,7 +1837,8 @@ function Get-FolderSize {
                 CompletionMessageShown = $false
             }        }
     }    catch {
-        Write-Warning -Message "Error processing folder '$StartPath': $($_.Exception.Message)"return @{
+        Write-Warning -Message "Error processing folder '$StartPath': $($_.Exception.Message)"
+        return @{
             ProcessedFolders = $false
             HasSubfolders = $false
             CompletionMessageShown = $false
@@ -1885,7 +1889,7 @@ try {
     if ($script:transcriptFile -and (Test-Path $script:transcriptFile)) {
         $savedTranscriptPath = $script:transcriptFile
     }
-    
+
     # NUCLEAR OPTION: Create a separate PowerShell process to release the transcript
     # This ensures the transcript file is released even if our process has a handle lock
     $releaseScript = @"
@@ -1898,49 +1902,49 @@ try {
 [System.GC]::WaitForPendingFinalizers()
 exit
 "@
-    
+
     # First try our safe transcript stopping function
     Stop-TranscriptSafely
-    
+
     # Then launch external process to force transcript release
     Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command $releaseScript" -WindowStyle Hidden
       # Close any open streams that might hold references to the transcript
-    try { 
-        [System.IO.StreamWriter]::Null.Close() 
+    try {
+        [System.IO.StreamWriter]::Null.Close()
     } catch {
         Write-Verbose "Error closing StreamWriter.Null: $($_.Exception.Message)"
     }
-    
-    try { 
-        [System.IO.StreamWriter]::Null.Dispose() 
+
+    try {
+        [System.IO.StreamWriter]::Null.Dispose()
     } catch {
         Write-Verbose "Error disposing StreamWriter.Null: $($_.Exception.Message)"
     }
       # Release console output streams if possible
-    try { 
-        [System.Console]::Out.Flush() 
+    try {
+        [System.Console]::Out.Flush()
     } catch {
         Write-Verbose "Error flushing Console.Out: $($_.Exception.Message)"
     }
-    
-    try { 
-        [System.Console]::Error.Flush() 
+
+    try {
+        [System.Console]::Error.Flush()
     } catch {
         Write-Verbose "Error flushing Console.Error: $($_.Exception.Message)"
     }
-    
+
     # Multiple rounds of aggressive garbage collection with increasing aggressiveness
     for ($i = 0; $i -lt 3; $i++) {
         [System.GC]::Collect(2, [System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
         [System.GC]::WaitForPendingFinalizers()
         Start-Sleep -Milliseconds 200
     }
-    
+
     # Display the log path if we have it
     if ($savedTranscriptPath) {
         Write-Information -MessageData "Log saved to: $savedTranscriptPath" -InformationAction Continue
     }
-    
+
     # Explicitly dispose of all runspaces
     $runspaces = [runspacefactory]::Runspaces
     if ($null -ne $runspaces -and $runspaces.Count -gt 0) {
@@ -1958,12 +1962,12 @@ exit
       # Clear all script-scoped variables that might hold references
     # This is crucial for ensuring no lingering handles to the transcript
     @(
-        'processedFolders', 'recursiveStopwatch', 'InaccessibleFolders', 
+        'processedFolders', 'recursiveStopwatch', 'InaccessibleFolders',
         'totalRecursiveFiles', 'totalRecursiveSize', 'totalRecursiveFolders',
-        'transcriptActive', 'transcriptFile', 'lastRecursiveProgressUpdate', 
+        'transcriptActive', 'transcriptFile', 'lastRecursiveProgressUpdate',
         'progressUpdateJob', 'recursiveUpdateFrequency', 'UseProgressBars',
         'ANSI', 'currentProgressId', 'totalEstimatedFolders', 'FILE_ATTRIBUTE_HIDDEN',
-        'FILE_ATTRIBUTE_SYSTEM', 'FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS', 
+        'FILE_ATTRIBUTE_SYSTEM', 'FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS',
         'FILE_ATTRIBUTE_RECALL_ON_OPEN', 'FILE_ATTRIBUTE_REPARSE_POINT'
     ) | ForEach-Object {        try {
             Set-Variable -Name $_ -Value $null -Scope Script -ErrorAction SilentlyContinue
@@ -1982,7 +1986,7 @@ exit
     # Final aggressive garbage collection
     [System.GC]::Collect(2, [System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
     [System.GC]::WaitForPendingFinalizers()
-    
+
     Write-Information -MessageData "$($script:ANSI.Green)All resources cleaned up successfully.$($script:ANSI.Reset)" -InformationAction Continue
 } catch {
     Write-Warning "Error during cleanup: $($_.Exception.Message)"
