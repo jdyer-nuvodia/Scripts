@@ -2,7 +2,7 @@
 # Script: List-PNPCrawl.ps1
 # Created: 2025-06-12 14:30:00 UTC
 # Author: pwhitcomb-nuvodia
-# Last Updated: 2025-06-12 15:45:00 UTC
+# Last Updated: 2025-06-12 18:22:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.1.0
 # Additional Info: Lists all files and folders in a SharePoint Online site
