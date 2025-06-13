@@ -2,10 +2,10 @@
 # Script: Get-FolderSizes.ps1
 # Created: 2025-02-05 00:55:03 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-12 21:30:00 UTC
+# Last Updated: 2025-06-13 17:14:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.21.0
-# Additional Info: Fixed runspace AddArgument errors and enhanced progress bar display
+# Version: 2.22.3
+# Additional Info: Fixed critical syntax errors - missing catch/finally blocks and malformed braces
 # =============================================================================
 
 <#
@@ -661,7 +661,7 @@ function Write-ProgressBar {
     $bar = "[" + ("=" * $filledWidth).PadRight($Width) + "] $percentComplete% | Completed processing $Completed of $Total folders"    # Enhanced PS7 progress bar with try/catch to handle any errors
     try {
         # Check if progress bars are enabled
-        if ($script:UseProgressBars -ne $false) {    
+        if ($script:UseProgressBars -ne $false) {
             # Create the progress parameters as a hashtable for better clarity
             $progressParams = @{
                 Activity = $Activity
@@ -1362,7 +1362,7 @@ function Start-FolderProcessing {
                     StartPath = $StartPath
                     Error = $_.Exception.Message
                     ThreadId = $threadId                }            }        })
-        
+
         # Add arguments one by one - fixed method chaining issue
         [void]$ps.AddArgument($folder.FullName)
         [void]$ps.AddArgument($OnlyPhysicalFiles)
@@ -1460,6 +1460,7 @@ function Start-FolderProcessing {
 function Get-FolderSize {
     [CmdletBinding()]
     [OutputType([System.Collections.Hashtable])]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'OnlyPhysicalFiles', Justification = 'Parameter is used in function calls within conditional blocks')]
     param (
         [string]$StartPath,
         [int]$CurrentDepth,
@@ -1500,101 +1501,111 @@ function Get-FolderSize {
             }
         }
 
-        $StartPath = Format-Path $StartPath
+        $StartPath = Format-Path -InputPath $StartPath
         if (-not (Test-Path -Path $StartPath -PathType Container)) {
-            Write-Warning "Path '$StartPath' does not exist or is not a directory."
+            Write-Warning -Message "Path '$StartPath' does not exist or is not a directory."
             return @{
                 ProcessedFolders = $false
                 HasSubfolders = $false
                 CompletionMessageShown = $false
-            }        }        Write-Information "`nTop $Top Largest Folders in: $StartPath" -InformationAction Continue
-        Write-Information "" -InformationAction Continue        # Initialize progress tracking for first call
+            }
+        }        Write-Information "`nTop $Top Largest Folders in: $StartPath" -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+
+        # Initialize progress tracking for first call
         if ($CurrentDepth -eq 1 -and $TotalDepths -eq 0) {
             # Make an estimate of total depths to process based on folder structure
-            # Increased estimate for more realistic progress calculation            # Initialize variables with same pattern as initial scanning but with more accurate estimates
+            # Increased estimate for more realistic progress calculation
+
+            # Initialize variables with same pattern as initial scanning but with more accurate estimates
             $script:totalEstimatedFolders = [Math]::Max(100, ($Top * $MaxDepth * 3))
             $script:processedFolders = 0
             $script:totalRecursiveSize = 0
             $script:totalRecursiveFiles = 0
             $script:totalRecursiveFolders = 0
-            
-            # Set up variables for aggressive progress monitoring
+              # Set up variables for aggressive progress monitoring
             $script:lastRecursiveProgressUpdate = 0
-            $script:recursiveUpdateFrequency = 10 # Milliseconds between updates - extremely frequent for better visibility
+            $script:recursiveUpdateFrequency = 300 # Milliseconds between updates (matching initial scan)
             $script:recursiveStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-            
-            # Force an initial progress update with 0% to ensure progress bar is visible immediately
-            Write-Progress -Activity "Recursive Folder Analysis" -Status "Starting recursive scan..." -PercentComplete 0 -Id 3 -CurrentOperation "Initializing..."
-            $TotalDepths = $script:totalEstimatedFolders
-
-            # Clear any previous progress bar
+            $TotalDepths = $script:totalEstimatedFolders            # Clear any previous progress bar
             if ($script:UseProgressBars) {
-                # Complete previous progress bar
-                Write-Progress -Activity "Previous Operation" -Id 3 -Completed
+                # Complete previous progress bar if exists
+                try {
+                    Write-Progress -Activity "Previous Operation" -Id 3 -Completed
+                }
+                catch {
+                    # Handle errors from completing non-existent progress bars
+                    Write-DiagnosticMessage "Non-critical error while completing progress bar: $($_.Exception.Message)" -Color "DarkGray"
+                }
             }
 
             Write-DiagnosticMessage "Starting recursive scan with estimated $script:totalEstimatedFolders folders to process" -Color "Cyan"
-            Write-Information "`n$($script:ANSI.Cyan)Starting recursive folder analysis...$($script:ANSI.Reset)" -InformationAction Continue            # Initialize the progress bar immediately with high visibility
-            if ($script:UseProgressBars) {
-                # Force display with initial values using direct Write-Progress for guaranteed display
-                Write-Progress -Activity "Recursive Folder Analysis" -Status "Initializing folder analysis..." -PercentComplete 0 -Id 3 -CurrentOperation "Starting recursive scan..."
-                
-                # Initialize variables for progress tracking
-                $script:lastRecursiveProgressUpdate = $script:recursiveStopwatch.ElapsedMilliseconds
-                
-                # No need for the background job - we'll update progress directly as we process folders
+            Write-Information "`n$($script:ANSI.Cyan)Starting recursive folder analysis...$($script:ANSI.Reset)" -InformationAction Continue
 
-                # Write initial console message with high visibility
-                # Initial status message with high visibility
-                Write-Information "" -InformationAction Continue
-                Write-Information "$($script:ANSI.Yellow)Recursive scan progress: 0% | Depth 1/$MaxDepth | 0/$TotalDepths folders | 0 GB$($script:ANSI.Reset)" -InformationAction Continue
-                Write-Information "" -InformationAction Continue
-            }
-        }        # Update progress for current depth with enhanced statistics
-        $script:processedFolders++
-        $script:totalRecursiveFolders++        # CRITICAL: Always update the progress bar
-        # Force progress visibility with each folder processed
-        if ($script:UseProgressBars) {
-            # Update the last progress update time
-            $script:lastRecursiveProgressUpdate = $script:recursiveStopwatch.ElapsedMilliseconds
-            
-            # Calculate progress metrics
-            $totalSizeGB = [math]::Round($script:totalRecursiveSize / 1GB, 2)
-            # Ensure percentage shows progress even with a small number of folders
-            $progressPercentage = [Math]::Min(100, [Math]::Max(($CurrentDepth * 10), [Math]::Floor(($script:processedFolders * 100) / [Math]::Max(1, $TotalDepths))))
-            $timeElapsed = $script:recursiveStopwatch.Elapsed.ToString("hh\:mm\:ss")
+            # Always initialize the progress bar immediately with high visibility
+            Write-Progress -Activity "Recursive Folder Analysis" -Status "Starting recursive scan..." -PercentComplete 0 -Id 3 -CurrentOperation "Initializing..."
 
-            # Create formatted progress description with all key metrics
-            $progressDescription = "Folders: $script:totalRecursiveFolders | Files: $script:totalRecursiveFiles | Size: $totalSizeGB GB | Time: $timeElapsed"
-
-            # Include the path in a way that won't make the progress bar too wide
-            $shortenedPath = if ($StartPath.Length -gt 30) { "..." + $StartPath.Substring($StartPath.Length - 30) } else { $StartPath }            # Create a more visible status message for the progress bar with folder path
-            $statusMessage = "Recursive scan: $progressPercentage% | Depth: $CurrentDepth/$MaxDepth | Path: $shortenedPath"
-            
-            # Create an informative console message
-            $statusMsg = "Recursive scan progress: $progressPercentage% | Depth $CurrentDepth/$MaxDepth | $script:processedFolders/$TotalDepths folders | $totalSizeGB GB"
-            
-            # Force progress bar update with direct Write-Progress call for guaranteed update
-            Write-Progress -Activity "Recursive Folder Analysis" -Status $statusMessage -PercentComplete $progressPercentage -Id 3 -CurrentOperation $progressDescription
-            
-            # Show status updates in console (Write-Host for immediate display without buffering)
+            # Write initial console message with high visibility for better user feedback
             Write-Information "" -InformationAction Continue
-            Write-Information $statusMsg -InformationAction Continue            # Always add extra detail for better visibility
-            if ($script:processedFolders % 2 -eq 0) {
-                Write-Information "$($script:ANSI.Cyan)Scanning: $shortenedPath | $script:totalRecursiveFiles files | $totalSizeGB GB$($script:ANSI.Reset)" -InformationAction Continue
-                
-                # Add a status update every folder processed to ensure continuous feedback
-                Write-DiagnosticMessage "Processing folder $script:processedFolders: $shortenedPath" -Color "Cyan"
-            }# Force progress bar completion if we're at 90% or close to avoid stalling appearance
-            # Lower threshold (90% vs 95%) ensures users see completion sooner
-            if ($progressPercentage -ge 90) {
-                try {
-                    Write-Progress -Activity "Recursive Folder Analysis" -Status "Recursive Scan: 100% Complete" -PercentComplete 100 -Id 3 -CurrentOperation "Scan completed"
-                    Write-Information "`n$($script:ANSI.Green)Recursive scan almost complete: $progressPercentage% | $script:totalRecursiveFolders folders | $totalSizeGB GB | Time: $timeElapsed$($script:ANSI.Reset)" -InformationAction Continue
+            Write-Information "$($script:ANSI.Yellow)Recursive scan progress: 0% | Depth 1/$MaxDepth | 0/$TotalDepths folders | 0 GB$($script:ANSI.Reset)" -InformationAction Continue
+            Write-Information "" -InformationAction Continue
+
+            # Update the last progress timestamp to current
+            $script:lastRecursiveProgressUpdate = $script:recursiveStopwatch.ElapsedMilliseconds
+        }
+
+        # Update progress counts for the current folder being processed
+        $script:processedFolders++
+        $script:totalRecursiveFolders++
+
+        # Update progress bar following the same pattern as the initial scan that works correctly
+        if ($script:UseProgressBars -and ($script:recursiveStopwatch.ElapsedMilliseconds - $script:lastRecursiveProgressUpdate -gt $script:recursiveUpdateFrequency)) {
+            try {                # Calculate progress metrics - using same formula as initial scan
+                $totalSizeGB = [math]::Round($script:totalRecursiveSize / 1GB, 2)
+                $progressPercentage = [Math]::Min(100, [Math]::Floor(($script:processedFolders * 100) / [Math]::Max(1, $TotalDepths)))
+
+                # Include the path but shortened to avoid very wide progress bars
+                $shortenedPath = if ($StartPath.Length -gt 30) { "..." + $StartPath.Substring($StartPath.Length - 30) } else { $StartPath }
+
+                # Create progress parameters (matching initial scan style)
+                $progressParams = @{
+                    Activity = "Recursive Folder Analysis"
+                    Status = "Scanning folder $script:processedFolders of ~$TotalDepths | $progressPercentage%"
+                    PercentComplete = $progressPercentage
+                    Id = 3
+                    CurrentOperation = "Path: $shortenedPath | $totalSizeGB GB"
                 }
-                catch {
-                    Write-DiagnosticMessage "Error updating progress bar: $($_.Exception.Message)" -Color "Error"
+
+                # Update the progress bar
+                Write-Progress @progressParams
+
+                # Log periodic updates (matching initial scan's 3-second pattern)
+                if ($script:recursiveStopwatch.ElapsedMilliseconds - $script:lastRecursiveProgressUpdate -gt 3000) {
+                    # Create an informative console message
+                    $statusMsg = "Recursive scan progress: $progressPercentage% | Depth $CurrentDepth/$MaxDepth | $script:processedFolders/$TotalDepths folders | $totalSizeGB GB"
+                    Write-Information "$($script:ANSI.Cyan)$statusMsg$($script:ANSI.Reset)" -InformationAction Continue
+
+                    # Add more detailed update for troubleshooting
+                    Write-DiagnosticMessage "Processing folder $script:processedFolders: $shortenedPath | $script:totalRecursiveFiles files | $totalSizeGB GB" -Color "Cyan"
                 }
+
+                # Update the timestamp for next update
+                $script:lastRecursiveProgressUpdate = $script:recursiveStopwatch.ElapsedMilliseconds
+            }
+            catch {
+                # Gracefully handle errors in progress bar updates
+                Write-DiagnosticMessage "Error updating recursive progress bar: $($_.Exception.Message)" -Color "Red"
+            }
+        }
+
+        # Force progress bar completion if we're at 95% or more
+        if ($script:processedFolders -ge ($TotalDepths * 0.95)) {
+            try {
+                Write-Progress -Activity "Recursive Folder Analysis" -Status "Recursive Scan: Finalizing" -PercentComplete 99 -Id 3 -CurrentOperation "Completing scan..."                Write-Information "$($script:ANSI.Green)Recursive scan almost complete: $script:processedFolders folders | $totalSizeGB GB | Time: $($script:recursiveStopwatch.Elapsed.ToString("hh\:mm\:ss"))$($script:ANSI.Reset)" -InformationAction Continue
+            }
+            catch {
+                # Ignore errors when completing the progress bar
+                Write-DiagnosticMessage "Error updating final progress: $($_.Exception.Message)" -Color "Red"
             }
 
             # Update timestamp for next progress update
@@ -1603,13 +1614,20 @@ function Get-FolderSize {
 
         # Force an update at least every second regardless of other conditions
         # This ensures progress is always shown even during long operations
-        if ($script:recursiveStopwatch.ElapsedMilliseconds - $script:lastRecursiveProgressUpdate -gt 1000) {
-            $totalSizeGB = [math]::Round($script:totalRecursiveSize / 1GB, 2)
-            Write-Information "Recursive scan continuing: $script:processedFolders folders | $totalSizeGB GB" -InformationAction Continue
-            $script:lastRecursiveProgressUpdate = $script:recursiveStopwatch.ElapsedMilliseconds
+        try {
+            if ($script:recursiveStopwatch.ElapsedMilliseconds - $script:lastRecursiveProgressUpdate -gt 1000) {
+                $totalSizeGB = [math]::Round($script:totalRecursiveSize / 1GB, 2)
+                Write-Information "Recursive scan continuing: $script:processedFolders folders | $totalSizeGB GB" -InformationAction Continue
+                $script:lastRecursiveProgressUpdate = $script:recursiveStopwatch.ElapsedMilliseconds
+            }
         }
-          # First, analyze the root path itself
-        if ($CurrentDepth -eq 1) {            $rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions -ShowProgress $false
+        catch {
+            Write-DiagnosticMessage "Error updating recursive progress: $($_.Exception.Message)" -Color "Red"
+        }
+
+        # First, analyze the root path itself
+        if ($CurrentDepth -eq 1) {
+            $rootSize = script:GetDirectorySize -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions -ShowProgress $false
             $rootCounts = script:GetDirectoryCounts -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
             $rootLargestFile = script:GetLargestFile -Path $StartPath -OnlyPhysicalFiles $OnlyPhysicalFiles -FollowJunctions $FollowJunctions
 
@@ -1797,19 +1815,34 @@ function Get-FolderSize {
                     }
                 }
             }            # Complete the progress bar for recursive scanning when we're finishing the top-level call
-            if ($CurrentDepth -eq 1 -and $script:UseProgressBars) {                # Format final progress description consistently with initial scanning
-                $totalSizeGB = [math]::Round($script:totalRecursiveSize / 1GB, 2)
-                $timeElapsed = $script:recursiveStopwatch.Elapsed.ToString("hh\:mm\:ss")
-                $finalProgressDescription = "Complete | Folders: $script:totalRecursiveFolders | Files: $script:totalRecursiveFiles | Size: $totalSizeGB GB | Time: $timeElapsed"                # Complete the progress bar with the final stats
-                Write-Progress -Activity "Recursive Folder Analysis" -Status "Complete" -PercentComplete 100 -Id 3 -CurrentOperation $finalProgressDescription
+            if ($CurrentDepth -eq 1 -and $script:UseProgressBars) {
+                try {
+                    # Format final progress description consistently with initial scanning
+                    $totalSizeGB = [math]::Round($script:totalRecursiveSize / 1GB, 2)
+                    $timeElapsed = $script:recursiveStopwatch.Elapsed.ToString("hh\:mm\:ss")
+                    $finalProgressDescription = "Complete | Folders: $script:totalRecursiveFolders | Files: $script:totalRecursiveFiles | Size: $totalSizeGB GB | Time: $timeElapsed"
 
-                # Display final statistics in same format as initial scanning completion
-                Write-DiagnosticMessage "Recursive Scan Complete" -Color "Green"
-                Write-Information "`n$($script:ANSI.Green)Recursive Scan Complete:$($script:ANSI.Reset)" -InformationAction Continue
-                Write-Information "Total Folders Processed: $($script:ANSI.Cyan)$script:totalRecursiveFolders$($script:ANSI.Reset)" -InformationAction Continue
-                Write-Information "Total Files Found: $($script:ANSI.Cyan)$script:totalRecursiveFiles$($script:ANSI.Reset)" -InformationAction Continue
-                Write-Information "Total Size Analyzed: $($script:ANSI.Cyan)$totalSizeGB GB$($script:ANSI.Reset)" -InformationAction Continue
-                Write-Information "Time Elapsed: $($script:ANSI.Cyan)$timeElapsed$($script:ANSI.Reset)" -InformationAction Continue
+                    # Log progress completion activity for troubleshooting
+                    Write-DiagnosticMessage "Completing recursive scan progress bar - ID 3" -Color "Cyan"
+
+                    # Complete the progress bar with the final stats - guaranteed completion
+                    Write-Progress -Activity "Recursive Folder Analysis" -Status "Complete" -PercentComplete 100 -Id 3 -CurrentOperation $finalProgressDescription
+
+                    # Explicitly complete the progress bar again after a brief pause to ensure it registers
+                    Start-Sleep -Milliseconds 50
+                    Write-Progress -Activity "Recursive Folder Analysis" -Completed -Id 3
+
+                    # Display final statistics in same format as initial scanning completion
+                    Write-DiagnosticMessage "Recursive Scan Complete" -Color "Green"
+                    Write-Information "`n$($script:ANSI.Green)Recursive Scan Complete:$($script:ANSI.Reset)" -InformationAction Continue
+                    Write-Information "Total Folders Processed: $($script:ANSI.Cyan)$script:totalRecursiveFolders$($script:ANSI.Reset)" -InformationAction Continue
+                    Write-Information "Total Files Found: $($script:ANSI.Cyan)$script:totalRecursiveFiles$($script:ANSI.Reset)" -InformationAction Continue
+                    Write-Information "Total Size Analyzed: $($script:ANSI.Cyan)$totalSizeGB GB$($script:ANSI.Reset)" -InformationAction Continue
+                    Write-Information "Time Elapsed: $($script:ANSI.Cyan)$timeElapsed$($script:ANSI.Reset)" -InformationAction Continue
+                }
+                catch {
+                    Write-DiagnosticMessage "Error completing recursive scan progress bar: $($_.Exception.Message)" -Color "Red"
+                }
             }
 
             return @{
@@ -1817,8 +1850,10 @@ function Get-FolderSize {
                 HasSubfolders = $true
                 CompletionMessageShown = $completionMessageShown
             }
-        } else {
-            Write-Warning "No subfolders found to process."            return @{
+        }
+        else {
+            Write-Warning -Message "No subfolders found to process."
+            return @{
                 ProcessedFolders = $true
                 HasSubfolders = $false
                 CompletionMessageShown = $false
