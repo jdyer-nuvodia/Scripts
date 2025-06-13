@@ -77,7 +77,7 @@ param(
     [ValidateRange(1, 50)]
     [int]$MaxDepth = 10,    [Parameter(Mandatory = $false)]
     [ValidateRange(1, 100)]
-    [int]$Top = 3,
+    [int]$Top = 10,
 
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 50)]
