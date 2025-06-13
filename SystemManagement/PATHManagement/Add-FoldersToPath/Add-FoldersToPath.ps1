@@ -2,10 +2,10 @@
 # Script: Add-FoldersToPath.ps1
 # Created: 2025-02-05 22:15:38 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-13 23:45:00 UTC
+# Last Updated: 2025-06-13 23:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.0
-# Additional Info: Fixed PSScriptAnalyzer issues - renamed Write-Log to Write-LogEntry to avoid cmdlet conflict and removed trailing whitespace
+# Version: 2.3.1
+# Additional Info: Removed System.Environment.Exit(0) call that was causing terminal window to close
 # =============================================================================
 
 <#
@@ -103,7 +103,7 @@ begin {
             default   { Write-Output $LogEntry }
         }
     }    Write-LogEntry "Starting script execution" -Level INFO
-    Write-LogEntry "Script version: 2.3.0" -Level INFO
+    Write-LogEntry "Script version: 2.3.1" -Level INFO
 
     # Verify running as administrator for Machine scope
     if ($Scope -eq 'Machine' -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -241,12 +241,9 @@ end {
     # Clean up and ensure PowerShell doesn't hang
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()
-      Write-LogEntry "Script execution completed successfully" -Level SUCCESS
+    Write-LogEntry "Script execution completed successfully" -Level SUCCESS
     Write-LogEntry "Log file saved to: $LogFile" -Level INFO
 
     # Clear any variables that might be causing a hang
     Remove-Variable -Name currentPath, currentPathArray, directories, newPaths -ErrorAction SilentlyContinue
-
-    # Exit explicitly to prevent any hanging
-    [System.Environment]::Exit(0)
 }
