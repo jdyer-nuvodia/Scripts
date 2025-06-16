@@ -24,7 +24,7 @@ Never assume any PSScriptAnalyzer warnings, info, or errors are acceptable, fix 
 
 DO NOT USE Write-Host in scripts!
 
-ALWAYS use named parameters instead of positional parameters when calling a command in a script.
+ALWAYS use named parameters instead of positional parameters when calling a command in a script. If you see a positonal parameter warning in PSScriptAnalyzer, it is likely a newline issue where a newline didn't get put in correctly.
 
 All scripts that have logs should save the log to the same folder as the script and should have the system name it's being run on and a UTC timestamp to the filename of the log.
 
