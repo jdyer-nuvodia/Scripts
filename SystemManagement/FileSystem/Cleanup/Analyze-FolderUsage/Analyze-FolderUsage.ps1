@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-13 23:29:00 UTC
+# Last Updated: 2025-06-14 00:17:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Fixed hierarchical display, improved space accounting, integrated safely scanned folders display
+# Version: 1.8.0
+# Additional Info: Fixed root directory size calculation and subfolder accessibility issues
 # =============================================================================
 
 <#
@@ -24,9 +24,11 @@ This script recursively scans directories starting from a specified path and cal
 - Comprehensive error handling for access-denied scenarios
 - Multi-level progress reporting with ANSI color coding
 - Advanced transcript logging with cleanup
+- Drive information display for the target drive
 
 The script uses PowerShell runspaces for maximum performance and includes memory management with garbage collection.
 Supports Windows PowerShell 5.1 and later with modern .NET integration.
+Drive information is automatically displayed for the drive containing the StartPath to provide context on available space.
 
 .PARAMETER StartPath
 The root directory path to begin analysis. Default is "C:\"
@@ -204,6 +206,54 @@ function Test-AdminPrivilege {
     }
     catch {
         return $false
+    }
+}
+
+function Show-DriveInfo {
+    <#
+    .SYNOPSIS
+    Displays detailed drive information for a specified drive letter.
+
+    .DESCRIPTION
+    Retrieves and displays comprehensive drive information including:
+    - Drive letter and label
+    - File system type
+    - Total, used, and free space
+    - Health status
+    Uses PowerShell's Get-Volume cmdlet.
+
+    .PARAMETER DriveLetter
+    The drive letter to display information for (without colon).
+
+    .EXAMPLE
+    Show-DriveInfo -DriveLetter "C"
+    Displays information for the C: drive
+    #>
+    param (
+        [Parameter(Mandatory=$true)]
+        [ValidatePattern('^[A-Za-z]$')]
+        [string]$DriveLetter
+    )
+
+    try {
+        $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop
+
+        Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Green)Drive Volume Details for ${DriveLetter}:$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.Green)------------------------$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Drive Letter: $($Script:Colors.Cyan)$($volume.DriveLetter):$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Drive Label: $($Script:Colors.Cyan)$($volume.FileSystemLabel)$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)File System: $($Script:Colors.Cyan)$($volume.FileSystem)$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Drive Type: $($Script:Colors.Cyan)$($volume.DriveType)$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Size: $($Script:Colors.Cyan)$([math]::Round($volume.Size/1GB, 2)) GB$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Free Space: $($Script:Colors.Cyan)$([math]::Round($volume.SizeRemaining/1GB, 2)) GB$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Used Space: $($Script:Colors.Cyan)$([math]::Round(($volume.Size - $volume.SizeRemaining)/1GB, 2)) GB$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Free Space %: $($Script:Colors.Cyan)$([math]::Round(($volume.SizeRemaining/$volume.Size) * 100, 2))%$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Health Status: $($Script:Colors.Cyan)$($volume.HealthStatus)$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Operational Status: $($Script:Colors.Cyan)$($volume.OperationalStatus)$($Script:Colors.Reset)"
+        Write-Output ""
+    }
+    catch {
+        Write-Output "$($Script:Colors.Red)Error retrieving drive information for ${DriveLetter}: $($_.Exception.Message)$($Script:Colors.Reset)"
     }
 }
 
@@ -936,9 +986,8 @@ function Main {
     }
     $logPath = Start-AdvancedTranscript -LogPath $scriptPath
 
-    try {
-        # Initialize and display header        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v1.5.0    $($Script:Colors.Reset)"
+    try {        # Initialize and display header        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v1.8.0    $($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
 
         # Administrative privilege check
@@ -955,6 +1004,18 @@ function Main {
         Write-Output "$($Script:Colors.White)Max Depth: $($Script:Colors.Cyan)$MaxDepth$($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.White)Top Folders: $($Script:Colors.Cyan)$Top$($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.White)Max Threads: $($Script:Colors.Cyan)$MaxThreads$($Script:Colors.Reset)"
+
+        # Extract and display drive information for the target drive
+        try {
+            $driveLetter = [System.IO.Path]::GetPathRoot($StartPath).TrimEnd('\').TrimEnd(':')
+            if ($driveLetter -and $driveLetter.Length -eq 1) {
+                Show-DriveInfo -DriveLetter $driveLetter
+            }
+        }
+        catch {
+            Write-Output "$($Script:Colors.Yellow)Warning: Could not extract drive information from path: $StartPath$($Script:Colors.Reset)"
+        }
+
         Write-Output ""
 
         if ($PSCmdlet.ShouldProcess($StartPath, "Analyze folder usage")) {            # Get top-level directories for parallel processing
@@ -1005,27 +1066,62 @@ function Main {
                 return
             }            # Perform parallel analysis
             Write-ProgressUpdate -Activity "Analysis" -Status "Starting parallel folder analysis..." -Color "Cyan"
-            $results = Get-ParallelFolderStatistic -FolderPaths $topLevelDirs -MaxDepth $MaxDepth -MaxThreads $MaxThreads
-
-            # Analyze the StartPath directory itself for files at the root level
+            $results = Get-ParallelFolderStatistic -FolderPaths $topLevelDirs -MaxDepth $MaxDepth -MaxThreads $MaxThreads            # Analyze the StartPath directory itself for files at the root level
             Write-ProgressUpdate -Activity "Analysis" -Status "Analyzing root directory files..." -Color "Cyan"
             try {
                 $rootFiles = Get-ChildItem -Path $StartPath -File -Force -ErrorAction Stop
-                if ($rootFiles.Count -gt 0) {
-                    $rootStats = [PSCustomObject]@{
-                        Path = $StartPath
-                        SizeBytes = ($rootFiles | Measure-Object -Property Length -Sum).Sum
-                        FileCount = $rootFiles.Count
-                        SubfolderCount = $topLevelDirs.Count + $problematicDirsFound.Count
-                        LargestFile = ($rootFiles | Sort-Object Length -Descending | Select-Object -First 1).FullName
-                        LargestFileSize = ($rootFiles | Sort-Object Length -Descending | Select-Object -First 1).Length
-                        IsAccessible = $true
-                        HasCloudFiles = ($rootFiles | Where-Object { Test-CloudPlaceholder -FileInfo $_ }).Count -gt 0
-                        Error = $null
+
+                # Calculate cumulative size: subdirectories + root files
+                $subdirectoryTotalSize = ($results | Where-Object { $_.IsAccessible } | Measure-Object -Property SizeBytes -Sum).Sum
+                $rootFilesSize = if ($rootFiles.Count -gt 0) { ($rootFiles | Measure-Object -Property Length -Sum).Sum } else { 0 }
+                $totalCumulativeSize = $subdirectoryTotalSize + $rootFilesSize
+                  # Calculate cumulative file count: subdirectories + root files
+                $subdirectoryTotalFiles = ($results | Where-Object { $_.IsAccessible } | Measure-Object -Property FileCount -Sum).Sum
+                $totalCumulativeFiles = $subdirectoryTotalFiles + $rootFiles.Count
+
+                # Determine largest file across all analyzed content
+                $largestFileFromSubdirs = $results | Where-Object { $_.IsAccessible -and $_.LargestFileSize -gt 0 } | Sort-Object LargestFileSize -Descending | Select-Object -First 1
+                $largestFileFromRoot = if ($rootFiles.Count -gt 0) { $rootFiles | Sort-Object Length -Descending | Select-Object -First 1 } else { $null }
+
+                $overallLargestFile = $null
+                $overallLargestFileSize = 0
+
+                if ($largestFileFromSubdirs -and $largestFileFromRoot) {
+                    if ($largestFileFromSubdirs.LargestFileSize -gt $largestFileFromRoot.Length) {
+                        $overallLargestFile = $largestFileFromSubdirs.LargestFile
+                        $overallLargestFileSize = $largestFileFromSubdirs.LargestFileSize
+                    } else {
+                        $overallLargestFile = $largestFileFromRoot.FullName
+                        $overallLargestFileSize = $largestFileFromRoot.Length
                     }
-                    $results += $rootStats
-                    $Script:ProcessedFolders++
+                } elseif ($largestFileFromSubdirs) {
+                    $overallLargestFile = $largestFileFromSubdirs.LargestFile
+                    $overallLargestFileSize = $largestFileFromSubdirs.LargestFileSize
+                } elseif ($largestFileFromRoot) {
+                    $overallLargestFile = $largestFileFromRoot.FullName
+                    $overallLargestFileSize = $largestFileFromRoot.Length
                 }
+
+                # Check for cloud files in root and subdirectories
+                $hasCloudFilesInRoot = if ($rootFiles.Count -gt 0) { ($rootFiles | Where-Object { Test-CloudPlaceholder -FileInfo $_ }).Count -gt 0 } else { $false }
+                $hasCloudFilesInSubdirs = ($results | Where-Object { $_.HasCloudFiles }).Count -gt 0
+                $overallHasCloudFiles = $hasCloudFilesInRoot -or $hasCloudFilesInSubdirs
+
+                $rootStats = [PSCustomObject]@{
+                    Path = $StartPath
+                    SizeBytes = $totalCumulativeSize
+                    FileCount = $totalCumulativeFiles
+                    SubfolderCount = $topLevelDirs.Count + $problematicDirsFound.Count
+                    LargestFile = $overallLargestFile
+                    LargestFileSize = $overallLargestFileSize
+                    IsAccessible = $true
+                    HasCloudFiles = $overallHasCloudFiles
+                    Error = $null
+                }
+
+                # Replace or add the root stats at the beginning of results
+                $results = @($rootStats) + $results
+                $Script:ProcessedFolders++
             }
             catch {
                 Write-Output "$($Script:Colors.Yellow)Warning: Could not analyze root directory files: $($_.Exception.Message)$($Script:Colors.Reset)"
@@ -1040,6 +1136,35 @@ function Main {
                     $Script:ProcessedFolders++  # Count problematic directories as processed
                 }
             }
+
+            # Secondary analysis: Collect direct subfolders of the largest directories for hierarchical display
+            Write-ProgressUpdate -Activity "Analysis" -Status "Collecting subfolder details for hierarchical display..." -Color "Cyan"
+            $additionalResults = @()
+
+            # Get the top 3 largest accessible directories for deeper analysis
+            $topLargestDirs = $results | Where-Object { $_.IsAccessible -and $_.Path -ne $StartPath } | Sort-Object SizeBytes -Descending | Select-Object -First 3
+
+            foreach ($largeDir in $topLargestDirs) {
+                try {
+                    $subDirs = Get-ChildItem -Path $largeDir.Path -Directory -Force -ErrorAction Stop
+                    foreach ($subDir in $subDirs) {
+                        try {
+                            # Quick analysis of direct subfolders (depth 1 only to avoid performance issues)
+                            $subDirStats = Get-FolderStatistic -FolderPath $subDir.FullName -CurrentDepth 1 -MaxDepth 2
+                            $additionalResults += $subDirStats
+                        }
+                        catch {
+                            Write-Output "$($Script:Colors.DarkGray)Skipping inaccessible subfolder: $($subDir.FullName)$($Script:Colors.Reset)"
+                        }
+                    }
+                }
+                catch {
+                    Write-Output "$($Script:Colors.DarkGray)Could not access subfolders of: $($largeDir.Path)$($Script:Colors.Reset)"
+                }
+            }
+
+            # Add the additional results to the main results for hierarchical display
+            $results += $additionalResults
 
             # Display results using hierarchical view
             Show-HierarchicalResult -Results $results -StartPath $StartPath -Top $Top -SafeResults $safeResults
