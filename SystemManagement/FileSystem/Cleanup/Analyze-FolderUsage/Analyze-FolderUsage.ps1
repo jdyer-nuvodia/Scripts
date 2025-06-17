@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-17 15:25:00 UTC
+# Last Updated: 2025-06-17 21:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.6.5
-# Additional Info: Made messages about increasing MaxDepth contingent upon MaxDepth actually being reached during the scan.
+# Version: 2.6.7
+# Additional Info: Fixed runspace debug message transcript capture using Write-Information with -InformationAction Continue
 # =============================================================================
 
 <#
@@ -165,7 +165,8 @@ function Start-AdvancedTranscript {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [string]$LogPath
-    )    try {
+    )
+    try {
         # Validate and normalize the log path
         if ([string]::IsNullOrWhiteSpace($LogPath)) {
             $LogPath = $PWD.Path
@@ -181,7 +182,8 @@ function Start-AdvancedTranscript {
             if ($PSCmdlet.ShouldProcess($LogPath, "Create log directory")) {
                 New-Item -Path $LogPath -ItemType Directory -Force | Out-Null
             }
-        }        if ($PSCmdlet.ShouldProcess($fullLogPath, "Start transcript")) {
+        }
+        if ($PSCmdlet.ShouldProcess($fullLogPath, "Start transcript")) {
             Start-Transcript -Path $fullLogPath -Force | Out-Null
             Write-Output "$($Script:Colors.Green)Transcript started: $fullLogPath$($Script:Colors.Reset)"
         }
@@ -394,7 +396,8 @@ function Get-FolderStatistic {
         [string]$FolderPath,
         [int]$CurrentDepth,
         [int]$MaxDepth
-    )    $stats = [PSCustomObject]@{
+    )
+    $stats = [PSCustomObject]@{
         Path = $FolderPath
         SizeBytes = 0
         FileCount = 0
@@ -419,7 +422,8 @@ function Get-FolderStatistic {
 
         foreach ($item in $items) {
             if ($item.PSIsContainer) {
-                $stats.SubfolderCount++                # Recursive processing within depth limits
+                $stats.SubfolderCount++
+                # Recursive processing within depth limits
                 if ($CurrentDepth -lt $MaxDepth) {
                     $subStats = Get-FolderStatistic -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
                     $stats.SizeBytes += $subStats.SizeBytes
@@ -519,12 +523,12 @@ function Get-ParallelFolderStatistic {
                 param([string]$Message, [string]$Category = "RUNSPACE")
                 if ($DebugEnabled) {
                     $timestamp = Get-Date -Format "HH:mm:ss.fff"
-                    # Improved error record format with specific DebugMessage category
+                    # Use only error stream to avoid contaminating results
                     $debugPrefix = "RUNSPACE_DEBUG:"
                     $formattedMsg = "$debugPrefix [$timestamp] [$Category] $Message"
 
-                    # Write to both error stream and standard output to ensure it appears in both console and transcript
-                    # Error stream for immediate console display
+                    # Write only to error stream - this will be captured by the main script
+                    # and won't contaminate the return results
                     $errorParams = @{
                         Message = $formattedMsg
                         ErrorId = "DebugMessage:$Category"
@@ -533,10 +537,6 @@ function Get-ParallelFolderStatistic {
                         TargetObject = $null
                     }
                     Write-Error @errorParams
-
-                    # Also write to standard output with special prefix to ensure it's captured in transcript
-                    # This will be included in the transcript log
-                    Write-Output "##TRANSCRIPT_DEBUG## $formattedMsg"
                 }
             }
             # Import required functions into runspace
@@ -574,7 +574,13 @@ function Get-ParallelFolderStatistic {
                 } catch { return $false }
             }
             function Get-FolderStatisticInternal {
-                param([string]$FolderPath, [int]$CurrentDepth, [int]$MaxDepth)                $stats = [PSCustomObject]@{
+                param([string]$FolderPath, [int]$CurrentDepth, [int]$MaxDepth)
+                # Add timeout mechanism for individual directory scans
+                $startTime = Get-Date
+                $maxScanTime = 60 # Maximum 60 seconds per directory
+                $maxItemsPerDirectory = 10000 # Limit items processed per directory
+
+                $stats = [PSCustomObject]@{
                     Path = $FolderPath
                     SizeBytes = 0
                     FileCount = 0
@@ -589,18 +595,32 @@ function Get-ParallelFolderStatistic {
 
                 try {
                     Write-RunspaceDebug -Message "Starting scan of: $FolderPath (Depth: $CurrentDepth/$MaxDepth)" -Category "FOLDER_SCAN"
-
                     # Check if it's a reparse point first
                     if (Test-ReparsePoint -Path $FolderPath) {
                         Write-RunspaceDebug -Message "Skipping reparse point: $FolderPath" -Category "FOLDER_SCAN"
                         return $stats
                     }
-
                     Write-RunspaceDebug -Message "Executing: Get-ChildItem -Path '$FolderPath' -Force -ErrorAction Stop" -Category "FOLDER_SCAN"
                     $items = Get-ChildItem -Path $FolderPath -Force -ErrorAction Stop
                     Write-RunspaceDebug -Message "SUCCESS: Scanned $FolderPath - found $($items.Count) items" -Category "FOLDER_SCAN"
 
+                    # Limit the number of items processed to prevent hanging on huge directories
+                    if ($items.Count -gt $maxItemsPerDirectory) {
+                        Write-RunspaceDebug -Message "Large directory detected ($($items.Count) items), limiting to $maxItemsPerDirectory items" -Category "FOLDER_SCAN"
+                        $items = $items | Select-Object -First $maxItemsPerDirectory
+                        $stats.Error = "Large directory - only processed first $maxItemsPerDirectory items"
+                    }
+
+                    $itemCount = 0
                     foreach ($item in $items) {
+                        $itemCount++
+                        # Check timeout before processing each item
+                        if ((Get-Date).Subtract($startTime).TotalSeconds -gt $maxScanTime) {
+                            Write-RunspaceDebug -Message "Timeout reached for $FolderPath after $maxScanTime seconds, stopping scan" -Category "TIMEOUT"
+                            $stats.Error = "Scan timeout after $maxScanTime seconds"
+                            break
+                        }
+
                         if ($item.PSIsContainer) {
                             $stats.SubfolderCount++
                             if ($CurrentDepth -lt $MaxDepth) {
@@ -670,7 +690,8 @@ function Get-ParallelFolderStatistic {
                 # Ensure we return only the PSCustomObject and suppress any other output
                 Write-Output $finalResult
                 return
-            } catch {                # Return error result if main function fails
+            } catch {
+                # Return error result if main function fails
                 $errorResult = [PSCustomObject]@{
                     Path = $FolderPath
                     SizeBytes = 0
@@ -694,18 +715,19 @@ function Get-ParallelFolderStatistic {
             $powershell = [powershell]::Create()
             $powershell.RunspacePool = $runspacePool
             $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $folder).AddParameter("MaxDepth", $MaxDepth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue') | Out-Null
-
             $jobs += [PSCustomObject]@{
                 PowerShell = $powershell
                 Handle = $powershell.BeginInvoke()
                 Path = $folder
+                StartTime = Get-Date
             }
         }
         # Collect results with enhanced progress tracking and timeout
         $completed = 0
-        $timeout = (Get-Date).AddMinutes(15)  # Increased timeout for deep analysis
+        $timeout = (Get-Date).AddMinutes(10)  # Reduced timeout to prevent hanging
         $lastProgress = Get-Date
-        $progressCheckInterval = 1000  # 1 second for better responsiveness
+        $progressCheckInterval = 500  # Faster check interval for better responsiveness
+        $individualJobTimeout = 180  # Individual job timeout in seconds (3 minutes)
 
         Write-DebugInfo -Message "Starting result collection phase with enhanced monitoring" -Category "PARALLEL_MONITOR"
         while ($jobs | Where-Object { -not $_.Handle.IsCompleted }) {
@@ -716,7 +738,8 @@ function Get-ParallelFolderStatistic {
                 Write-ProgressUpdate -Activity "Parallel Processing" -Status "Completed $completed of $($jobs.Count) folders ($percentComplete%)" -PercentComplete $percentComplete
                 Write-DebugInfo -Message "Progress update: $completed/$($jobs.Count) jobs completed ($percentComplete%)" -Category "PARALLEL_MONITOR"
                 $lastProgress = Get-Date
-            }            # Enhanced real-time stream monitoring - check for new debug messages from ALL running jobs
+            }
+            # Enhanced real-time stream monitoring - check for new debug messages from ALL running jobs
             foreach ($job in $jobs | Where-Object { -not $_.Handle.IsCompleted }) {
                 if ($job.PowerShell -and $job.PowerShell.Streams.Error.Count -gt 0) {
                     # Process any new error stream messages (including debug messages)
@@ -727,10 +750,13 @@ function Get-ParallelFolderStatistic {
                             $debugMsg = $errorItem.Exception.Message -replace "^.*RUNSPACE_DEBUG: ", ""
                             # Write directly to the host to ensure it appears immediately
                             $host.UI.WriteLine("$($Script:Colors.Magenta)[$($job.Path)] $debugMsg$($Script:Colors.Reset)")
+                            # Also write to transcript using Write-Output for better capture
+                            Write-Output "[$($job.Path)] $debugMsg"
                         }
                         else {
                             # This is a real error, display it in red
                             $host.UI.WriteLine("$($Script:Colors.Red)[$($job.Path)] ERROR: $($errorItem.Exception.Message)$($Script:Colors.Reset)")
+                            Write-Output "[$($job.Path)] ERROR: $($errorItem.Exception.Message)"
                         }
                     }
                     # Clear all error messages to free memory
@@ -744,13 +770,36 @@ function Get-ParallelFolderStatistic {
                 $incompleteJobs = $jobs | Where-Object { -not $_.Handle.IsCompleted }
                 Write-DebugInfo -Message "Timeout reached. $($incompleteJobs.Count) jobs still incomplete" -Category "PARALLEL_MONITOR"
                 break
-            }
-
-            # Enhanced stuck job detection - check if no progress for 60 seconds
-            if ((Get-Date).Subtract($lastProgress).TotalSeconds -gt 60) {
-                Write-Output "$($Script:Colors.Yellow)Warning: No progress for 60 seconds. Analyzing job states...$($Script:Colors.Reset)"
+            }            # Enhanced stuck job detection - check if no progress for 30 seconds
+            if ((Get-Date).Subtract($lastProgress).TotalSeconds -gt 30) {
+                Write-Output "$($Script:Colors.Yellow)Warning: No progress for 30 seconds. Analyzing job states...$($Script:Colors.Reset)"
                 $stuckJobs = $jobs | Where-Object { -not $_.Handle.IsCompleted }
                 Write-DebugInfo -Message "Stuck job analysis: $($stuckJobs.Count) jobs not completed" -Category "PARALLEL_MONITOR"
+                # Force timeout for jobs running longer than the individual timeout
+                $longRunningJobs = @()
+                $currentTime = Get-Date
+                foreach ($job in $stuckJobs) {
+                    if ($job.PowerShell -and $job.PowerShell.InvocationStateInfo.State -eq 'Running') {
+                        # Check if job has been running longer than the timeout
+                        if ($job.StartTime -and ($currentTime.Subtract($job.StartTime).TotalSeconds -gt $individualJobTimeout)) {
+                            $longRunningJobs += $job
+                        }
+                    }
+                }
+
+                if ($longRunningJobs.Count -gt 0) {
+                    Write-Output "$($Script:Colors.Red)Forcing completion of $($longRunningJobs.Count) long-running jobs...$($Script:Colors.Reset)"
+                    foreach ($longJob in $longRunningJobs) {
+                        try {
+                            Write-DebugInfo -Message "Stopping long-running job for: $($longJob.Path)" -Category "JOB_TIMEOUT"
+                            $longJob.PowerShell.Stop()
+                            Start-Sleep -Milliseconds 100
+                        }
+                        catch {
+                            Write-DebugInfo -Message "Failed to stop job for $($longJob.Path): $($_.Exception.Message)" -Category "JOB_TIMEOUT"
+                        }
+                    }
+                }
 
                 if ($stuckJobs.Count -le 5) {
                     foreach ($stuckJob in $stuckJobs) {
@@ -806,18 +855,20 @@ function Get-ParallelFolderStatistic {
                                 else {
                                     $realErrors += $errorMsg
                                 }
-                            }
-
-                            # Process debug messages with improved formatting
+                            }                            # Process debug messages with improved formatting
                             foreach ($debugMsg in $debugMessages) {
                                 $formattedMsg = $debugMsg.Exception.Message -replace "^.*RUNSPACE_DEBUG: ", ""
                                 # Write directly to the host to ensure it appears immediately
                                 $host.UI.WriteLine("$($Script:Colors.Magenta)[$($job.Path)] $formattedMsg$($Script:Colors.Reset)")
+                                # Force transcript capture by writing to Information stream AND output
+                                Write-Information "[$($job.Path)] $formattedMsg" -InformationAction Continue
                             }
 
                             # Process real errors separately
                             foreach ($errorMsg in $realErrors) {
                                 $host.UI.WriteLine("$($Script:Colors.Red)[$($job.Path)] ERROR: $($errorMsg.Exception.Message)$($Script:Colors.Reset)")
+                                # Force transcript capture by writing to Information stream AND error
+                                Write-Error "[$($job.Path)] ERROR: $($errorMsg.Exception.Message)" -ErrorAction Continue
                             }
 
                             Write-DebugInfo -Message "Processed $($debugMessages.Count) debug messages and $($realErrors.Count) real errors" -Category "JOB_RESULTS"
@@ -831,34 +882,14 @@ function Get-ParallelFolderStatistic {
                     if ($result) {
                         # Separate debug messages from actual results - enhanced validation
                         $validResults = @()
-
-                        # Process any transcript debug messages that came through in the output
-                        if ($result -is [array]) {
-                            foreach ($item in $result) {
-                                if ($item -is [string] -and $item -match '##TRANSCRIPT_DEBUG##') {
-                                    # This is a debug message from a runspace that needs to be properly formatted
-                                    $debugMsg = $item -replace '##TRANSCRIPT_DEBUG## ', ''
-                                    # Write it directly to the transcript using Write-Output with proper coloring
-                                    Write-Output "$($Script:Colors.Magenta)$debugMsg$($Script:Colors.Reset)"
-                                }
-                            }
-
-                            # Remove all transcript debug messages from results
-                            $result = @($result | Where-Object { -not ($_ -is [string] -and $_ -match '##TRANSCRIPT_DEBUG##') })
-                        } elseif ($result -is [string] -and $result -match '##TRANSCRIPT_DEBUG##') {
-                            # Handle single string result that's a debug message
-                            $debugMsg = $result -replace '##TRANSCRIPT_DEBUG## ', ''
-                            Write-Output "$($Script:Colors.Magenta)$debugMsg$($Script:Colors.Reset)"
-                            $result = $null
-                        }
-
                         # Debug the raw result type and content
                         if ($DebugPreference -ne 'SilentlyContinue') {
-                            Write-DebugInfo -Message "Job result type: $($result.GetType().FullName)" -Category "JOB_RESULTS_DEBUG"
                             if ($null -eq $result) {
                                 Write-DebugInfo -Message "Result is NULL" -Category "JOB_RESULTS_DEBUG"
                             } elseif ($result -is [array]) {
-                                Write-DebugInfo -Message "Result is ARRAY with $($result.Count) elements" -Category "JOB_RESULTS_DEBUG"
+                                Write-DebugInfo -Message "Job result type: ARRAY with $($result.Count) elements" -Category "JOB_RESULTS_DEBUG"
+                            } else {
+                                Write-DebugInfo -Message "Job result type: $($result.GetType().FullName)" -Category "JOB_RESULTS_DEBUG"
                             }
                         }
 
@@ -928,7 +959,8 @@ function Get-ParallelFolderStatistic {
 
                             if ($cleanValidResults.Count -gt 0) {
                                 $results += $cleanValidResults
-                                Write-DebugInfo -Message "Added $($cleanValidResults.Count) valid results from job" -Category "JOB_RESULTS"                                # Process each valid result for error tracking
+                                Write-DebugInfo -Message "Added $($cleanValidResults.Count) valid results from job" -Category "JOB_RESULTS"
+                                # Process each valid result for error tracking
                                 foreach ($validResult in $cleanValidResults) {
                                     if (-not $validResult.IsAccessible) {
                                         $Script:InaccessibleFolderCount++
@@ -956,7 +988,8 @@ function Get-ParallelFolderStatistic {
                         Write-DebugInfo -Message "Job for '$($job.Path)' returned null result" -Category "JOB_RESULTS"
                     }
                 } else {
-                    Write-Output "$($Script:Colors.Yellow)Warning: Job for $($job.Path) did not complete. Skipping.$($Script:Colors.Reset)"                    # Try to stop the incomplete job safely
+                    Write-Output "$($Script:Colors.Yellow)Warning: Job for $($job.Path) did not complete. Skipping.$($Script:Colors.Reset)"
+                    # Try to stop the incomplete job safely
                     try {
                         if ($job.PowerShell -and $job.PowerShell.InvocationStateInfo.State -eq 'Running') {
                             $job.PowerShell.Stop()
@@ -1004,7 +1037,8 @@ function Get-ParallelFolderStatistic {
         [System.GC]::Collect()
         [System.GC]::WaitForPendingFinalizers()
         [System.GC]::Collect()
-        Write-DebugInfo -Message "Memory cleanup completed" -Category "CLEANUP"        # Debug logging for error collection summary
+        Write-DebugInfo -Message "Memory cleanup completed" -Category "CLEANUP"
+        # Debug logging for error collection summary
         Write-DebugInfo -Message "Parallel processing completed. Errors collected: $($Script:ErrorTracker.Count)" -Category "PARALLEL_SUMMARY"
 
         # Count all inaccessible directories recursively in results
@@ -1066,7 +1100,8 @@ function Show-HierarchicalResult{
         [string]$StartPath,
         [int]$Top,
         [array]$SafeResults = @()
-    )    Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Underline)HIERARCHICAL FOLDER USAGE ANALYSIS$($Script:Colors.Reset)`n"
+    )
+    Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Underline)HIERARCHICAL FOLDER USAGE ANALYSIS$($Script:Colors.Reset)`n"
 
     # First, show the StartPath itself - this should show ONLY the direct files in the root, not subdirectories
     Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)LEVEL 0: ROOT ANALYSIS ($StartPath)$($Script:Colors.Reset)"
@@ -1288,7 +1323,8 @@ function Show-HierarchicalSummary {
     # Performance metrics
     $elapsedTime = (Get-Date) - $Script:StartTime
     Write-Output "$($Script:Colors.White)Analysis Duration: $($Script:Colors.Cyan)$($elapsedTime.ToString('hh\:mm\:ss'))$($Script:Colors.Reset)"
-    Write-Output "$($Script:Colors.White)Processing Rate: $($Script:Colors.Cyan)$([math]::Round($Script:ProcessedFolders / $elapsedTime.TotalSeconds, 2)) folders/second$($Script:Colors.Reset)"    # Drive discrepancy analysis with enhanced diagnostics
+    Write-Output "$($Script:Colors.White)Processing Rate: $($Script:Colors.Cyan)$([math]::Round($Script:ProcessedFolders / $elapsedTime.TotalSeconds, 2)) folders/second$($Script:Colors.Reset)"
+    # Drive discrepancy analysis with enhanced diagnostics
     try {
         # Try to get the drive information for comparison
         $startPathRoot = [System.IO.Path]::GetPathRoot($Results[0].Path)
@@ -1447,7 +1483,8 @@ function Get-ProblematicDirectorySize {
     param(
         [string]$DirectoryPath,
         [string]$DirectoryName
-    )    $result = [PSCustomObject]@{
+    )
+    $result = [PSCustomObject]@{
         Path = $DirectoryPath
         Name = $DirectoryName
         SizeBytes = 0
@@ -1483,7 +1520,8 @@ function Get-ProblematicDirectorySize {
                                     $result.LargestFile = $largestSubItem.FullName
                                     $result.LargestFileSize = $largestSubItem.Length
                                 }
-                            }                        }
+                            }
+                        }
                         catch {
                             Write-Debug "Skipping inaccessible subdirectory: $($item.FullName)"
                         }
@@ -1605,7 +1643,8 @@ function Get-InaccessibleDirectoryEstimate {
                 if ($items) {
                     # If we can list at least one item, estimate based on accessible parent directory patterns
                     $parentSize = try { (Get-ChildItem -Path (Split-Path $path -Parent) -Directory -Force | Where-Object { $_.Name -ne (Split-Path $path -Leaf) } | Measure-Object Length -Sum).Sum } catch { 0 }
-                    $pathEstimate = [math]::Max(1MB, $parentSize * 0.1)  # Conservative estimate                    $method = "Parent directory pattern"
+                    $pathEstimate = [math]::Max(1MB, $parentSize * 0.1)  # Conservative estimate
+                    $method = "Parent directory pattern"
                 }
             }
             catch {
@@ -1619,7 +1658,8 @@ function Get-InaccessibleDirectoryEstimate {
                     $folder = Get-CimInstance -ClassName Win32_Directory -Filter "Name='$folderPath'" -ErrorAction Stop 2>$null
                     if ($folder -and $folder.FileSize) {
                         $pathEstimate = $folder.FileSize
-                        $method = "WMI Directory query"                    }
+                        $method = "WMI Directory query"
+                    }
                 }
                 catch {
                     Write-Verbose "Could not query WMI for directory $path"
@@ -1690,14 +1730,17 @@ function Main {
         [int]$MaxDepth,
         [int]$Top,
         [int]$MaxThreads
-    )    $scriptPath = if ($MyInvocation.MyCommand.Path) {
+    )
+    $scriptPath = if ($MyInvocation.MyCommand.Path) {
         Split-Path -Parent $MyInvocation.MyCommand.Path
     } else {
         Split-Path -Parent $PSCommandPath
     }
     $logPath = Start-AdvancedTranscript -LogPath $scriptPath
 
-    try {        # Initialize and display header        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
+    try {
+        # Initialize and display header
+        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v2.1.2    $($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
 
@@ -1777,7 +1820,8 @@ function Main {
                 }
                 catch {
                     Write-Output "$($Script:Colors.Yellow)Warning: Could not check for system files: $($_.Exception.Message)$($Script:Colors.Reset)"
-                }                $Script:TotalFolders = $topLevelDirs.Count
+                }
+                $Script:TotalFolders = $topLevelDirs.Count
 
                 Write-Output "$($Script:Colors.Green)Found $($topLevelDirs.Count) top-level directories to analyze$($Script:Colors.Reset)"
 
@@ -1959,29 +2003,6 @@ function Main {
             Write-ProgressUpdate -Activity "Analysis" -Status "Collecting subfolder details for hierarchical display..." -Color "Cyan"
             $additionalResults = @()
 
-            # TEMPORARILY DISABLED: Secondary analysis to test for false positives
-            # Get the top 3 largest accessible directories for deeper analysis
-            # $topLargestDirs = $results | Where-Object { $_.IsAccessible -and $_.Path -ne $StartPath } | Sort-Object SizeBytes -Descending | Select-Object -First 3
-
-            # foreach ($largeDir in $topLargestDirs) {
-            #     try {
-            #         $subDirs = Get-ChildItem -Path $largeDir.Path -Directory -Force -ErrorAction Stop
-            #         foreach ($subDir in $subDirs) {
-            #             try {
-            #                 # Quick analysis of direct subfolders (depth 1 only to avoid performance issues)
-            #                 $subDirStats = Get-FolderStatistic -FolderPath $subDir.FullName -CurrentDepth 1 -MaxDepth 2
-            #                 $additionalResults += $subDirStats
-            #             }
-            #             catch {
-            #                 Write-Output "$($Script:Colors.DarkGray)Skipping inaccessible subfolder: $($subDir.FullName)$($Script:Colors.Reset)"
-            #             }
-            #         }
-            #     }
-            #     catch {
-            #         Write-Output "$($Script:Colors.DarkGray)Could not access subfolders of: $($largeDir.Path)$($Script:Colors.Reset)"
-            #     }
-            # }
-
             # Add the additional results to the main results for hierarchical display
             $results += $additionalResults            # Display results using hierarchical view
             # FINAL CLEANUP: Remove any invalid results that might have been added
@@ -2004,7 +2025,8 @@ function Main {
             Write-Output "$($Script:Colors.Yellow)WhatIf: Would analyze folder usage starting from '$StartPath'$($Script:Colors.Reset)"
             Write-Output "$($Script:Colors.Yellow)WhatIf: Would scan up to $MaxDepth levels deep$($Script:Colors.Reset)"
             Write-Output "$($Script:Colors.Yellow)WhatIf: Would display top $Top largest folders$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.Yellow)WhatIf: Would use $MaxThreads parallel threads$($Script:Colors.Reset)"        }
+            Write-Output "$($Script:Colors.Yellow)WhatIf: Would use $MaxThreads parallel threads$($Script:Colors.Reset)"
+        }
     }
     catch {
         Write-Output "$($Script:Colors.Red)Fatal error: $($_.Exception.Message)$($Script:Colors.Reset)"
