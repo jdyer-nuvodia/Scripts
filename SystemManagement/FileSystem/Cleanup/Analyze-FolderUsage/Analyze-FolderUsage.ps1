@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-17 00:33:00 UTC
+# Last Updated: 2025-06-17 15:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.6.4
-# Additional Info: PATCH FIX - Fixed debug messages from parallel runspaces not appearing in the transcript log
+# Version: 2.6.5
+# Additional Info: Made messages about increasing MaxDepth contingent upon MaxDepth actually being reached during the scan.
 # =============================================================================
 
 <#
@@ -116,6 +116,7 @@ $Script:ProcessedFolders = 0
 $Script:TotalFolders = 0
 $Script:InaccessibleFolderCount = 0
 $Script:StartTime = Get-Date
+$Script:MaxDepthReached = $false
 
 # Debug and Verbose Logging Functions
 function Write-DebugInfo {
@@ -393,9 +394,7 @@ function Get-FolderStatistic {
         [string]$FolderPath,
         [int]$CurrentDepth,
         [int]$MaxDepth
-    )
-
-    $stats = [PSCustomObject]@{
+    )    $stats = [PSCustomObject]@{
         Path = $FolderPath
         SizeBytes = 0
         FileCount = 0
@@ -405,6 +404,7 @@ function Get-FolderStatistic {
         IsAccessible = $true
         HasCloudFiles = $false
         Error = $null
+        MaxDepthReached = $false
     }
 
     try {
@@ -419,9 +419,7 @@ function Get-FolderStatistic {
 
         foreach ($item in $items) {
             if ($item.PSIsContainer) {
-                $stats.SubfolderCount++
-
-                # Recursive processing within depth limits
+                $stats.SubfolderCount++                # Recursive processing within depth limits
                 if ($CurrentDepth -lt $MaxDepth) {
                     $subStats = Get-FolderStatistic -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
                     $stats.SizeBytes += $subStats.SizeBytes
@@ -436,6 +434,16 @@ function Get-FolderStatistic {
                     if ($subStats.HasCloudFiles) {
                         $stats.HasCloudFiles = $true
                     }
+
+                    # Propagate MaxDepthReached flag
+                    if ($subStats.MaxDepthReached) {
+                        $stats.MaxDepthReached = $true
+                        $Script:MaxDepthReached = $true
+                    }
+                } else {
+                    # Max depth reached - set flag
+                    $stats.MaxDepthReached = $true
+                    $Script:MaxDepthReached = $true
                 }
             }
             else {
@@ -566,9 +574,7 @@ function Get-ParallelFolderStatistic {
                 } catch { return $false }
             }
             function Get-FolderStatisticInternal {
-                param([string]$FolderPath, [int]$CurrentDepth, [int]$MaxDepth)
-
-                $stats = [PSCustomObject]@{
+                param([string]$FolderPath, [int]$CurrentDepth, [int]$MaxDepth)                $stats = [PSCustomObject]@{
                     Path = $FolderPath
                     SizeBytes = 0
                     FileCount = 0
@@ -578,6 +584,7 @@ function Get-ParallelFolderStatistic {
                     IsAccessible = $true
                     HasCloudFiles = $false
                     Error = $null
+                    MaxDepthReached = $false
                 }
 
                 try {
@@ -612,6 +619,11 @@ function Get-ParallelFolderStatistic {
 
                                     if ($subStats.HasCloudFiles) { $stats.HasCloudFiles = $true }
 
+                                    # Propagate MaxDepthReached flag
+                                    if ($subStats.MaxDepthReached) {
+                                        $stats.MaxDepthReached = $true
+                                    }
+
                                     # Propagate inaccessibility from subdirectories
                                     if (-not $subStats.IsAccessible) {
                                         Write-RunspaceDebug -Message "Subfolder marked as inaccessible: $($item.FullName)" -Category "ERROR_PROPAGATION"
@@ -619,6 +631,8 @@ function Get-ParallelFolderStatistic {
                                 }
                             } else {
                                 Write-RunspaceDebug -Message "Max depth reached, skipping subfolder: $($item.FullName)" -Category "FOLDER_SCAN"
+                                # Max depth reached - set flag
+                                $stats.MaxDepthReached = $true
                             }
                         } else {
                             $stats.FileCount++
@@ -656,8 +670,7 @@ function Get-ParallelFolderStatistic {
                 # Ensure we return only the PSCustomObject and suppress any other output
                 Write-Output $finalResult
                 return
-            } catch {
-                # Return error result if main function fails
+            } catch {                # Return error result if main function fails
                 $errorResult = [PSCustomObject]@{
                     Path = $FolderPath
                     SizeBytes = 0
@@ -668,6 +681,7 @@ function Get-ParallelFolderStatistic {
                     IsAccessible = $false
                     HasCloudFiles = $false
                     Error = $_.Exception.Message
+                    MaxDepthReached = $false
                 }
                 Write-RunspaceDebug -Message "Returning error result for $FolderPath`: $($_.Exception.Message)" -Category "ERROR_RETURN"
                 Write-Output -InputObject $errorResult
@@ -914,9 +928,7 @@ function Get-ParallelFolderStatistic {
 
                             if ($cleanValidResults.Count -gt 0) {
                                 $results += $cleanValidResults
-                                Write-DebugInfo -Message "Added $($cleanValidResults.Count) valid results from job" -Category "JOB_RESULTS"
-
-                                # Process each valid result for error tracking
+                                Write-DebugInfo -Message "Added $($cleanValidResults.Count) valid results from job" -Category "JOB_RESULTS"                                # Process each valid result for error tracking
                                 foreach ($validResult in $cleanValidResults) {
                                     if (-not $validResult.IsAccessible) {
                                         $Script:InaccessibleFolderCount++
@@ -924,6 +936,12 @@ function Get-ParallelFolderStatistic {
                                             $Script:ErrorTracker[$validResult.Path] = $validResult.Error
                                             Write-DebugInfo -Message "Collected error: $($validResult.Path) - $($validResult.Error)" -Category "ERROR_COLLECTION"
                                         }
+                                    }
+
+                                    # Check if max depth was reached in any result
+                                    if ($validResult.PSObject.Properties.Name -contains 'MaxDepthReached' -and $validResult.MaxDepthReached) {
+                                        $Script:MaxDepthReached = $true
+                                        Write-DebugInfo -Message "Max depth reached detected from: $($validResult.Path)" -Category "MAX_DEPTH_TRACKING"
                                     }
                                 }
                             } else {
@@ -1325,17 +1343,22 @@ function Show-HierarchicalSummary {
                                 $discrepancyPercent = if ($driveUsedSpace -gt 0) { [math]::Round(($discrepancy / $driveUsedSpace) * 100, 1) } else { 0 }
                             }
                         }
-
                         Write-Output "`n$($Script:Colors.Bold)REMAINING UNACCOUNTED SPACE$($Script:Colors.Reset)"
                         if ($discrepancy -gt 0) {
                             Write-Output "$($Script:Colors.White)After Estimates: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $discrepancy) ($discrepancyPercent%)$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.DarkGray)Remaining factors may include:$($Script:Colors.Reset)"
-                            Write-Output "$($Script:Colors.DarkGray)  - Deep directory structures exceeding MaxDepth$($Script:Colors.Reset)"
+
+                            # Only show deep directory message if max depth was actually reached
+                            if ($Script:MaxDepthReached) {
+                                Write-Output "$($Script:Colors.DarkGray)  - Deep directory structures exceeding MaxDepth$($Script:Colors.Reset)"
+                            }
+
                             Write-Output "$($Script:Colors.DarkGray)  - Additional system files and hidden data$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.DarkGray)  - File system reserved clusters and bad sectors$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.DarkGray)  - Virtual memory files and hibernation data$($Script:Colors.Reset)"
 
-                            if ($discrepancyPercent -gt 10) {
+                            # Only suggest increasing MaxDepth if it was actually reached and discrepancy is significant
+                            if ($discrepancyPercent -gt 10 -and $Script:MaxDepthReached) {
                                 Write-Output "$($Script:Colors.Yellow)Consider increasing MaxDepth parameter for more complete analysis$($Script:Colors.Reset)"
                             }
                         } else {
