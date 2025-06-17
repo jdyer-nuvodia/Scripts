@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-17 00:30:00 UTC
+# Last Updated: 2025-06-17 00:33:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.6.3
-# Additional Info: PATCH FIX - Fixed null reference errors in debug messages and result processing
+# Version: 2.6.4
+# Additional Info: PATCH FIX - Fixed debug messages from parallel runspaces not appearing in the transcript log
 # =============================================================================
 
 <#
@@ -505,7 +505,8 @@ function Get-ParallelFolderStatistic {
             # Ensure all output goes to the right place
             $null = $PSCmdlet
               # Debug flag passed from main script
-              $DebugEnabled = $EnableDebug            # Debug output function for runspace - uses Write-Output with special prefix for filtering
+              $DebugEnabled = $EnableDebug
+              # Debug output function for runspace - uses Write-Output with special prefix for filtering
               function Write-RunspaceDebug {
                 param([string]$Message, [string]$Category = "RUNSPACE")
                 if ($DebugEnabled) {
@@ -514,9 +515,8 @@ function Get-ParallelFolderStatistic {
                     $debugPrefix = "RUNSPACE_DEBUG:"
                     $formattedMsg = "$debugPrefix [$timestamp] [$Category] $Message"
 
-                    # Instead of using PSCmdlet which may be null in this context,
-                    # use Write-Error explicitly to send debug info to error stream
-                    # This provides better compatibility with the runspace environment
+                    # Write to both error stream and standard output to ensure it appears in both console and transcript
+                    # Error stream for immediate console display
                     $errorParams = @{
                         Message = $formattedMsg
                         ErrorId = "DebugMessage:$Category"
@@ -524,8 +524,11 @@ function Get-ParallelFolderStatistic {
                         ErrorAction = 'Continue'
                         TargetObject = $null
                     }
-
                     Write-Error @errorParams
+
+                    # Also write to standard output with special prefix to ensure it's captured in transcript
+                    # This will be included in the transcript log
+                    Write-Output "##TRANSCRIPT_DEBUG## $formattedMsg"
                 }
             }
             # Import required functions into runspace
@@ -642,8 +645,10 @@ function Get-ParallelFolderStatistic {
                     Write-RunspaceDebug -Message "ERROR: Failed to access $FolderPath - $errorMessage" -Category "FOLDER_ERROR"
                     Write-RunspaceDebug -Message "Exception Type: $($_.Exception.GetType().FullName)" -Category "FOLDER_ERROR"
                     Write-RunspaceDebug -Message "Full Exception: $($_.Exception | Out-String)" -Category "FOLDER_ERROR"
-                }                return $stats
-            }            # Execute the main function and ensure clean return value
+                }
+                return $stats
+            }
+            # Execute the main function and ensure clean return value
             try {
                 $finalResult = Get-FolderStatisticInternal -FolderPath $FolderPath -CurrentDepth 0 -MaxDepth $MaxDepth
                 Write-RunspaceDebug -Message "Final result for $FolderPath`: Size=$($finalResult.SizeBytes), Accessible=$($finalResult.IsAccessible)" -Category "RETURN"
@@ -681,7 +686,8 @@ function Get-ParallelFolderStatistic {
                 Handle = $powershell.BeginInvoke()
                 Path = $folder
             }
-        }        # Collect results with enhanced progress tracking and timeout
+        }
+        # Collect results with enhanced progress tracking and timeout
         $completed = 0
         $timeout = (Get-Date).AddMinutes(15)  # Increased timeout for deep analysis
         $lastProgress = Get-Date
@@ -766,7 +772,8 @@ function Get-ParallelFolderStatistic {
                         Write-Output "$($Script:Colors.Red)Failed to get result from job for '$($job.Path)': $($_.Exception.Message)$($Script:Colors.Reset)"
                         continue
                     }
-                    Write-DebugInfo -Message "Job for '$($job.Path)' completed. Processing results..." -Category "JOB_RESULTS"                    # Process error stream for any real errors (not debug messages) - improved filtering
+                    Write-DebugInfo -Message "Job for '$($job.Path)' completed. Processing results..." -Category "JOB_RESULTS"
+                    # Process error stream for any real errors (not debug messages) - improved filtering
                     if ($errorOutput -and $errorOutput.Count -gt 0) {
                         Write-DebugInfo -Message "Job for '$($job.Path)' produced $($errorOutput.Count) error messages" -Category "JOB_RESULTS"
 
@@ -802,12 +809,34 @@ function Get-ParallelFolderStatistic {
                             Write-DebugInfo -Message "Processed $($debugMessages.Count) debug messages and $($realErrors.Count) real errors" -Category "JOB_RESULTS"
                         }
                     }
-
                     # Process Information stream for any remaining messages (should be empty now)
                     if ($informationOutput -and $informationOutput.Count -gt 0 -and $DebugPreference -ne 'SilentlyContinue') {
                         Write-DebugInfo -Message "Job for '$($job.Path)' had unexpected Information stream output: $($informationOutput.Count) messages" -Category "JOB_RESULTS"
-                    }                    if ($result) {                    # Separate debug messages from actual results - enhanced validation
+                    }
+
+                    if ($result) {
+                        # Separate debug messages from actual results - enhanced validation
                         $validResults = @()
+
+                        # Process any transcript debug messages that came through in the output
+                        if ($result -is [array]) {
+                            foreach ($item in $result) {
+                                if ($item -is [string] -and $item -match '##TRANSCRIPT_DEBUG##') {
+                                    # This is a debug message from a runspace that needs to be properly formatted
+                                    $debugMsg = $item -replace '##TRANSCRIPT_DEBUG## ', ''
+                                    # Write it directly to the transcript using Write-Output with proper coloring
+                                    Write-Output "$($Script:Colors.Magenta)$debugMsg$($Script:Colors.Reset)"
+                                }
+                            }
+
+                            # Remove all transcript debug messages from results
+                            $result = @($result | Where-Object { -not ($_ -is [string] -and $_ -match '##TRANSCRIPT_DEBUG##') })
+                        } elseif ($result -is [string] -and $result -match '##TRANSCRIPT_DEBUG##') {
+                            # Handle single string result that's a debug message
+                            $debugMsg = $result -replace '##TRANSCRIPT_DEBUG## ', ''
+                            Write-Output "$($Script:Colors.Magenta)$debugMsg$($Script:Colors.Reset)"
+                            $result = $null
+                        }
 
                         # Debug the raw result type and content
                         if ($DebugPreference -ne 'SilentlyContinue') {
@@ -872,7 +901,8 @@ function Get-ParallelFolderStatistic {
                             } else {
                                 Write-DebugInfo -Message "Received invalid result object, skipping" -Category "JOB_RESULTS"
                             }
-                        }                        if ($validResults.Count -gt 0) {
+                        }
+                        if ($validResults.Count -gt 0) {
                             # Extra validation to ensure we're only adding PSCustomObject instances
                             $cleanValidResults = @($validResults | Where-Object {
                                 $_ -is [PSCustomObject] -and -not ($_ -is [string])
@@ -908,8 +938,7 @@ function Get-ParallelFolderStatistic {
                         Write-DebugInfo -Message "Job for '$($job.Path)' returned null result" -Category "JOB_RESULTS"
                     }
                 } else {
-                    Write-Output "$($Script:Colors.Yellow)Warning: Job for $($job.Path) did not complete. Skipping.$($Script:Colors.Reset)"
-                    # Try to stop the incomplete job safely
+                    Write-Output "$($Script:Colors.Yellow)Warning: Job for $($job.Path) did not complete. Skipping.$($Script:Colors.Reset)"                    # Try to stop the incomplete job safely
                     try {
                         if ($job.PowerShell -and $job.PowerShell.InvocationStateInfo.State -eq 'Running') {
                             $job.PowerShell.Stop()
@@ -933,7 +962,8 @@ function Get-ParallelFolderStatistic {
                     Write-DebugInfo -Message "Unable to dispose PowerShell job for '$($job.Path)': $($_.Exception.Message)" -Category "JOB_CLEANUP"
                 }
             }
-        }        # Enhanced runspace cleanup with detailed logging
+        }
+        # Enhanced runspace cleanup with detailed logging
         Write-DebugInfo -Message "Starting runspace pool cleanup" -Category "CLEANUP"
         try {
             if ($runspacePool) {
@@ -1900,7 +1930,9 @@ function Main {
                 $Script:ProcessedFolders++
             }
             catch {
-                Write-Output "$($Script:Colors.Yellow)Warning: Could not analyze root directory files: $($_.Exception.Message)$($Script:Colors.Reset)"            }            # Secondary analysis: Collect direct subfolders of the largest directories for hierarchical display
+                Write-Output "$($Script:Colors.Yellow)Warning: Could not analyze root directory files: $($_.Exception.Message)$($Script:Colors.Reset)"
+            }
+            # Secondary analysis: Collect direct subfolders of the largest directories for hierarchical display
             Write-ProgressUpdate -Activity "Analysis" -Status "Collecting subfolder details for hierarchical display..." -Color "Cyan"
             $additionalResults = @()
 
