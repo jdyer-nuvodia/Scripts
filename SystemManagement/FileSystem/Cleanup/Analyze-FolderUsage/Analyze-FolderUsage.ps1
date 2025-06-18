@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-18 00:10:00 UTC
+# Last Updated: 2025-06-18 00:56:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.7.0
-# Additional Info: FIXED - Runspace debug messages now properly displayed; PSDataCollection handling corrected
+# Version: 2.8.1
+# Additional Info: FIXED - PSScriptAnalyzer compliance; empty catch blocks and trailing whitespace resolved
 # =============================================================================
 
 <#
@@ -124,6 +124,47 @@ $Script:LogMutex = $null
 $Script:EnableCentralLogging = $false
 
 # Debug and Verbose Logging Functions
+function Initialize-CentralLogging {
+    <#
+    .SYNOPSIS
+    Initializes centralized logging for both main thread and runspace debug messages.
+    #>
+    [CmdletBinding()]
+    param()
+
+    try {
+        # Create central log file path
+        $computerName = $env:COMPUTERNAME
+        $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+        $logFileName = "Analyze-FolderUsage_Central_${computerName}_${timestamp}.log"
+        $Script:CentralLogPath = Join-Path -Path $PSScriptRoot -ChildPath $logFileName
+
+        # Initialize mutex for thread safety
+        $Script:LogMutex = New-Object System.Threading.Mutex($false, "AnalyzeFolderUsageCentralLog")        # Enable central logging
+        $Script:EnableCentralLogging = $true
+
+        # Create initial log entry
+        $headerText = @"
+===============================================
+CENTRAL DEBUG LOG - FOLDER USAGE ANALYZER v2.8.1
+===============================================
+Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+Computer: $computerName
+PowerShell Version: $($PSVersionTable.PSVersion)
+Process ID: $PID
+===============================================
+
+"@
+        Set-Content -Path $Script:CentralLogPath -Value $headerText -Encoding UTF8 -ErrorAction Stop
+
+        Write-Output "$($Script:Colors.Cyan)Central logging initialized: $Script:CentralLogPath$($Script:Colors.Reset)"
+        return $Script:CentralLogPath    } catch {
+        Write-Warning "Failed to initialize central logging: $($_.Exception.Message)"
+        $Script:EnableCentralLogging = $false
+        return $null
+    }
+}
+
 function Write-CentralLog {
     <#
     .SYNOPSIS
@@ -299,6 +340,47 @@ Process ID: $PID
         Write-Output "$($Script:Colors.Yellow)Warning: Could not start transcript: $($_.Exception.Message). Continuing without logging.$($Script:Colors.Reset)"
         $Script:EnableCentralLogging = $false
         return $null
+    }
+}
+
+function Clear-CentralLogging {
+    <#
+    .SYNOPSIS    Cleans up central logging resources and finalizes the log file.
+    #>
+    [CmdletBinding()]
+    param()
+
+    try {
+        if ($Script:EnableCentralLogging -and $Script:CentralLogPath) {
+            # Write final log entry
+            $finalEntry = @"
+
+===============================================
+LOG SESSION COMPLETED
+===============================================
+End time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+Total duration: $((Get-Date).Subtract($Script:StartTime).ToString())
+===============================================
+"@
+Add-Content -Path $Script:CentralLogPath -Value $finalEntry -Encoding UTF8 -ErrorAction SilentlyContinue
+
+            Write-Output "$($Script:Colors.Cyan)Central debug log finalized: $Script:CentralLogPath$($Script:Colors.Reset)"
+        }
+
+        # Clean up mutex
+        if ($Script:LogMutex) {
+            try {
+                $Script:LogMutex.Dispose()
+            } catch {
+                Write-Error "Failed to dispose logging mutex: $($_.Exception.Message)" -ErrorAction SilentlyContinue            }
+            $Script:LogMutex = $null
+        }
+
+        # Disable logging
+        $Script:EnableCentralLogging = $false
+    }
+    catch {
+        Write-Verbose "Error during central logging cleanup: $($_.Exception.Message)"
     }
 }
 
@@ -650,25 +732,28 @@ function Get-ParallelFolderStatistic {
 
               # Make CentralLogPath available to nested functions
               $script:CentralLogPath = $CentralLogPath
-
               # Debug output function for runspace - using centralized logging
               function Write-RunspaceDebug {
                 param([string]$Message, [string]$Category = "RUNSPACE")
 
-                if ($DebugEnabled -and $script:CentralLogPath) {
+                if ($DebugEnabled) {
                     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
                     $logEntry = "[$timestamp] [RUNSPACE] [$Category] $Message"
 
-                    # Write directly to the centralized log file
+                    # ALWAYS write to error stream for real-time capture by main thread
                     try {
-                        # Use Add-Content for thread-safe writing (basic level)
-                        Add-Content -Path $script:CentralLogPath -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
+                        Microsoft.PowerShell.Utility\Write-Error -Message "RUNSPACE_DEBUG: [$timestamp] [$Category] $Message" -ErrorId "DebugMessage:$Category" -Category NotSpecified
                     } catch {
-                        # Fallback to error stream if file writing fails
+                        # If error stream fails, try verbose as backup
+                        Write-Verbose "RUNSPACE_DEBUG: [$timestamp] [$Category] $Message"
+                    }
+                    # Also write to central log file if available
+                    if ($script:CentralLogPath) {
                         try {
-                            Microsoft.PowerShell.Utility\Write-Error -Message "RUNSPACE_DEBUG: [$timestamp] [$Category] $Message" -ErrorId "DebugMessage:$Category" -Category NotSpecified                        } catch {
-                            # Last resort - do nothing rather than contaminate output
-                            Write-Verbose "Runspace debug fallback failed: $($_.Exception.Message)"
+                            # Use Add-Content for thread-safe writing (basic level)
+                            Add-Content -Path $script:CentralLogPath -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
+                        } catch {
+                            Write-Error "Failed to write to central log file: $($_.Exception.Message)" -ErrorAction SilentlyContinue
                         }
                     }
                 }
@@ -1964,8 +2049,11 @@ function Main {
     try {
         # Initialize and display header
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v2.7.0    $($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v2.8.0    $($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
+
+        # Initialize central logging for debug messages
+        Initialize-CentralLogging | Out-Null
 
         # Administrative privilege check
         $Script:IsAdmin = Test-AdminPrivilege
@@ -2256,8 +2344,10 @@ function Main {
         Write-Output "$($Script:Colors.Red)Stack trace: $($_.ScriptStackTrace)$($Script:Colors.Reset)"
     }
     finally {
-        # Cleanup and finalization - ALWAYS executed
-        Write-ProgressUpdate -Activity "Analysis" -Status "Complete" -Completed
+        # Cleanup and finalization - ALWAYS executed        Write-ProgressUpdate -Activity "Analysis" -Status "Complete" -Completed
+
+        # Clean up central logging
+        Clear-CentralLogging
 
         # Enhanced transcript cleanup with multiple fallback methods
         if (Test-TranscriptRunning) {
