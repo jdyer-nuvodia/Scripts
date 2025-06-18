@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-18 00:56:00 UTC
+# Last Updated: 2025-06-18 01:23:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.8.1
-# Additional Info: FIXED - PSScriptAnalyzer compliance; empty catch blocks and trailing whitespace resolved
+# Version: 2.9.0
+# Additional Info: FEATURE - Central debug logging now only activated with -Debug parameter; Verbose output routed to transcript log
 # =============================================================================
 
 <#
@@ -127,26 +127,32 @@ $Script:EnableCentralLogging = $false
 function Initialize-CentralLogging {
     <#
     .SYNOPSIS
-    Initializes centralized logging for both main thread and runspace debug messages.
+    Initializes centralized logging for debug messages only when -Debug is specified.
     #>
     [CmdletBinding()]
     param()
+
+    # Only initialize central logging if Debug preference is enabled
+    if ($DebugPreference -eq 'SilentlyContinue') {
+        Write-Verbose "Debug mode not enabled - skipping central debug log initialization"
+        $Script:EnableCentralLogging = $false
+        return $null
+    }
 
     try {
         # Create central log file path
         $computerName = $env:COMPUTERNAME
         $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-        $logFileName = "Analyze-FolderUsage_Central_${computerName}_${timestamp}.log"
-        $Script:CentralLogPath = Join-Path -Path $PSScriptRoot -ChildPath $logFileName
+        $logFileName = "Analyze-FolderUsage_CENTRAL_${computerName}_${timestamp}.log"
+        $Script:CentralLogPath = Join-Path -Path $PSScriptRoot -ChildPath $logFileName        # Initialize mutex for thread safety
+        $Script:LogMutex = New-Object System.Threading.Mutex($false, "AnalyzeFolderUsageCentralLog")
 
-        # Initialize mutex for thread safety
-        $Script:LogMutex = New-Object System.Threading.Mutex($false, "AnalyzeFolderUsageCentralLog")        # Enable central logging
+        # Enable central logging
         $Script:EnableCentralLogging = $true
-
         # Create initial log entry
         $headerText = @"
 ===============================================
-CENTRAL DEBUG LOG - FOLDER USAGE ANALYZER v2.8.1
+CENTRAL DEBUG LOG - FOLDER USAGE ANALYZER v2.9.0
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -157,8 +163,9 @@ Process ID: $PID
 "@
         Set-Content -Path $Script:CentralLogPath -Value $headerText -Encoding UTF8 -ErrorAction Stop
 
-        Write-Output "$($Script:Colors.Cyan)Central logging initialized: $Script:CentralLogPath$($Script:Colors.Reset)"
-        return $Script:CentralLogPath    } catch {
+        Write-Output "$($Script:Colors.Cyan)Central debug logging initialized: $Script:CentralLogPath$($Script:Colors.Reset)"
+        return $Script:CentralLogPath
+    } catch {
         Write-Warning "Failed to initialize central logging: $($_.Exception.Message)"
         $Script:EnableCentralLogging = $false
         return $null
@@ -168,7 +175,7 @@ Process ID: $PID
 function Write-CentralLog {
     <#
     .SYNOPSIS
-    Thread-safe centralized logging function that captures output from both main thread and runspaces.
+    Thread-safe centralized logging function that captures DEBUG output only when -Debug is specified.
     #>
     [CmdletBinding()]
     param(
@@ -185,7 +192,8 @@ function Write-CentralLog {
         [switch]$NoConsole
     )
 
-    if (-not $Script:EnableCentralLogging -or [string]::IsNullOrEmpty($Script:CentralLogPath)) {
+    # Only log to central log if debug mode is enabled and central logging is initialized
+    if (-not $Script:EnableCentralLogging -or [string]::IsNullOrEmpty($Script:CentralLogPath) -or $DebugPreference -eq 'SilentlyContinue') {
         return
     }
 
@@ -255,7 +263,14 @@ function Write-VerboseInfo {
         [string]$Message,
         [string]$Category = "VERBOSE"
     )
-    if ($VerbosePreference -ne 'SilentlyContinue' -or $DebugPreference -ne 'SilentlyContinue') {
+    # Use PowerShell's built-in Write-Verbose which will output to transcript when -Verbose is used
+    if ($VerbosePreference -ne 'SilentlyContinue') {
+        $timestamp = Get-Date -Format "HH:mm:ss.fff"
+        $formattedMessage = "[$timestamp] [$Category] $Message"
+        Write-Verbose $formattedMessage
+    }
+    # Also show verbose info when debug is enabled
+    if ($DebugPreference -ne 'SilentlyContinue') {
         $timestamp = Get-Date -Format "HH:mm:ss.fff"
         Write-Output "$($Script:Colors.DarkGray)[$timestamp] [$Category] $Message$($Script:Colors.Reset)"
     }
@@ -292,7 +307,7 @@ function Start-AdvancedTranscript {
 
         $computerName = $env:COMPUTERNAME
         $timestamp = (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss")
-        $logFileName = "Analyze-FolderUsage_${computerName}_${timestamp}.log"
+        $logFileName = "Analyze-FolderUsage_TRANSCRIPT_${computerName}_${timestamp}.log"
         $fullLogPath = Join-Path -Path $LogPath -ChildPath $logFileName
 
         # Ensure log directory exists
@@ -300,25 +315,10 @@ function Start-AdvancedTranscript {
             if ($PSCmdlet.ShouldProcess($LogPath, "Create log directory")) {
                 New-Item -Path $LogPath -ItemType Directory -Force | Out-Null
             }
-        }
-
-        # Initialize centralized logging
-        $Script:CentralLogPath = $fullLogPath
-        $Script:EnableCentralLogging = $true
-
-        # Create mutex for thread-safe logging
-        try {
-            $Script:LogMutex = New-Object System.Threading.Mutex($false, "AnalyzeFolderUsageLogMutex")
-        }
-        catch {
-            Write-Output "$($Script:Colors.Yellow)Warning: Could not create log mutex, logging may not be thread-safe$($Script:Colors.Reset)"
-            $Script:LogMutex = $null
-        }
-
-        # Create initial log file with header
+        }        # Create initial log file with header
         $headerText = @"
 ===============================================
-ULTRA-FAST FOLDER USAGE ANALYZER v2.7.0 LOG
+ULTRA-FAST FOLDER USAGE ANALYZER v2.9.0 TRANSCRIPT LOG
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -332,13 +332,12 @@ Process ID: $PID
         if ($PSCmdlet.ShouldProcess($fullLogPath, "Start transcript")) {
             Start-Transcript -Path $fullLogPath -Append -Force | Out-Null
             Write-Output "$($Script:Colors.Green)Advanced transcript started: $fullLogPath$($Script:Colors.Reset)"
-            Write-CentralLog -Message "Centralized logging initialized" -Category "SYSTEM" -Source "MAIN"
+            Write-Verbose "Transcript logging initialized for all verbose output"
         }
         return $fullLogPath
     }
     catch {
         Write-Output "$($Script:Colors.Yellow)Warning: Could not start transcript: $($_.Exception.Message). Continuing without logging.$($Script:Colors.Reset)"
-        $Script:EnableCentralLogging = $false
         return $null
     }
 }
@@ -393,7 +392,7 @@ function Stop-AdvancedTranscript {
     try {
         if ($PSCmdlet.ShouldProcess("Transcript", "Stop transcript")) {
             # Write final log entry
-            Write-CentralLog -Message "Stopping transcript and cleaning up logging" -Category "SYSTEM" -Source "MAIN"
+            Write-Verbose "Stopping transcript"
 
             # First try normal stop
             Stop-Transcript -ErrorAction Stop
@@ -439,21 +438,6 @@ function Stop-AdvancedTranscript {
         [System.GC]::Collect()
         [System.GC]::WaitForPendingFinalizers()
         [System.GC]::Collect()
-    }
-    finally {
-        # Clean up centralized logging
-        if ($Script:LogMutex) {
-            try {
-                $Script:LogMutex.Dispose()            }
-            catch {
-                # Ignore disposal errors
-                Write-Verbose "Mutex disposal failed: $($_.Exception.Message)"
-            }
-            $Script:LogMutex = $null
-        }
-
-        $Script:EnableCentralLogging = $false
-        $Script:CentralLogPath = $null
     }
 }
 
@@ -2039,21 +2023,26 @@ function Main {
         [int]$Top,
         [int]$MaxThreads
     )
+
     $scriptPath = if ($MyInvocation.MyCommand.Path) {
         Split-Path -Parent $MyInvocation.MyCommand.Path
     } else {
         Split-Path -Parent $PSCommandPath
     }
     $logPath = Start-AdvancedTranscript -LogPath $scriptPath
-
     try {
         # Initialize and display header
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v2.8.0    $($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v2.9.0    $($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
 
-        # Initialize central logging for debug messages
-        Initialize-CentralLogging | Out-Null
+        # Initialize central logging for debug messages ONLY if -Debug is specified
+        if ($DebugPreference -ne 'SilentlyContinue') {
+            Initialize-CentralLogging | Out-Null
+            Write-Output "$($Script:Colors.Magenta)Debug mode enabled - Central debug logging active$($Script:Colors.Reset)"
+        } else {
+            Write-Verbose "Running in normal mode - Debug logging disabled, Verbose output goes to transcript"
+        }
 
         # Administrative privilege check
         $Script:IsAdmin = Test-AdminPrivilege
@@ -2062,28 +2051,24 @@ function Main {
         } else {
             "$($Script:Colors.Yellow)Standard User$($Script:Colors.Reset)"
         }
-        Write-Output "$($Script:Colors.White)Running as: $adminStatus$($Script:Colors.Reset)"
-
-        # Display configuration
-        Write-Output "$($Script:Colors.White)Start Path: $($Script:Colors.Cyan)$StartPath$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Max Depth: $($Script:Colors.Cyan)$MaxDepth$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Top Folders: $($Script:Colors.Cyan)$Top$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Max Threads: $($Script:Colors.Cyan)$MaxThreads$($Script:Colors.Reset)"
-
-        # Extract and display drive information for the target drive
+        Write-Output "$($Script:Colors.White)Running as: $adminStatus$($Script:Colors.Reset)"        # Display configuration
+        Write-Output "$($Script:Colors.White)Start Path: $($Script:Colors.Cyan)$($PSBoundParameters['StartPath'])$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Max Depth: $($Script:Colors.Cyan)$($PSBoundParameters['MaxDepth'])$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Top Folders: $($Script:Colors.Cyan)$($PSBoundParameters['Top'])$($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.White)Max Threads: $($Script:Colors.Cyan)$($PSBoundParameters['MaxThreads'])$($Script:Colors.Reset)"        # Extract and display drive information for the target drive
         try {
-            $driveLetter = [System.IO.Path]::GetPathRoot($StartPath).TrimEnd('\').TrimEnd(':')
+            $driveLetter = [System.IO.Path]::GetPathRoot($PSBoundParameters['StartPath']).TrimEnd('\').TrimEnd(':')
             if ($driveLetter -and $driveLetter.Length -eq 1) {
                 Show-DriveInfo -DriveLetter $driveLetter
             }
         }
         catch {
-            Write-Output "$($Script:Colors.Yellow)Warning: Could not extract drive information from path: $StartPath$($Script:Colors.Reset)"
+            Write-Output "$($Script:Colors.Yellow)Warning: Could not extract drive information from path: $($PSBoundParameters['StartPath'])$($Script:Colors.Reset)"
         }
 
         Write-Output ""
 
-        if ($PSCmdlet.ShouldProcess($StartPath, "Analyze folder usage")) {            # Get top-level directories for parallel processing
+        if ($PSCmdlet.ShouldProcess($PSBoundParameters['StartPath'], "Analyze folder usage")) {            # Get top-level directories for parallel processing
             Write-ProgressUpdate -Activity "Initialization" -Status "Scanning top-level directories..." -Color "Cyan"            # Known problematic directories that can cause hangs
             $problematicDirs = @(
                 "System Volume Information",
@@ -2103,9 +2088,8 @@ function Main {
             $topLevelDirs = @()
             $problematicDirsFound = @()
             $systemFilesFound = @()
-
             try {
-                $items = Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop
+                $items = Get-ChildItem -Path $PSBoundParameters['StartPath'] -Directory -Force -ErrorAction Stop
 
                 # Separate normal directories from problematic ones
                 foreach ($item in $items) {
@@ -2118,11 +2102,9 @@ function Main {
                     } else {
                         $topLevelDirs += $item.FullName
                     }
-                }
-
-                # Check for system files at root level
+                }                # Check for system files at root level
                 try {
-                    $rootItems = Get-ChildItem -Path $StartPath -File -Force -ErrorAction SilentlyContinue
+                    $rootItems = Get-ChildItem -Path $PSBoundParameters['StartPath'] -File -Force -ErrorAction SilentlyContinue
                     foreach ($file in $rootItems) {
                         if ($systemFiles -contains $file.Name) {
                             $systemFilesFound += $file
@@ -2134,10 +2116,8 @@ function Main {
                 }
                 $Script:TotalFolders = $topLevelDirs.Count
 
-                Write-Output "$($Script:Colors.Green)Found $($topLevelDirs.Count) top-level directories to analyze$($Script:Colors.Reset)"
-
-                # Debug logging for directory discovery
-                Write-DebugInfo -Message "Total directories found in $StartPath`: $($items.Count)" -Category "DISCOVERY"
+                Write-Output "$($Script:Colors.Green)Found $($topLevelDirs.Count) top-level directories to analyze$($Script:Colors.Reset)"                # Debug logging for directory discovery
+                Write-DebugInfo -Message "Total directories found in $($PSBoundParameters['StartPath']): $($items.Count)" -Category "DISCOVERY"
                 Write-DebugInfo -Message "Normal directories: $($topLevelDirs.Count)" -Category "DISCOVERY"
                 Write-DebugInfo -Message "Problematic directories: $($problematicDirsFound.Count)" -Category "DISCOVERY"
                   if ($DebugPreference -ne 'SilentlyContinue') {
@@ -2170,14 +2150,14 @@ function Main {
                 Write-Output "$($Script:Colors.Yellow)No directories found to analyze.$($Script:Colors.Reset)"
                 return
             }            # Perform parallel analysis
-            Write-DetailedProgress -Activity "Analysis" -Status "Starting parallel folder analysis..." -Color "Cyan" -Detail "Processing $($topLevelDirs.Count) directories with $MaxThreads threads, MaxDepth=$MaxDepth"
+            Write-DetailedProgress -Activity "Analysis" -Status "Starting parallel folder analysis..." -Color "Cyan" -Detail "Processing $($topLevelDirs.Count) directories with $($PSBoundParameters['MaxThreads']) threads, MaxDepth=$($PSBoundParameters['MaxDepth'])"
 
             Write-DebugInfo -Message "Starting parallel analysis with parameters:" -Category "PARALLEL_START"
             Write-DebugInfo -Message "  Directories to process: $($topLevelDirs.Count)" -Category "PARALLEL_START"
-            Write-DebugInfo -Message "  Max Depth: $MaxDepth" -Category "PARALLEL_START"
-            Write-DebugInfo -Message "  Max Threads: $MaxThreads" -Category "PARALLEL_START"
+            Write-DebugInfo -Message "  Max Depth: $($PSBoundParameters['MaxDepth'])" -Category "PARALLEL_START"
+            Write-DebugInfo -Message "  Max Threads: $($PSBoundParameters['MaxThreads'])" -Category "PARALLEL_START"
 
-            $results = Get-ParallelFolderStatistic -FolderPaths $topLevelDirs -MaxDepth $MaxDepth -MaxThreads $MaxThreads
+            $results = Get-ParallelFolderStatistic -FolderPaths $topLevelDirs -MaxDepth $PSBoundParameters['MaxDepth'] -MaxThreads $PSBoundParameters['MaxThreads']
 
             Write-DebugInfo -Message "Parallel analysis completed. Results count: $($results.Count)" -Category "PARALLEL_COMPLETE"
 
@@ -2227,7 +2207,7 @@ function Main {
             }            # Analyze the StartPath directory itself for files at the root level
             Write-ProgressUpdate -Activity "Analysis" -Status "Analyzing root directory files..." -Color "Cyan"
             try {
-                $rootFiles = Get-ChildItem -Path $StartPath -File -Force -ErrorAction Stop
+                $rootFiles = Get-ChildItem -Path $PSBoundParameters['StartPath'] -File -Force -ErrorAction Stop
 
                 # Calculate cumulative size: subdirectories + root files + problematic directories
                 $subdirectoryTotalSize = ($results | Where-Object { $_.IsAccessible } | Measure-Object -Property SizeBytes -Sum).Sum
@@ -2327,16 +2307,15 @@ function Main {
             Write-DebugInfo -Message "FINAL CLEANUP: Original results: $($results.Count), Clean results: $($cleanResults.Count)" -Category "CLEANUP"
             $results = $cleanResults
 
-            Show-HierarchicalResult -Results $results -StartPath $StartPath -Top $Top -SafeResults $safeResults
+            Show-HierarchicalResult -Results $results -StartPath $PSBoundParameters['StartPath'] -Top $PSBoundParameters['Top'] -SafeResults $safeResults
             Show-ErrorSummary
 
             Write-Output "`n$($Script:Colors.Green)Analysis completed successfully!$($Script:Colors.Reset)"
-        }
-        else {
-            Write-Output "$($Script:Colors.Yellow)WhatIf: Would analyze folder usage starting from '$StartPath'$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.Yellow)WhatIf: Would scan up to $MaxDepth levels deep$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.Yellow)WhatIf: Would display top $Top largest folders$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.Yellow)WhatIf: Would use $MaxThreads parallel threads$($Script:Colors.Reset)"
+        }        else {
+            Write-Output "$($Script:Colors.Yellow)WhatIf: Would analyze folder usage starting from '$($PSBoundParameters['StartPath'])'$($Script:Colors.Reset)"
+            Write-Output "$($Script:Colors.Yellow)WhatIf: Would scan up to $($PSBoundParameters['MaxDepth']) levels deep$($Script:Colors.Reset)"
+            Write-Output "$($Script:Colors.Yellow)WhatIf: Would display top $($PSBoundParameters['Top']) largest folders$($Script:Colors.Reset)"
+            Write-Output "$($Script:Colors.Yellow)WhatIf: Would use $($PSBoundParameters['MaxThreads']) parallel threads$($Script:Colors.Reset)"
         }
     }
     catch {
