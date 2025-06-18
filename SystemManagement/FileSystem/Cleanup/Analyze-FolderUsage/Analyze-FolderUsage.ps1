@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-17 21:15:00 UTC
+# Last Updated: 2025-06-18 00:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.6.7
-# Additional Info: Fixed runspace debug message transcript capture using Write-Information with -InformationAction Continue
+# Version: 2.7.0
+# Additional Info: FIXED - Runspace debug messages now properly displayed; PSDataCollection handling corrected
 # =============================================================================
 
 <#
@@ -118,7 +118,80 @@ $Script:InaccessibleFolderCount = 0
 $Script:StartTime = Get-Date
 $Script:MaxDepthReached = $false
 
+# Centralized logging variables
+$Script:CentralLogPath = $null
+$Script:LogMutex = $null
+$Script:EnableCentralLogging = $false
+
 # Debug and Verbose Logging Functions
+function Write-CentralLog {
+    <#
+    .SYNOPSIS
+    Thread-safe centralized logging function that captures output from both main thread and runspaces.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Category = "INFO",
+
+        [Parameter(Mandatory = $false)]
+        [string]$Source = "MAIN",
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoConsole
+    )
+
+    if (-not $Script:EnableCentralLogging -or [string]::IsNullOrEmpty($Script:CentralLogPath)) {
+        return
+    }
+
+    try {
+        # Create timestamp
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+        $logEntry = "[$timestamp] [$Source] [$Category] $Message"
+
+        # Write to console unless suppressed
+        if (-not $NoConsole) {
+            switch ($Category) {
+                "ERROR" { Write-Output "$($Script:Colors.Red)$logEntry$($Script:Colors.Reset)" }
+                "WARNING" { Write-Output "$($Script:Colors.Yellow)$logEntry$($Script:Colors.Reset)" }
+                "DEBUG" { Write-Output "$($Script:Colors.DarkGray)$logEntry$($Script:Colors.Reset)" }
+                "SUCCESS" { Write-Output "$($Script:Colors.Green)$logEntry$($Script:Colors.Reset)" }
+                default { Write-Output "$($Script:Colors.White)$logEntry$($Script:Colors.Reset)" }
+            }
+        }
+
+        # Thread-safe file writing
+        $acquired = $false
+        try {
+            if ($Script:LogMutex) {
+                $acquired = $Script:LogMutex.WaitOne(1000) # 1 second timeout
+            }
+
+            if ($acquired -or -not $Script:LogMutex) {
+                # Write to log file
+                Add-Content -Path $Script:CentralLogPath -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            # Silently continue if logging fails to avoid disrupting main functionality
+            Write-Verbose "Central logging failed: $($_.Exception.Message)"
+        }
+        finally {
+            if ($acquired -and $Script:LogMutex) {
+                $Script:LogMutex.ReleaseMutex()
+            }
+        }
+    }
+    catch {
+        # Silently continue if logging fails
+        Write-Verbose "Central logging initialization failed: $($_.Exception.Message)"
+    }
+}
+
 function Write-DebugInfo {
     [CmdletBinding()]
     param(
@@ -127,7 +200,11 @@ function Write-DebugInfo {
     )
     if ($DebugPreference -ne 'SilentlyContinue') {
         $timestamp = Get-Date -Format "HH:mm:ss.fff"
-        Write-Output "$($Script:Colors.Magenta)[$timestamp] [$Category] $Message$($Script:Colors.Reset)"
+        $formattedMessage = "[$timestamp] [$Category] $Message"
+        Write-Output "$($Script:Colors.Magenta)$formattedMessage$($Script:Colors.Reset)"
+
+        # Also write to central log
+        Write-CentralLog -Message $Message -Category $Category -Source "MAIN" -NoConsole
     }
 }
 
@@ -183,14 +260,44 @@ function Start-AdvancedTranscript {
                 New-Item -Path $LogPath -ItemType Directory -Force | Out-Null
             }
         }
+
+        # Initialize centralized logging
+        $Script:CentralLogPath = $fullLogPath
+        $Script:EnableCentralLogging = $true
+
+        # Create mutex for thread-safe logging
+        try {
+            $Script:LogMutex = New-Object System.Threading.Mutex($false, "AnalyzeFolderUsageLogMutex")
+        }
+        catch {
+            Write-Output "$($Script:Colors.Yellow)Warning: Could not create log mutex, logging may not be thread-safe$($Script:Colors.Reset)"
+            $Script:LogMutex = $null
+        }
+
+        # Create initial log file with header
+        $headerText = @"
+===============================================
+ULTRA-FAST FOLDER USAGE ANALYZER v2.7.0 LOG
+===============================================
+Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
+Computer: $computerName
+PowerShell Version: $($PSVersionTable.PSVersion)
+Process ID: $PID
+===============================================
+
+"@
+        Set-Content -Path $fullLogPath -Value $headerText -Encoding UTF8 -ErrorAction SilentlyContinue
+
         if ($PSCmdlet.ShouldProcess($fullLogPath, "Start transcript")) {
-            Start-Transcript -Path $fullLogPath -Force | Out-Null
-            Write-Output "$($Script:Colors.Green)Transcript started: $fullLogPath$($Script:Colors.Reset)"
+            Start-Transcript -Path $fullLogPath -Append -Force | Out-Null
+            Write-Output "$($Script:Colors.Green)Advanced transcript started: $fullLogPath$($Script:Colors.Reset)"
+            Write-CentralLog -Message "Centralized logging initialized" -Category "SYSTEM" -Source "MAIN"
         }
         return $fullLogPath
     }
     catch {
         Write-Output "$($Script:Colors.Yellow)Warning: Could not start transcript: $($_.Exception.Message). Continuing without logging.$($Script:Colors.Reset)"
+        $Script:EnableCentralLogging = $false
         return $null
     }
 }
@@ -203,6 +310,9 @@ function Stop-AdvancedTranscript {
 
     try {
         if ($PSCmdlet.ShouldProcess("Transcript", "Stop transcript")) {
+            # Write final log entry
+            Write-CentralLog -Message "Stopping transcript and cleaning up logging" -Category "SYSTEM" -Source "MAIN"
+
             # First try normal stop
             Stop-Transcript -ErrorAction Stop
             Write-Output "$($Script:Colors.Green)Transcript stopped successfully$($Script:Colors.Reset)"
@@ -247,6 +357,21 @@ function Stop-AdvancedTranscript {
         [System.GC]::Collect()
         [System.GC]::WaitForPendingFinalizers()
         [System.GC]::Collect()
+    }
+    finally {
+        # Clean up centralized logging
+        if ($Script:LogMutex) {
+            try {
+                $Script:LogMutex.Dispose()            }
+            catch {
+                # Ignore disposal errors
+                Write-Verbose "Mutex disposal failed: $($_.Exception.Message)"
+            }
+            $Script:LogMutex = $null
+        }
+
+        $Script:EnableCentralLogging = $false
+        $Script:CentralLogPath = $null
     }
 }
 
@@ -512,31 +637,40 @@ function Get-ParallelFolderStatistic {
     try {
         # Create scriptblock for parallel execution with comprehensive debugging
         $scriptBlock = {
-            param($FolderPath, $MaxDepth, $EnableDebug)
+            param($FolderPath, $MaxDepth, $EnableDebug, $CentralLogPath)
 
-            # Ensure all output goes to the right place
-            $null = $PSCmdlet
-              # Debug flag passed from main script
+            # Ensure all output goes to the right place - suppress any cmdlet binding issues
+            $ErrorActionPreference = 'Continue'
+            $DebugPreference = 'SilentlyContinue'
+            $VerbosePreference = 'SilentlyContinue'
+            $InformationPreference = 'SilentlyContinue'
+            $WarningPreference = 'SilentlyContinue'
+            # Debug flag passed from main script
               $DebugEnabled = $EnableDebug
-              # Debug output function for runspace - uses Write-Output with special prefix for filtering
+
+              # Make CentralLogPath available to nested functions
+              $script:CentralLogPath = $CentralLogPath
+
+              # Debug output function for runspace - using centralized logging
               function Write-RunspaceDebug {
                 param([string]$Message, [string]$Category = "RUNSPACE")
-                if ($DebugEnabled) {
-                    $timestamp = Get-Date -Format "HH:mm:ss.fff"
-                    # Use only error stream to avoid contaminating results
-                    $debugPrefix = "RUNSPACE_DEBUG:"
-                    $formattedMsg = "$debugPrefix [$timestamp] [$Category] $Message"
 
-                    # Write only to error stream - this will be captured by the main script
-                    # and won't contaminate the return results
-                    $errorParams = @{
-                        Message = $formattedMsg
-                        ErrorId = "DebugMessage:$Category"
-                        Category = 'NotSpecified'
-                        ErrorAction = 'Continue'
-                        TargetObject = $null
+                if ($DebugEnabled -and $script:CentralLogPath) {
+                    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+                    $logEntry = "[$timestamp] [RUNSPACE] [$Category] $Message"
+
+                    # Write directly to the centralized log file
+                    try {
+                        # Use Add-Content for thread-safe writing (basic level)
+                        Add-Content -Path $script:CentralLogPath -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
+                    } catch {
+                        # Fallback to error stream if file writing fails
+                        try {
+                            Microsoft.PowerShell.Utility\Write-Error -Message "RUNSPACE_DEBUG: [$timestamp] [$Category] $Message" -ErrorId "DebugMessage:$Category" -Category NotSpecified                        } catch {
+                            # Last resort - do nothing rather than contaminate output
+                            Write-Verbose "Runspace debug fallback failed: $($_.Exception.Message)"
+                        }
                     }
-                    Write-Error @errorParams
                 }
             }
             # Import required functions into runspace
@@ -625,12 +759,11 @@ function Get-ParallelFolderStatistic {
                             $stats.SubfolderCount++
                             if ($CurrentDepth -lt $MaxDepth) {
                                 Write-RunspaceDebug -Message "Recursing into subfolder: $($item.FullName)" -Category "FOLDER_SCAN"
-                                $subStats = Get-FolderStatisticInternal -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
-                                # Explicit null check to ensure we don't process empty results
+                                $subStats = Get-FolderStatisticInternal -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth                                # Explicit null check to ensure we don't process empty results
                                 if ($subStats) {
-                                    $null = $stats.SizeBytes += $subStats.SizeBytes
-                                    $null = $stats.FileCount += $subStats.FileCount
-                                    $null = $stats.SubfolderCount += $subStats.SubfolderCount
+                                    $stats.SizeBytes += $subStats.SizeBytes
+                                    $stats.FileCount += $subStats.FileCount
+                                    $stats.SubfolderCount += $subStats.SubfolderCount
 
                                     if ($subStats.LargestFileSize -gt $stats.LargestFileSize) {
                                         $stats.LargestFile = $subStats.LargestFile
@@ -685,9 +818,8 @@ function Get-ParallelFolderStatistic {
             # Execute the main function and ensure clean return value
             try {
                 $finalResult = Get-FolderStatisticInternal -FolderPath $FolderPath -CurrentDepth 0 -MaxDepth $MaxDepth
-                Write-RunspaceDebug -Message "Final result for $FolderPath`: Size=$($finalResult.SizeBytes), Accessible=$($finalResult.IsAccessible)" -Category "RETURN"
-
-                # Ensure we return only the PSCustomObject and suppress any other output
+                Write-RunspaceDebug -Message "Final result for $FolderPath`: Size=$($finalResult.SizeBytes), Accessible=$($finalResult.IsAccessible)" -Category "RETURN"                # Ensure we return only the PSCustomObject and suppress any other output
+                # BREAKPOINT: Set breakpoint here to see what gets returned from runspace
                 Write-Output $finalResult
                 return
             } catch {
@@ -709,18 +841,19 @@ function Get-ParallelFolderStatistic {
                 return
             }
         }
-
         # Launch parallel jobs
+        Write-CentralLog -Message "Starting parallel job execution for $($FolderPaths.Count) directories" -Category "PARALLEL" -Source "MAIN"
         foreach ($folder in $FolderPaths) {
             $powershell = [powershell]::Create()
             $powershell.RunspacePool = $runspacePool
-            $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $folder).AddParameter("MaxDepth", $MaxDepth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue') | Out-Null
+            $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $folder).AddParameter("MaxDepth", $MaxDepth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue').AddParameter("CentralLogPath", $Script:CentralLogPath) | Out-Null
             $jobs += [PSCustomObject]@{
                 PowerShell = $powershell
                 Handle = $powershell.BeginInvoke()
                 Path = $folder
                 StartTime = Get-Date
             }
+            Write-CentralLog -Message "Launched job for directory: $folder" -Category "PARALLEL" -Source "MAIN"
         }
         # Collect results with enhanced progress tracking and timeout
         $completed = 0
@@ -728,8 +861,8 @@ function Get-ParallelFolderStatistic {
         $lastProgress = Get-Date
         $progressCheckInterval = 500  # Faster check interval for better responsiveness
         $individualJobTimeout = 180  # Individual job timeout in seconds (3 minutes)
-
         Write-DebugInfo -Message "Starting result collection phase with enhanced monitoring" -Category "PARALLEL_MONITOR"
+        Write-CentralLog -Message "Beginning result collection phase for $($jobs.Count) jobs" -Category "PARALLEL" -Source "MAIN"
         while ($jobs | Where-Object { -not $_.Handle.IsCompleted }) {
             $completedNow = ($jobs | Where-Object { $_.Handle.IsCompleted }).Count
             if ($completedNow -gt $completed) {
@@ -737,6 +870,7 @@ function Get-ParallelFolderStatistic {
                 $percentComplete = [math]::Round(($completed / $jobs.Count) * 100, 0)
                 Write-ProgressUpdate -Activity "Parallel Processing" -Status "Completed $completed of $($jobs.Count) folders ($percentComplete%)" -PercentComplete $percentComplete
                 Write-DebugInfo -Message "Progress update: $completed/$($jobs.Count) jobs completed ($percentComplete%)" -Category "PARALLEL_MONITOR"
+                Write-CentralLog -Message "Progress: $completed/$($jobs.Count) jobs completed ($percentComplete%)" -Category "PROGRESS" -Source "MAIN"
                 $lastProgress = Get-Date
             }
             # Enhanced real-time stream monitoring - check for new debug messages from ALL running jobs
@@ -815,21 +949,69 @@ function Get-ParallelFolderStatistic {
 
             Start-Sleep -Milliseconds $progressCheckInterval
         }
-
         Write-DebugInfo -Message "Parallel processing wait loop completed. Final job states being collected." -Category "PARALLEL_MONITOR"
+
+        # DIAGNOSTIC: Add debug output to see if we reach the result collection loop
+        Write-DebugInfo -Message "DIAGNOSTIC: Starting foreach loop to collect results from $($jobs.Count) jobs" -Category "DEBUG_DIAGNOSTIC"
+
         # Gather all results with improved error handling and stream isolation
         foreach ($job in $jobs) {
+            Write-DebugInfo -Message "DIAGNOSTIC: Processing job for path: $($job.Path), IsCompleted: $($job.Handle.IsCompleted)" -Category "DEBUG_DIAGNOSTIC"
             try {
                 if ($job.Handle.IsCompleted) {
                     # Capture all streams to isolate return objects from debug output
                     $result = $null
                     $errorOutput = $null
                     $informationOutput = $null
-
                     try {
-                        $result = $job.PowerShell.EndInvoke($job.Handle)
-                        $errorOutput = $job.PowerShell.Streams.Error
-                        $informationOutput = $job.PowerShell.Streams.Information
+                        # Explicitly separate the output stream from other streams
+                        # EndInvoke() should ONLY return the Write-Output results, not error stream
+                        # Get results from completed runspace job
+                        $rawResult = $job.PowerShell.EndInvoke($job.Handle)
+                        # CRITICAL FIX: Convert PSDataCollection to proper array
+                        $result = @($rawResult)
+
+                        # Debug output for troubleshooting EndInvoke results (only when debug enabled)
+                        if ($DebugPreference -ne 'SilentlyContinue') {
+                            Write-DebugInfo -Message "Raw result type: $($rawResult.GetType().Name)" -Category "ENDINVOKE_DEBUG"
+                            if ($null -eq $result) {
+                                Write-DebugInfo -Message "EndInvoke returned NULL for job '$($job.Path)'" -Category "ENDINVOKE_DEBUG"
+                            } elseif ($result -is [array]) {
+                                Write-DebugInfo -Message "EndInvoke returned ARRAY for job '$($job.Path)' with $($result.Count) elements" -Category "ENDINVOKE_DEBUG"
+                                if ($result.Count -gt 0) {
+                                    $firstElement = $result[0]
+                                    Write-DebugInfo -Message "  First element type: $($firstElement.GetType().Name)" -Category "ENDINVOKE_DEBUG"
+                                    if ($firstElement -is [string]) {
+                                        Write-DebugInfo -Message "  First element string content: $($firstElement.Substring(0, [Math]::Min($firstElement.Length, 100)))" -Category "ENDINVOKE_DEBUG"
+                                    }
+                                }
+                            } else {
+                                Write-DebugInfo -Message "EndInvoke returned SINGLE object for job '$($job.Path)' of type: $($result.GetType().Name)" -Category "ENDINVOKE_DEBUG"
+                                if ($result -is [string]) {
+                                    Write-DebugInfo -Message "  Single string content: $($result.Substring(0, [Math]::Min($result.Length, 100)))" -Category "ENDINVOKE_DEBUG"
+                                }
+                            }
+                        }
+
+                        # Capture streams separately
+                        $errorOutput = @($job.PowerShell.Streams.Error)
+                        $informationOutput = @($job.PowerShell.Streams.Information)
+                        $warningOutput = @($job.PowerShell.Streams.Warning)
+                        $verboseOutput = @($job.PowerShell.Streams.Verbose)
+                        $debugOutput = @($job.PowerShell.Streams.Debug)
+                        # Log stream contents for debugging
+                        $resultCount = if ($null -eq $result) { 0 } elseif ($result -is [array]) { $result.Count } else { 1 }
+                        Write-DebugInfo -Message "Job '$($job.Path)' stream counts: Result=$resultCount, Error=$($errorOutput.Count), Info=$($informationOutput.Count), Warning=$($warningOutput.Count), Verbose=$($verboseOutput.Count), Debug=$($debugOutput.Count)" -Category "STREAM_DEBUG"
+
+                        # Additional debugging - log the actual result type details
+                        if ($null -ne $result) {
+                            if ($result -is [array]) {
+                                $firstItemType = if ($result.Count -gt 0) { $result[0].GetType().Name } else { 'N/A' }
+                                Write-DebugInfo -Message "Result array details: Count=$($result.Count), FirstItemType=$firstItemType" -Category "STREAM_DEBUG"
+                            } else {
+                                Write-DebugInfo -Message "Single result type: $($result.GetType().Name), ToString: $($result.ToString().Substring(0, [Math]::Min($result.ToString().Length, 50)))" -Category "STREAM_DEBUG"
+                            }
+                        }
                     }
                     catch {
                         Write-Output "$($Script:Colors.Red)Failed to get result from job for '$($job.Path)': $($_.Exception.Message)$($Script:Colors.Reset)"
@@ -878,8 +1060,33 @@ function Get-ParallelFolderStatistic {
                     if ($informationOutput -and $informationOutput.Count -gt 0 -and $DebugPreference -ne 'SilentlyContinue') {
                         Write-DebugInfo -Message "Job for '$($job.Path)' had unexpected Information stream output: $($informationOutput.Count) messages" -Category "JOB_RESULTS"
                     }
-
                     if ($result) {
+                        # Enhanced result analysis with detailed logging
+                        Write-DebugInfo -Message "Job for '$($job.Path)' returned result. Analyzing..." -Category "JOB_RESULTS"
+
+                        # Log detailed result information
+                        if ($result -is [array]) {
+                            Write-DebugInfo -Message "Result is ARRAY with $($result.Count) elements" -Category "JOB_RESULTS"
+                            for ($i = 0; $i -lt [Math]::Min($result.Count, 5); $i++) {
+                                $item = $result[$i]
+                                Write-DebugInfo -Message "  Element $i`: Type=$($item.GetType().Name), IsString=$($item -is [string]), IsPSCustomObject=$($item -is [PSCustomObject])" -Category "RESULT_ANALYSIS"
+                                if ($item -is [string]) {
+                                    Write-DebugInfo -Message "    String content: $($item.Substring(0, [Math]::Min($item.Length, 100)))" -Category "RESULT_ANALYSIS"
+                                } elseif ($item -is [PSCustomObject]) {
+                                    $properties = $item.PSObject.Properties.Name -join ", "
+                                    Write-DebugInfo -Message "    PSCustomObject properties: $properties" -Category "RESULT_ANALYSIS"
+                                }
+                            }
+                        } else {
+                            Write-DebugInfo -Message "Result is SINGLE object: Type=$($result.GetType().Name), IsString=$($result -is [string]), IsPSCustomObject=$($result -is [PSCustomObject])" -Category "JOB_RESULTS"
+                            if ($result -is [string]) {
+                                Write-DebugInfo -Message "  String content: $($result.Substring(0, [Math]::Min($result.Length, 100)))" -Category "RESULT_ANALYSIS"
+                            } elseif ($result -is [PSCustomObject]) {
+                                $properties = $result.PSObject.Properties.Name -join ", "
+                                Write-DebugInfo -Message "  PSCustomObject properties: $properties" -Category "RESULT_ANALYSIS"
+                            }
+                        }
+
                         # Separate debug messages from actual results - enhanced validation
                         $validResults = @()
                         # Debug the raw result type and content
@@ -892,9 +1099,8 @@ function Get-ParallelFolderStatistic {
                                 Write-DebugInfo -Message "Job result type: $($result.GetType().FullName)" -Category "JOB_RESULTS_DEBUG"
                             }
                         }
-
-                        # Strictly filter for ONLY PSCustomObject results, rejecting any string values
-                        # that might be debug messages incorrectly captured in the result
+                        # Strictly filter for ONLY PSCustomObject results, rejecting any string values that might be debug messages incorrectly captured in the result
+                        # BREAKPOINT: Set breakpoint here to examine result filtering
                         if ($result -is [array]) {
                             Write-DebugInfo -Message "Job returned array with $($result.Count) elements" -Category "JOB_RESULTS"
                             # Only accept objects that match our exact expected schema
@@ -1120,14 +1326,31 @@ function Show-HierarchicalResult{
         Write-Output "$($Script:Colors.White)No root analysis available$($Script:Colors.Reset)"
     }    # Level 1: Show top-level subfolders
     Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Cyan)LEVEL 1: TOP SUBFOLDERS OF $StartPath$($Script:Colors.Reset)"
-
     Write-DebugInfo -Message "Searching for Level 1 folders in results array" -Category "HIERARCHY"
     Write-DebugInfo -Message "Total results count: $($Results.Count)" -Category "HIERARCHY"
+    Write-DebugInfo -Message "StartPath for comparison: '$StartPath'" -Category "HIERARCHY"    # Normalize the StartPath to ensure consistent comparison
+    $normalizedStartPath = $StartPath.TrimEnd('\')
+    if ($normalizedStartPath -eq 'C:') { $normalizedStartPath = 'C:\' }
 
-    $allLevel1Candidates = $Results | Where-Object {
+    Write-DebugInfo -Message "Normalized StartPath: '$normalizedStartPath'" -Category "HIERARCHY"
+
+    # Debug: Show sample paths from results for troubleshooting
+    if ($DebugPreference -ne 'SilentlyContinue' -and $Results.Count -gt 0) {
+        Write-DebugInfo -Message "Sample paths from results (first 10):" -Category "HIERARCHY"
+        $sampleResults = $Results | Select-Object -First 10
+        foreach ($sample in $sampleResults) {
+            $parentPath = Split-Path -Path $sample.Path -Parent
+            Write-DebugInfo -Message "  Path: '$($sample.Path)' -> Parent: '$parentPath' (Accessible: $($sample.IsAccessible))" -Category "HIERARCHY"
+        }
+    }    $allLevel1Candidates = $Results | Where-Object {
         $_.IsAccessible -and
+        $_.Path -ne $normalizedStartPath -and
         $_.Path -ne $StartPath -and
-        (Split-Path -Path $_.Path -Parent) -eq $StartPath
+        (
+            (Split-Path -Path $_.Path -Parent) -eq $normalizedStartPath -or
+            # Handle root drive comparison (C: vs C:\)
+            ((Split-Path -Path $_.Path -Parent) -eq $normalizedStartPath.TrimEnd('\') -and $normalizedStartPath -like '*:\')
+        )
     }
 
     Write-DebugInfo -Message "Level 1 candidates found: $($allLevel1Candidates.Count)" -Category "HIERARCHY"
@@ -1741,7 +1964,7 @@ function Main {
     try {
         # Initialize and display header
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v2.1.2    $($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v2.7.0    $($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
 
         # Administrative privilege check
