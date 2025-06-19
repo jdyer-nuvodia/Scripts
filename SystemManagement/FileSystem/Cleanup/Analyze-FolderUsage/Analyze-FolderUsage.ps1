@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-19 20:45:00 UTC
+# Last Updated: 2025-06-19 21:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.0.2
-# Additional Info: PATCH - Fixed Show-HierarchicalSummary logic that was ignoring calculated totals and showing 0.00 B
+# Version: 3.1.0
+# Additional Info: MINOR - Fixed critical space discrepancy issue where subdirectory sizes were being double/triple/quadruple counted in root calculation, leading to massive over-reporting of disk usage
 # =============================================================================
 
 <#
@@ -1617,9 +1617,9 @@ function Show-SingleTable {
         }
 
         # Color coding based on size
-        $color = if ($folder.SizeBytes -gt 10GB) {
+        $color = if ($folder.SizeBytes -gt 30GB) {
             $Script:Colors.Red
-        } elseif ($folder.SizeBytes -gt 1GB) {
+        } elseif ($folder.SizeBytes -gt 5GB) {
             $Script:Colors.Yellow
         } else {
             $Script:Colors.Green
@@ -2513,10 +2513,12 @@ function Main {
             }            # Analyze the StartPath directory itself for files at the root level
             Write-ProgressUpdate -Activity "Analysis" -Status "Analyzing root directory files..." -Color "Cyan"
             try {
-                $rootFiles = Get-ChildItem -Path $PSBoundParameters['StartPath'] -File -Force -ErrorAction Stop                # CRITICAL FIX: Calculate ONLY the size of direct files in the root directory
-                # Do NOT add subdirectory sizes here as they are already counted separately in the results
-                # The original logic was double-counting by adding subdirectory totals to root totals
-                $subdirectoryTotalSize = ($results | Where-Object { $_.IsAccessible } | Measure-Object -Property SizeBytes -Sum).Sum
+                $rootFiles = Get-ChildItem -Path $PSBoundParameters['StartPath'] -File -Force -ErrorAction Stop
+                # CRITICAL FIX: Calculate ONLY the size of TOP-LEVEL directories to prevent double-counting
+                # The original logic was summing ALL accessible results, which included nested subdirectories
+                # causing massive over-reporting (e.g., C:\Program Files would be counted, plus C:\Program Files\SubDir, etc.)
+                $topLevelResults = $results | Where-Object { $_.IsAccessible -and $topLevelDirs -contains $_.Path }
+                $subdirectoryTotalSize = ($topLevelResults | Measure-Object -Property SizeBytes -Sum).Sum
                 $rootFilesSize = if ($rootFiles.Count -gt 0) { ($rootFiles | Measure-Object -Property Length -Sum).Sum } else { 0 }
 
                 # Add problematic directories size (safely scanned) - these are separate from normal subdirectories
@@ -2538,7 +2540,8 @@ function Main {
                 } elseif (($results | Where-Object { $_.IsAccessible }).Count -eq 0) {
                     Write-DebugInfo -Message "  WARNING: No accessible results found - this explains 0.00 B calculation!" -Category "ROOT_CALC"
                 }# Debug logging for root calculation with fix details
-                Write-DebugInfo -Message "FIXED: Root calculation breakdown (no double-counting):" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "FIXED: Root calculation breakdown (only top-level dirs counted):" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "  Top-level results counted: $($topLevelResults.Count) of $($results.Count) total results" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Subdirectory total size: $(Format-FileSize -SizeInBytes $subdirectoryTotalSize)" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Root files size: $(Format-FileSize -SizeInBytes $rootFilesSize) ($($rootFiles.Count) files)" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Problematic dirs size: $(Format-FileSize -SizeInBytes $problematicDirsSize)" -Category "ROOT_CALC"
