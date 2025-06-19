@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-19 19:09:00 UTC
+# Last Updated: 2025-06-19 20:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.0.0
-# Additional Info: MAJOR - Fixed critical double-counting bug causing wildly inaccurate size calculations (825GB vs 243GB actual)
+# Version: 3.0.2
+# Additional Info: PATCH - Fixed Show-HierarchicalSummary logic that was ignoring calculated totals and showing 0.00 B
 # =============================================================================
 
 <#
@@ -1549,13 +1549,24 @@ function Show-HierarchicalResult{
         Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Cyan)SAFELY SCANNED PROBLEMATIC DIRECTORIES$($Script:Colors.Reset)"
         Show-SingleTable -Results $SafeResults -Title "Safely Scanned Directories"
     }    # Show summary with corrected totals
+    Write-DebugInfo -Message "CRITICAL DEBUG: Checking for stored cumulative totals..." -Category "SUMMARY_TOTALS"
+    Write-DebugInfo -Message "  Results count: $($Results.Count)" -Category "SUMMARY_TOTALS"
+    if ($Results.Count -gt 0) {
+        Write-DebugInfo -Message "  First result path: $($Results[0].Path)" -Category "SUMMARY_TOTALS"
+        Write-DebugInfo -Message "  First result properties: $($Results[0].PSObject.Properties.Name -join ', ')" -Category "SUMMARY_TOTALS"
+    }
+
     $rootResult = $Results | Where-Object { $_.Path -eq $Results[0].Path -and $_.PSObject.Properties.Name -contains "TotalCumulativeSize" } | Select-Object -First 1
-    if ($rootResult -and $rootResult.TotalCumulativeSize) {
-        # Use the stored total cumulative values for accurate summary
+    Write-DebugInfo -Message "  Root result found: $(if ($rootResult) { 'YES' } else { 'NO' })" -Category "SUMMARY_TOTALS"
+
+    if ($rootResult -and $rootResult.PSObject.Properties.Name -contains "TotalCumulativeSize") {
+        # Use the stored total cumulative values for accurate summary (0 is a valid value)
         $summaryResults = $Results | Where-Object { $_.Path -ne $Results[0].Path -or (-not $_.PSObject.Properties.Name -contains "TotalCumulativeSize") }
+        Write-DebugInfo -Message "Using stored cumulative totals: Size=$(Format-FileSize -SizeInBytes $rootResult.TotalCumulativeSize), Files=$($rootResult.TotalCumulativeFiles)" -Category "SUMMARY_TOTALS"
         Show-HierarchicalSummary -Results $summaryResults -SafeResults $SafeResults -TotalSize $rootResult.TotalCumulativeSize -TotalFiles $rootResult.TotalCumulativeFiles
     } else {
         # Fallback to original method if no stored totals
+        Write-DebugInfo -Message "No stored cumulative totals found - using fallback calculation method" -Category "SUMMARY_TOTALS"
         Show-HierarchicalSummary -Results $Results -SafeResults $SafeResults
     }
 }
@@ -1625,17 +1636,25 @@ function Show-HierarchicalSummary {
         [array]$SafeResults = @(),
         [long]$TotalSize = -1,
         [long]$TotalFiles = -1
-    )
+    )    Write-DebugInfo -Message "CRITICAL DEBUG: Show-HierarchicalSummary called with:" -Category "SUMMARY_DEBUG"
+    Write-DebugInfo -Message "  TotalSize parameter: $TotalSize" -Category "SUMMARY_DEBUG"
+    Write-DebugInfo -Message "  TotalFiles parameter: $TotalFiles" -Category "SUMMARY_DEBUG"
+    Write-DebugInfo -Message "  Results count: $($Results.Count)" -Category "SUMMARY_DEBUG"
+    Write-DebugInfo -Message "  SafeResults count: $($SafeResults.Count)" -Category "SUMMARY_DEBUG"
 
     # Initialize variables at function scope to ensure they're accessible throughout
-    $totalSize = 0
-    $totalFiles = 0
+    # CRITICAL FIX: Use different variable names to avoid overwriting parameters!
+    $calculatedSize = 0
+    $calculatedFiles = 0
     $totalFolders = 0
     $inaccessibleCount = 0    # Use provided totals if available, otherwise calculate from top-level results to prevent double-counting
     if ($TotalSize -ge 0 -and $TotalFiles -ge 0) {
-        $totalSize = $TotalSize
-        $totalFiles = $TotalFiles
-        Write-DebugInfo -Message "Using provided accurate totals: Size=$(Format-FileSize -SizeInBytes $totalSize), Files=$totalFiles" -Category "SUMMARY"
+        Write-DebugInfo -Message "USING PROVIDED TOTALS PATH" -Category "SUMMARY_DEBUG"
+        Write-DebugInfo -Message "PRE-ASSIGNMENT: TotalSize=$TotalSize, TotalFiles=$TotalFiles" -Category "SUMMARY_DEBUG"
+        $calculatedSize = $TotalSize
+        $calculatedFiles = $TotalFiles
+        Write-DebugInfo -Message "POST-ASSIGNMENT: calculatedSize=$calculatedSize, calculatedFiles=$calculatedFiles" -Category "SUMMARY_DEBUG"
+        Write-DebugInfo -Message "Using provided accurate totals: Size=$(Format-FileSize -SizeInBytes $calculatedSize), Files=$calculatedFiles" -Category "SUMMARY"
 
         # When using provided totals, SafeResults are already included, so don't add them again
         # Calculate folder counts normally
@@ -1645,7 +1664,7 @@ function Show-HierarchicalSummary {
             $totalFolders += $safeFolders
         }
     } else {
-        # CRITICAL FIX: Calculate totals from TOP-LEVEL accessible results only to prevent double-counting
+        Write-DebugInfo -Message "USING CALCULATED TOTALS PATH" -Category "SUMMARY_DEBUG"        # CRITICAL FIX: Calculate totals from TOP-LEVEL accessible results only to prevent double-counting
         # The original logic was summing ALL results which included subdirectories counted multiple times
         $topLevelAccessibleResults = $Results | Where-Object { $_.IsAccessible -and $_.Path -notlike "*\*\*" }
 
@@ -1656,9 +1675,9 @@ function Show-HierarchicalSummary {
             $topLevelAccessibleResults = $groupedByParent | ForEach-Object { $_.Group | Sort-Object SizeBytes -Descending | Select-Object -First 1 }
         }
 
-        $totalSize = ($topLevelAccessibleResults | Measure-Object -Property SizeBytes -Sum).Sum
-        $totalFiles = ($topLevelAccessibleResults | Measure-Object -Property FileCount -Sum).Sum
-        Write-DebugInfo -Message "Calculated from top-level results: Size=$(Format-FileSize -SizeInBytes $totalSize), Files=$totalFiles" -Category "SUMMARY"
+        $calculatedSize = ($topLevelAccessibleResults | Measure-Object -Property SizeBytes -Sum).Sum
+        $calculatedFiles = ($topLevelAccessibleResults | Measure-Object -Property FileCount -Sum).Sum
+        Write-DebugInfo -Message "Calculated from top-level results: Size=$(Format-FileSize -SizeInBytes $calculatedSize), Files=$calculatedFiles" -Category "SUMMARY"
 
         # Calculate folder counts and add SafeResults when calculating from scratch
         $totalFolders = ($Results | Where-Object { $_.IsAccessible } | Measure-Object -Property SubfolderCount -Sum).Sum
@@ -1668,18 +1687,17 @@ function Show-HierarchicalSummary {
             $safeSize = ($SafeResults | Measure-Object -Property SizeBytes -Sum).Sum
             $safeFiles = ($SafeResults | Measure-Object -Property FileCount -Sum).Sum
             $safeFolders = ($SafeResults | Measure-Object -Property SubfolderCount -Sum).Sum
-            $totalSize += $safeSize
-            $totalFiles += $safeFiles
+            $calculatedSize += $safeSize
+            $calculatedFiles += $safeFiles
             $totalFolders += $safeFolders
         }
     }
-    $inaccessibleCount = ($Results | Where-Object { -not $_.IsAccessible }).Count
-    # Debug logging for accessibility breakdown with fix details
+    $inaccessibleCount = ($Results | Where-Object { -not $_.IsAccessible }).Count    # Debug logging for accessibility breakdown with fix details
     Write-DebugInfo -Message "FIXED: Summary calculation method determined:" -Category "ACCESSIBILITY"
     Write-DebugInfo -Message "  Using provided totals: $(if ($TotalSize -ge 0) { 'YES' } else { 'NO' })" -Category "ACCESSIBILITY"
     Write-DebugInfo -Message "  Total results: $($Results.Count)" -Category "ACCESSIBILITY"
     Write-DebugInfo -Message "  Inaccessible results: $inaccessibleCount" -Category "ACCESSIBILITY"
-    Write-DebugInfo -Message "  Final calculated size: $(Format-FileSize -SizeInBytes $totalSize)" -Category "ACCESSIBILITY"
+    Write-DebugInfo -Message "  Final calculated size: $(Format-FileSize -SizeInBytes $calculatedSize)" -Category "ACCESSIBILITY"
     Write-DebugInfo -Message "  Error tracker entries: $($Script:ErrorTracker.Count)" -Category "ACCESSIBILITY"
     if ($DebugPreference -eq 'Continue') {
         $inaccessibleResults = $Results | Where-Object { -not $_.IsAccessible }
@@ -1689,12 +1707,11 @@ function Show-HierarchicalSummary {
             foreach ($errorResult in $sampleErrors) {
                 Write-DebugInfo -Message "  Path: '$($errorResult.Path)' | Error: '$($errorResult.Error)' | Type: $($errorResult.GetType().Name) | IsAccessible: $($errorResult.IsAccessible)" -Category "ACCESSIBILITY"
             }
-        }
-        # Show comparison only if we calculated from top-level results
+        }        # Show comparison only if we calculated from top-level results
         if ($TotalSize -lt 0) {
             $allAccessibleResults = $Results | Where-Object { $_.IsAccessible }
             Write-DebugInfo -Message "Double-counting prevention comparison:" -Category "ACCESSIBILITY"
-            Write-DebugInfo -Message "  Top-level only total: $(Format-FileSize -SizeInBytes $totalSize)" -Category "ACCESSIBILITY"
+            Write-DebugInfo -Message "  Top-level only total: $(Format-FileSize -SizeInBytes $calculatedSize)" -Category "ACCESSIBILITY"
             Write-DebugInfo -Message "  All results total (old buggy method): $(Format-FileSize -SizeInBytes (($allAccessibleResults | Measure-Object -Property SizeBytes -Sum).Sum))" -Category "ACCESSIBILITY"
         }
 
@@ -1712,14 +1729,12 @@ function Show-HierarchicalSummary {
             foreach ($type in $resultTypes) {
                 Write-DebugInfo -Message "  $($type.Name): $($type.Count)" -Category "ACCESSIBILITY"
             }
-        }
-
-    # Calculate inaccessible count
+        }    # Calculate inaccessible count
     $inaccessibleCount = ($Results | Where-Object { -not $_.IsAccessible }).Count
 
     Write-Output "`n$($Script:Colors.Bold)COMPREHENSIVE SUMMARY STATISTICS$($Script:Colors.Reset)"
-    Write-Output "$($Script:Colors.White)Total Size Analyzed: $($Script:Colors.Green)$(Format-FileSize -SizeInBytes $totalSize)$($Script:Colors.Reset)"
-    Write-Output "$($Script:Colors.White)Total Files: $($Script:Colors.Green)$($totalFiles.ToString('N0'))$($Script:Colors.Reset)"
+    Write-Output "$($Script:Colors.White)Total Size Analyzed: $($Script:Colors.Green)$(Format-FileSize -SizeInBytes $calculatedSize)$($Script:Colors.Reset)"
+    Write-Output "$($Script:Colors.White)Total Files: $($Script:Colors.Green)$($calculatedFiles.ToString('N0'))$($Script:Colors.Reset)"
     Write-Output "$($Script:Colors.White)Total Folders: $($Script:Colors.Green)$($totalFolders.ToString('N0'))$($Script:Colors.Reset)"
     Write-Output "$($Script:Colors.White)Processed Folders: $($Script:Colors.Green)$($Script:ProcessedFolders.ToString('N0'))$($Script:Colors.Reset)"
 
@@ -1745,12 +1760,12 @@ function Show-HierarchicalSummary {
                 $volume = Get-Volume -DriveLetter $driveLetter -ErrorAction SilentlyContinue
                 if ($volume) {
                     $driveUsedSpace = $volume.Size - $volume.SizeRemaining
-                    $discrepancy = $driveUsedSpace - $totalSize
+                    $discrepancy = $driveUsedSpace - $calculatedSize
                     $discrepancyPercent = if ($driveUsedSpace -gt 0) { [math]::Round(($discrepancy / $driveUsedSpace) * 100, 1) } else { 0 }
 
                     Write-Output "`n$($Script:Colors.Bold)DRIVE USAGE COMPARISON$($Script:Colors.Reset)"
                     Write-Output "$($Script:Colors.White)Drive Used Space: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $driveUsedSpace)$($Script:Colors.Reset)"
-                    Write-Output "$($Script:Colors.White)Script Calculated: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $totalSize)$($Script:Colors.Reset)"
+                    Write-Output "$($Script:Colors.White)Script Calculated: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $calculatedSize)$($Script:Colors.Reset)"
                     if ($discrepancy -gt 0) {
                         Write-Output "$($Script:Colors.White)Unaccounted Space: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $discrepancy) ($discrepancyPercent%)$($Script:Colors.Reset)"
                         # Get NTFS overhead estimation
@@ -2512,7 +2527,17 @@ function Main {
                 $rootDisplaySize = $rootFilesSize + $problematicDirsSize
 
                 # Total cumulative size for statistics (this is the accurate total for the entire drive scan)
-                $totalCumulativeSize = $subdirectoryTotalSize + $rootFilesSize + $problematicDirsSize                # Debug logging for root calculation with fix details
+                $totalCumulativeSize = $subdirectoryTotalSize + $rootFilesSize + $problematicDirsSize
+
+                # CRITICAL DEBUG: Check if results array is empty causing 0 calculation
+                Write-DebugInfo -Message "CRITICAL DEBUG: Results array analysis:" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "  Results count: $($results.Count)" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "  Accessible results count: $(($results | Where-Object { $_.IsAccessible }).Count)" -Category "ROOT_CALC"
+                if ($results.Count -eq 0) {
+                    Write-DebugInfo -Message "  WARNING: Results array is empty - this explains 0.00 B calculation!" -Category "ROOT_CALC"
+                } elseif (($results | Where-Object { $_.IsAccessible }).Count -eq 0) {
+                    Write-DebugInfo -Message "  WARNING: No accessible results found - this explains 0.00 B calculation!" -Category "ROOT_CALC"
+                }# Debug logging for root calculation with fix details
                 Write-DebugInfo -Message "FIXED: Root calculation breakdown (no double-counting):" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Subdirectory total size: $(Format-FileSize -SizeInBytes $subdirectoryTotalSize)" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Root files size: $(Format-FileSize -SizeInBytes $rootFilesSize) ($($rootFiles.Count) files)" -Category "ROOT_CALC"
