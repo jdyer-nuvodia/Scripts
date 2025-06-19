@@ -1690,7 +1690,6 @@ function Show-HierarchicalSummary {
                 Write-DebugInfo -Message "  Path: '$($errorResult.Path)' | Error: '$($errorResult.Error)' | Type: $($errorResult.GetType().Name) | IsAccessible: $($errorResult.IsAccessible)" -Category "ACCESSIBILITY"
             }
         }
-
         # Show comparison only if we calculated from top-level results
         if ($TotalSize -lt 0) {
             $allAccessibleResults = $Results | Where-Object { $_.IsAccessible }
@@ -1698,8 +1697,8 @@ function Show-HierarchicalSummary {
             Write-DebugInfo -Message "  Top-level only total: $(Format-FileSize -SizeInBytes $totalSize)" -Category "ACCESSIBILITY"
             Write-DebugInfo -Message "  All results total (old buggy method): $(Format-FileSize -SizeInBytes (($allAccessibleResults | Measure-Object -Property SizeBytes -Sum).Sum))" -Category "ACCESSIBILITY"
         }
-            }
-            if ($inaccessibleResults.Count -gt 10) {
+
+        if ($inaccessibleResults.Count -gt 10) {
                 Write-DebugInfo -Message "  ... and $($inaccessibleResults.Count - 10) more" -Category "ACCESSIBILITY"
             }
 
@@ -1714,7 +1713,6 @@ function Show-HierarchicalSummary {
                 Write-DebugInfo -Message "  $($type.Name): $($type.Count)" -Category "ACCESSIBILITY"
             }
         }
-    }
 
     # Calculate inaccessible count
     $inaccessibleCount = ($Results | Where-Object { -not $_.IsAccessible }).Count
@@ -1753,9 +1751,9 @@ function Show-HierarchicalSummary {
                     Write-Output "`n$($Script:Colors.Bold)DRIVE USAGE COMPARISON$($Script:Colors.Reset)"
                     Write-Output "$($Script:Colors.White)Drive Used Space: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $driveUsedSpace)$($Script:Colors.Reset)"
                     Write-Output "$($Script:Colors.White)Script Calculated: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $totalSize)$($Script:Colors.Reset)"
-
                     if ($discrepancy -gt 0) {
-                        Write-Output "$($Script:Colors.White)Unaccounted Space: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $discrepancy) ($discrepancyPercent%)$($Script:Colors.Reset)"                        # Get NTFS overhead estimation
+                        Write-Output "$($Script:Colors.White)Unaccounted Space: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $discrepancy) ($discrepancyPercent%)$($Script:Colors.Reset)"
+                        # Get NTFS overhead estimation
                         $ntfsOverhead = Get-NTFSOverhead -DriveLetter $driveLetter
                         if ($ntfsOverhead.TotalOverhead -gt 0) {
                             Write-Output "`n$($Script:Colors.Bold)NTFS SYSTEM OVERHEAD ANALYSIS$($Script:Colors.Reset)"
