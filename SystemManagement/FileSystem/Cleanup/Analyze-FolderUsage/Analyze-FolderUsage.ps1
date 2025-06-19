@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-18 01:23:00 UTC
+# Last Updated: 2025-06-19 18:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.9.0
-# Additional Info: FEATURE - Central debug logging now only activated with -Debug parameter; Verbose output routed to transcript log
+# Version: 2.12.1
+# Additional Info: PATCH - Removed artificial 6-level limit from hierarchical display, now shows all levels up to MaxDepth parameter limit (default 15)
 # =============================================================================
 
 <#
@@ -371,7 +371,8 @@ Add-Content -Path $Script:CentralLogPath -Value $finalEntry -Encoding UTF8 -Erro
             try {
                 $Script:LogMutex.Dispose()
             } catch {
-                Write-Error "Failed to dispose logging mutex: $($_.Exception.Message)" -ErrorAction SilentlyContinue            }
+                Write-Error "Failed to dispose logging mutex: $($_.Exception.Message)" -ErrorAction SilentlyContinue
+            }
             $Script:LogMutex = $null
         }
 
@@ -535,8 +536,7 @@ function Test-CloudPlaceholder {
     )
 
     try {
-        # More specific OneDrive/cloud storage detection
-        # Only check for actual cloud placeholder files, not all reparse points
+        # Enhanced OneDrive/cloud storage detection
 
         # Validate input to prevent null reference exceptions
         if ($null -eq $FileInfo) {
@@ -549,14 +549,25 @@ function Test-CloudPlaceholder {
             return $true
         }
 
-        # Check for cloud storage attributes (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)
-        # This is more specific to actual cloud placeholders than ReparsePoint
-        if (($FileInfo.Attributes.value__ -band 0x400000) -eq 0x400000) {
-            return $true
-        }
-
         # Check if it's in a known OneDrive path structure
-        if ($FileInfo.FullName -like "*OneDrive*" -and ($FileInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        if ($FileInfo.FullName -like "*OneDrive*") {
+            # Check for cloud storage attributes (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000)
+            if (($FileInfo.Attributes.value__ -band 0x400000) -eq 0x400000) {
+                return $true
+            }
+
+            # Check for reparse point in OneDrive paths (common for cloud files)
+            if (($FileInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq [System.IO.FileAttributes]::ReparsePoint) {
+                return $true
+            }
+
+            # Check for specific OneDrive cloud file attributes
+            # OneDrive files often have Offline + ReparsePoint attributes
+            if (($FileInfo.Attributes -band [System.IO.FileAttributes]::Offline) -eq [System.IO.FileAttributes]::Offline) {
+                return $true
+            }
+        }        # Additional check for cloud storage attributes outside OneDrive paths
+        if (($FileInfo.Attributes.value__ -band 0x400000) -eq 0x400000) {
             return $true
         }
 
@@ -642,13 +653,12 @@ function Get-FolderStatistic {
                 }
             }
             else {
-                $stats.FileCount++
-
-                # Handle cloud placeholder files
+                $stats.FileCount++                # Handle cloud placeholder files
                 if (Test-CloudPlaceholder -FileInfo $item) {
                     $stats.HasCloudFiles = $true
-                    # For cloud files, use the actual size if available, otherwise minimal size
-                    $fileSize = if ($item.Length -gt 0) { $item.Length } else { 1KB }
+                    # For cloud placeholder files, use a minimal size estimation
+                    # OneDrive placeholders typically show full size but aren't locally stored
+                    $fileSize = [Math]::Min($item.Length, 1KB)  # Use actual size or 1KB, whichever is smaller
                 } else {
                     $fileSize = $item.Length
                 }
@@ -746,22 +756,33 @@ function Get-ParallelFolderStatistic {
             function Test-CloudPlaceholder {
                 param([System.IO.FileInfo]$FileInfo)
                 try {
-                    # More specific OneDrive/cloud storage detection
-                    # Only check for actual cloud placeholder files, not all reparse points
-
+                    # Enhanced OneDrive/cloud storage detection
                     # Check for OneDrive specific file extensions and patterns
                     if ($FileInfo.Extension -eq ".odlocal" -or $FileInfo.Name -like "*.onedrive") {
                         return $true
                     }
 
-                    # Check for cloud storage attributes (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)
-                    # This is more specific to actual cloud placeholders than ReparsePoint
-                    if (($FileInfo.Attributes.value__ -band 0x400000) -eq 0x400000) {
-                        return $true
+                    # Check if it's in a known OneDrive path structure
+                    if ($FileInfo.FullName -like "*OneDrive*") {
+                        # Check for cloud storage attributes (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000)
+                        if (($FileInfo.Attributes.value__ -band 0x400000) -eq 0x400000) {
+                            return $true
+                        }
+
+                        # Check for reparse point in OneDrive paths (common for cloud files)
+                        if (($FileInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq [System.IO.FileAttributes]::ReparsePoint) {
+                            return $true
+                        }
+
+                        # Check for specific OneDrive cloud file attributes
+                        # OneDrive files often have Offline + ReparsePoint attributes
+                        if (($FileInfo.Attributes -band [System.IO.FileAttributes]::Offline) -eq [System.IO.FileAttributes]::Offline) {
+                            return $true
+                        }
                     }
 
-                    # Check if it's in a known OneDrive path structure
-                    if ($FileInfo.FullName -like "*OneDrive*" -and ($FileInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                    # Additional check for cloud storage attributes outside OneDrive paths
+                    if (($FileInfo.Attributes.value__ -band 0x400000) -eq 0x400000) {
                         return $true
                     }
 
@@ -783,6 +804,9 @@ function Get-ParallelFolderStatistic {
                 $maxScanTime = 60 # Maximum 60 seconds per directory
                 $maxItemsPerDirectory = 10000 # Limit items processed per directory
 
+                # Collection to store all results at all levels (for flat output)
+                $allResults = @()
+
                 $stats = [PSCustomObject]@{
                     Path = $FolderPath
                     SizeBytes = 0
@@ -801,7 +825,7 @@ function Get-ParallelFolderStatistic {
                     # Check if it's a reparse point first
                     if (Test-ReparsePoint -Path $FolderPath) {
                         Write-RunspaceDebug -Message "Skipping reparse point: $FolderPath" -Category "FOLDER_SCAN"
-                        return $stats
+                        return @($stats)  # Return as array for flat collection
                     }
                     Write-RunspaceDebug -Message "Executing: Get-ChildItem -Path '$FolderPath' -Force -ErrorAction Stop" -Category "FOLDER_SCAN"
                     $items = Get-ChildItem -Path $FolderPath -Force -ErrorAction Stop
@@ -828,8 +852,16 @@ function Get-ParallelFolderStatistic {
                             $stats.SubfolderCount++
                             if ($CurrentDepth -lt $MaxDepth) {
                                 Write-RunspaceDebug -Message "Recursing into subfolder: $($item.FullName)" -Category "FOLDER_SCAN"
-                                $subStats = Get-FolderStatisticInternal -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth                                # Explicit null check to ensure we don't process empty results
-                                if ($subStats) {
+                                $subResults = Get-FolderStatisticInternal -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
+
+                                # Explicit null check to ensure we don't process empty results
+                                if ($subResults -and $subResults.Count -gt 0) {
+                                    # Add all sub-results to our collection for flat output
+                                    $allResults += $subResults
+
+                                    # Get the main subdirectory result (first item) for aggregation
+                                    $subStats = $subResults[0]
+
                                     $stats.SizeBytes += $subStats.SizeBytes
                                     $stats.FileCount += $subStats.FileCount
                                     $stats.SubfolderCount += $subStats.SubfolderCount
@@ -858,10 +890,11 @@ function Get-ParallelFolderStatistic {
                             }
                         } else {
                             $stats.FileCount++
-
                             if (Test-CloudPlaceholder -FileInfo $item) {
                                 $stats.HasCloudFiles = $true
-                                $fileSize = if ($item.Length -gt 0) { $item.Length } else { 1KB }
+                                # For cloud placeholder files, use a minimal size estimation
+                                # OneDrive placeholders typically show full size but aren't locally stored
+                                $fileSize = [Math]::Min($item.Length, 1KB)  # Use actual size or 1KB, whichever is smaller
                             } else {
                                 $fileSize = $item.Length
                             }
@@ -882,14 +915,21 @@ function Get-ParallelFolderStatistic {
                     Write-RunspaceDebug -Message "Exception Type: $($_.Exception.GetType().FullName)" -Category "FOLDER_ERROR"
                     Write-RunspaceDebug -Message "Full Exception: $($_.Exception | Out-String)" -Category "FOLDER_ERROR"
                 }
-                return $stats
-            }
-            # Execute the main function and ensure clean return value
+
+                # Return this directory's stats first, followed by all subdirectory results
+                return @($stats) + $allResults
+            }            # Execute the main function and ensure clean return value
             try {
-                $finalResult = Get-FolderStatisticInternal -FolderPath $FolderPath -CurrentDepth 0 -MaxDepth $MaxDepth
-                Write-RunspaceDebug -Message "Final result for $FolderPath`: Size=$($finalResult.SizeBytes), Accessible=$($finalResult.IsAccessible)" -Category "RETURN"                # Ensure we return only the PSCustomObject and suppress any other output
-                # BREAKPOINT: Set breakpoint here to see what gets returned from runspace
-                Write-Output $finalResult
+                $finalResults = Get-FolderStatisticInternal -FolderPath $FolderPath -CurrentDepth 0 -MaxDepth $MaxDepth
+
+                # Log the count of results returned
+                $resultCount = if ($finalResults -is [array]) { $finalResults.Count } else { 1 }
+                Write-RunspaceDebug -Message "Final results for $FolderPath`: $resultCount directories analyzed" -Category "RETURN"
+
+                # Return all results as flat array for hierarchical display
+                foreach ($result in $finalResults) {
+                    Write-Output $result
+                }
                 return
             } catch {
                 # Return error result if main function fails
@@ -951,15 +991,24 @@ function Get-ParallelFolderStatistic {
                         # Check if this is a debug message disguised as an error - more flexible pattern matching
                         if ($errorItem.Exception.Message -match "RUNSPACE_DEBUG:") {
                             $debugMsg = $errorItem.Exception.Message -replace "^.*RUNSPACE_DEBUG: ", ""
-                            # Write directly to the host to ensure it appears immediately
-                            $host.UI.WriteLine("$($Script:Colors.Magenta)[$($job.Path)] $debugMsg$($Script:Colors.Reset)")
-                            # Also write to transcript using Write-Output for better capture
-                            Write-Output "[$($job.Path)] $debugMsg"
+                            # Use Write-Output for transcript capture and console display
+                            Write-Output "$($Script:Colors.Magenta)[$($job.Path)] $debugMsg$($Script:Colors.Reset)"
+                            # Force console flush to ensure immediate display
+                            try {
+                                [System.Console]::Out.Flush()
+                            } catch {
+                                Write-Error "Console flush failed: $($_.Exception.Message)" -ErrorAction SilentlyContinue
+                            }
                         }
                         else {
                             # This is a real error, display it in red
-                            $host.UI.WriteLine("$($Script:Colors.Red)[$($job.Path)] ERROR: $($errorItem.Exception.Message)$($Script:Colors.Reset)")
-                            Write-Output "[$($job.Path)] ERROR: $($errorItem.Exception.Message)"
+                            Write-Output "$($Script:Colors.Red)[$($job.Path)] ERROR: $($errorItem.Exception.Message)$($Script:Colors.Reset)"
+                            # Force console flush to ensure immediate display
+                            try {
+                                [System.Console]::Out.Flush()
+                            } catch {
+                                Write-Error "Console flush failed: $($_.Exception.Message)" -ErrorAction SilentlyContinue
+                            }
                         }
                     }
                     # Clear all error messages to free memory
@@ -1411,7 +1460,8 @@ function Show-HierarchicalResult{
             $parentPath = Split-Path -Path $sample.Path -Parent
             Write-DebugInfo -Message "  Path: '$($sample.Path)' -> Parent: '$parentPath' (Accessible: $($sample.IsAccessible))" -Category "HIERARCHY"
         }
-    }    $allLevel1Candidates = $Results | Where-Object {
+    }
+    $allLevel1Candidates = $Results | Where-Object {
         $_.IsAccessible -and
         $_.Path -ne $normalizedStartPath -and
         $_.Path -ne $StartPath -and
@@ -1432,43 +1482,41 @@ function Show-HierarchicalResult{
         }
     }
 
-    $level1Folders = $allLevel1Candidates | Sort-Object SizeBytes -Descending | Select-Object -First $Top
-
-    if ($level1Folders.Count -gt 0) {
+    $level1Folders = $allLevel1Candidates | Sort-Object SizeBytes -Descending | Select-Object -First $Top    if ($level1Folders.Count -gt 0) {
         Write-DebugInfo -Message "Displaying top $($level1Folders.Count) Level 1 folders" -Category "HIERARCHY"
         Show-SingleTable -Results $level1Folders -Title "Level 1 Subfolders"
-        $largestLevel1 = $level1Folders[0]
 
-        # Level 2: Show subfolders of the largest Level 1 folder
-        if ($largestLevel1) {
-            Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Cyan)LEVEL 2: TOP SUBFOLDERS OF $($largestLevel1.Path)$($Script:Colors.Reset)"
-            $level2Folders = $Results | Where-Object {
+        # Truly dynamic hierarchical display - show all available levels without artificial limits
+        # The script already has timeout mechanisms, so let it show whatever was actually analyzed
+        $currentLevelFolders = $level1Folders
+        $currentLevel = 1
+
+        while ($currentLevelFolders.Count -gt 0) {
+            $largestCurrent = $currentLevelFolders[0]
+
+            # Find subfolders of the largest folder at current level
+            $nextLevelPath = $largestCurrent.Path
+            $nextLevel = $currentLevel + 1
+
+            Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Cyan)LEVEL $nextLevel`: TOP SUBFOLDERS OF $nextLevelPath$($Script:Colors.Reset)"
+
+            Write-DebugInfo -Message "Searching for Level $nextLevel subfolders of: $nextLevelPath" -Category "HIERARCHY"
+
+            $nextLevelFolders = $Results | Where-Object {
                 $_.IsAccessible -and
-                $_.Path -ne $largestLevel1.Path -and
-                (Split-Path -Path $_.Path -Parent) -eq $largestLevel1.Path
+                $_.Path -ne $nextLevelPath -and
+                (Split-Path -Path $_.Path -Parent) -eq $nextLevelPath
             } | Sort-Object SizeBytes -Descending | Select-Object -First $Top
 
-            if ($level2Folders.Count -gt 0) {
-                Show-SingleTable -Results $level2Folders -Title "Level 2 Subfolders"
-                $largestLevel2 = $level2Folders[0]
+            Write-DebugInfo -Message "Found $($nextLevelFolders.Count) subfolders for Level $nextLevel" -Category "HIERARCHY"
 
-                # Level 3: Show subfolders of the largest Level 2 folder
-                if ($largestLevel2) {
-                    Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Cyan)LEVEL 3: TOP SUBFOLDERS OF $($largestLevel2.Path)$($Script:Colors.Reset)"
-                    $level3Folders = $Results | Where-Object {
-                        $_.IsAccessible -and
-                        $_.Path -ne $largestLevel2.Path -and
-                        (Split-Path -Path $_.Path -Parent) -eq $largestLevel2.Path
-                    } | Sort-Object SizeBytes -Descending | Select-Object -First $Top
-
-                    if ($level3Folders.Count -gt 0) {
-                        Show-SingleTable -Results $level3Folders -Title "Level 3 Subfolders"
-                    } else {
-                        Write-Output "$($Script:Colors.Yellow)No accessible subfolders found at this level.$($Script:Colors.Reset)"
-                    }
-                }
+            if ($nextLevelFolders.Count -gt 0) {
+                Show-SingleTable -Results $nextLevelFolders -Title "Level $nextLevel Subfolders"
+                $currentLevelFolders = $nextLevelFolders
+                $currentLevel = $nextLevel
             } else {
                 Write-Output "$($Script:Colors.Yellow)No accessible subfolders found at this level.$($Script:Colors.Reset)"
+                break
             }
         }
     } else {
@@ -1634,18 +1682,42 @@ function Show-HierarchicalSummary {
                     Write-Output "$($Script:Colors.White)Script Calculated: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $totalSize)$($Script:Colors.Reset)"
 
                     if ($discrepancy -gt 0) {
-                        Write-Output "$($Script:Colors.White)Unaccounted Space: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $discrepancy) ($discrepancyPercent%)$($Script:Colors.Reset)"
-
-                        # Get NTFS overhead estimation
+                        Write-Output "$($Script:Colors.White)Unaccounted Space: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $discrepancy) ($discrepancyPercent%)$($Script:Colors.Reset)"                        # Get NTFS overhead estimation
                         $ntfsOverhead = Get-NTFSOverhead -DriveLetter $driveLetter
                         if ($ntfsOverhead.TotalOverhead -gt 0) {
                             Write-Output "`n$($Script:Colors.Bold)NTFS SYSTEM OVERHEAD ANALYSIS$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.White)MFT Size: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.MFTSize)$($Script:Colors.Reset)"
-                            if ($ntfsOverhead.JournalSize -gt 0) {
-                                Write-Output "$($Script:Colors.White)Journal Size: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.JournalSize)$($Script:Colors.Reset)"
+
+                            # Show additional NTFS information if available
+                            if ($ntfsOverhead.TotalReservedClusters -gt 0 -and $ntfsOverhead.BytesPerCluster -gt 0) {
+                                $reservedSize = $ntfsOverhead.TotalReservedClusters * $ntfsOverhead.BytesPerCluster
+                                Write-Output "$($Script:Colors.White)Reserved Clusters: $($Script:Colors.Cyan)$($ntfsOverhead.TotalReservedClusters.ToString('N0')) ($(Format-FileSize -SizeInBytes $reservedSize))$($Script:Colors.Reset)"
                             }
+
+                            if ($ntfsOverhead.MFTZoneSize -gt 0) {
+                                Write-Output "$($Script:Colors.White)MFT Zone Size: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.MFTZoneSize)$($Script:Colors.Reset)"
+                            }
+
+                            if ($ntfsOverhead.StorageReservedClusters -gt 0 -and $ntfsOverhead.BytesPerCluster -gt 0) {
+                                $storageReservedSize = $ntfsOverhead.StorageReservedClusters * $ntfsOverhead.BytesPerCluster
+                                Write-Output "$($Script:Colors.White)Storage Reserved: $($Script:Colors.Cyan)$($ntfsOverhead.StorageReservedClusters.ToString('N0')) clusters ($(Format-FileSize -SizeInBytes $storageReservedSize))$($Script:Colors.Reset)"
+                            }
+
                             Write-Output "$($Script:Colors.White)Total NTFS Overhead: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.TotalOverhead)$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.DarkGray)Method: $($ntfsOverhead.EstimationMethod)$($Script:Colors.Reset)"
+
+                            # Show additional technical details if available
+                            if ($ntfsOverhead.RawNTFSInfo.Count -gt 0) {
+                                if ($ntfsOverhead.RawNTFSInfo.ContainsKey('NTFSVersion')) {
+                                    Write-Output "$($Script:Colors.DarkGray)NTFS Version: $($ntfsOverhead.RawNTFSInfo['NTFSVersion'])$($Script:Colors.Reset)"
+                                }
+                                if ($ntfsOverhead.BytesPerCluster -gt 0) {
+                                    Write-Output "$($Script:Colors.DarkGray)Cluster Size: $(Format-FileSize -SizeInBytes $ntfsOverhead.BytesPerCluster)$($Script:Colors.Reset)"
+                                }
+                                if ($ntfsOverhead.RawNTFSInfo.ContainsKey('BytesPerFileRecord')) {
+                                    Write-Output "$($Script:Colors.DarkGray)File Record Size: $($ntfsOverhead.RawNTFSInfo['BytesPerFileRecord']) bytes$($Script:Colors.Reset)"
+                                }
+                            }
 
                             $discrepancy -= $ntfsOverhead.TotalOverhead
                             $discrepancyPercent = if ($driveUsedSpace -gt 0) { [math]::Round(($discrepancy / $driveUsedSpace) * 100, 1) } else { 0 }
@@ -1845,7 +1917,19 @@ function Get-ProblematicDirectorySize {
 function Get-NTFSOverhead {
     <#
     .SYNOPSIS
-    Attempts to estimate NTFS file system overhead including MFT, journals, and reserved space.
+    Retrieves comprehensive NTFS file system overhead information using fsutil fsinfo ntfsinfo.
+
+    .DESCRIPTION
+    Uses fsutil fsinfo ntfsinfo to extract detailed NTFS metadata including MFT size, reserved clusters,
+    and other file system overhead that contributes to used space on the drive but is not accounted
+    for in standard file enumeration.
+
+    .PARAMETER DriveLetter
+    The drive letter (without colon) to analyze for NTFS overhead information.
+
+    .EXAMPLE
+    Get-NTFSOverhead -DriveLetter "C"
+    Returns NTFS overhead information for the C: drive.
     #>
     param(
         [Parameter(Mandatory=$true)]
@@ -1855,55 +1939,191 @@ function Get-NTFSOverhead {
     try {
         $overhead = [PSCustomObject]@{
             MFTSize = 0
-            JournalSize = 0
-            SystemReserved = 0
+            TotalReservedClusters = 0
+            StorageReservedClusters = 0
+            MFTZoneSize = 0
+            BytesPerCluster = 0
             TotalOverhead = 0
             EstimationMethod = "Unknown"
+            RawNTFSInfo = @{}
         }
 
-        # Try to get MFT size using fsutil
+        # Execute fsutil fsinfo ntfsinfo to get comprehensive NTFS information
         try {
+            Write-DebugInfo -Message "Executing fsutil fsinfo ntfsinfo ${DriveLetter}:" -Category "NTFS"
             $fsutilOutput = & fsutil fsinfo ntfsinfo "${DriveLetter}:" 2>$null
-            if ($fsutilOutput) {
+
+            if ($fsutilOutput -and $fsutilOutput.Count -gt 0) {
+                Write-DebugInfo -Message "Successfully retrieved fsutil output with $($fsutilOutput.Count) lines" -Category "NTFS"
+
                 foreach ($line in $fsutilOutput) {
-                    if ($line -match "Mft Valid Data Length\s*:\s*0x([0-9A-Fa-f]+)") {
-                        $overhead.MFTSize = [Convert]::ToInt64($matches[1], 16)
-                        $overhead.EstimationMethod = "fsutil"
+                    $line = $line.Trim()
+
+                    # Parse MFT Valid Data Length (actual MFT size in use)
+                    if ($line -match "Mft Valid Data Length\s*:\s*(.+)") {
+                        $mftSizeText = $matches[1].Trim()
+                        Write-DebugInfo -Message "Found MFT Valid Data Length: '$mftSizeText'" -Category "NTFS"
+
+                        # Parse size with unit (e.g., "1.01 GB")
+                        if ($mftSizeText -match "(\d+\.?\d*)\s*(GB|MB|KB|B)") {
+                            $mftValue = [double]$matches[1]
+                            $mftUnit = $matches[2]
+
+                            switch ($mftUnit) {
+                                "GB" { $overhead.MFTSize = [int64]($mftValue * 1GB) }
+                                "MB" { $overhead.MFTSize = [int64]($mftValue * 1MB) }
+                                "KB" { $overhead.MFTSize = [int64]($mftValue * 1KB) }
+                                "B"  { $overhead.MFTSize = [int64]$mftValue }
+                            }
+                            Write-DebugInfo -Message "Parsed MFT size: $($overhead.MFTSize) bytes" -Category "NTFS"
+                        }
                     }
-                    elseif ($line -match "Usn Journal Size\s*:\s*0x([0-9A-Fa-f]+)") {
-                        $overhead.JournalSize = [Convert]::ToInt64($matches[1], 16)
+
+                    # Parse Total Reserved Clusters
+                    elseif ($line -match "Total Reserved Clusters\s*:\s*([0-9,]+)\s*\(\s*(.+?)\s*\)") {
+                        $reservedClustersText = $matches[1] -replace ',', ''
+                        $reservedSizeText = $matches[2].Trim()
+                        Write-DebugInfo -Message "Found Total Reserved Clusters: '$reservedClustersText' ($reservedSizeText)" -Category "NTFS"
+
+                        $overhead.TotalReservedClusters = [int64]$reservedClustersText
+
+                        # Parse the size in parentheses
+                        if ($reservedSizeText -match "(\d+\.?\d*)\s*(GB|MB|KB|B)") {
+                            $reservedValue = [double]$matches[1]
+                            $reservedUnit = $matches[2]
+
+                            switch ($reservedUnit) {
+                                "GB" { $overhead.RawNTFSInfo['TotalReservedSize'] = [int64]($reservedValue * 1GB) }
+                                "MB" { $overhead.RawNTFSInfo['TotalReservedSize'] = [int64]($reservedValue * 1MB) }
+                                "KB" { $overhead.RawNTFSInfo['TotalReservedSize'] = [int64]($reservedValue * 1KB) }
+                                "B"  { $overhead.RawNTFSInfo['TotalReservedSize'] = [int64]$reservedValue }
+                            }
+                        }
+                    }
+
+                    # Parse Reserved For Storage Reserve
+                    elseif ($line -match "Reserved For Storage Reserve\s*:\s*([0-9,]+)\s*\(\s*(.+?)\s*\)") {
+                        $storageReservedText = $matches[1] -replace ',', ''
+                        $storageSizeText = $matches[2].Trim()
+                        Write-DebugInfo -Message "Found Storage Reserved: '$storageReservedText' ($storageSizeText)" -Category "NTFS"
+
+                        $overhead.StorageReservedClusters = [int64]$storageReservedText
+
+                        # Parse the size in parentheses
+                        if ($storageSizeText -match "(\d+\.?\d*)\s*(GB|MB|KB|B)") {
+                            $storageValue = [double]$matches[1]
+                            $storageUnit = $matches[2]
+
+                            switch ($storageUnit) {
+                                "GB" { $overhead.RawNTFSInfo['StorageReservedSize'] = [int64]($storageValue * 1GB) }
+                                "MB" { $overhead.RawNTFSInfo['StorageReservedSize'] = [int64]($storageValue * 1MB) }
+                                "KB" { $overhead.RawNTFSInfo['StorageReservedSize'] = [int64]($storageValue * 1KB) }
+                                "B"  { $overhead.RawNTFSInfo['StorageReservedSize'] = [int64]$storageValue }
+                            }
+                        }
+                    }
+
+                    # Parse MFT Zone Size
+                    elseif ($line -match "MFT Zone Size\s*:\s*(.+)") {
+                        $mftZoneSizeText = $matches[1].Trim()
+                        Write-DebugInfo -Message "Found MFT Zone Size: '$mftZoneSizeText'" -Category "NTFS"
+
+                        if ($mftZoneSizeText -match "(\d+\.?\d*)\s*(GB|MB|KB|B)") {
+                            $zoneValue = [double]$matches[1]
+                            $zoneUnit = $matches[2]
+
+                            switch ($zoneUnit) {
+                                "GB" { $overhead.MFTZoneSize = [int64]($zoneValue * 1GB) }
+                                "MB" { $overhead.MFTZoneSize = [int64]($zoneValue * 1MB) }
+                                "KB" { $overhead.MFTZoneSize = [int64]($zoneValue * 1KB) }
+                                "B"  { $overhead.MFTZoneSize = [int64]$zoneValue }
+                            }
+                        }
+                    }
+
+                    # Parse Bytes Per Cluster
+                    elseif ($line -match "Bytes Per Cluster\s*:\s*([0-9,]+)") {
+                        $overhead.BytesPerCluster = [int]($matches[1] -replace ',', '')
+                        Write-DebugInfo -Message "Found Bytes Per Cluster: $($overhead.BytesPerCluster)" -Category "NTFS"
+                    }
+
+                    # Store additional useful information
+                    elseif ($line -match "Total Sectors\s*:\s*([0-9,]+)\s*\(\s*(.+?)\s*\)") {
+                        $overhead.RawNTFSInfo['TotalSectors'] = $matches[1] -replace ',', ''
+                        $overhead.RawNTFSInfo['TotalSize'] = $matches[2].Trim()
+                    }
+                    elseif ($line -match "Free Clusters\s*:\s*([0-9,]+)\s*\(\s*(.+?)\s*\)") {
+                        $overhead.RawNTFSInfo['FreeClusters'] = $matches[1] -replace ',', ''
+                        $overhead.RawNTFSInfo['FreeSize'] = $matches[2].Trim()
+                    }
+                    elseif ($line -match "NTFS Version\s*:\s*(.+)") {
+                        $overhead.RawNTFSInfo['NTFSVersion'] = $matches[1].Trim()
+                    }
+                    elseif ($line -match "Bytes Per FileRecord Segment\s*:\s*([0-9,]+)") {
+                        $overhead.RawNTFSInfo['BytesPerFileRecord'] = $matches[1] -replace ',', ''
                     }
                 }
+
+                # Calculate total overhead from parsed values
+                $calculatedOverhead = $overhead.MFTSize
+
+                # Add reserved cluster space if we have cluster size information
+                if ($overhead.BytesPerCluster -gt 0) {
+                    if ($overhead.TotalReservedClusters -gt 0) {
+                        $reservedSpace = $overhead.TotalReservedClusters * $overhead.BytesPerCluster
+                        $calculatedOverhead += $reservedSpace
+                        Write-DebugInfo -Message "Added reserved clusters overhead: $(Format-FileSize -SizeInBytes $reservedSpace)" -Category "NTFS"
+                    }
+
+                    # Add MFT Zone if it is not already included in MFT size
+                    if ($overhead.MFTZoneSize -gt 0 -and $overhead.MFTZoneSize -gt $overhead.MFTSize) {
+                        $mftZoneOverhead = $overhead.MFTZoneSize - $overhead.MFTSize
+                        $calculatedOverhead += $mftZoneOverhead
+                        Write-DebugInfo -Message "Added MFT Zone overhead: $(Format-FileSize -SizeInBytes $mftZoneOverhead)" -Category "NTFS"
+                    }
+                }
+
+                $overhead.TotalOverhead = $calculatedOverhead
+                $overhead.EstimationMethod = "fsutil fsinfo ntfsinfo"
+
+                Write-DebugInfo -Message "Successfully calculated total NTFS overhead: $(Format-FileSize -SizeInBytes $overhead.TotalOverhead)" -Category "NTFS"
+            }
+            else {
+                Write-DebugInfo -Message "fsutil command returned no output" -Category "NTFS"
+                throw "fsutil fsinfo ntfsinfo returned no output"
             }
         }
         catch {
+            Write-DebugInfo -Message "Failed to execute fsutil or parse output: $($_.Exception.Message)" -Category "NTFS"
             Write-Verbose "Could not get NTFS info via fsutil: $($_.Exception.Message)"
-        }
 
-        # Fallback: Estimate based on drive size (typical NTFS overhead is 1-3% of drive size)
-        if ($overhead.MFTSize -eq 0) {
+            # Fallback: Estimate based on drive size (typical NTFS overhead is 1-3% of drive size)
             try {
                 $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop
                 $estimatedOverhead = [math]::Round($volume.Size * 0.02, 0)  # 2% estimate
                 $overhead.TotalOverhead = $estimatedOverhead
-                $overhead.EstimationMethod = "Percentage estimate (2%)"
+                $overhead.EstimationMethod = "Percentage estimate (2%) - fsutil failed"
+                Write-DebugInfo -Message "Using fallback percentage estimate: $(Format-FileSize -SizeInBytes $overhead.TotalOverhead)" -Category "NTFS"
             }
             catch {
-                $overhead.EstimationMethod = "Unable to estimate"
+                $overhead.EstimationMethod = "Unable to estimate - both fsutil and volume query failed"
+                Write-DebugInfo -Message "All estimation methods failed" -Category "NTFS"
             }
-        } else {
-            $overhead.TotalOverhead = $overhead.MFTSize + $overhead.JournalSize
         }
 
         return $overhead
     }
     catch {
+        Write-DebugInfo -Message "Critical error in Get-NTFSOverhead: $($_.Exception.Message)" -Category "NTFS"
         return [PSCustomObject]@{
             MFTSize = 0
-            JournalSize = 0
-            SystemReserved = 0
+            TotalReservedClusters = 0
+            StorageReservedClusters = 0
+            MFTZoneSize = 0
+            BytesPerCluster = 0
             TotalOverhead = 0
             EstimationMethod = "Error: $($_.Exception.Message)"
+            RawNTFSInfo = @{}
         }
     }
 }
@@ -2311,7 +2531,8 @@ function Main {
             Show-ErrorSummary
 
             Write-Output "`n$($Script:Colors.Green)Analysis completed successfully!$($Script:Colors.Reset)"
-        }        else {
+        }
+        else {
             Write-Output "$($Script:Colors.Yellow)WhatIf: Would analyze folder usage starting from '$($PSBoundParameters['StartPath'])'$($Script:Colors.Reset)"
             Write-Output "$($Script:Colors.Yellow)WhatIf: Would scan up to $($PSBoundParameters['MaxDepth']) levels deep$($Script:Colors.Reset)"
             Write-Output "$($Script:Colors.Yellow)WhatIf: Would display top $($PSBoundParameters['Top']) largest folders$($Script:Colors.Reset)"
@@ -2323,7 +2544,8 @@ function Main {
         Write-Output "$($Script:Colors.Red)Stack trace: $($_.ScriptStackTrace)$($Script:Colors.Reset)"
     }
     finally {
-        # Cleanup and finalization - ALWAYS executed        Write-ProgressUpdate -Activity "Analysis" -Status "Complete" -Completed
+        # Cleanup and finalization - ALWAYS executed
+        Write-ProgressUpdate -Activity "Analysis" -Status "Complete" -Completed
 
         # Clean up central logging
         Clear-CentralLogging
