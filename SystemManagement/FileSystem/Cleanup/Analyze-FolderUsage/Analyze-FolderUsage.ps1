@@ -2,7 +2,7 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-19 21:45:00 UTC
+# Last Updated: 2025-06-19 18:55:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 2.13.0
 # Additional Info: MINOR - Added PowerShell version-aware color system for compatibility between PS 5.1 and PS 7+ without using Write-Host
