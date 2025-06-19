@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-19 18:50:00 UTC
+# Last Updated: 2025-06-19 21:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.12.1
-# Additional Info: PATCH - Removed artificial 6-level limit from hierarchical display, now shows all levels up to MaxDepth parameter limit (default 15)
+# Version: 2.13.0
+# Additional Info: MINOR - Added PowerShell version-aware color system for compatibility between PS 5.1 and PS 7+ without using Write-Host
 # =============================================================================
 
 <#
@@ -23,12 +23,12 @@ This script recursively scans directories starting from a specified path and cal
 - Parallel processing with configurable thread limits
 - Administrative privilege detection with graceful degradation
 - Comprehensive error handling for access-denied scenarios
-- Multi-level progress reporting with ANSI color coding
+- Multi-level progress reporting with version-aware color coding (ANSI in PS 7+, plain text in PS 5.1)
 - Advanced transcript logging with cleanup
 - Drive information display for the target drive
 
 The script uses PowerShell runspaces for maximum performance and includes memory management with garbage collection.
-Supports Windows PowerShell 5.1 and later with modern .NET integration.
+Supports Windows PowerShell 5.1 and later with modern .NET integration and version-aware color compatibility.
 Drive information is automatically displayed for the drive containing the StartPath to provide context on available space.
 
 .PARAMETER StartPath
@@ -95,18 +95,37 @@ param(
     [int]$MaxThreads = 10
 )
 
-# ANSI Color Codes for Enhanced Console Output
-$Script:Colors = @{
-    Reset      = "`e[0m"
-    White      = "`e[37m"
-    Cyan       = "`e[36m"
-    Green      = "`e[32m"
-    Yellow     = "`e[33m"
-    Red        = "`e[31m"
-    Magenta    = "`e[35m"
-    DarkGray   = "`e[90m"
-    Bold       = "`e[1m"
-    Underline  = "`e[4m"
+# PowerShell Version-Aware Color System
+# PowerShell 5.1 does not support ANSI escape sequences, while PowerShell 7+ does
+# This ensures compatibility across versions without using Write-Host
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    # PowerShell 7+ supports ANSI escape sequences
+    $Script:Colors = @{
+        Reset      = "`e[0m"
+        White      = "`e[37m"
+        Cyan       = "`e[36m"
+        Green      = "`e[32m"
+        Yellow     = "`e[33m"
+        Red        = "`e[31m"
+        Magenta    = "`e[35m"
+        DarkGray   = "`e[90m"
+        Bold       = "`e[1m"
+        Underline  = "`e[4m"
+    }
+} else {
+    # PowerShell 5.1 and earlier - use empty strings to disable colors
+    $Script:Colors = @{
+        Reset      = ""
+        White      = ""
+        Cyan       = ""
+        Green      = ""
+        Yellow     = ""
+        Red        = ""
+        Magenta    = ""
+        DarkGray   = ""
+        Bold       = ""
+        Underline  = ""
+    }
 }
 
 # Script Variables for Script Operation
@@ -1479,10 +1498,11 @@ function Show-HierarchicalResult{
         foreach ($candidate in $allLevel1Candidates | Sort-Object SizeBytes -Descending) {
             $sizeFormatted = Format-FileSize -SizeInBytes $candidate.SizeBytes
             Write-DebugInfo -Message "  $($candidate.Path): $sizeFormatted (Accessible: $($candidate.IsAccessible))" -Category "HIERARCHY"
-        }
-    }
+        }    }
 
-    $level1Folders = $allLevel1Candidates | Sort-Object SizeBytes -Descending | Select-Object -First $Top    if ($level1Folders.Count -gt 0) {
+    $level1Folders = $allLevel1Candidates | Sort-Object SizeBytes -Descending | Select-Object -First $Top
+
+    if ($level1Folders.Count -gt 0) {
         Write-DebugInfo -Message "Displaying top $($level1Folders.Count) Level 1 folders" -Category "HIERARCHY"
         Show-SingleTable -Results $level1Folders -Title "Level 1 Subfolders"
 
