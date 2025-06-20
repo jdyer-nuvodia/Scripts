@@ -46,6 +46,9 @@ Type: Switch
 .PARAMETER Debug
 Uses the built-in PowerShell Debug parameter. Enables detailed debug logging for troubleshooting. Shows all major processing steps, directory counts, and calculation details.
 Type: Switch (Built-in PowerShell parameter)
+.PARAMETER Verbose
+Uses the built-in PowerShell Verbose parameter. Enables detailed progress reporting and status updates during execution.
+Type: Switch (Built-in PowerShell parameter)
 .EXAMPLE
 .\Analyze-FolderUsage.ps1
 Analyzes the C:\ drive with default settings (max depth 15, top 10 folders, 10 threads).
