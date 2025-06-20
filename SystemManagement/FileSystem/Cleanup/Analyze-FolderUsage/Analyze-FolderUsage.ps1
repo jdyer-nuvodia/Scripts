@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-20 14:30:00 UTC
-# Updated By: GitHub Copilot
-# Version: 3.6.3
-# Additional Info: Fixed parallel processing object serialization causing "No accessible top-level subfolders found" error
+# Last Updated: 2025-06-20 20:03:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 5.1.1
+# Additional Info: Fixed thread limit violation - now properly respects MaxThreads while maintaining aggressive saturation
 # =============================================================================
 
 <#
@@ -181,9 +181,7 @@ function Write-CentralLog {
         [Parameter(Mandatory = $false)]
         [string]$Category = "INFO",
         [Parameter(Mandatory = $false)]
-        [string]$Source = "MAIN",
-        [Parameter(Mandatory = $false)]
-        [switch]$NoConsole
+        [string]$Source = "MAIN"
     )
     # Only log to central log if debug mode is enabled and central logging is initialized
     if (-not $Script:EnableCentralLogging -or [string]::IsNullOrEmpty($Script:CentralLogPath) -or $DebugPreference -eq 'SilentlyContinue') {
@@ -193,21 +191,13 @@ function Write-CentralLog {
         # Create timestamp
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
         $logEntry = "[$timestamp] [$Source] [$Category] $Message"
-        # Write to console unless suppressed
-        if (-not $NoConsole) {
-            switch ($Category) {
-                "ERROR" { Write-Output "$($Script:Colors.Red)$logEntry$($Script:Colors.Reset)" }
-                "WARNING" { Write-Output "$($Script:Colors.Yellow)$logEntry$($Script:Colors.Reset)" }
-                "DEBUG" { Write-Output "$($Script:Colors.DarkGray)$logEntry$($Script:Colors.Reset)" }
-                "SUCCESS" { Write-Output "$($Script:Colors.Green)$logEntry$($Script:Colors.Reset)" }
-                default { Write-Output "$($Script:Colors.White)$logEntry$($Script:Colors.Reset)" }
-            }
-        }
+        # Write to log file only - console output should come from main script logic
+        # Logging functions should not output to streams that can be captured by functions
         # Thread-safe file writing
         $acquired = $false
         try {
             if ($Script:LogMutex) {
-                $acquired = $Script:LogMutex.WaitOne(1000)
+                $acquired = $Script:LogMutex.WaitOne(5000)
             }
             if ($acquired -or -not $Script:LogMutex) {
                 # Write to log file
@@ -238,7 +228,7 @@ function Write-DebugInfo {
         $formattedMessage = "[$timestamp] [$Category] $Message"
         Write-Output "$($Script:Colors.Magenta)$formattedMessage$($Script:Colors.Reset)"
         # Also write to central log
-        Write-CentralLog -Message $Message -Category $Category -Source "MAIN" -NoConsole
+        Write-CentralLog -Message $Message -Category $Category -Source "MAIN"
     }
 }
 function Write-VerboseInfo {
@@ -260,7 +250,8 @@ function Write-VerboseInfo {
     }
 }
 function Write-DetailedProgress {
-    [CmdletBinding()]
+    [CmdletBinding()
+    ]
     param(
         [string]$Activity,
         [string]$Status,
@@ -629,16 +620,45 @@ function Get-ParallelFolderStatistic {
         [int]$MaxDepth,
         [int]$MaxThreads
     )
+
+    # Enhanced monitoring variables
+    $monitoringStartTime = Get-Date
+    $peakActiveJobs = 0
+    $jobLaunchTimes = @{}
+    $jobCompletionTimes = @{}
+
     $runspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
     $runspacePool.Open()
     $jobs = @()
     $results = @()
+    # WORK QUEUE SYSTEM - This is the key improvement
+    $workQueue = [System.Collections.Concurrent.ConcurrentQueue[PSCustomObject]]::new()
+    $processedPaths = [System.Collections.Concurrent.ConcurrentDictionary[string, bool]]::new()
+
     try {
-        # Create scriptblock for parallel execution
+        Write-CentralLog -Message "=== PARALLEL EXECUTION WITH WORK-STEALING QUEUE ===" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        Write-CentralLog -Message "Runspace pool configured with MaxThreads: $MaxThreads" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        Write-CentralLog -Message "Initial directories to process: $($FolderPaths.Count)" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        Write-CentralLog -Message "Work queue system: ENABLED for maximum thread utilization" -Category "PARALLEL_MONITOR" -Source "MAIN"
+
+        # Initialize work queue with initial directories
+        foreach ($folder in $FolderPaths) {
+            $workItem = [PSCustomObject]@{
+                Path = $folder
+                Depth = 0
+                Priority = 0
+            }
+            $workQueue.Enqueue($workItem)
+            Write-CentralLog -Message "Queued initial work item: $folder" -Category "WORK_QUEUE" -Source "MAIN"
+        }
+
+        Write-CentralLog -Message "Work queue initialized with $($workQueue.Count) items" -Category "WORK_QUEUE" -Source "MAIN"
+        # Create enhanced scriptblock with work queue integration
         $scriptBlock = {
             param(
                 [string]$FolderPath,
                 [int]$MaxDepth,
+                [int]$CurrentDepth,
                 [bool]$EnableDebug,
                 [string]$CentralLogPath
             )
@@ -691,13 +711,16 @@ function Get-ParallelFolderStatistic {
                     return $false
                 }
             }
-            function Get-FolderStatisticInternal {
-                param([string]$FolderPath, [int]$CurrentDepth, [int]$MaxDepth)
-                $startTime = Get-Date
-                $maxScanTime = 300
-                $maxItemsPerDirectory = 10000
-                # Collection to store all results at all levels
-                [System.Collections.ArrayList]$allResults = @()
+
+            # OPTIMIZED SINGLE-DIRECTORY SCAN - No deep recursion, returns discovered subdirectories
+            function Get-FolderStatisticSingle {
+                param(
+                    [string]$FolderPath,
+                    [int]$CurrentDepth,
+                    [int]$MaxDepth
+                )
+                Write-RunspaceDebug -Message "Scanning single directory: $FolderPath (Depth: $CurrentDepth/$MaxDepth)" -Category "FOLDER_SCAN"
+
                 $stats = [PSCustomObject]@{
                     Path = $FolderPath
                     SizeBytes = 0
@@ -709,58 +732,32 @@ function Get-ParallelFolderStatistic {
                     HasCloudFiles = $false
                     Error = $null
                     MaxDepthReached = $false
+                    DiscoveredSubdirectories = @()
                 }
+
                 try {
-                    Write-RunspaceDebug -Message "Starting scan of: $FolderPath (Depth: $CurrentDepth/$MaxDepth)" -Category "FOLDER_SCAN"
                     if (Test-ReparsePoint -Path $FolderPath) {
                         Write-RunspaceDebug -Message "Skipping reparse point: $FolderPath" -Category "FOLDER_SCAN"
+                        $stats.IsAccessible = $false
+                        $stats.Error = "Reparse Point"
                         return $stats
                     }
+
                     $items = Get-ChildItem -Path $FolderPath -Force -ErrorAction Stop
-                    Write-RunspaceDebug -Message "SUCCESS: Scanned $FolderPath - found $($items.Count) items" -Category "FOLDER_SCAN"
-                    if ($items.Count -gt $maxItemsPerDirectory) {
-                        Write-RunspaceDebug -Message "Large directory detected ($($items.Count) items), limiting to $maxItemsPerDirectory items" -Category "FOLDER_SCAN"
-                        $items = $items | Select-Object -First $maxItemsPerDirectory
-                        $stats.Error = "Large directory - only processed first $maxItemsPerDirectory items"
-                    }
                     $itemCount = 0
+
                     foreach ($item in $items) {
                         $itemCount++
-                        # Check timeout
-                        if ((Get-Date).Subtract($startTime).TotalSeconds -gt $maxScanTime) {
-                            Write-RunspaceDebug -Message "Timeout reached for $FolderPath after $maxScanTime seconds" -Category "TIMEOUT"
-                            $stats.Error = "Scan timeout after $maxScanTime seconds - results may be incomplete"
-                            break
-                        }
                         if ($item.PSIsContainer) {
+                            # Directory processing
                             $stats.SubfolderCount++
+
+                            # Add to discovered subdirectories if we can go deeper
                             if ($CurrentDepth -lt $MaxDepth) {
-                                Write-RunspaceDebug -Message "Recursing into subfolder: $($item.FullName)" -Category "FOLDER_SCAN"
-                                $subResults = Get-FolderStatisticInternal -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
-                                if ($subResults -and $subResults.Count -gt 0) {
-                                    # Add all sub-results to our collection - ensure $subResults is treated as array
-                                    $subResultsArray = @($subResults)
-                                    $null = $allResults.AddRange($subResultsArray)
-                                    # Get the main subdirectory result for aggregation
-                                    $mainSubResult = $subResults[0]
-                                    if ($mainSubResult -and $mainSubResult.IsAccessible) {
-                                        $stats.SizeBytes += $mainSubResult.SizeBytes
-                                        $stats.FileCount += $mainSubResult.FileCount
-                                        if ($mainSubResult.HasCloudFiles) {
-                                            $stats.HasCloudFiles = $true
-                                        }
-                                        if ($mainSubResult.LargestFileSize -gt $stats.LargestFileSize) {
-                                            $stats.LargestFile = $mainSubResult.LargestFile
-                                            $stats.LargestFileSize = $mainSubResult.LargestFileSize
-                                        }
-                                        if ($mainSubResult.MaxDepthReached) {
-                                            $stats.MaxDepthReached = $true
-                                        }
-                                    }
-                                }
+                                $stats.DiscoveredSubdirectories += $item.FullName
                             } else {
                                 $stats.MaxDepthReached = $true
-                                Write-RunspaceDebug -Message "Max depth reached, skipping: $($item.FullName)" -Category "FOLDER_SCAN"
+                                Write-RunspaceDebug -Message "Max depth reached, discovered but not queuing: $($item.FullName)" -Category "FOLDER_SCAN"
                             }
                         } else {
                             # File processing
@@ -778,10 +775,13 @@ function Get-ParallelFolderStatistic {
                             }
                         }
                         # Throttle for large directories
-                        if ($itemCount % 500 -eq 0) {
-                            Start-Sleep -Milliseconds 10
+                        if ($itemCount % 1000 -eq 0) {
+                            Start-Sleep -Milliseconds 5
                         }
                     }
+
+                    Write-RunspaceDebug -Message "SUCCESS: Scanned $FolderPath - found $($stats.FileCount) files, $($stats.SubfolderCount) folders, discovered $($stats.DiscoveredSubdirectories.Count) subdirectories" -Category "FOLDER_SCAN"
+
                 } catch [System.UnauthorizedAccessException] {
                     $stats.IsAccessible = $false
                     $stats.Error = "Access Denied"
@@ -795,33 +795,20 @@ function Get-ParallelFolderStatistic {
                     $stats.Error = $_.Exception.Message
                     Write-RunspaceDebug -Message "ERROR: Failed to access $FolderPath - $($_.Exception.Message)" -Category "FOLDER_ERROR"
                 }
-                # Return all results with the main directory result first
-                if ($allResults.Count -gt 0) {
-                    $finalResults = @($stats) + @($allResults.ToArray())
-                } else {
-                    $finalResults = @($stats)
-                }
-                Write-RunspaceDebug -Message "Returning $($finalResults.Count) results from Get-FolderStatisticInternal" -Category "FOLDER_RETURN"
-                return ,$finalResults
+
+                return $stats
             }
-            # Main execution in scriptblock
+
+            # Main execution within runspace
             try {
-                Write-RunspaceDebug -Message "Starting analysis of root directory: $FolderPath" -Category "ROOT_START"
-                $results = Get-FolderStatisticInternal -FolderPath $FolderPath -CurrentDepth 0 -MaxDepth $MaxDepth
-                Write-RunspaceDebug -Message "Completed analysis of $FolderPath - returned $($results.Count) results" -Category "ROOT_COMPLETE"
-                # Ensure results are properly formatted PSCustomObjects before returning
-                $formattedResults = @()
-                foreach ($result in $results) {
-                    if ($result -is [PSCustomObject] -and $result.PSObject.Properties['Path']) {
-                        $formattedResults += $result
-                    }
-                }
-                Write-RunspaceDebug -Message "Returning $($formattedResults.Count) formatted results from scriptblock" -Category "ROOT_COMPLETE"
-                return $formattedResults
+                Write-RunspaceDebug -Message "Starting optimized folder analysis for: $FolderPath at depth $CurrentDepth" -Category "RUNSPACE_START"
+                $result = Get-FolderStatisticSingle -FolderPath $FolderPath -CurrentDepth $CurrentDepth -MaxDepth $MaxDepth
+                Write-RunspaceDebug -Message "Completed folder analysis for: $FolderPath - discovered $($result.DiscoveredSubdirectories.Count) subdirectories" -Category "RUNSPACE_COMPLETE"
+                return $result
             } catch {
-                Write-RunspaceDebug -Message "CRITICAL ERROR in root analysis of $FolderPath`: $($_.Exception.Message)" -Category "ROOT_ERROR"
-                # Return error result for the directory
-                $errorResult = [PSCustomObject]@{
+                Write-RunspaceDebug -Message "CRITICAL ERROR in runspace for $FolderPath - $($_.Exception.Message)" -Category "RUNSPACE_ERROR"
+                # Return minimal error result
+                return [PSCustomObject]@{
                     Path = $FolderPath
                     SizeBytes = 0
                     FileCount = 0
@@ -830,123 +817,317 @@ function Get-ParallelFolderStatistic {
                     LargestFileSize = 0
                     IsAccessible = $false
                     HasCloudFiles = $false
-                    Error = $_.Exception.Message
+                    Error = "Runspace execution error: $($_.Exception.Message)"
                     MaxDepthReached = $false
+                    DiscoveredSubdirectories = @()
                 }
-                return @($errorResult)
             }
         }
-        # Launch parallel jobs
-        Write-CentralLog -Message "Starting parallel job execution for $($FolderPaths.Count) directories" -Category "PARALLEL" -Source "MAIN"
-        foreach ($folder in $FolderPaths) {
-            $powershell = [powershell]::Create()
-            $powershell.RunspacePool = $runspacePool
-            $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $folder).AddParameter("MaxDepth", $MaxDepth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue').AddParameter("CentralLogPath", $Script:CentralLogPath) | Out-Null
-            $handle = $powershell.BeginInvoke()
-            $jobs += [PSCustomObject]@{
-                PowerShell = $powershell
-                Handle = $handle
-                Path = $folder
-                StartTime = Get-Date
-                Processed = $false
-            }
-            Write-CentralLog -Message "Launched job for directory: $folder" -Category "PARALLEL" -Source "MAIN"
-            # Check immediate completion (which might indicate an issue)
-            if ($handle.IsCompleted) {
-                Write-CentralLog -Message "WARNING: Job for $folder completed immediately - this may indicate a problem" -Category "PARALLEL" -Source "MAIN"
-            }
-        }
-        # Collect results with timeout
+        # DYNAMIC JOB MANAGEMENT WITH WORK-STEALING QUEUE
+        Write-CentralLog -Message "Starting dynamic job management system..." -Category "PARALLEL_MONITOR" -Source "MAIN"
+        $individualJobTimeout = 180
         $completed = 0
-        $timeout = (Get-Date).AddMinutes(10)
+        $totalJobsLaunched = 0
+        $timeout = (Get-Date).AddMinutes(30)
         $lastProgress = Get-Date
+        $lastMonitoringReport = Get-Date
         $progressCheckInterval = 500
-        $individualJobTimeout = 360
-        Write-CentralLog -Message "PRE-LOOP DEBUG: jobs.Count=$($jobs.Count), completed=$completed, timeout minutes remaining=$(((Get-Date).AddMinutes(10) - (Get-Date)).TotalMinutes)" -Category "PARALLEL" -Source "MAIN"
-        while ($jobs.Count -gt $completed -and (Get-Date) -lt $timeout) {
-            Write-CentralLog -Message "Job collection loop iteration - Active jobs: $(($jobs | Where-Object { -not $_.Processed }).Count), Completed: $completed" -Category "PARALLEL" -Source "MAIN"
+        $monitoringReportInterval = 5000
+        Write-CentralLog -Message "Work-stealing queue system active with $($workQueue.Count) initial items" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        # MAIN WORK-STEALING EXECUTION LOOP - OPTIMIZED FOR MAXIMUM THREAD SATURATION
+        while (($workQueue.Count -gt 0 -or $jobs.Count -gt $completed) -and (Get-Date) -lt $timeout) {
+            $currentTime = Get-Date
+
+            # AGGRESSIVE THREAD SATURATION - Launch jobs in batches and maintain buffer
+            $activeJobs = $jobs | Where-Object { -not $_.Handle.IsCompleted -and -not $_.Processed }
+            $currentActiveCount = $activeJobs.Count
+            $availableThreads = $MaxThreads - $currentActiveCount
+            # ENHANCED JOB LAUNCHING - Respect MaxThreads while maintaining aggressive saturation
+            if ($availableThreads -gt 0 -and $workQueue.Count -gt 0) {
+                # AGGRESSIVE BUT CONTROLLED: Always respect MaxThreads limit for system stability
+                # Launch jobs to fill ALL available threads immediately for maximum utilization
+                # The key to performance is instant job replacement, not exceeding thread limits
+                $jobsToLaunch = [Math]::Min($availableThreads, $workQueue.Count)
+
+                # Enhanced logging based on queue size to show saturation strategy
+                if ($workQueue.Count -gt ($MaxThreads * 10)) {
+                    Write-CentralLog -Message "LARGE QUEUE MODE: Queue has $($workQueue.Count) items, launching $jobsToLaunch jobs to saturate all $availableThreads available threads" -Category "THREAD_SATURATION" -Source "MAIN"
+                } elseif ($workQueue.Count -gt ($MaxThreads * 3)) {
+                    Write-CentralLog -Message "ACTIVE QUEUE MODE: Queue has $($workQueue.Count) items, launching $jobsToLaunch jobs to fill $availableThreads threads" -Category "THREAD_SATURATION" -Source "MAIN"
+                } else {
+                    Write-CentralLog -Message "SATURATION: Launching $jobsToLaunch jobs to fill $availableThreads available threads (Queue: $($workQueue.Count))" -Category "THREAD_SATURATION" -Source "MAIN"
+                }
+
+                $jobsLaunchedThisIteration = 0
+                for ($i = 0; $i -lt $jobsToLaunch; $i++) {
+                    $workItem = $null
+                    if ($workQueue.TryDequeue([ref]$workItem)) {
+                        # Skip if already processed
+                        if ($processedPaths.ContainsKey($workItem.Path)) {
+                            continue
+                        }
+
+                        # Mark as processed
+                        $processedPaths[$workItem.Path] = $true
+
+                        # Launch new job immediately
+                        $jobLaunchTime = Get-Date
+                        $powershell = [powershell]::Create()
+                        $powershell.RunspacePool = $runspacePool
+                        $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $workItem.Path).AddParameter("MaxDepth", $MaxDepth).AddParameter("CurrentDepth", $workItem.Depth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue').AddParameter("CentralLogPath", $Script:CentralLogPath) | Out-Null
+                        $handle = $powershell.BeginInvoke()
+
+                        $totalJobsLaunched++
+                        $jobsLaunchedThisIteration++
+                        $jobs += [PSCustomObject]@{
+                            PowerShell = $powershell
+                            Handle = $handle
+                            Path = $workItem.Path
+                            Depth = $workItem.Depth
+                            StartTime = $jobLaunchTime
+                            Processed = $false
+                            LaunchOrder = $totalJobsLaunched
+                        }
+
+                        $jobLaunchTimes[$workItem.Path] = $jobLaunchTime
+
+                        # Only log every 10th job to reduce overhead
+                        if ($totalJobsLaunched % 10 -eq 0) {
+                            Write-CentralLog -Message "Job #$totalJobsLaunched launched for: $($workItem.Path) (Depth: $($workItem.Depth), Queue: $($workQueue.Count) remaining)" -Category "WORK_QUEUE" -Source "MAIN"
+                        }
+                    }
+                }
+
+                if ($jobsLaunchedThisIteration -gt 0) {
+                    Write-CentralLog -Message "BATCH LAUNCH: Launched $jobsLaunchedThisIteration jobs in this iteration" -Category "THREAD_SATURATION" -Source "MAIN"
+                }
+            }
+
+            # Update active count after launching new jobs
+            $activeJobs = $jobs | Where-Object { -not $_.Handle.IsCompleted -and -not $_.Processed }
+            $currentActiveCount = $activeJobs.Count
+
+            # Track peak active jobs for utilization analysis
+            if ($currentActiveCount -gt $peakActiveJobs) {
+                $peakActiveJobs = $currentActiveCount
+                Write-CentralLog -Message "NEW PEAK: $peakActiveJobs concurrent active jobs" -Category "PARALLEL_MONITOR" -Source "MAIN"
+            }
+            # Detailed monitoring report with saturation analysis
+            if ($currentTime.Subtract($lastMonitoringReport).TotalMilliseconds -gt $monitoringReportInterval) {
+                $utilizationPercent = [math]::Round(($currentActiveCount / $MaxThreads) * 100, 1)
+                $elapsedMinutes = [math]::Round($currentTime.Subtract($monitoringStartTime).TotalMinutes, 2)
+
+                Write-CentralLog -Message "=== THREAD SATURATION REPORT @ $elapsedMinutes minutes ===" -Category "THREAD_SATURATION" -Source "MAIN"
+                Write-CentralLog -Message "Active jobs: $currentActiveCount/$MaxThreads ($utilizationPercent% utilization)" -Category "THREAD_SATURATION" -Source "MAIN"
+                Write-CentralLog -Message "Work queue: $($workQueue.Count) items remaining" -Category "THREAD_SATURATION" -Source "MAIN"
+                Write-CentralLog -Message "Total jobs launched: $totalJobsLaunched, Completed: $completed" -Category "THREAD_SATURATION" -Source "MAIN"
+                Write-CentralLog -Message "Peak concurrent jobs: $peakActiveJobs" -Category "THREAD_SATURATION" -Source "MAIN"                # Saturation efficiency warning - only warn if we're significantly under-utilizing available threads
+                if ($utilizationPercent -lt 80 -and $workQueue.Count -gt 0 -and $availableThreads -gt 2) {
+                    Write-CentralLog -Message "SATURATION WARNING: Only $utilizationPercent% utilization with $($workQueue.Count) work items available and $availableThreads threads free!" -Category "THREAD_SATURATION" -Source "MAIN"
+                }
+
+                # Show longest running jobs
+                if ($activeJobs.Count -gt 0) {
+                    $longestRunning = $activeJobs | Sort-Object { $currentTime.Subtract($_.StartTime).TotalSeconds } -Descending | Select-Object -First 3
+                    Write-CentralLog -Message "Longest running jobs:" -Category "THREAD_SATURATION" -Source "MAIN"
+                    foreach ($longJob in $longestRunning) {
+                        $runtime = [math]::Round($currentTime.Subtract($longJob.StartTime).TotalSeconds, 1)
+                        Write-CentralLog -Message "  Job #$($longJob.LaunchOrder): $($longJob.Path) (Depth: $($longJob.Depth), Runtime: $runtime seconds)" -Category "THREAD_SATURATION" -Source "MAIN"
+                    }
+                }
+
+                $lastMonitoringReport = $currentTime
+            }
+            # IMMEDIATE JOB REPLACEMENT - Process completed jobs and launch replacements instantly
+            $jobsCompletedThisIteration = 0
             foreach ($job in $jobs) {
                 if ($job.Handle.IsCompleted -and -not $job.Processed) {
+                    $jobCompletionTime = Get-Date
+                    $jobDuration = $jobCompletionTime.Subtract($job.StartTime)
+                    $jobCompletionTimes[$job.Path] = $jobCompletionTime
+                    $jobsCompletedThisIteration++
+
                     try {
-                        $jobResults = $job.PowerShell.EndInvoke($job.Handle)
-                        # Process results with better validation - handle PSDataCollection properly
-                        $resultsArray = @($jobResults)
-                        # Convert PSDataCollection to array and ensure proper object types
-                        Write-CentralLog -Message "DEBUG: Job $($job.Path) EndInvoke returned type: $($jobResults.GetType().Name)" -Category "PARALLEL" -Source "MAIN"
-                        Write-CentralLog -Message "DEBUG: Job $($job.Path) results array count: $($resultsArray.Count)" -Category "PARALLEL" -Source "MAIN"
-                        if ($resultsArray.Count -gt 0) {
-                            Write-CentralLog -Message "Job $($job.Path) returned $($resultsArray.Count) result(s)" -Category "PARALLEL" -Source "MAIN"
-                            foreach ($result in $resultsArray) {
-                                Write-CentralLog -Message "DEBUG: Job $($job.Path) result type: $($result.GetType().Name)" -Category "PARALLEL" -Source "MAIN"
-                                # Handle both PSCustomObject and deserialized objects from runspaces
-                                if (($result -is [PSCustomObject] -and $result.PSObject.Properties['Path']) -or
-                                    ($result.PSObject.TypeNames -contains 'Deserialized.System.Management.Automation.PSCustomObject' -and $result.PSObject.Properties['Path'])) {
-                                    $results += $result
-                                    Write-CentralLog -Message "Collected valid result object for: $($result.Path)" -Category "PARALLEL" -Source "MAIN"
-                                } elseif ($result -is [String]) {
-                                    Write-CentralLog -Message "WARNING: String result from job $($job.Path): '$result'" -Category "PARALLEL" -Source "MAIN"
-                                    # DO NOT ADD STRING RESULTS
-                                } else {
-                                    Write-CentralLog -Message "WARNING: Invalid result type received from job $($job.Path): $($result.GetType().Name), TypeNames: $($result.PSObject.TypeNames -join ', '), Value: '$result'" -Category "PARALLEL" -Source "MAIN"
-                                    # DO NOT ADD INVALID RESULTS
-                                }
+                        $jobResult = $job.PowerShell.EndInvoke($job.Handle)
+                        # Only log every 10th completion to reduce overhead
+                        if ($completed % 10 -eq 0) {
+                            $currentUtilization = [math]::Round(($currentActiveAfterCompletion / $MaxThreads) * 100, 1)
+                            Write-CentralLog -Message "Job #$($job.LaunchOrder) completed: $($job.Path) (Depth: $($job.Depth)) in $([math]::Round($jobDuration.TotalSeconds, 1))s [Util: $currentUtilization%]" -Category "PARALLEL_MONITOR" -Source "MAIN"
+                        }
+
+                        # Handle PSDataCollection results from runspace - extract the actual object
+                        $actualResult = $null
+                        if ($jobResult -is [System.Management.Automation.PSDataCollection[System.Management.Automation.PSObject]]) {
+                            if ($jobResult.Count -gt 0) {
+                                $actualResult = $jobResult[0]
                             }
                         } else {
-                            Write-CentralLog -Message "Job $($job.Path) returned no results" -Category "PARALLEL" -Source "MAIN"
+                            $actualResult = $jobResult
                         }
+
+                        # Validate the extracted result
+                        if ($actualResult -and $actualResult.PSObject.Properties['Path']) {
+                            $results += $actualResult
+
+                            # ADD DISCOVERED SUBDIRECTORIES TO WORK QUEUE IMMEDIATELY
+                            if ($actualResult.DiscoveredSubdirectories -and $actualResult.DiscoveredSubdirectories.Count -gt 0) {
+                                $newWorkItems = 0
+                                foreach ($subDir in $actualResult.DiscoveredSubdirectories) {
+                                    if (-not $processedPaths.ContainsKey($subDir)) {
+                                        $workItem = [PSCustomObject]@{
+                                            Path = $subDir
+                                            Depth = $job.Depth + 1
+                                            Priority = $job.Depth + 1
+                                        }
+                                        $workQueue.Enqueue($workItem)
+                                        $newWorkItems++
+                                    }
+                                }
+                                # Only log significant additions to reduce overhead
+                                if ($newWorkItems -gt 5) {
+                                    Write-CentralLog -Message "Added $newWorkItems new subdirectories to work queue from $($job.Path)" -Category "WORK_QUEUE" -Source "MAIN"
+                                }
+                            }
+                        }
+
                         $job.Processed = $true
                         $completed++
-                        Write-CentralLog -Message "Job completed for: $($job.Path) (Total completed: $completed/$($jobs.Count))" -Category "PARALLEL" -Source "MAIN"
+
                     } catch {
-                        Write-CentralLog -Message "ERROR: Failed to collect results from job $($job.Path): $($_.Exception.Message)" -Category "PARALLEL" -Source "MAIN"
+                        Write-CentralLog -Message "ERROR: Job #$($job.LaunchOrder) failed for $($job.Path): $($_.Exception.Message)" -Category "PARALLEL_MONITOR" -Source "MAIN"
                         $job.Processed = $true
                         $completed++
                     } finally {
                         $job.PowerShell.Dispose()
                     }
+
+                    # IMMEDIATE REPLACEMENT - Launch new job if queue has work and we have capacity
+                    $currentActiveAfterCompletion = ($jobs | Where-Object { -not $_.Handle.IsCompleted -and -not $_.Processed }).Count
+                    if ($currentActiveAfterCompletion -lt $MaxThreads -and $workQueue.Count -gt 0) {
+                        $workItem = $null
+                        if ($workQueue.TryDequeue([ref]$workItem)) {
+                            if (-not $processedPaths.ContainsKey($workItem.Path)) {
+                                $processedPaths[$workItem.Path] = $true
+
+                                $jobLaunchTime = Get-Date
+                                $powershell = [powershell]::Create()
+                                $powershell.RunspacePool = $runspacePool
+                                $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $workItem.Path).AddParameter("MaxDepth", $MaxDepth).AddParameter("CurrentDepth", $workItem.Depth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue').AddParameter("CentralLogPath", $Script:CentralLogPath) | Out-Null
+                                $handle = $powershell.BeginInvoke()
+
+                                $totalJobsLaunched++
+                                $jobs += [PSCustomObject]@{
+                                    PowerShell = $powershell
+                                    Handle = $handle
+                                    Path = $workItem.Path
+                                    Depth = $workItem.Depth
+                                    StartTime = $jobLaunchTime
+                                    Processed = $false
+                                    LaunchOrder = $totalJobsLaunched
+                                }
+                                $jobLaunchTimes[$workItem.Path] = $jobLaunchTime
+                            }
+                        }
+                    }
                 }
+
                 # Check for individual job timeout
                 if (-not $job.Handle.IsCompleted -and -not $job.Processed) {
                     $elapsed = (Get-Date).Subtract($job.StartTime).TotalSeconds
                     if ($elapsed -gt $individualJobTimeout) {
-                        Write-CentralLog -Message "WARNING: Job timeout for $($job.Path) after $elapsed seconds" -Category "PARALLEL" -Source "MAIN"
+                        Write-CentralLog -Message "TIMEOUT: Job #$($job.LaunchOrder) for $($job.Path) exceeded $individualJobTimeout seconds" -Category "PARALLEL_MONITOR" -Source "MAIN"
                         try {
                             $job.PowerShell.Stop()
                             $job.PowerShell.Dispose()
                         } catch {
-                            Write-CentralLog -Message "Error stopping timed-out job: $($_.Exception.Message)" -Category "PARALLEL" -Source "MAIN"
+                            Write-CentralLog -Message "Error stopping timed-out job: $($_.Exception.Message)" -Category "PARALLEL_MONITOR" -Source "MAIN"
                         }
                         $job.Processed = $true
                         $completed++
                     }
                 }
             }
-            # Progress reporting
-            if ((Get-Date).Subtract($lastProgress).TotalMilliseconds -gt $progressCheckInterval) {
-                $percentComplete = if ($jobs.Count -gt 0) { [math]::Round(($completed / $jobs.Count) * 100, 1) } else { 0 }
-                Write-DetailedProgress -Activity "Parallel Analysis" -Status "Completed: $completed/$($jobs.Count) jobs ($percentComplete%)" -PercentComplete $percentComplete -Color "Cyan"
-                $lastProgress = Get-Date
+            # Regular progress reporting with saturation metrics
+            if ($currentTime.Subtract($lastProgress).TotalMilliseconds -gt $progressCheckInterval) {
+                $percentComplete = if ($totalJobsLaunched -gt 0) { [math]::Round(($completed / $totalJobsLaunched) * 100, 1) } else { 0 }
+                $currentUtilization = [math]::Round(($currentActiveCount / $MaxThreads) * 100, 1)
+                Write-DetailedProgress -Activity "Parallel Analysis" -Status "Active: $currentActiveCount/$MaxThreads ($currentUtilization%), Queue: $($workQueue.Count), Completed: $completed/$totalJobsLaunched ($percentComplete%)" -PercentComplete $percentComplete -Color "Cyan"
+
+                # Log saturation metrics every progress update
+                if ($jobsCompletedThisIteration -gt 0) {
+                    Write-CentralLog -Message "SATURATION METRICS: Completed $jobsCompletedThisIteration jobs this iteration, Current active: $currentActiveCount/$MaxThreads" -Category "THREAD_SATURATION" -Source "MAIN"
+                }
+
+                $lastProgress = $currentTime
             }
-            Start-Sleep -Milliseconds 100
+            # ULTRA-LOW LATENCY - Adaptive sleep based on queue size for maximum responsiveness
+            # Use burst mode (no sleep) when queue is large, micro-sleep when queue is small
+            if ($workQueue.Count -gt ($MaxThreads * 2)) {
+                # BURST MODE: No sleep when queue is large to maintain saturation
+                # This ensures we launch jobs as fast as possible when work is abundant
+            } elseif ($workQueue.Count -gt 0) {
+                # Minimal sleep when work is available but queue is smaller
+                Start-Sleep -Milliseconds 2
+            } else {
+                # Slightly longer sleep only when no work is available
+                Start-Sleep -Milliseconds 10
+            }
         }
-        # Handle any remaining incomplete jobs
+
+        # Final monitoring report
+        $totalDuration = (Get-Date).Subtract($monitoringStartTime)
+        Write-CentralLog -Message "=== FINAL WORK QUEUE EXECUTION REPORT ===" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        Write-CentralLog -Message "Total execution time: $([math]::Round($totalDuration.TotalMinutes, 2)) minutes" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        Write-CentralLog -Message "Total jobs launched: $totalJobsLaunched (dynamic work queue)" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        Write-CentralLog -Message "Peak concurrent jobs: $peakActiveJobs/$MaxThreads ($([math]::Round(($peakActiveJobs / $MaxThreads) * 100, 1))% peak utilization)" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        Write-CentralLog -Message "Work queue final state: $($workQueue.Count) items remaining" -Category "PARALLEL_MONITOR" -Source "MAIN"
+
+        # Calculate average job duration safely
+        if ($jobCompletionTimes.Count -gt 0 -and $jobLaunchTimes.Count -gt 0) {
+            $durations = @()
+            foreach ($completedPath in $jobCompletionTimes.Keys) {
+                if ($jobLaunchTimes.ContainsKey($completedPath)) {
+                    $duration = $jobCompletionTimes[$completedPath].Subtract($jobLaunchTimes[$completedPath]).TotalSeconds
+                    $durations += $duration
+                }
+            }
+            if ($durations.Count -gt 0) {
+                $avgDuration = ($durations | Measure-Object -Average).Average
+                Write-CentralLog -Message "Average job duration: $([math]::Round($avgDuration, 1)) seconds" -Category "PARALLEL_MONITOR" -Source "MAIN"
+            }
+        }
+
+        # Enhanced efficiency analysis for work queue system
+        if ($peakActiveJobs -eq $MaxThreads) {
+            Write-CentralLog -Message "EFFICIENCY EXCELLENT: Achieved 100% thread utilization with work-stealing queue" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        } elseif ($peakActiveJobs -ge $MaxThreads * 0.9) {
+            Write-CentralLog -Message "EFFICIENCY VERY GOOD: Achieved $([math]::Round(($peakActiveJobs / $MaxThreads) * 100, 1))% peak utilization" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        } elseif ($peakActiveJobs -ge $MaxThreads * 0.7) {
+            Write-CentralLog -Message "EFFICIENCY GOOD: Achieved $([math]::Round(($peakActiveJobs / $MaxThreads) * 100, 1))% peak utilization" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        } else {
+            Write-CentralLog -Message "EFFICIENCY WARNING: Only achieved $([math]::Round(($peakActiveJobs / $MaxThreads) * 100, 1))% peak utilization - workload may be too small" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        }
+
+        # Handle incomplete jobs
         $incompleteJobs = $jobs | Where-Object { -not $_.Processed }
         if ($incompleteJobs.Count -gt 0) {
-            Write-CentralLog -Message "WARNING: $($incompleteJobs.Count) jobs did not complete within timeout" -Category "PARALLEL" -Source "MAIN"
+            Write-CentralLog -Message "WARNING: $($incompleteJobs.Count) jobs did not complete within timeout" -Category "PARALLEL_MONITOR" -Source "MAIN"
             foreach ($incompleteJob in $incompleteJobs) {
                 try {
                     $incompleteJob.PowerShell.Stop()
                     $incompleteJob.PowerShell.Dispose()
                 } catch {
-                    Write-CentralLog -Message "Error cleaning up incomplete job: $($_.Exception.Message)" -Category "PARALLEL" -Source "MAIN"
+                    Write-CentralLog -Message "Error cleaning up incomplete job: $($_.Exception.Message)" -Category "PARALLEL_MONITOR" -Source "MAIN"
                 }
             }
         }
-        Write-CentralLog -Message "Parallel execution completed. Collected $($results.Count) total results" -Category "PARALLEL" -Source "MAIN"
+
+        Write-CentralLog -Message "Work-stealing parallel execution completed. Collected $($results.Count) total results from $totalJobsLaunched jobs" -Category "PARALLEL_MONITOR" -Source "MAIN"
         return $results
+
     } catch {
         Write-Output "$($Script:Colors.Red)Error in parallel processing: $($_.Exception.Message)$($Script:Colors.Reset)"
-        Write-CentralLog -Message "CRITICAL ERROR in parallel processing: $($_.Exception | Out-String)" -Category "PARALLEL" -Source "MAIN"
+        Write-CentralLog -Message "CRITICAL ERROR in parallel processing: $($_.Exception | Out-String)" -Category "PARALLEL_MONITOR" -Source "MAIN"
         return @()
     } finally {
         if ($runspacePool) {
@@ -1076,11 +1257,11 @@ function Show-HierarchicalResult{
     if ($rootResult -and $rootResult.PSObject.Properties.Name -contains "TotalCumulativeSize") {
         # Use the stored total cumulative values for accurate summary (0 is a valid value)
         $summaryResults = $Results | Where-Object { $_.Path -ne $Results[0].Path -or (-not $_.PSObject.Properties.Name -contains "TotalCumulativeSize") }
-        Write-DebugInfo -Message "Using stored cumulative totals: Size=$(Format-FileSize -SizeInBytes $rootResult.TotalCumulativeSize), Files=$($rootResult.TotalCumulativeFiles)" -Category "SUMMARY_TOTALS"
+        Write-DebugInfo -Message "Using stored cumulative totals: Size=$(Format-FileSize -SizeInBytes $rootResult.TotalCumulativeSize), Files=$($rootResult.TotalCumulativeFiles)" -Category "SUMMARY"
         Show-HierarchicalSummary -Results $summaryResults -SafeResults $SafeResults -TotalSize $rootResult.TotalCumulativeSize -TotalFiles $rootResult.TotalCumulativeFiles
     } else {
         # Fallback to original method if no stored totals
-        Write-DebugInfo -Message "No stored cumulative totals found - using fallback calculation method" -Category "SUMMARY_TOTALS"
+        Write-DebugInfo -Message "No stored cumulative totals found - using fallback calculation method" -Category "SUMMARY"
         Show-HierarchicalSummary -Results $Results -SafeResults $SafeResults
     }
 }
@@ -1687,7 +1868,7 @@ function Get-InaccessibleDirectoryEstimate {
                 $items = Get-ChildItem -Path $path -Force -ErrorAction Stop | Select-Object -First 1
                 if ($items) {
                     # If we can list at least one item, estimate based on accessible parent directory patterns
-                    $parentSize = try { (Get-ChildItem -Path (Split-Path $path -Parent) -Directory -Force | Where-Object { $_.Name -ne (Split-Path $path -Leaf) } | Measure-Object Length -Sum).Sum } catch { 0 }
+                    $parentSize = try { (Get-ChildItem -Path (Split-Path $path -Parent) -Directory -Force | Where-Object { $_.Name -ne (Split-Path $path -Leaf) } | Measure-Object -Property Length -Sum).Sum } catch { 0 }
                     $pathEstimate = [math]::Max(1MB, $parentSize * 0.1)
                     $method = "Parent directory pattern"
                 }
@@ -1758,6 +1939,366 @@ function Get-InaccessibleDirectoryEstimate {
     }
     return $estimate
 }
+function Get-OptimizedDirectoryList {
+    <#
+    .SYNOPSIS
+    Optimizes directory list for better thread utilization using fast, lightweight job distribution.
+    .DESCRIPTION
+    This function implements a fast job distribution system that minimizes upfront directory scanning.
+    Instead of doing expensive hierarchical analysis, it uses dynamic work queue discovery during parallel execution.
+
+    PERFORMANCE OPTIMIZED VERSION:
+    - Minimal upfront directory enumeration to avoid delays
+    - Simple level-1 expansion only when absolutely necessary
+    - Relies on dynamic work queue for deep directory discovery
+    - Fast startup with optimal thread utilization
+    .PARAMETER TopLevelDirs
+    Array of top-level directory paths to potentially expand.
+    .PARAMETER MaxThreads
+    Maximum number of threads available for parallel processing.
+    .PARAMETER MaxDepth
+    Maximum depth for directory scanning - used for optimization strategy selection.
+    .EXAMPLE
+    $optimizedDirs = Get-OptimizedDirectoryList -TopLevelDirs $topLevelDirs -MaxThreads 25 -MaxDepth 50
+    Returns an optimized list of directories that maximizes thread utilization with minimal overhead.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$TopLevelDirs,
+        [Parameter(Mandatory = $true)]
+        [int]$MaxThreads,
+        [Parameter(Mandatory = $true)]
+        [int]$MaxDepth
+    )
+    Write-CentralLog -Message "=== FAST JOB DISTRIBUTION ANALYSIS ===" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    Write-CentralLog -Message "Initial directory count: $($TopLevelDirs.Count), Target threads: $MaxThreads, MaxDepth: $MaxDepth" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    Write-CentralLog -Message "Current utilization: $([math]::Round(($TopLevelDirs.Count / $MaxThreads) * 100, 1))%" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    # Fast decision logic - minimal upfront work
+    $minJobsForOptimalUtilization = [math]::Max($MaxThreads, 10)
+
+    if ($TopLevelDirs.Count -ge $minJobsForOptimalUtilization) {
+        Write-CentralLog -Message "DECISION: Sufficient directories for optimal utilization ($($TopLevelDirs.Count) >= $minJobsForOptimalUtilization)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+        Write-CentralLog -Message "Using original top-level directory list - dynamic work queue will handle deep discovery" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+        return $TopLevelDirs
+    }
+    # Only do minimal expansion if we have very few directories
+    if ($TopLevelDirs.Count -lt ($MaxThreads / 2) -and $MaxDepth -gt 1) {
+        Write-CentralLog -Message "Very few directories ($($TopLevelDirs.Count)) - performing fast level-1 expansion only" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+
+        $expandedDirs = @()
+        $expandedDirs += $TopLevelDirs
+
+        foreach ($topDir in $TopLevelDirs) {
+            try {
+                # Fast enumeration - just get immediate subdirectories
+                $subDirs = Get-ChildItem -Path $topDir -Directory -Force -ErrorAction Stop | Select-Object -First 20
+                foreach ($subDir in $subDirs) {
+                    $expandedDirs += $subDir.FullName
+                    if ($expandedDirs.Count -ge ($MaxThreads * 2)) {
+                        break
+                    }
+                }
+                if ($expandedDirs.Count -ge ($MaxThreads * 2)) {
+                    break
+                }
+            } catch {
+                Write-CentralLog -Message "Could not expand $topDir (continuing with others)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+                continue
+            }
+        }
+
+        if ($expandedDirs.Count -gt $TopLevelDirs.Count) {
+            Write-CentralLog -Message "DECISION: Fast expansion successful ($($TopLevelDirs.Count) -> $($expandedDirs.Count) directories)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+            return $expandedDirs | Select-Object -Unique
+        }
+    }
+
+    Write-CentralLog -Message "DECISION: Using original directory list - dynamic work queue optimal for this scenario" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    Write-CentralLog -Message "Final job distribution: $($TopLevelDirs.Count) directories for $MaxThreads threads" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    return $TopLevelDirs
+}
+
+function Get-HierarchicalJobSplit {
+    <#
+    .SYNOPSIS
+    Implements hierarchical job splitting for deep scan scenarios.
+    .DESCRIPTION
+    This function addresses the thread starvation problem in deep scans by intelligently
+    splitting large directory trees into smaller, more manageable jobs that can be
+    distributed across multiple threads.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$TopLevelDirs,
+        [Parameter(Mandatory = $true)]
+        [int]$MaxDepth,
+        [Parameter(Mandatory = $true)]
+        [int]$TargetJobCount
+    )
+
+    Write-CentralLog -Message "=== HIERARCHICAL JOB SPLITTING ===" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+
+    $allJobs = @()
+    $allJobs += $TopLevelDirs
+    $processedDirs = @{}
+    $expansionLevel = 2
+    $maxExpansionLevel = [math]::Min(4, [math]::Floor($MaxDepth / 3))
+
+    Write-CentralLog -Message "Target job count: $TargetJobCount" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    Write-CentralLog -Message "Max expansion level: $maxExpansionLevel" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    while ($allJobs.Count -lt $TargetJobCount -and $expansionLevel -le $maxExpansionLevel) {
+        Write-CentralLog -Message "Expansion level ${expansionLevel}: Current jobs: $($allJobs.Count), Target: $TargetJobCount" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+
+        $newJobs = @()
+        $dirsToExpand = @()
+
+        # Identify directories that haven't been expanded at this level
+        foreach ($dir in $TopLevelDirs) {
+            $expandKey = "$dir|$expansionLevel"
+            if (-not $processedDirs.ContainsKey($expandKey)) {
+                $dirsToExpand += $dir
+            }
+        }
+
+        if ($dirsToExpand.Count -eq 0) {
+            Write-CentralLog -Message "No more directories available for expansion at level $expansionLevel" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+            break
+        }
+
+        foreach ($baseDir in $dirsToExpand) {
+            if ($allJobs.Count -ge $TargetJobCount) {
+                break
+            }
+
+            try {
+                $expandKey = "$baseDir|$expansionLevel"
+                $processedDirs[$expandKey] = $true
+
+                # Get subdirectories at the target expansion level
+                $subDirs = Get-DirectoriesAtLevel -BasePath $baseDir -TargetLevel $expansionLevel -MaxDepth $MaxDepth
+
+                Write-CentralLog -Message "Found $($subDirs.Count) directories at level $expansionLevel under $baseDir" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+
+                foreach ($subDir in $subDirs) {
+                    if ($allJobs.Count -lt $TargetJobCount) {
+                        # Quick complexity assessment
+                        $complexity = Get-DirectoryComplexity -Path $subDir.FullName
+
+                        if ($complexity.ShouldSplit -and $allJobs.Count -lt ($TargetJobCount - 5)) {
+                            # For very complex directories, split them further
+                            $splitDirs = Get-DirectoriesAtLevel -BasePath $subDir.FullName -TargetLevel 1 -MaxDepth ($MaxDepth - $expansionLevel)
+                            if ($splitDirs.Count -gt 1 -and ($allJobs.Count + $splitDirs.Count) -le $TargetJobCount) {
+                                foreach ($splitDir in $splitDirs) {
+                                    $newJobs += $splitDir.FullName
+                                }
+                                Write-CentralLog -Message "Split complex directory $($subDir.FullName) into $($splitDirs.Count) jobs" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+                            } else {
+                                $newJobs += $subDir.FullName
+                            }
+                        } else {
+                            $newJobs += $subDir.FullName
+                        }
+                    }
+                }
+            } catch {
+                Write-CentralLog -Message "Could not expand $baseDir at level $expansionLevel : $($_.Exception.Message)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+            }
+        }
+
+        if ($newJobs.Count -gt 0) {
+            # Replace original directories with expanded ones, avoiding duplicates
+            $allJobs = @()
+            $allJobs += $newJobs | Select-Object -Unique
+            Write-CentralLog -Message "Level $expansionLevel expansion complete: $($allJobs.Count) total jobs" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+        }
+
+        $expansionLevel++
+    }
+
+    Write-CentralLog -Message "Hierarchical job splitting complete: $($allJobs.Count) jobs created" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    return $allJobs
+}
+
+function Get-DirectoriesAtLevel {
+    <#
+    .SYNOPSIS
+    Gets directories at a specific depth level from a base path.
+    .OUTPUTS
+    System.Object[]
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Object[]])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BasePath,
+        [Parameter(Mandatory = $true)]
+        [int]$TargetLevel,
+        [Parameter(Mandatory = $true)]
+        [int]$MaxDepth
+    )
+
+    if ($TargetLevel -gt $MaxDepth -or $TargetLevel -lt 1) {
+        return @()
+    }
+
+    try {
+        $currentLevel = @($BasePath)
+
+        for ($level = 1; $level -le $TargetLevel; $level++) {
+            $nextLevel = @()
+            foreach ($path in $currentLevel) {
+                try {
+                    $subDirs = Get-ChildItem -Path $path -Directory -Force -ErrorAction Stop
+                    foreach ($subDir in $subDirs) {
+                        # Skip problematic directories
+                        $skipPatterns = @(
+                            "*`$RECYCLE.BIN*", "*System Volume Information*", "*Recovery*",
+                            "*Documents and Settings*", "*`$WinREAgent*", "*.gradle*"
+                        )
+
+                        $shouldSkip = $false
+                        foreach ($pattern in $skipPatterns) {
+                            if ($subDir.FullName -like $pattern) {
+                                $shouldSkip = $true
+                                break
+                            }
+                        }
+
+                        if (-not $shouldSkip) {
+                            $nextLevel += $subDir
+                        }
+                    }
+                } catch {
+                    # Skip inaccessible directories
+                    continue
+                }
+            }
+            $currentLevel = $nextLevel | Select-Object -ExpandProperty FullName
+
+            if ($currentLevel.Count -eq 0) {
+                break
+            }
+        }
+
+        return $currentLevel | ForEach-Object { [PSCustomObject]@{ FullName = $_ } }
+    } catch {
+        return @()
+    }
+}
+
+function Get-DirectoryComplexity {
+    <#
+    .SYNOPSIS
+    Performs a quick assessment of directory complexity to determine if it should be split.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    try {
+        # Quick sample of subdirectories (don't enumerate all)
+        $subDirSample = Get-ChildItem -Path $Path -Directory -Force -ErrorAction Stop | Select-Object -First 50
+        $subDirCount = $subDirSample.Count
+
+        # Heuristics for complexity
+        $isComplex = $false
+        $reason = "Standard directory"
+
+        if ($subDirCount -gt 20) {
+            $isComplex = $true
+            $reason = "High subdirectory count ($subDirCount)"
+        } elseif ($Path -like "*gradle*" -or $Path -like "*node_modules*" -or $Path -like "*\.git*") {
+            $isComplex = $true
+            $reason = "Known complex directory type"
+        } elseif ($Path.Length -gt 180) {
+            $isComplex = $true
+            $reason = "Very deep path (${$Path.Length} chars)"
+        }
+
+        return [PSCustomObject]@{
+            ShouldSplit = $isComplex
+            Reason = $reason
+            SubdirectoryCount = $subDirCount
+        }
+    } catch {
+        return [PSCustomObject]@{
+            ShouldSplit = $false
+            Reason = "Inaccessible directory"
+            SubdirectoryCount = 0
+        }
+    }
+}
+
+function Get-SimpleLevel2Expansion {
+    <#
+    .SYNOPSIS
+    Implements simple level 2 expansion for shallow scan scenarios (original logic).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$TopLevelDirs,
+        [Parameter(Mandatory = $true)]
+        [int]$TargetJobCount
+    )
+
+    Write-CentralLog -Message "=== SIMPLE LEVEL 2 EXPANSION ===" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+
+    $level2Dirs = @()
+    $expandedCount = 0
+    $skippedCount = 0
+    $errorCount = 0
+
+    foreach ($topDir in $TopLevelDirs) {
+        try {
+            Write-CentralLog -Message "Analyzing subdirectories of: $topDir" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+            $subDirs = Get-ChildItem -Path $topDir -Directory -Force -ErrorAction Stop
+
+            Write-CentralLog -Message "Found $($subDirs.Count) subdirectories in $topDir" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+
+            foreach ($subDir in $subDirs) {
+                if ($level2Dirs.Count -lt $TargetJobCount) {
+                    # Skip problematic directories
+                    $skipPatterns = @(
+                        "*`$RECYCLE.BIN*", "*System Volume Information*", "*Recovery*",
+                        "*Documents and Settings*", "*`$WinREAgent*"
+                    )
+
+                    $shouldSkip = $false
+                    foreach ($pattern in $skipPatterns) {
+                        if ($subDir.FullName -like $pattern) {
+                            $shouldSkip = $true
+                            $skippedCount++
+                            Write-CentralLog -Message "Skipping problematic directory: $($subDir.FullName)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+                            break
+                        }
+                    }
+
+                    if (-not $shouldSkip) {
+                        $level2Dirs += $subDir.FullName
+                        $expandedCount++
+                        Write-CentralLog -Message "Added level 2 directory: $($subDir.FullName)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+                    }
+                } else {
+                    Write-CentralLog -Message "Reached expansion limit ($TargetJobCount) - stopping expansion" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+                    break
+                }
+            }
+        } catch {
+            $errorCount++
+            Write-CentralLog -Message "Could not expand $topDir : $($_.Exception.Message)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+        }
+    }
+
+    Write-CentralLog -Message "Simple expansion complete: $($level2Dirs.Count) directories found" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+    Write-CentralLog -Message "Directories expanded: $expandedCount, Skipped: $skippedCount, Errors: $errorCount" -Category "JOB_DISTRIBUTION" -Source "MAIN"
+
+    return $level2Dirs}
+
 # MAIN SCRIPT EXECUTION
 function Main {
     [CmdletBinding(SupportsShouldProcess)]
@@ -1842,7 +2383,7 @@ function Main {
                 }
                 # Check for system files at root level
                 try {
-                    $rootItems = Get-ChildItem -Path $PSBoundParameters['StartPath'] -File -Force -ErrorAction SilentlyContinue
+                    $rootItems = Get-ChildItem -Path $PSBoundParameters['StartPath'] -File -Force -ErrorAction Stop
                     foreach ($file in $rootItems) {
                         if ($systemFiles -contains $file.Name) {
                             $systemFilesFound += $file
@@ -1884,13 +2425,21 @@ function Main {
                 Write-Output "$($Script:Colors.Yellow)No directories found to analyze.$($Script:Colors.Reset)"
                 return
             }
-            # Perform parallel analysis
-            Write-DetailedProgress -Activity "Analysis" -Status "Starting parallel folder analysis..." -Color "Cyan" -Detail "Processing $($topLevelDirs.Count) directories with $($PSBoundParameters['MaxThreads']) threads, MaxDepth=$($PSBoundParameters['MaxDepth'])"
-            Write-DebugInfo -Message "Starting parallel analysis with parameters:" -Category "PARALLEL_START"
-            Write-DebugInfo -Message "  Directories to process: $($topLevelDirs.Count)" -Category "PARALLEL_START"
+            # Perform parallel analysis with dynamic job distribution optimization
+            Write-DetailedProgress -Activity "Analysis" -Status "Optimizing job distribution for maximum thread utilization..." -Color "Cyan" -Detail "Initial: $($topLevelDirs.Count) directories, Available: $($PSBoundParameters['MaxThreads']) threads"
+
+            # Use optimized directory list for better thread utilization
+            $optimizedDirs = Get-OptimizedDirectoryList -TopLevelDirs $topLevelDirs -MaxThreads $PSBoundParameters['MaxThreads'] -MaxDepth $PSBoundParameters['MaxDepth']
+
+            Write-DetailedProgress -Activity "Analysis" -Status "Starting parallel folder analysis..." -Color "Cyan" -Detail "Processing $($optimizedDirs.Count) directories with $($PSBoundParameters['MaxThreads']) threads, MaxDepth=$($PSBoundParameters['MaxDepth'])"
+            Write-DebugInfo -Message "Starting parallel analysis with optimized parameters:" -Category "PARALLEL_START"
+            Write-DebugInfo -Message "  Original directories: $($topLevelDirs.Count)" -Category "PARALLEL_START"
+            Write-DebugInfo -Message "  Optimized directories: $($optimizedDirs.Count)" -Category "PARALLEL_START"
             Write-DebugInfo -Message "  Max Depth: $($PSBoundParameters['MaxDepth'])" -Category "PARALLEL_START"
             Write-DebugInfo -Message "  Max Threads: $($PSBoundParameters['MaxThreads'])" -Category "PARALLEL_START"
-            $results = Get-ParallelFolderStatistic -FolderPaths $topLevelDirs -MaxDepth $PSBoundParameters['MaxDepth'] -MaxThreads $PSBoundParameters['MaxThreads']
+            Write-DebugInfo -Message "  Thread utilization: $([math]::Round(([math]::Min($optimizedDirs.Count, $PSBoundParameters['MaxThreads']) / $PSBoundParameters['MaxThreads']) * 100, 1))%" -Category "PARALLEL_START"
+
+            $results = Get-ParallelFolderStatistic -FolderPaths $optimizedDirs -MaxDepth $PSBoundParameters['MaxDepth'] -MaxThreads $PSBoundParameters['MaxThreads']
             Write-DebugInfo -Message "Parallel analysis completed. Results count: $($results.Count)" -Category "PARALLEL_COMPLETE"
             # Debug: Analyze the composition of results before cleanup
             if ($DebugPreference -eq 'Continue' -and $results.Count -gt 0) {
