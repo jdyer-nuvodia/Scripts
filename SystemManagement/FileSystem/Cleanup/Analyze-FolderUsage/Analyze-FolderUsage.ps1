@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-20 20:32:00 UTC
+# Last Updated: 2025-06-20 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.2.0
-# Additional Info: MAJOR PERFORMANCE OPTIMIZATION - Eliminated O(n^2) job filtering bottleneck by replacing array filtering with efficient ArrayList collections for active/completed jobs. This resolves thread starvation in deep recursion scenarios with large work queues.
+# Version: 5.3.1
+# Additional Info: BUGFIX - Fixed typo in function call from 'Optimized-HierarchicalSize' to 'Optimize-HierarchicalSize' which was causing fatal error during hierarchical size aggregation phase.
 # =============================================================================
 
 <#
@@ -2269,8 +2269,121 @@ function Get-SimpleLevel2Expansion {
     Write-CentralLog -Message "Simple expansion complete: $($level2Dirs.Count) directories found" -Category "JOB_DISTRIBUTION" -Source "MAIN"
     Write-CentralLog -Message "Directories expanded: $expandedCount, Skipped: $skippedCount, Errors: $errorCount" -Category "JOB_DISTRIBUTION" -Source "MAIN"
 
-    return $level2Dirs}
+    return $level2Dirs
+}
 
+function Optimize-HierarchicalSize {
+    <#
+    .SYNOPSIS
+    Aggregates child directory sizes up to their parent directories to fix size calculation discrepancies.
+    .DESCRIPTION
+    The parallel processing system scans directories individually but doesn't aggregate child sizes upward.
+    This function takes the flat results and properly calculates cumulative sizes by adding child directory
+    sizes to their parent directories, ensuring accurate hierarchical size reporting.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.ArrayList]$Results
+    )
+
+    Write-DebugInfo -Message "Starting hierarchical size aggregation for $($Results.Count) results" -Category "SIZE_AGGREGATION"
+    Write-CentralLog -Message "=== HIERARCHICAL SIZE AGGREGATION PROCESS ===" -Category "SIZE_AGGREGATION" -Source "MAIN"
+
+    # Create a hashtable for fast path lookup
+    $pathLookup = @{
+    }
+    $accessibleResults = @()
+
+    # Populate lookup table with accessible results only
+    foreach ($result in $Results) {
+        if ($result.IsAccessible -and $result.Path) {
+            $pathLookup[$result.Path] = $result
+            $accessibleResults += $result
+        }
+    }
+
+    Write-DebugInfo -Message "Built path lookup table with $($pathLookup.Count) accessible directories" -Category "SIZE_AGGREGATION"
+    Write-CentralLog -Message "Path lookup table built: $($pathLookup.Count) accessible directories" -Category "SIZE_AGGREGATION" -Source "MAIN"
+
+    # Sort by path depth (deepest first) to aggregate bottom-up
+    $sortedResults = $accessibleResults | Sort-Object {
+        ($_.Path -split '\\').Count
+    } -Descending
+
+    Write-DebugInfo -Message "Sorted results by depth for bottom-up aggregation" -Category "SIZE_AGGREGATION"
+
+    $processedPaths = @{
+    }
+    $aggregationStats = @{
+        DirectoriesProcessed = 0
+        SizeAggregations = 0
+        TotalSizeAdded = 0
+    }
+
+    # Process each directory from deepest to shallowest
+    foreach ($result in $sortedResults) {
+        if ($processedPaths.ContainsKey($result.Path)) {
+            continue
+        }
+
+        $parentPath = Split-Path -Path $result.Path -Parent
+        if ([string]::IsNullOrEmpty($parentPath) -or $parentPath -eq $result.Path) {
+            # This is a root directory, skip
+            $processedPaths[$result.Path] = $true
+            continue
+        }        # Check if parent exists in our results
+        if ($pathLookup.ContainsKey($parentPath)) {
+            $parentResult = $pathLookup[$parentPath]
+
+            # Add this directory's size to its parent
+            $parentResult.SizeBytes += $result.SizeBytes
+            $parentResult.FileCount += $result.FileCount
+
+            # Track cloud files propagation
+            if ($result.HasCloudFiles) {
+                $parentResult.HasCloudFiles = $true
+            }
+
+            # Update largest file if necessary
+            if ($result.LargestFileSize -gt $parentResult.LargestFileSize) {
+                $parentResult.LargestFile = $result.LargestFile
+                $parentResult.LargestFileSize = $result.LargestFileSize
+            }
+
+            $aggregationStats.SizeAggregations++
+            $aggregationStats.TotalSizeAdded += $result.SizeBytes
+
+            # Log significant aggregations for debugging
+            if ($result.SizeBytes -gt 100MB) {
+                Write-DebugInfo -Message "Aggregated $($result.Path) ($(Format-FileSize -SizeInBytes $result.SizeBytes)) into parent $parentPath" -Category "SIZE_AGGREGATION"
+                Write-CentralLog -Message "Significant aggregation: $(Format-FileSize -SizeInBytes $result.SizeBytes) from $($result.Path) to $parentPath" -Category "SIZE_AGGREGATION" -Source "MAIN"
+            }
+        } else {
+            Write-DebugInfo -Message "Parent path $parentPath not found in results for $($result.Path)" -Category "SIZE_AGGREGATION"
+        }
+
+        $processedPaths[$result.Path] = $true
+        $aggregationStats.DirectoriesProcessed++
+
+        # Progress reporting for large datasets
+        if ($aggregationStats.DirectoriesProcessed % 1000 -eq 0) {
+            Write-DebugInfo -Message "Processed $($aggregationStats.DirectoriesProcessed) directories for size aggregation" -Category "SIZE_AGGREGATION"
+        }
+    }
+
+    Write-DebugInfo -Message "Hierarchical size aggregation completed:" -Category "SIZE_AGGREGATION"
+    Write-DebugInfo -Message "  Directories processed: $($aggregationStats.DirectoriesProcessed)" -Category "SIZE_AGGREGATION"
+    Write-DebugInfo -Message "  Size aggregations performed: $($aggregationStats.SizeAggregations)" -Category "SIZE_AGGREGATION"
+    Write-DebugInfo -Message "  Total size aggregated: $(Format-FileSize -SizeInBytes $aggregationStats.TotalSizeAdded)" -Category "SIZE_AGGREGATION"
+
+    Write-CentralLog -Message "=== HIERARCHICAL SIZE AGGREGATION COMPLETED ===" -Category "SIZE_AGGREGATION" -Source "MAIN"
+    Write-CentralLog -Message "Directories processed: $($aggregationStats.DirectoriesProcessed)" -Category "SIZE_AGGREGATION" -Source "MAIN"
+    Write-CentralLog -Message "Size aggregations: $($aggregationStats.SizeAggregations)" -Category "SIZE_AGGREGATION" -Source "MAIN"
+    Write-CentralLog -Message "Total size aggregated: $(Format-FileSize -SizeInBytes $aggregationStats.TotalSizeAdded)" -Category "SIZE_AGGREGATION" -Source "MAIN"
+
+    return $Results
+}
 # MAIN SCRIPT EXECUTION
 function Main {
     [CmdletBinding(SupportsShouldProcess)]
@@ -2410,9 +2523,13 @@ function Main {
             Write-DebugInfo -Message "  Max Depth: $($PSBoundParameters['MaxDepth'])" -Category "PARALLEL_START"
             Write-DebugInfo -Message "  Max Threads: $($PSBoundParameters['MaxThreads'])" -Category "PARALLEL_START"
             Write-DebugInfo -Message "  Thread utilization: $([math]::Round(([math]::Min($optimizedDirs.Count, $PSBoundParameters['MaxThreads']) / $PSBoundParameters['MaxThreads']) * 100, 1))%" -Category "PARALLEL_START"
-
             $results = Get-ParallelFolderStatistic -FolderPaths $optimizedDirs -MaxDepth $PSBoundParameters['MaxDepth'] -MaxThreads $PSBoundParameters['MaxThreads']
             Write-DebugInfo -Message "Parallel analysis completed. Results count: $($results.Count)" -Category "PARALLEL_COMPLETE"
+
+            # CRITICAL FIX: Perform hierarchical size aggregation to correctly calculate cumulative directory sizes
+            Write-ProgressUpdate -Activity "Analysis" -Status "Performing hierarchical size aggregation..." -Color "Cyan"
+            $results = Optimize-HierarchicalSize -Results $results
+            Write-DebugInfo -Message "Hierarchical size aggregation completed for $($results.Count) results" -Category "PARALLEL_COMPLETE"
             # Debug: Analyze the composition of results before cleanup
             if ($DebugPreference -eq 'Continue' -and $results.Count -gt 0) {
                 $resultTypes = $results | Group-Object { $_.GetType().Name } | Select-Object Name, Count
