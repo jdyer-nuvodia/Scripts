@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-20 20:03:00 UTC
+# Last Updated: 2025-06-20 20:32:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.1.1
-# Additional Info: Fixed thread limit violation - now properly respects MaxThreads while maintaining aggressive saturation
+# Version: 5.2.0
+# Additional Info: MAJOR PERFORMANCE OPTIMIZATION - Eliminated O(n^2) job filtering bottleneck by replacing array filtering with efficient ArrayList collections for active/completed jobs. This resolves thread starvation in deep recursion scenarios with large work queues.
 # =============================================================================
 
 <#
@@ -623,17 +623,19 @@ function Get-ParallelFolderStatistic {
         [int]$MaxDepth,
         [int]$MaxThreads
     )
-
-    # Enhanced monitoring variables
+    # Enhanced monitoring and job management variables
     $monitoringStartTime = Get-Date
     $peakActiveJobs = 0
     $jobLaunchTimes = @{}
     $jobCompletionTimes = @{}
+      # PERFORMANCE OPTIMIZATION: Use separate collections to avoid O(n^2) filtering
+    $activeJobs = [System.Collections.ArrayList]::new()
+    $completedJobs = [System.Collections.ArrayList]::new()
+    $allResults = [System.Collections.ArrayList]::new()
 
+    # Initialize runspace pool
     $runspacePool = [runspacefactory]::CreateRunspacePool(1, $MaxThreads)
     $runspacePool.Open()
-    $jobs = @()
-    $results = @()
     # WORK QUEUE SYSTEM - This is the key improvement
     $workQueue = [System.Collections.Concurrent.ConcurrentQueue[PSCustomObject]]::new()
     $processedPaths = [System.Collections.Concurrent.ConcurrentDictionary[string, bool]]::new()
@@ -829,7 +831,7 @@ function Get-ParallelFolderStatistic {
         # DYNAMIC JOB MANAGEMENT WITH WORK-STEALING QUEUE
         Write-CentralLog -Message "Starting dynamic job management system..." -Category "PARALLEL_MONITOR" -Source "MAIN"
         $individualJobTimeout = 180
-        $completed = 0
+        $completedJobsCount = 0
         $totalJobsLaunched = 0
         $timeout = (Get-Date).AddMinutes(30)
         $lastProgress = Get-Date
@@ -837,12 +839,11 @@ function Get-ParallelFolderStatistic {
         $progressCheckInterval = 500
         $monitoringReportInterval = 5000
         Write-CentralLog -Message "Work-stealing queue system active with $($workQueue.Count) initial items" -Category "PARALLEL_MONITOR" -Source "MAIN"
-        # MAIN WORK-STEALING EXECUTION LOOP - OPTIMIZED FOR MAXIMUM THREAD SATURATION
-        while (($workQueue.Count -gt 0 -or $jobs.Count -gt $completed) -and (Get-Date) -lt $timeout) {
+        # MAIN WORK-STEALING EXECUTION LOOP - OPTIMIZED FOR PERFORMANCE AND THREAD SATURATION
+        while (($workQueue.Count -gt 0 -or $activeJobs.Count -gt 0) -and (Get-Date) -lt $timeout) {
             $currentTime = Get-Date
 
-            # AGGRESSIVE THREAD SATURATION - Launch jobs in batches and maintain buffer
-            $activeJobs = $jobs | Where-Object { -not $_.Handle.IsCompleted -and -not $_.Processed }
+            # PERFORMANCE: Direct access to active jobs count - no filtering needed!
             $currentActiveCount = $activeJobs.Count
             $availableThreads = $MaxThreads - $currentActiveCount
             # ENHANCED JOB LAUNCHING - Respect MaxThreads while maintaining aggressive saturation
@@ -879,18 +880,17 @@ function Get-ParallelFolderStatistic {
                         $powershell.RunspacePool = $runspacePool
                         $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $workItem.Path).AddParameter("MaxDepth", $MaxDepth).AddParameter("CurrentDepth", $workItem.Depth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue').AddParameter("CentralLogPath", $Script:CentralLogPath) | Out-Null
                         $handle = $powershell.BeginInvoke()
-
                         $totalJobsLaunched++
                         $jobsLaunchedThisIteration++
-                        $jobs += [PSCustomObject]@{
+                        $newJob = [PSCustomObject]@{
                             PowerShell = $powershell
                             Handle = $handle
                             Path = $workItem.Path
                             Depth = $workItem.Depth
                             StartTime = $jobLaunchTime
-                            Processed = $false
                             LaunchOrder = $totalJobsLaunched
                         }
+                        [void]$activeJobs.Add($newJob)
 
                         $jobLaunchTimes[$workItem.Path] = $jobLaunchTime
 
@@ -905,9 +905,7 @@ function Get-ParallelFolderStatistic {
                     Write-CentralLog -Message "BATCH LAUNCH: Launched $jobsLaunchedThisIteration jobs in this iteration" -Category "THREAD_SATURATION" -Source "MAIN"
                 }
             }
-
-            # Update active count after launching new jobs
-            $activeJobs = $jobs | Where-Object { -not $_.Handle.IsCompleted -and -not $_.Processed }
+            # Update active count after launching new jobs - PERFORMANCE: Direct count, no filtering needed!
             $currentActiveCount = $activeJobs.Count
 
             # Track peak active jobs for utilization analysis
@@ -923,8 +921,9 @@ function Get-ParallelFolderStatistic {
                 Write-CentralLog -Message "=== THREAD SATURATION REPORT @ $elapsedMinutes minutes ===" -Category "THREAD_SATURATION" -Source "MAIN"
                 Write-CentralLog -Message "Active jobs: $currentActiveCount/$MaxThreads ($utilizationPercent% utilization)" -Category "THREAD_SATURATION" -Source "MAIN"
                 Write-CentralLog -Message "Work queue: $($workQueue.Count) items remaining" -Category "THREAD_SATURATION" -Source "MAIN"
-                Write-CentralLog -Message "Total jobs launched: $totalJobsLaunched, Completed: $completed" -Category "THREAD_SATURATION" -Source "MAIN"
-                Write-CentralLog -Message "Peak concurrent jobs: $peakActiveJobs" -Category "THREAD_SATURATION" -Source "MAIN"                # Saturation efficiency warning - only warn if we're significantly under-utilizing available threads
+                Write-CentralLog -Message "Total jobs launched: $totalJobsLaunched, Completed: $completedJobsCount" -Category "THREAD_SATURATION" -Source "MAIN"
+                Write-CentralLog -Message "Peak concurrent jobs: $peakActiveJobs" -Category "THREAD_SATURATION" -Source "MAIN"
+                # Saturation efficiency warning - only warn if we're significantly under-utilizing available threads
                 if ($utilizationPercent -lt 80 -and $workQueue.Count -gt 0 -and $availableThreads -gt 2) {
                     Write-CentralLog -Message "SATURATION WARNING: Only $utilizationPercent% utilization with $($workQueue.Count) work items available and $availableThreads threads free!" -Category "THREAD_SATURATION" -Source "MAIN"
                 }
@@ -938,23 +937,24 @@ function Get-ParallelFolderStatistic {
                         Write-CentralLog -Message "  Job #$($longJob.LaunchOrder): $($longJob.Path) (Depth: $($longJob.Depth), Runtime: $runtime seconds)" -Category "THREAD_SATURATION" -Source "MAIN"
                     }
                 }
-
                 $lastMonitoringReport = $currentTime
             }
-            # IMMEDIATE JOB REPLACEMENT - Process completed jobs and launch replacements instantly
+            # HARVEST COMPLETED JOBS - OPTIMIZED USING DIRECT COLLECTION ACCESS
             $jobsCompletedThisIteration = 0
-            foreach ($job in $jobs) {
-                if ($job.Handle.IsCompleted -and -not $job.Processed) {
+            for ($i = $activeJobs.Count - 1; $i -ge 0; $i--) {
+                $job = $activeJobs[$i]
+
+                if ($job.Handle.IsCompleted) {
                     $jobCompletionTime = Get-Date
                     $jobDuration = $jobCompletionTime.Subtract($job.StartTime)
                     $jobCompletionTimes[$job.Path] = $jobCompletionTime
+                    $completedJobsCount++
                     $jobsCompletedThisIteration++
-
                     try {
                         $jobResult = $job.PowerShell.EndInvoke($job.Handle)
                         # Only log every 10th completion to reduce overhead
-                        if ($completed % 10 -eq 0) {
-                            $currentUtilization = [math]::Round(($currentActiveAfterCompletion / $MaxThreads) * 100, 1)
+                        if ($completedJobsCount % 10 -eq 0) {
+                            $currentUtilization = [math]::Round(($activeJobs.Count / $MaxThreads) * 100, 1)
                             Write-CentralLog -Message "Job #$($job.LaunchOrder) completed: $($job.Path) (Depth: $($job.Depth)) in $([math]::Round($jobDuration.TotalSeconds, 1))s [Util: $currentUtilization%]" -Category "PARALLEL_MONITOR" -Source "MAIN"
                         }
 
@@ -970,7 +970,7 @@ function Get-ParallelFolderStatistic {
 
                         # Validate the extracted result
                         if ($actualResult -and $actualResult.PSObject.Properties['Path']) {
-                            $results += $actualResult
+                            [void]$allResults.Add($actualResult)
 
                             # ADD DISCOVERED SUBDIRECTORIES TO WORK QUEUE IMMEDIATELY
                             if ($actualResult.DiscoveredSubdirectories -and $actualResult.DiscoveredSubdirectories.Count -gt 0) {
@@ -993,68 +993,39 @@ function Get-ParallelFolderStatistic {
                             }
                         }
 
-                        $job.Processed = $true
-                        $completed++
-
                     } catch {
                         Write-CentralLog -Message "ERROR: Job #$($job.LaunchOrder) failed for $($job.Path): $($_.Exception.Message)" -Category "PARALLEL_MONITOR" -Source "MAIN"
-                        $job.Processed = $true
-                        $completed++
                     } finally {
+                        # CLEAN UP RESOURCES AND MOVE JOB BETWEEN COLLECTIONS
                         $job.PowerShell.Dispose()
-                    }
-
-                    # IMMEDIATE REPLACEMENT - Launch new job if queue has work and we have capacity
-                    $currentActiveAfterCompletion = ($jobs | Where-Object { -not $_.Handle.IsCompleted -and -not $_.Processed }).Count
-                    if ($currentActiveAfterCompletion -lt $MaxThreads -and $workQueue.Count -gt 0) {
-                        $workItem = $null
-                        if ($workQueue.TryDequeue([ref]$workItem)) {
-                            if (-not $processedPaths.ContainsKey($workItem.Path)) {
-                                $processedPaths[$workItem.Path] = $true
-
-                                $jobLaunchTime = Get-Date
-                                $powershell = [powershell]::Create()
-                                $powershell.RunspacePool = $runspacePool
-                                $powershell.AddScript($scriptBlock).AddParameter("FolderPath", $workItem.Path).AddParameter("MaxDepth", $MaxDepth).AddParameter("CurrentDepth", $workItem.Depth).AddParameter("EnableDebug", $DebugPreference -eq 'Continue').AddParameter("CentralLogPath", $Script:CentralLogPath) | Out-Null
-                                $handle = $powershell.BeginInvoke()
-
-                                $totalJobsLaunched++
-                                $jobs += [PSCustomObject]@{
-                                    PowerShell = $powershell
-                                    Handle = $handle
-                                    Path = $workItem.Path
-                                    Depth = $workItem.Depth
-                                    StartTime = $jobLaunchTime
-                                    Processed = $false
-                                    LaunchOrder = $totalJobsLaunched
-                                }
-                                $jobLaunchTimes[$workItem.Path] = $jobLaunchTime
-                            }
-                        }
+                        [void]$completedJobs.Add($job)
+                        $activeJobs.RemoveAt($i)
                     }
                 }
+            }
 
-                # Check for individual job timeout
-                if (-not $job.Handle.IsCompleted -and -not $job.Processed) {
-                    $elapsed = (Get-Date).Subtract($job.StartTime).TotalSeconds
-                    if ($elapsed -gt $individualJobTimeout) {
-                        Write-CentralLog -Message "TIMEOUT: Job #$($job.LaunchOrder) for $($job.Path) exceeded $individualJobTimeout seconds" -Category "PARALLEL_MONITOR" -Source "MAIN"
-                        try {
-                            $job.PowerShell.Stop()
-                            $job.PowerShell.Dispose()
-                        } catch {
-                            Write-CentralLog -Message "Error stopping timed-out job: $($_.Exception.Message)" -Category "PARALLEL_MONITOR" -Source "MAIN"
-                        }
-                        $job.Processed = $true
-                        $completed++
+            # CHECK FOR JOB TIMEOUTS
+            for ($i = $activeJobs.Count - 1; $i -ge 0; $i--) {
+                $job = $activeJobs[$i]
+                $elapsed = (Get-Date).Subtract($job.StartTime).TotalSeconds
+                if ($elapsed -gt $individualJobTimeout) {
+                    Write-CentralLog -Message "TIMEOUT: Job #$($job.LaunchOrder) for $($job.Path) exceeded $individualJobTimeout seconds" -Category "PARALLEL_MONITOR" -Source "MAIN"
+                    try {
+                        $job.PowerShell.Stop()
+                        $job.PowerShell.Dispose()
+                    } catch {
+                        Write-CentralLog -Message "Error stopping timed-out job: $($_.Exception.Message)" -Category "PARALLEL_MONITOR" -Source "MAIN"
                     }
+                    [void]$completedJobs.Add($job)
+                    $activeJobs.RemoveAt($i)
+                    $completedJobsCount++
                 }
             }
             # Regular progress reporting with saturation metrics
             if ($currentTime.Subtract($lastProgress).TotalMilliseconds -gt $progressCheckInterval) {
-                $percentComplete = if ($totalJobsLaunched -gt 0) { [math]::Round(($completed / $totalJobsLaunched) * 100, 1) } else { 0 }
+                $percentComplete = if ($totalJobsLaunched -gt 0) { [math]::Round(($completedJobsCount / $totalJobsLaunched) * 100, 1) } else { 0 }
                 $currentUtilization = [math]::Round(($currentActiveCount / $MaxThreads) * 100, 1)
-                Write-DetailedProgress -Activity "Parallel Analysis" -Status "Active: $currentActiveCount/$MaxThreads ($currentUtilization%), Queue: $($workQueue.Count), Completed: $completed/$totalJobsLaunched ($percentComplete%)" -PercentComplete $percentComplete -Color "Cyan"
+                Write-DetailedProgress -Activity "Parallel Analysis" -Status "Active: $currentActiveCount/$MaxThreads ($currentUtilization%), Queue: $($workQueue.Count), Completed: $completedJobsCount/$totalJobsLaunched ($percentComplete%)" -PercentComplete $percentComplete -Color "Cyan"
 
                 # Log saturation metrics every progress update
                 if ($jobsCompletedThisIteration -gt 0) {
@@ -1110,12 +1081,10 @@ function Get-ParallelFolderStatistic {
         } else {
             Write-CentralLog -Message "EFFICIENCY WARNING: Only achieved $([math]::Round(($peakActiveJobs / $MaxThreads) * 100, 1))% peak utilization - workload may be too small" -Category "PARALLEL_MONITOR" -Source "MAIN"
         }
-
-        # Handle incomplete jobs
-        $incompleteJobs = $jobs | Where-Object { -not $_.Processed }
-        if ($incompleteJobs.Count -gt 0) {
-            Write-CentralLog -Message "WARNING: $($incompleteJobs.Count) jobs did not complete within timeout" -Category "PARALLEL_MONITOR" -Source "MAIN"
-            foreach ($incompleteJob in $incompleteJobs) {
+        # Handle incomplete jobs - Clean up any remaining active jobs
+        if ($activeJobs.Count -gt 0) {
+            Write-CentralLog -Message "WARNING: $($activeJobs.Count) jobs did not complete within timeout" -Category "PARALLEL_MONITOR" -Source "MAIN"
+            foreach ($incompleteJob in $activeJobs) {
                 try {
                     $incompleteJob.PowerShell.Stop()
                     $incompleteJob.PowerShell.Dispose()
@@ -1125,8 +1094,8 @@ function Get-ParallelFolderStatistic {
             }
         }
 
-        Write-CentralLog -Message "Work-stealing parallel execution completed. Collected $($results.Count) total results from $totalJobsLaunched jobs" -Category "PARALLEL_MONITOR" -Source "MAIN"
-        return $results
+        Write-CentralLog -Message "Work-stealing parallel execution completed. Collected $($allResults.Count) total results from $totalJobsLaunched jobs" -Category "PARALLEL_MONITOR" -Source "MAIN"
+        return $allResults
 
     } catch {
         Write-Output "$($Script:Colors.Red)Error in parallel processing: $($_.Exception.Message)$($Script:Colors.Reset)"
@@ -2650,3 +2619,4 @@ if ($MyInvocation.InvocationName -ne '.') {
 
     Main -StartPath $scriptStartPath -MaxDepth $scriptMaxDepth -Top $scriptTop -MaxThreads $scriptMaxThreads -WhatIf:$WhatIfPreference
 }
+
