@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-20 21:30:00 UTC
+# Last Updated: 2025-06-20 21:47:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.3.1
-# Additional Info: BUGFIX - Fixed typo in function call from 'Optimized-HierarchicalSize' to 'Optimize-HierarchicalSize' which was causing fatal error during hierarchical size aggregation phase.
+# Version: 5.4.1
+# Additional Info: Fixed parallel analysis progress bar to show completed jobs out of total work items (launched + queued) for accurate progress reporting.
 # =============================================================================
 
 <#
@@ -292,7 +292,7 @@ function Start-AdvancedTranscript {
         # Create initial log file with header
         $headerText = @"
 ===============================================
-ULTRA-FAST FOLDER USAGE ANALYZER v3.0.0 TRANSCRIPT LOG
+ULTRA-FAST FOLDER USAGE ANALYZER v5.4.0 TRANSCRIPT LOG
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -1023,9 +1023,11 @@ function Get-ParallelFolderStatistic {
             }
             # Regular progress reporting with saturation metrics
             if ($currentTime.Subtract($lastProgress).TotalMilliseconds -gt $progressCheckInterval) {
-                $percentComplete = if ($totalJobsLaunched -gt 0) { [math]::Round(($completedJobsCount / $totalJobsLaunched) * 100, 1) } else { 0 }
+                # FIXED: Calculate total work items (jobs launched + jobs still in queue) for accurate progress
+                $totalWorkItems = $totalJobsLaunched + $workQueue.Count
+                $percentComplete = if ($totalWorkItems -gt 0) { [math]::Round(($completedJobsCount / $totalWorkItems) * 100, 1) } else { 0 }
                 $currentUtilization = [math]::Round(($currentActiveCount / $MaxThreads) * 100, 1)
-                Write-DetailedProgress -Activity "Parallel Analysis" -Status "Active: $currentActiveCount/$MaxThreads ($currentUtilization%), Queue: $($workQueue.Count), Completed: $completedJobsCount/$totalJobsLaunched ($percentComplete%)" -PercentComplete $percentComplete -Color "Cyan"
+                Write-DetailedProgress -Activity "Parallel Analysis" -Status "Active: $currentActiveCount/$MaxThreads ($currentUtilization%), Queue: $($workQueue.Count), Completed: $completedJobsCount/$totalWorkItems ($percentComplete%)" -PercentComplete $percentComplete -Color "Cyan"
 
                 # Log saturation metrics every progress update
                 if ($jobsCompletedThisIteration -gt 0) {
@@ -1497,7 +1499,6 @@ function Show-HierarchicalSummary {
                             }
                             Write-Output "$($Script:Colors.DarkGray)  - Additional system files and hidden data$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.DarkGray)  - File system reserved clusters and bad sectors$($Script:Colors.Reset)"
-                            Write-Output "$($Script:Colors.DarkGray)  - Virtual memory files and hibernation data$($Script:Colors.Reset)"
                             # Only suggest increasing MaxDepth if it was actually reached and discrepancy is significant
                             if ($discrepancyPercent -gt 10 -and $Script:MaxDepthReached) {
                                 Write-Output "$($Script:Colors.Yellow)Consider increasing MaxDepth parameter for more complete analysis$($Script:Colors.Reset)"
@@ -2332,7 +2333,8 @@ function Optimize-HierarchicalSize {
             # This is a root directory, skip
             $processedPaths[$result.Path] = $true
             continue
-        }        # Check if parent exists in our results
+        }
+        # Check if parent exists in our results
         if ($pathLookup.ContainsKey($parentPath)) {
             $parentResult = $pathLookup[$parentPath]
 
@@ -2402,7 +2404,7 @@ function Main {
     try {
         # Initialize and display header
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v3.0.0    $($Script:Colors.Reset)"
+        Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)    ULTRA-FAST FOLDER USAGE ANALYZER v5.4.0    $($Script:Colors.Reset)"
         Write-Output "$($Script:Colors.Bold)$($Script:Colors.Cyan)===============================================$($Script:Colors.Reset)"
         # Initialize central logging for debug messages ONLY if -Debug is specified
         if ($DebugPreference -ne 'SilentlyContinue') {
@@ -2526,6 +2528,22 @@ function Main {
             $results = Get-ParallelFolderStatistic -FolderPaths $optimizedDirs -MaxDepth $PSBoundParameters['MaxDepth'] -MaxThreads $PSBoundParameters['MaxThreads']
             Write-DebugInfo -Message "Parallel analysis completed. Results count: $($results.Count)" -Category "PARALLEL_COMPLETE"
 
+            # CRITICAL FIX: Create placeholder root entry BEFORE hierarchical aggregation to prevent size loss
+            Write-ProgressUpdate -Activity "Analysis" -Status "Creating root placeholder for hierarchical aggregation..." -Color "Cyan"
+            $rootPlaceholder = [PSCustomObject]@{
+                Path = $PSBoundParameters['StartPath']
+                SizeBytes = 0
+                FileCount = 0
+                SubfolderCount = 0
+                LargestFile = $null
+                LargestFileSize = 0
+                IsAccessible = $true
+                HasCloudFiles = $false
+                Error = $null
+            }
+            $results = @($rootPlaceholder) + $results
+            Write-DebugInfo -Message "Root placeholder created for hierarchical aggregation" -Category "ROOT_CALC"
+
             # CRITICAL FIX: Perform hierarchical size aggregation to correctly calculate cumulative directory sizes
             Write-ProgressUpdate -Activity "Analysis" -Status "Performing hierarchical size aggregation..." -Color "Cyan"
             $results = Optimize-HierarchicalSize -Results $results
@@ -2578,16 +2596,23 @@ function Main {
                 # CRITICAL FIX: Calculate ONLY the size of TOP-LEVEL directories to prevent double-counting
                 # The original logic was summing ALL accessible results, which included nested subdirectories
                 # causing massive over-reporting (e.g., C:\Program Files would be counted, plus C:\Program Files\SubDir, etc.)
-                $topLevelResults = $results | Where-Object { $_.IsAccessible -and $topLevelDirs -contains $_.Path }
-                $subdirectoryTotalSize = ($topLevelResults | Measure-Object -Property SizeBytes -Sum).Sum
+
+                # Find the root placeholder (first result) which now contains aggregated sizes from hierarchical processing
+                $rootPlaceholder = $results | Where-Object { $_.Path -eq $PSBoundParameters['StartPath'] } | Select-Object -First 1
+                $aggregatedRootSize = if ($rootPlaceholder) { $rootPlaceholder.SizeBytes } else { 0 }
+
+                Write-DebugInfo -Message "FIXED: Root size calculation with hierarchical aggregation:" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "  Aggregated root size from hierarchy: $(Format-FileSize -SizeInBytes $aggregatedRootSize)" -Category "ROOT_CALC"
+
                 $rootFilesSize = if ($rootFiles.Count -gt 0) { ($rootFiles | Measure-Object -Property Length -Sum).Sum } else { 0 }
                 # Add problematic directories size (safely scanned) - these are separate from normal subdirectories
                 $problematicDirsSize = if ($safeResults.Count -gt 0) { ($safeResults | Measure-Object -Property SizeBytes -Sum).Sum } else { 0 }
-                # For the ROOT directory display, ONLY show direct files + problematic directories
-                # Subdirectories will be shown separately in the hierarchical view
-                $rootDisplaySize = $rootFilesSize + $problematicDirsSize
-                # Total cumulative size for statistics (this is the accurate total for the entire drive scan)
-                $totalCumulativeSize = $subdirectoryTotalSize + $rootFilesSize + $problematicDirsSize
+
+                # Total cumulative size includes aggregated subdirectories + root files + problematic directories
+                $totalCumulativeSize = $aggregatedRootSize + $rootFilesSize + $problematicDirsSize
+
+                # For the ROOT directory display, show aggregated subdirectories + direct files + problematic directories
+                $rootDisplaySize = $aggregatedRootSize + $rootFilesSize + $problematicDirsSize
                 # CRITICAL DEBUG: Check if results array is empty causing 0 calculation
                 Write-DebugInfo -Message "CRITICAL DEBUG: Results array analysis:" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Results count: $($results.Count)" -Category "ROOT_CALC"
@@ -2598,12 +2623,11 @@ function Main {
                     Write-DebugInfo -Message "  WARNING: No accessible results found - this explains 0.00 B calculation!" -Category "ROOT_CALC"
                 }
                 # Debug logging for root calculation with fix details
-                Write-DebugInfo -Message "FIXED: Root calculation breakdown (only top-level dirs counted):" -Category "ROOT_CALC"
-                Write-DebugInfo -Message "  Top-level results counted: $($topLevelResults.Count) of $($results.Count) total results" -Category "ROOT_CALC"
-                Write-DebugInfo -Message "  Subdirectory total size: $(Format-FileSize -SizeInBytes $subdirectoryTotalSize)" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "FIXED: Root calculation breakdown (with hierarchical aggregation):" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "  Aggregated subdirectory size: $(Format-FileSize -SizeInBytes $aggregatedRootSize)" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Root files size: $(Format-FileSize -SizeInBytes $rootFilesSize) ($($rootFiles.Count) files)" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Problematic dirs size: $(Format-FileSize -SizeInBytes $problematicDirsSize)" -Category "ROOT_CALC"
-                Write-DebugInfo -Message "  Root display size (files + problematic only): $(Format-FileSize -SizeInBytes $rootDisplaySize)" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "  Root display size: $(Format-FileSize -SizeInBytes $rootDisplaySize)" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  TOTAL cumulative size (accurate): $(Format-FileSize -SizeInBytes $totalCumulativeSize)" -Category "ROOT_CALC"
                 if ($DebugPreference -ne 'SilentlyContinue' -and $rootFiles.Count -gt 0) {
                     Write-DebugInfo -Message "Root files found:" -Category "ROOT_FILES"
@@ -2659,8 +2683,11 @@ function Main {
                 # Store the total cumulative size for summary statistics
                 $rootStats | Add-Member -NotePropertyName "TotalCumulativeSize" -NotePropertyValue $totalCumulativeSize
                 $rootStats | Add-Member -NotePropertyName "TotalCumulativeFiles" -NotePropertyValue $totalCumulativeFiles
-                # Replace or add the root stats at the beginning of results
-                $results = @($rootStats) + $results
+
+                # CRITICAL FIX: Replace the root placeholder with the fully calculated root stats
+                $nonRootResults = $results | Where-Object { $_.Path -ne $PSBoundParameters['StartPath'] }
+                $results = @($rootStats) + $nonRootResults
+                Write-DebugInfo -Message "Root placeholder replaced with calculated root stats" -Category "ROOT_CALC"
                 $Script:ProcessedFolders++
             } catch {
                 Write-Output "$($Script:Colors.Yellow)Warning: Could not analyze root directory files: $($_.Exception.Message)$($Script:Colors.Reset)"
