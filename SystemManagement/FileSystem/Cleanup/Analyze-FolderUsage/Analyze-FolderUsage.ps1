@@ -7,6 +7,7 @@
 # Version: 3.6.3
 # Additional Info: Fixed parallel processing object serialization causing "No accessible top-level subfolders found" error
 # =============================================================================
+
 <#
 .SYNOPSIS
 Performs ultra-fast recursive folder size analysis with parallel processing and advanced features.
@@ -58,6 +59,7 @@ Analyzes C:\Users with detailed debug logging and verbose progress reporting usi
 .\Analyze-FolderUsage.ps1 -StartPath "C:\Users" -WhatIf
 Shows what would be analyzed in the C:\Users directory without performing the scan.
 #>
+
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory = $false, Position = 0)]
