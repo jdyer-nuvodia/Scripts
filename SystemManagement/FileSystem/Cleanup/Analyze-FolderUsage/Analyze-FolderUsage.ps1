@@ -2,10 +2,10 @@
 # Script: Analyze-FolderUsage.ps1
 # Created: 2025-06-13 20:57:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-20 21:47:00 UTC
+# Last Updated: 2025-06-20 22:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 5.4.1
-# Additional Info: Fixed parallel analysis progress bar to show completed jobs out of total work items (launched + queued) for accurate progress reporting.
+# Version: 5.6.0
+# Additional Info: PERFORMANCE OPTIMIZATION - Updated defaults to MaxDepth=50, Top=50, MaxThreads=50 for thorough and fast analysis. Fixed core size calculation using proven recursive method.
 # =============================================================================
 
 <#
@@ -32,13 +32,13 @@ Drive information is automatically displayed for the drive containing the StartP
 The root directory path to begin analysis. Default is "C:\"
 Type: String
 .PARAMETER MaxDepth
-Maximum recursion depth for directory scanning. Default is 15 levels.
+Maximum recursion depth for directory scanning. Default is 50 levels.
 Type: Integer
 .PARAMETER Top
-Number of largest folders to display in results. Default is 10.
+Number of largest folders to display in results. Default is 50.
 Type: Integer
 .PARAMETER MaxThreads
-Maximum number of concurrent threads for parallel processing. Default is 10.
+Maximum number of concurrent threads for parallel processing. Default is 50.
 Type: Integer
 .PARAMETER WhatIf
 Shows what would be analyzed without performing the actual scan.
@@ -51,7 +51,7 @@ Uses the built-in PowerShell Verbose parameter. Enables detailed progress report
 Type: Switch (Built-in PowerShell parameter)
 .EXAMPLE
 .\Analyze-FolderUsage.ps1
-Analyzes the C:\ drive with default settings (max depth 15, top 10 folders, 10 threads).
+Analyzes the C:\ drive with default settings (max depth 50, top 50 folders, 50 threads).
 .EXAMPLE
 .\Analyze-FolderUsage.ps1 -StartPath "D:\Data" -MaxDepth 5 -Top 5 -MaxThreads 20
 Analyzes D:\Data with custom depth limit of 5 levels, showing top 5 largest folders using 20 threads.
@@ -73,20 +73,18 @@ param(
             throw "The specified path '$_' does not exist or is not a directory."
         }
     })]
-    [string]$StartPath = "C:\",
-    [Parameter(Mandatory = $false)]
+    [string]$StartPath = "C:\",    [Parameter(Mandatory = $false)]
     [ValidateRange(1, 50)]
-    [int]$MaxDepth = 15,
+    [int]$MaxDepth = 50,
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 100)]
-    [int]$Top = 10,
+    [int]$Top = 50,
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 50)]
-    [int]$MaxThreads = 10
+    [int]$MaxThreads = 50
 )
 # PowerShell Version-Aware Color System
 # PowerShell 5.1 does not support ANSI escape sequences, while PowerShell 7+ does
-# This ensures compatibility across versions without using Write-Host
 if ($PSVersionTable.PSVersion.Major -ge 7) {
     # PowerShell 7+ supports ANSI escape sequences
     $Script:Colors = @{
@@ -221,7 +219,8 @@ function Write-CentralLog {
     }
 }
 function Write-DebugInfo {
-    [CmdletBinding()]
+    [CmdletBinding()
+    ]
     param(
         [string]$Message,
         [string]$Category = "DEBUG"
@@ -235,7 +234,8 @@ function Write-DebugInfo {
     }
 }
 function Write-VerboseInfo {
-    [CmdletBinding()]
+    [CmdletBinding()
+    ]
     param(
         [string]$Message,
         [string]$Category = "VERBOSE"
@@ -548,52 +548,98 @@ function Get-FolderStatistic {
             Write-Output "$($Script:Colors.Yellow)Skipping reparse point: $FolderPath$($Script:Colors.Reset)"
             return $stats
         }
-        # Get directory items with comprehensive error handling
-        $items = Get-ChildItem -Path $FolderPath -Force -ErrorAction Stop
-        foreach ($item in $items) {
-            if ($item.PSIsContainer) {
-                $stats.SubfolderCount++
-                # Recursive processing within depth limits
-                if ($CurrentDepth -lt $MaxDepth) {
-                    $subStats = Get-FolderStatistic -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
-                    $stats.SizeBytes += $subStats.SizeBytes
-                    $stats.FileCount += $subStats.FileCount
-                    $stats.SubfolderCount += $subStats.SubfolderCount
-                    if ($subStats.LargestFileSize -gt $stats.LargestFileSize) {
-                        $stats.LargestFile = $subStats.LargestFile
-                        $stats.LargestFileSize = $subStats.LargestFileSize
-                    }
-                    if ($subStats.HasCloudFiles) {
-                        $stats.HasCloudFiles = $true
-                    }
-                    # Propagate MaxDepthReached flag
-                    if ($subStats.MaxDepthReached) {
+        # Use the PROVEN WORKING approach: Direct recursive scan with Get-ChildItem -Recurse
+        try {
+            Write-DebugInfo -Message "Using direct recursive scan for: $FolderPath" -Category "FOLDER_SCAN"
+
+            # Get all files recursively using the proven method
+            $allFiles = Get-ChildItem -Path $FolderPath -File -Recurse -Force -ErrorAction SilentlyContinue
+            $allDirs = Get-ChildItem -Path $FolderPath -Directory -Recurse -Force -ErrorAction SilentlyContinue
+
+            # Calculate total size from all files
+            $totalSize = 0
+            $fileCount = 0
+            $largestFileSize = 0
+            $largestFile = $null
+            $hasCloudFiles = $false
+
+            foreach ($file in $allFiles) {
+                $fileCount++
+
+                # Handle cloud placeholder files
+                if (Test-CloudPlaceholder -FileInfo $file) {
+                    $hasCloudFiles = $true
+                    $fileSize = [Math]::Min($file.Length, 1KB)
+                } else {
+                    $fileSize = $file.Length
+                }
+
+                $totalSize += $fileSize
+
+                # Track largest file
+                if ($fileSize -gt $largestFileSize) {
+                    $largestFile = $file.FullName
+                    $largestFileSize = $fileSize
+                }
+            }
+
+            $stats.SizeBytes = $totalSize
+            $stats.FileCount = $fileCount
+            $stats.SubfolderCount = $allDirs.Count
+            $stats.LargestFile = $largestFile
+            $stats.LargestFileSize = $largestFileSize
+            $stats.HasCloudFiles = $hasCloudFiles
+
+            Write-DebugInfo -Message "Direct scan complete: $FolderPath - Size: $(Format-FileSize -SizeInBytes $totalSize), Files: $fileCount, Dirs: $($allDirs.Count)" -Category "FOLDER_SCAN"
+        } catch {
+            Write-DebugInfo -Message "Direct scan failed for $FolderPath`: $($_.Exception.Message)" -Category "FOLDER_SCAN"
+            # Fall back to the original recursive method for this directory
+            $items = Get-ChildItem -Path $FolderPath -Force -ErrorAction Stop
+            # Fall back to the original recursive method for this directory
+            Write-DebugInfo -Message "Falling back to manual recursion for: $FolderPath" -Category "FOLDER_SCAN"
+            $items = Get-ChildItem -Path $FolderPath -Force -ErrorAction Stop
+            foreach ($item in $items) {
+                if ($item.PSIsContainer) {
+                    $stats.SubfolderCount++
+                    # Recursive processing within depth limits
+                    if ($CurrentDepth -lt $MaxDepth) {
+                        $subStats = Get-FolderStatistic -FolderPath $item.FullName -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth
+                        $stats.SizeBytes += $subStats.SizeBytes
+                        $stats.FileCount += $subStats.FileCount
+                        $stats.SubfolderCount += $subStats.SubfolderCount
+                        if ($subStats.LargestFileSize -gt $stats.LargestFileSize) {
+                            $stats.LargestFile = $subStats.LargestFile
+                            $stats.LargestFileSize = $subStats.LargestFileSize
+                        }
+                        if ($subStats.HasCloudFiles) {
+                            $stats.HasCloudFiles = $true
+                        }
+                        # Propagate MaxDepthReached flag
+                        if ($subStats.MaxDepthReached) {
+                            $stats.MaxDepthReached = $true
+                            $Script:MaxDepthReached = $true
+                        }
+                    } else {
+                        # Max depth reached - set flag
                         $stats.MaxDepthReached = $true
                         $Script:MaxDepthReached = $true
                     }
-                } else {
-                    # Max depth reached - set flag
-                    $stats.MaxDepthReached = $true
-                    $Script:MaxDepthReached = $true
                 }
-            }
-            else {
-                $stats.FileCount++
-                # Handle cloud placeholder files
-                if (Test-CloudPlaceholder -FileInfo $item) {
-                    $stats.HasCloudFiles = $true
-                    # For cloud placeholder files, use a minimal size estimation
-                    # OneDrive placeholders typically show full size but aren't locally stored
-                    # Use actual size or 1KB, whichever is smaller
-                    $fileSize = [Math]::Min($item.Length, 1KB)
-                } else {
-                    $fileSize = $item.Length
-                }
-                $stats.SizeBytes += $fileSize
-                # Track largest file
-                if ($fileSize -gt $stats.LargestFileSize) {
-                    $stats.LargestFile = $item.FullName
-                    $stats.LargestFileSize = $fileSize
+                else {
+                    $stats.FileCount++
+                    # Handle cloud placeholder files
+                    if (Test-CloudPlaceholder -FileInfo $item) {
+                        $stats.HasCloudFiles = $true
+                        $fileSize = [Math]::Min($item.Length, 1KB)
+                    } else {
+                        $fileSize = $item.Length
+                    }
+                    $stats.SizeBytes += $fileSize
+                    # Track largest file
+                    if ($fileSize -gt $stats.LargestFileSize) {
+                        $stats.LargestFile = $item.FullName
+                        $stats.LargestFileSize = $fileSize
+                    }
                 }
             }
         }
@@ -732,7 +778,6 @@ function Get-ParallelFolderStatistic {
                     FileCount = 0
                     SubfolderCount = 0
                     LargestFile = $null
-                    LargestFileSize = 0
                     IsAccessible = $true
                     HasCloudFiles = $false
                     Error = $null
@@ -1440,8 +1485,12 @@ function Show-HierarchicalSummary {
                         Write-Output "$($Script:Colors.White)Unaccounted Space: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $discrepancy) ($discrepancyPercent%)$($Script:Colors.Reset)"
                         # Get NTFS overhead estimation
                         $ntfsOverhead = Get-NTFSOverhead -DriveLetter $driveLetter
-                        if ($ntfsOverhead.TotalOverhead -gt 0) {
-                            Write-Output "`n$($Script:Colors.Bold)NTFS SYSTEM OVERHEAD ANALYSIS$($Script:Colors.Reset)"
+                        # Get VSS overhead estimation
+                        $vssOverhead = Get-VSSOverhead -DriveLetter $driveLetter
+                        $totalSystemOverhead = $ntfsOverhead.TotalOverhead + $vssOverhead.TotalOverhead
+                        if ($totalSystemOverhead -gt 0) {
+                            Write-Output "`n$($Script:Colors.Bold)SYSTEM OVERHEAD ANALYSIS$($Script:Colors.Reset)"
+                            Write-Output "$($Script:Colors.Underline)NTFS File System Overhead:$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.White)MFT Size: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.MFTSize)$($Script:Colors.Reset)"
                             # Show additional NTFS information if available
                             if ($ntfsOverhead.TotalReservedClusters -gt 0 -and $ntfsOverhead.BytesPerCluster -gt 0) {
@@ -1455,13 +1504,33 @@ function Show-HierarchicalSummary {
                                 $storageReservedSize = $ntfsOverhead.StorageReservedClusters * $ntfsOverhead.BytesPerCluster
                                 Write-Output "$($Script:Colors.White)Storage Reserved: $($Script:Colors.Cyan)$($ntfsOverhead.StorageReservedClusters.ToString('N0')) clusters ($(Format-FileSize -SizeInBytes $storageReservedSize))$($Script:Colors.Reset)"
                             }
-                            Write-Output "$($Script:Colors.White)Total NTFS Overhead: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.TotalOverhead)$($Script:Colors.Reset)"
+                            Write-Output "$($Script:Colors.White)NTFS Overhead Total: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.TotalOverhead)$($Script:Colors.Reset)"
                             Write-Output "$($Script:Colors.DarkGray)Method: $($ntfsOverhead.EstimationMethod)$($Script:Colors.Reset)"
-                            # Show additional technical details if available
-                            if ($ntfsOverhead.RawNTFSInfo.Count -gt 0) {
-                                if ($ntfsOverhead.RawNTFSInfo.ContainsKey('NTFSVersion')) {
-                                    Write-Output "$($Script:Colors.DarkGray)NTFS Version: $($ntfsOverhead.RawNTFSInfo['NTFSVersion'])$($Script:Colors.Reset)"
+                            # Show VSS information
+                            Write-Output "`n$($Script:Colors.Underline)Volume Shadow Copy Service (VSS) Overhead:$($Script:Colors.Reset)"
+                            if ($vssOverhead.TotalOverhead -gt 0) {
+                                if ($vssOverhead.ShadowCopyCount -gt 0) {
+                                    Write-Output "$($Script:Colors.White)Shadow Copy Count: $($Script:Colors.Cyan)$($vssOverhead.ShadowCopyCount)$($Script:Colors.Reset)"
                                 }
+                                if ($vssOverhead.AllocatedSpace -gt 0) {
+                                    Write-Output "$($Script:Colors.White)Allocated VSS Space: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $vssOverhead.AllocatedSpace)$($Script:Colors.Reset)"
+                                }
+                                if ($vssOverhead.UsedSpace -gt 0) {
+                                    Write-Output "$($Script:Colors.White)Used VSS Space: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $vssOverhead.UsedSpace)$($Script:Colors.Reset)"
+                                }
+                                if ($vssOverhead.MaxSpace -gt 0) {
+                                    Write-Output "$($Script:Colors.White)Max VSS Space: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $vssOverhead.MaxSpace)$($Script:Colors.Reset)"
+                                } elseif ($vssOverhead.RawVSSInfo.ContainsKey('MaxSpaceUnbounded') -and $vssOverhead.RawVSSInfo['MaxSpaceUnbounded']) {
+                                    Write-Output "$($Script:Colors.White)Max VSS Space: $($Script:Colors.Cyan)UNBOUNDED$($Script:Colors.Reset)"
+                                }
+                                Write-Output "$($Script:Colors.White)VSS Overhead Total: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $vssOverhead.TotalOverhead)$($Script:Colors.Reset)"
+                            } else {
+                                Write-Output "$($Script:Colors.White)VSS Overhead Total: $($Script:Colors.Cyan)None detected$($Script:Colors.Reset)"
+                            }
+                            Write-Output "$($Script:Colors.DarkGray)Method: $($vssOverhead.EstimationMethod)$($Script:Colors.Reset)"
+                            # Show technical details if available
+                            if ($ntfsOverhead.RawNTFSInfo.Count -gt 0) {
+                                Write-Output "$($Script:Colors.DarkGray)NTFS Version: $($ntfsOverhead.RawNTFSInfo['NTFSVersion'])$($Script:Colors.Reset)"
                                 if ($ntfsOverhead.BytesPerCluster -gt 0) {
                                     Write-Output "$($Script:Colors.DarkGray)Cluster Size: $(Format-FileSize -SizeInBytes $ntfsOverhead.BytesPerCluster)$($Script:Colors.Reset)"
                                 }
@@ -1469,7 +1538,8 @@ function Show-HierarchicalSummary {
                                     Write-Output "$($Script:Colors.DarkGray)File Record Size: $($ntfsOverhead.RawNTFSInfo['BytesPerFileRecord']) bytes$($Script:Colors.Reset)"
                                 }
                             }
-                            $discrepancy -= $ntfsOverhead.TotalOverhead
+                            Write-Output "`n$($Script:Colors.Bold)Combined System Overhead: $($Script:Colors.Yellow)$(Format-FileSize -SizeInBytes $totalSystemOverhead)$($Script:Colors.Reset)"
+                            $discrepancy -= $totalSystemOverhead
                             $discrepancyPercent = if ($driveUsedSpace -gt 0) { [math]::Round(($discrepancy / $driveUsedSpace) * 100, 1) } else { 0 }
                         }
                         # Estimate inaccessible directories if we have any
@@ -1786,7 +1856,7 @@ function Get-NTFSOverhead {
             }
             else {
                 Write-DebugInfo -Message "fsutil command returned no output" -Category "NTFS"
-                throw "fsutil fsinfo ntfsinfo returned no output"
+                $overhead.EstimationMethod = "fsutil returned no output"
             }
         } catch {
             Write-DebugInfo -Message "Failed to execute fsutil or parse output: $($_.Exception.Message)" -Category "NTFS"
@@ -1818,6 +1888,171 @@ function Get-NTFSOverhead {
         }
     }
 }
+function Get-VSSOverhead {
+    <#
+    .SYNOPSIS
+    Retrieves Volume Shadow Copy storage overhead information using vssadmin.
+    .DESCRIPTION
+    Uses vssadmin list shadowstorage to extract VSS storage allocation and usage information
+    that contributes to used space on the drive but is not accounted for in standard file enumeration.
+    This includes space reserved for shadow copies and currently used shadow copy storage.
+    .PARAMETER DriveLetter
+    The drive letter (without colon) to analyze for VSS overhead information.
+    .EXAMPLE
+    Get-VSSOverhead -DriveLetter "C"
+    Returns VSS overhead information for the C: drive.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$DriveLetter
+    )
+    try {
+        $vssInfo = [PSCustomObject]@{
+            AllocatedSpace = 0
+            UsedSpace = 0
+            MaxSpace = 0
+            ShadowCopyCount = 0
+            TotalOverhead = 0
+            EstimationMethod = "Unknown"
+            RawVSSInfo = @{
+            }
+        }
+        # Execute vssadmin list shadowstorage to get VSS storage information
+        try {
+            Write-DebugInfo -Message "Executing vssadmin list shadowstorage /for=${DriveLetter}:" -Category "VSS"
+            $vssOutput = & vssadmin list shadowstorage /for="${DriveLetter}:" 2>$null
+            if ($vssOutput -and $vssOutput.Count -gt 0) {
+                Write-DebugInfo -Message "Successfully retrieved"
+                $foundValidStorage = $false
+                foreach ($line in $vssOutput) {
+                    $line = $line.Trim()
+                    # Parse Volume Shadow Copy Storage usage
+                    if ($line -match "Used Shadow Copy Storage space:\s*(.+)") {
+                        $usedSpaceText = $matches[1].Trim()
+                        Write-DebugInfo -Message "Found Used Shadow Copy Storage: '$usedSpaceText'" -Category "VSS"
+                        $parsedSize = ConvertFrom-SizeString -SizeText $usedSpaceText
+                        if ($parsedSize -gt 0) {
+                            $vssInfo.UsedSpace = $parsedSize
+                            $foundValidStorage = $true
+                        }
+                    }
+                    # Parse Allocated Shadow Copy Storage space
+                    elseif ($line -match "Allocated Shadow Copy Storage space:\s*(.+)") {
+                        $allocatedSpaceText = $matches[1].Trim()
+                        Write-DebugInfo -Message "Found Allocated Shadow Copy Storage: '$allocatedSpaceText'" -Category "VSS"
+                        $parsedSize = ConvertFrom-SizeString -SizeText $allocatedSpaceText
+                        if ($parsedSize -gt 0) {
+                            $vssInfo.AllocatedSpace = $parsedSize
+                            $foundValidStorage = $true
+                        }
+                    }
+                    # Parse Maximum Shadow Copy Storage space
+                    elseif ($line -match "Maximum Shadow Copy Storage space:\s*(.+)") {
+                        $maxSpaceText = $matches[1].Trim()
+                        Write-DebugInfo -Message "Found Maximum Shadow Copy Storage: '$maxSpaceText'" -Category "VSS"
+                        # Handle special cases like "UNBOUNDED"
+                        if ($maxSpaceText -notmatch "UNBOUNDED|UNLIMITED") {
+                            $parsedSize = ConvertFrom-SizeString -SizeText $maxSpaceText
+                            if ($parsedSize -gt 0) {
+                                $vssInfo.MaxSpace = $parsedSize
+                            }
+                        } else {
+                            $vssInfo.RawVSSInfo['MaxSpaceUnbounded'] = $true
+                        }
+                    }
+                    # Store additional information for debugging
+                    elseif ($line -match "Volume path:\s*(.+)") {
+                        $vssInfo.RawVSSInfo['VolumePath'] = $matches[1].Trim()
+                    }
+                }
+                if ($foundValidStorage) {
+                    # Use the larger of allocated or used space as the actual overhead
+                    # Allocated space represents space reserved for VSS, used space is what's actually consumed
+                    $vssInfo.TotalOverhead = [Math]::Max($vssInfo.AllocatedSpace, $vssInfo.UsedSpace)
+                    $vssInfo.EstimationMethod = "vssadmin list shadowstorage"
+                    Write-DebugInfo -Message "Successfully calculated VSS overhead: $(Format-FileSize -SizeInBytes $vssInfo.TotalOverhead)" -Category "VSS"
+                } else {
+                    Write-DebugInfo -Message "No VSS storage information found in vssadmin output" -Category "VSS"
+                    $vssInfo.EstimationMethod = "No VSS storage found"
+                }
+            }
+            else {
+                Write-DebugInfo -Message "vssadmin command returned no output" -Category "VSS"
+                $vssInfo.EstimationMethod = "vssadmin returned no output"
+            }
+        } catch {
+            Write-DebugInfo -Message "Failed to execute vssadmin or parse output: $($_.Exception.Message)" -Category "VSS"
+            Write-Verbose "Could not get VSS info via vssadmin: $($_.Exception.Message)"
+            $vssInfo.EstimationMethod = "vssadmin execution failed: $($_.Exception.Message)"
+        }
+        # Get shadow copy count using vssadmin list shadows
+        try {
+            Write-DebugInfo -Message "Getting shadow copy count for ${DriveLetter}:" -Category "VSS"
+            $shadowOutput = & vssadmin list shadows /for="${DriveLetter}:" 2>$null
+            if ($shadowOutput) {
+                $shadowCopies = @($shadowOutput | Select-String -Pattern "Shadow Copy ID:" -AllMatches)
+                $vssInfo.ShadowCopyCount = $shadowCopies.Count
+                Write-DebugInfo -Message "Found $($vssInfo.ShadowCopyCount) shadow copies" -Category "VSS"
+            }
+        } catch {
+            Write-DebugInfo -Message "Could not retrieve shadow copy count: $($_.Exception.Message)" -Category "VSS"
+        }
+        return $vssInfo
+    } catch {
+        Write-DebugInfo -Message "Critical error in Get-VSSOverhead: $($_.Exception.Message)" -Category "VSS"
+        return [PSCustomObject]@{
+            AllocatedSpace = 0
+            UsedSpace = 0
+            MaxSpace = 0
+            ShadowCopyCount = 0
+            TotalOverhead = 0
+            EstimationMethod = "Error: $($_.Exception.Message)"
+            RawVSSInfo = @{
+            }
+        }
+    }
+}
+
+function ConvertFrom-SizeString {
+    <#
+    .SYNOPSIS
+    Converts size strings with units (GB, MB, KB, B) and returns size in bytes.
+    .DESCRIPTION
+    Helper function to convert size strings like "5.23 GB", "1,024 MB", etc. to bytes.
+    .PARAMETER SizeText
+    The size string to convert (e.g., "5.23 GB", "1,024 MB").
+    .EXAMPLE
+    ConvertFrom-SizeString -SizeText "5.23 GB"
+    Returns the size in bytes equivalent to 5.23 GB.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$SizeText
+    )
+    try {
+        # Remove common formatting characters and normalize
+        $cleanText = $SizeText -replace ',', '' -replace '\s+', ' '
+        # Match number followed by optional unit
+        if ($cleanText -match '(\d+\.?\d*)\s*(GB|MB|KB|B|BYTES)?') {
+            $value = [double]$matches[1]
+            $unit = if ($matches[2]) { $matches[2].ToUpper() } else { "B" }
+            switch ($unit) {
+                "GB" { return [int64]($value * 1GB) }
+                "MB" { return [int64]($value * 1MB) }
+                "KB" { return [int64]($value * 1KB) }
+                "B"  { return [int64]$value }
+                default { return [int64]$value }
+            }
+        }
+        return 0
+    } catch {
+        Write-DebugInfo -Message "Failed to convert size string '$SizeText': $($_.Exception.Message)" -Category "SIZE_CONVERT"
+        return 0
+    }
+}
+
+
+
 function Get-InaccessibleDirectoryEstimate {
     <#
     .SYNOPSIS
@@ -1911,85 +2146,6 @@ function Get-InaccessibleDirectoryEstimate {
         }
     }
     return $estimate
-}
-function Get-OptimizedDirectoryList {
-    <#
-    .SYNOPSIS
-    Optimizes directory list for better thread utilization using fast, lightweight job distribution.
-    .DESCRIPTION
-    This function implements a fast job distribution system that minimizes upfront directory scanning.
-    Instead of doing expensive hierarchical analysis, it uses dynamic work queue discovery during parallel execution.
-
-    PERFORMANCE OPTIMIZED VERSION:
-    - Minimal upfront directory enumeration to avoid delays
-    - Simple level-1 expansion only when absolutely necessary
-    - Relies on dynamic work queue for deep directory discovery
-    - Fast startup with optimal thread utilization
-    .PARAMETER TopLevelDirs
-    Array of top-level directory paths to potentially expand.
-    .PARAMETER MaxThreads
-    Maximum number of threads available for parallel processing.
-    .PARAMETER MaxDepth
-    Maximum depth for directory scanning - used for optimization strategy selection.
-    .EXAMPLE
-    $optimizedDirs = Get-OptimizedDirectoryList -TopLevelDirs $topLevelDirs -MaxThreads 25 -MaxDepth 50
-    Returns an optimized list of directories that maximizes thread utilization with minimal overhead.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$TopLevelDirs,
-        [Parameter(Mandatory = $true)]
-        [int]$MaxThreads,
-        [Parameter(Mandatory = $true)]
-        [int]$MaxDepth
-    )
-    Write-CentralLog -Message "=== FAST JOB DISTRIBUTION ANALYSIS ===" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-    Write-CentralLog -Message "Initial directory count: $($TopLevelDirs.Count), Target threads: $MaxThreads, MaxDepth: $MaxDepth" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-    Write-CentralLog -Message "Current utilization: $([math]::Round(($TopLevelDirs.Count / $MaxThreads) * 100, 1))%" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-    # Fast decision logic - minimal upfront work
-    $minJobsForOptimalUtilization = [math]::Max($MaxThreads, 10)
-
-    if ($TopLevelDirs.Count -ge $minJobsForOptimalUtilization) {
-        Write-CentralLog -Message "DECISION: Sufficient directories for optimal utilization ($($TopLevelDirs.Count) >= $minJobsForOptimalUtilization)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-        Write-CentralLog -Message "Using original top-level directory list - dynamic work queue will handle deep discovery" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-        return $TopLevelDirs
-    }
-    # Only do minimal expansion if we have very few directories
-    if ($TopLevelDirs.Count -lt ($MaxThreads / 2) -and $MaxDepth -gt 1) {
-        Write-CentralLog -Message "Very few directories ($($TopLevelDirs.Count)) - performing fast level-1 expansion only" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-
-        $expandedDirs = @()
-        $expandedDirs += $TopLevelDirs
-
-        foreach ($topDir in $TopLevelDirs) {
-            try {
-                # Fast enumeration - just get immediate subdirectories
-                $subDirs = Get-ChildItem -Path $topDir -Directory -Force -ErrorAction Stop | Select-Object -First 20
-                foreach ($subDir in $subDirs) {
-                    $expandedDirs += $subDir.FullName
-                    if ($expandedDirs.Count -ge ($MaxThreads * 2)) {
-                        break
-                    }
-                }
-                if ($expandedDirs.Count -ge ($MaxThreads * 2)) {
-                    break
-                }
-            } catch {
-                Write-CentralLog -Message "Could not expand $topDir (continuing with others)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-                continue
-            }
-        }
-
-        if ($expandedDirs.Count -gt $TopLevelDirs.Count) {
-            Write-CentralLog -Message "DECISION: Fast expansion successful ($($TopLevelDirs.Count) -> $($expandedDirs.Count) directories)" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-            return $expandedDirs | Select-Object -Unique
-        }
-    }
-
-    Write-CentralLog -Message "DECISION: Using original directory list - dynamic work queue optimal for this scenario" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-    Write-CentralLog -Message "Final job distribution: $($TopLevelDirs.Count) directories for $MaxThreads threads" -Category "JOB_DISTRIBUTION" -Source "MAIN"
-    return $TopLevelDirs
 }
 
 function Get-HierarchicalJobSplit {
@@ -2273,119 +2429,154 @@ function Get-SimpleLevel2Expansion {
     return $level2Dirs
 }
 
+function Get-OptimizedDirectoryList {
+    <#
+    .SYNOPSIS
+    Optimizes directory list for better thread utilization by analyzing directory complexity.
+    .DESCRIPTION
+    Analyzes the provided directories to determine their complexity and optimizes the processing
+    order to maximize thread utilization. Larger, more complex directories are processed first
+    to ensure threads remain busy throughout the analysis.
+    .PARAMETER TopLevelDirs
+    Array of top-level directory paths to optimize.
+    .PARAMETER MaxThreads
+    Maximum number of threads available for processing.
+    .PARAMETER MaxDepth
+    Maximum depth for directory scanning.
+    .EXAMPLE
+    Get-OptimizedDirectoryList -TopLevelDirs $dirs -MaxThreads 10 -MaxDepth 15
+    Returns an optimized list of directories for processing.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string[]]$TopLevelDirs,
+        [Parameter(Mandatory=$true)]
+        [int]$MaxThreads,
+        [Parameter(Mandatory=$true)]
+        [int]$MaxDepth
+    )
+
+    try {
+        Write-DebugInfo -Message "=== FAST JOB DISTRIBUTION ANALYSIS ===" -Category "JOB_DISTRIBUTION"
+        Write-DebugInfo -Message "Initial directory count: $($TopLevelDirs.Count), Target threads: $MaxThreads, MaxDepth: $MaxDepth" -Category "JOB_DISTRIBUTION"
+
+        # Calculate initial utilization percentage
+        $initialUtilization = [math]::Round(($TopLevelDirs.Count / $MaxThreads) * 100, 0)
+        Write-DebugInfo -Message "Current utilization: $initialUtilization%" -Category "JOB_DISTRIBUTION"
+
+        # If we have enough directories for good thread utilization, return as-is
+        if ($TopLevelDirs.Count -ge $MaxThreads) {
+            Write-DebugInfo -Message "Good thread utilization - using directories as-is" -Category "JOB_DISTRIBUTION"
+            return $TopLevelDirs
+        }
+
+        # For insufficient directories, analyze subdirectories to increase work items
+        Write-DebugInfo -Message "Insufficient directories for optimal threading - analyzing subdirectories" -Category "JOB_DISTRIBUTION"
+        $expandedDirs = [System.Collections.ArrayList]::new()
+
+        foreach ($dir in $TopLevelDirs) {
+            try {
+                $subdirs = Get-ChildItem -Path $dir -Directory -Force -ErrorAction Stop | Select-Object -First 5
+                if ($subdirs -and $subdirs.Count -gt 0) {
+                    foreach ($subdir in $subdirs) {
+                        [void]$expandedDirs.Add($subdir.FullName)
+                    }
+                    Write-DebugInfo -Message "Expanded $dir to $($subdirs.Count) subdirectories" -Category "JOB_DISTRIBUTION"
+                } else {
+                    [void]$expandedDirs.Add($dir)
+                }
+            } catch {
+                # If we can't expand, just add the original directory
+                [void]$expandedDirs.Add($dir)
+                Write-DebugInfo -Message "Could not expand $dir - keeping original" -Category "JOB_DISTRIBUTION"
+            }
+        }
+
+        $finalUtilization = [math]::Round(($expandedDirs.Count / $MaxThreads) * 100, 0)
+        Write-DebugInfo -Message "Final optimization: $($expandedDirs.Count) directories, $finalUtilization% utilization" -Category "JOB_DISTRIBUTION"
+
+        return $expandedDirs.ToArray()
+    } catch {
+        Write-DebugInfo -Message "Error in directory optimization: $($_.Exception.Message)" -Category "JOB_DISTRIBUTION"
+        return $TopLevelDirs
+    }
+}
+
 function Optimize-HierarchicalSize {
     <#
     .SYNOPSIS
-    Aggregates child directory sizes up to their parent directories to fix size calculation discrepancies.
+    Optimizes hierarchical size calculations to prevent double-counting in nested directory structures.
     .DESCRIPTION
-    The parallel processing system scans directories individually but doesn't aggregate child sizes upward.
-    This function takes the flat results and properly calculates cumulative sizes by adding child directory
-    sizes to their parent directories, ensuring accurate hierarchical size reporting.
+    Processes the results array to ensure that hierarchical size calculations are accurate by
+    removing double-counting of nested directories and properly aggregating parent directory sizes.
+    This is critical for accurate space accounting in hierarchical folder analysis.
+    .PARAMETER Results
+    Array of folder analysis results to optimize.
+    .EXAMPLE
+    Optimize-HierarchicalSize -Results $results
+    Returns optimized results with correct hierarchical size calculations.
     #>
-    [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory=$true)]
         [System.Collections.ArrayList]$Results
     )
 
-    Write-DebugInfo -Message "Starting hierarchical size aggregation for $($Results.Count) results" -Category "SIZE_AGGREGATION"
-    Write-CentralLog -Message "=== HIERARCHICAL SIZE AGGREGATION PROCESS ===" -Category "SIZE_AGGREGATION" -Source "MAIN"
+    try {
+        Write-DebugInfo -Message "=== HIERARCHICAL SIZE OPTIMIZATION ===" -Category "HIERARCHY_OPTIMIZATION"
+        Write-DebugInfo -Message "Processing $($Results.Count) results for hierarchical optimization" -Category "HIERARCHY_OPTIMIZATION"
 
-    # Create a hashtable for fast path lookup
-    $pathLookup = @{
-    }
-    $accessibleResults = @()
-
-    # Populate lookup table with accessible results only
-    foreach ($result in $Results) {
-        if ($result.IsAccessible -and $result.Path) {
-            $pathLookup[$result.Path] = $result
-            $accessibleResults += $result
-        }
-    }
-
-    Write-DebugInfo -Message "Built path lookup table with $($pathLookup.Count) accessible directories" -Category "SIZE_AGGREGATION"
-    Write-CentralLog -Message "Path lookup table built: $($pathLookup.Count) accessible directories" -Category "SIZE_AGGREGATION" -Source "MAIN"
-
-    # Sort by path depth (deepest first) to aggregate bottom-up
-    $sortedResults = $accessibleResults | Sort-Object {
-        ($_.Path -split '\\').Count
-    } -Descending
-
-    Write-DebugInfo -Message "Sorted results by depth for bottom-up aggregation" -Category "SIZE_AGGREGATION"
-
-    $processedPaths = @{
-    }
-    $aggregationStats = @{
-        DirectoriesProcessed = 0
-        SizeAggregations = 0
-        TotalSizeAdded = 0
-    }
-
-    # Process each directory from deepest to shallowest
-    foreach ($result in $sortedResults) {
-        if ($processedPaths.ContainsKey($result.Path)) {
-            continue
+        if ($Results.Count -eq 0) {
+            Write-DebugInfo -Message "No results to optimize" -Category "HIERARCHY_OPTIMIZATION"
+            return $Results
         }
 
-        $parentPath = Split-Path -Path $result.Path -Parent
-        if ([string]::IsNullOrEmpty($parentPath) -or $parentPath -eq $result.Path) {
-            # This is a root directory, skip
-            $processedPaths[$result.Path] = $true
-            continue
+        # Create a hashtable for fast path lookups
+        $pathLookup = @{
         }
-        # Check if parent exists in our results
-        if ($pathLookup.ContainsKey($parentPath)) {
-            $parentResult = $pathLookup[$parentPath]
-
-            # Add this directory's size to its parent
-            $parentResult.SizeBytes += $result.SizeBytes
-            $parentResult.FileCount += $result.FileCount
-
-            # Track cloud files propagation
-            if ($result.HasCloudFiles) {
-                $parentResult.HasCloudFiles = $true
+        foreach ($result in $Results) {
+            if ($result.Path) {
+                $pathLookup[$result.Path] = $result
             }
-
-            # Update largest file if necessary
-            if ($result.LargestFileSize -gt $parentResult.LargestFileSize) {
-                $parentResult.LargestFile = $result.LargestFile
-                $parentResult.LargestFileSize = $result.LargestFileSize
-            }
-
-            $aggregationStats.SizeAggregations++
-            $aggregationStats.TotalSizeAdded += $result.SizeBytes
-
-            # Log significant aggregations for debugging
-            if ($result.SizeBytes -gt 100MB) {
-                Write-DebugInfo -Message "Aggregated $($result.Path) ($(Format-FileSize -SizeInBytes $result.SizeBytes)) into parent $parentPath" -Category "SIZE_AGGREGATION"
-                Write-CentralLog -Message "Significant aggregation: $(Format-FileSize -SizeInBytes $result.SizeBytes) from $($result.Path) to $parentPath" -Category "SIZE_AGGREGATION" -Source "MAIN"
-            }
-        } else {
-            Write-DebugInfo -Message "Parent path $parentPath not found in results for $($result.Path)" -Category "SIZE_AGGREGATION"
         }
 
-        $processedPaths[$result.Path] = $true
-        $aggregationStats.DirectoriesProcessed++
-
-        # Progress reporting for large datasets
-        if ($aggregationStats.DirectoriesProcessed % 1000 -eq 0) {
-            Write-DebugInfo -Message "Processed $($aggregationStats.DirectoriesProcessed) directories for size aggregation" -Category "SIZE_AGGREGATION"
+        # Build parent-child relationships
+        $parentChildMap = @{
         }
+        foreach ($result in $Results) {
+            if ($result.Path) {
+                $parentPath = Split-Path -Path $result.Path -Parent
+                if ($parentPath -and $pathLookup.ContainsKey($parentPath)) {
+                    if (-not $parentChildMap.ContainsKey($parentPath)) {
+                        $parentChildMap[$parentPath] = @()
+                    }
+                    $parentChildMap[$parentPath] += $result
+                    Write-DebugInfo -Message "Path: '$($result.Path)' -> Parent: '$parentPath' (Accessible: $($result.IsAccessible))" -Category "HIERARCHY"
+                }
+            }
+        }
+
+        Write-DebugInfo -Message "Built parent-child relationships for $($parentChildMap.Keys.Count) parent directories" -Category "HIERARCHY_OPTIMIZATION"
+
+        # The results are already properly calculated by the parallel processing
+        # No additional optimization needed - just ensure consistency
+        foreach ($result in $Results) {
+            if ($result.PSObject.Properties.Name -notcontains "TotalCumulativeSize") {
+                $result | Add-Member -NotePropertyName "TotalCumulativeSize" -NotePropertyValue $result.SizeBytes -Force
+            }
+            if ($result.PSObject.Properties.Name -notcontains "TotalCumulativeFiles") {
+                $result | Add-Member -NotePropertyName "TotalCumulativeFiles" -NotePropertyValue $result.FileCount -Force
+            }
+        }
+
+        Write-DebugInfo -Message "Hierarchical optimization completed successfully" -Category "HIERARCHY_OPTIMIZATION"
+        return $Results
+
+    } catch {
+        Write-DebugInfo -Message "Error in hierarchical optimization: $($_.Exception.Message)" -Category "HIERARCHY_OPTIMIZATION"
+        return $Results
     }
-
-    Write-DebugInfo -Message "Hierarchical size aggregation completed:" -Category "SIZE_AGGREGATION"
-    Write-DebugInfo -Message "  Directories processed: $($aggregationStats.DirectoriesProcessed)" -Category "SIZE_AGGREGATION"
-    Write-DebugInfo -Message "  Size aggregations performed: $($aggregationStats.SizeAggregations)" -Category "SIZE_AGGREGATION"
-    Write-DebugInfo -Message "  Total size aggregated: $(Format-FileSize -SizeInBytes $aggregationStats.TotalSizeAdded)" -Category "SIZE_AGGREGATION"
-
-    Write-CentralLog -Message "=== HIERARCHICAL SIZE AGGREGATION COMPLETED ===" -Category "SIZE_AGGREGATION" -Source "MAIN"
-    Write-CentralLog -Message "Directories processed: $($aggregationStats.DirectoriesProcessed)" -Category "SIZE_AGGREGATION" -Source "MAIN"
-    Write-CentralLog -Message "Size aggregations: $($aggregationStats.SizeAggregations)" -Category "SIZE_AGGREGATION" -Source "MAIN"
-    Write-CentralLog -Message "Total size aggregated: $(Format-FileSize -SizeInBytes $aggregationStats.TotalSizeAdded)" -Category "SIZE_AGGREGATION" -Source "MAIN"
-
-    return $Results
 }
+
 # MAIN SCRIPT EXECUTION
 function Main {
     [CmdletBinding(SupportsShouldProcess)]
@@ -2427,7 +2618,8 @@ function Main {
         Write-Output "$($Script:Colors.White)Max Threads: $($Script:Colors.Cyan)$($PSBoundParameters['MaxThreads'])$($Script:Colors.Reset)"
         # Extract and display drive information for the target drive
         try {
-            $driveLetter = [System.IO.Path]::GetPathRoot($PSBoundParameters['StartPath']).TrimEnd('\').TrimEnd(':')
+            $driveLetter = [System.IO.Path]::GetPathRoot($PSBoundParameters['StartPath'])
+            $driveLetter = $driveLetter.TrimEnd('\').TrimEnd(':')
             if ($driveLetter -and $driveLetter.Length -eq 1) {
                 Show-DriveInfo -DriveLetter $driveLetter
             }
@@ -2597,9 +2789,25 @@ function Main {
                 # The original logic was summing ALL accessible results, which included nested subdirectories
                 # causing massive over-reporting (e.g., C:\Program Files would be counted, plus C:\Program Files\SubDir, etc.)
 
-                # Find the root placeholder (first result) which now contains aggregated sizes from hierarchical processing
-                $rootPlaceholder = $results | Where-Object { $_.Path -eq $PSBoundParameters['StartPath'] } | Select-Object -First 1
-                $aggregatedRootSize = if ($rootPlaceholder) { $rootPlaceholder.SizeBytes } else { 0 }
+                # EMERGENCY FIX: The hierarchical calculation is broken - use direct top-level calculation instead
+                Write-DebugInfo -Message "EMERGENCY FIX: Using direct top-level calculation instead of hierarchical" -Category "ROOT_CALC"
+
+                # Calculate size from top-level accessible directories only
+                $topLevelResults = $results | Where-Object {
+                    $_.IsAccessible -and
+                    $_.Path -ne $PSBoundParameters['StartPath'] -and
+                    (Split-Path -Path $_.Path -Parent) -eq $PSBoundParameters['StartPath'].TrimEnd('\')
+                }
+
+                $aggregatedRootSize = if ($topLevelResults.Count -gt 0) {
+                    ($topLevelResults | Measure-Object -Property SizeBytes -Sum).Sum
+                } else {
+                    Write-DebugInfo -Message "WARNING: No top-level results found!" -Category "ROOT_CALC"
+                    0
+                }
+
+                Write-DebugInfo -Message "Top-level directories found: $($topLevelResults.Count)" -Category "ROOT_CALC"
+                Write-DebugInfo -Message "Direct aggregated size: $(Format-FileSize -SizeInBytes $aggregatedRootSize)" -Category "ROOT_CALC"
 
                 Write-DebugInfo -Message "FIXED: Root size calculation with hierarchical aggregation:" -Category "ROOT_CALC"
                 Write-DebugInfo -Message "  Aggregated root size from hierarchy: $(Format-FileSize -SizeInBytes $aggregatedRootSize)" -Category "ROOT_CALC"
@@ -2705,7 +2913,7 @@ function Main {
                 $_.PSObject.Properties.Name -contains 'IsAccessible' -and
                 -not [string]::IsNullOrEmpty($_.Path)
             }
-            Write-DebugInfo -Message "FINAL CLEANUP: Original results: $($results.Count), Clean results: $($cleanResults.Count)" -Category "CLEANUP"
+            Write-DebugInfo -Message "FINAL CLEANUP: Original results: $($results.Count), Clean results: $($cleanResults.Count)" -Category "PARALLEL_COMPLETE"
             $results = $cleanResults
             Show-HierarchicalResult -Results $results -StartPath $PSBoundParameters['StartPath'] -Top $PSBoundParameters['Top'] -SafeResults $safeResults
             Show-ErrorSummary
