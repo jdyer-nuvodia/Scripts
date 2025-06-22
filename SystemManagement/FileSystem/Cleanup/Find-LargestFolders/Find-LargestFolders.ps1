@@ -2,10 +2,10 @@
 # Script: Find-LargestFolders.ps1
 # Created: 2025-06-21 00:50:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-21 03:28:00 UTC
+# Last Updated: 2025-06-21 21:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.3
-# Additional Info: Fixed table formatting in PowerShell 5.1 by replacing Format-Table with manual formatting to prevent terminal resize issues
+# Version: 1.4.0
+# Additional Info: Implemented PowerShell 5.1 and 7+ compatible color output function using Write-Output and console color changes instead of Write-Host
 # =============================================================================
 
 <#
@@ -87,33 +87,35 @@ begin {
     $Script:ProcessedFolders = 0
     $Script:CurrentDepth = 0
     $Script:LargestFileFound = $null
-
     # Color codes for different PowerShell versions
-if ($PSVersionTable.PSVersion.Major -ge 7) {
-    $Script:Colors = @{
-        Reset      = "`e[0m"
-        White      = "`e[37m"
-        Cyan       = "`e[36m"
-        Green      = "`e[32m"
-        Yellow     = "`e[33m"
-        Red        = "`e[31m"
-        Magenta    = "`e[35m"
-        DarkGray   = "`e[90m"
-        Bold       = "`e[1m"
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        $Script:Colors = @{
+            Reset      = "`e[0m"
+            White      = "`e[37m"
+            Cyan       = "`e[36m"
+            Green      = "`e[32m"
+            Yellow     = "`e[33m"
+            Red        = "`e[31m"
+            Magenta    = "`e[35m"
+            DarkGray   = "`e[90m"
+            Bold       = "`e[1m"
+        }
+        $Script:UseAnsiColors = $true
+    } else {
+        # PowerShell 5.1 - Use console color mapping
+        $Script:Colors = @{
+            Reset      = ""
+            White      = "White"
+            Cyan       = "Cyan"
+            Green      = "Green"
+            Yellow     = "Yellow"
+            Red        = "Red"
+            Magenta    = "Magenta"
+            DarkGray   = "DarkGray"
+            Bold       = ""
+        }
+        $Script:UseAnsiColors = $false
     }
-} else {
-    $Script:Colors = @{
-        Reset      = ""
-        White      = ""
-        Cyan       = ""
-        Green      = ""
-        Yellow     = ""
-        Red        = ""
-        Magenta    = ""
-        DarkGray   = ""
-        Bold       = ""
-    }
-}
 
 function Format-FileSize {
     param(
@@ -197,9 +199,8 @@ function Get-LargestItem {
 
     $results = @()
     $minSizeBytes = $MinSizeGB * 1GB
-
     try {
-        Write-Output "$($Script:Colors.Cyan)Scanning: $Path$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "Scanning: $Path" -Color "Cyan"
         # Get subdirectories (including hidden and system directories)
         $subdirs = Get-ChildItem -Path $Path -Directory -Force -ErrorAction SilentlyContinue
 
@@ -244,9 +245,8 @@ function Get-LargestItem {
         $topItems = $results | Sort-Object SizeBytes -Descending | Select-Object -First $TopCount
 
         return $topItems
-
     } catch {
-        Write-Output "$($Script:Colors.Red)Error accessing path: $Path - $($_.Exception.Message)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "Error accessing path: $Path - $($_.Exception.Message)" -Color "Red"
         return @()
     }
 }
@@ -257,20 +257,19 @@ function Show-LargestItemsTable {
         [string]$Path,
         [int]$Depth
     )
-
     if ($Items.Count -eq 0) {
-        Write-Output "$($Script:Colors.Yellow)No items found meeting the minimum size criteria.$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "No items found meeting the minimum size criteria." -Color "Yellow"
         return
     }
     $indent = "  " * $Depth
     Write-Output ""
-    Write-Output "$($Script:Colors.Bold)$($Script:Colors.Green)$indent=== LEVEL $($Depth + 1): $Path ===$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "$indent=== LEVEL $($Depth + 1): $Path ===" -Color "Green"
     Write-Output ""
       # Sort by actual size in bytes (not formatted string) and filter out invalid items
-    $sortedItems = $Items | Where-Object { 
-        $_.Type -and $_.Name -and $_.SizeFormatted -and $_.SizeBytes -gt 0 
+    $sortedItems = $Items | Where-Object {
+        $_.Type -and $_.Name -and $_.SizeFormatted -and $_.SizeBytes -gt 0
     } | Sort-Object @{Expression={$_.Type}; Descending=$true}, @{Expression={$_.SizeBytes}; Descending=$true}
-    
+
     # Create simple table header
     Write-Output "Type   Name                        Size"
     Write-Output "----   ----                        ----"
@@ -287,7 +286,7 @@ function Show-LargestItemsTable {
             $name.PadRight(25)
         }
         $sizeFormattedPadded = $sizeFormatted.PadLeft(12)
-        
+
         Write-Output "$typeFormatted $nameFormatted $sizeFormattedPadded"
     }
 }
@@ -300,16 +299,14 @@ function Find-LargestFoldersRecursive {
         [int]$TopCount,
         [double]$MinSizeGB
     )
-
     if ($CurrentDepth -ge $MaxDepth) {
-        Write-Output "$($Script:Colors.Yellow)Maximum depth ($MaxDepth) reached.$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "Maximum depth ($MaxDepth) reached." -Color "Yellow"
         return
     }
     # Get largest items at current level
     $largestItems = Get-LargestItem -Path $Path -TopCount $TopCount -MinSizeGB $MinSizeGB
-
     if ($largestItems.Count -eq 0) {
-        Write-Output "$($Script:Colors.Yellow)No items found at current level meeting size criteria.$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "No items found at current level meeting size criteria." -Color "Yellow"
         return
     }
 
@@ -322,7 +319,7 @@ function Find-LargestFoldersRecursive {
         # Recursively analyze the largest folder
         Find-LargestFoldersRecursive -Path $largestFolder.Path -CurrentDepth ($CurrentDepth + 1) -MaxDepth $MaxDepth -TopCount $TopCount -MinSizeGB $MinSizeGB
     } else {
-        Write-Output "$($Script:Colors.Green)No more folders to drill down into at this level.$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "No more folders to drill down into at this level." -Color "Green"
     }
 }
 
@@ -344,7 +341,7 @@ function Start-AdvancedTranscript {
             # Create header
             $headerText = @"
 ===============================================
-FIND LARGEST FOLDERS ANALYZER v1.2.3
+FIND LARGEST FOLDERS ANALYZER v1.3.0
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -353,9 +350,8 @@ Process ID: $PID
 ===============================================
 "@
             Set-Content -Path $fullLogPath -Value $headerText -Encoding UTF8
-
             Start-Transcript -Path $fullLogPath -Append -Force | Out-Null
-            Write-Output "$($Script:Colors.Green)Transcript started: $fullLogPath$($Script:Colors.Reset)"
+            Write-ColorOutput -Message "Transcript started: $fullLogPath" -Color "Green"
             return $fullLogPath
         }
         return $null
@@ -368,11 +364,10 @@ Process ID: $PID
 function Stop-AdvancedTranscript {
     [CmdletBinding(SupportsShouldProcess)]
     param()
-
     try {
         if ($PSCmdlet.ShouldProcess("transcript", "Stop transcript log")) {
             Stop-Transcript | Out-Null
-            Write-Output "$($Script:Colors.Green)Transcript stopped successfully$($Script:Colors.Reset)"
+            Write-ColorOutput -Message "Transcript stopped successfully" -Color "Green"
         }
     } catch {
         Write-Warning "Error stopping transcript: $($_.Exception.Message)"
@@ -388,7 +383,7 @@ function Write-DebugInfo {
     if ($DebugPreference -ne 'SilentlyContinue') {
         $timestamp = Get-Date -Format "HH:mm:ss.fff"
         $formattedMessage = "[$timestamp] [$Category] $Message"
-        Write-Output "$($Script:Colors.Magenta)$formattedMessage$($Script:Colors.Reset)"
+        Write-ColorOutput -Message $formattedMessage -Color "Magenta"
     }
 }
 
@@ -693,7 +688,7 @@ function Get-SystemFilesSize {
         }
 
         # Check for hiberfil.sys
-        $hiberFilePath = Join-Path -Path $drivePath -ChildPath "hiberfil.sys"
+        $hiberFilePath = Join-Path -Path $drivePath -ChildChild "hiberfil.sys"
         if (Test-Path -Path $hiberFilePath) {
             try {
                 $hiberFile = Get-Item -Path $hiberFilePath -Force -ErrorAction SilentlyContinue
@@ -769,54 +764,53 @@ function Show-SystemOverhead {
     param(
         [string]$DriveLetter
     )
-
     Write-Output ""
-    Write-Output "$($Script:Colors.Bold)$($Script:Colors.Green)System Overhead Analysis for Drive ${DriveLetter}:$($Script:Colors.Reset)"
-    Write-Output "$($Script:Colors.Green)============================================$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "System Overhead Analysis for Drive ${DriveLetter}:" -Color "Green"
+    Write-ColorOutput -Message "============================================" -Color "Green"
 
     # Get NTFS overhead
     $ntfsOverhead = Get-NTFSOverhead -DriveLetter $DriveLetter
-    Write-Output "$($Script:Colors.White)NTFS Overhead:$($Script:Colors.Reset)"
-    Write-Output "$($Script:Colors.White)  MFT Size: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.MFTSize)$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "NTFS Overhead:" -Color "White"
+    Write-ColorOutput -Message "  MFT Size: $(Format-FileSize -SizeInBytes $ntfsOverhead.MFTSize)" -Color "White"
     if ($ntfsOverhead.RawNTFSInfo['TotalReservedSize'] -gt 0) {
-        Write-Output "$($Script:Colors.White)  Reserved Clusters: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.RawNTFSInfo['TotalReservedSize'])$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "  Reserved Clusters: $(Format-FileSize -SizeInBytes $ntfsOverhead.RawNTFSInfo['TotalReservedSize'])" -Color "White"
     }
-    Write-Output "$($Script:Colors.White)  Total NTFS Overhead: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $ntfsOverhead.TotalOverhead)$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "  Total NTFS Overhead: $(Format-FileSize -SizeInBytes $ntfsOverhead.TotalOverhead)" -Color "White"
 
     # Get VSS overhead
     $vssOverhead = Get-VSSOverhead -DriveLetter $DriveLetter
     Write-Output ""
-    Write-Output "$($Script:Colors.White)Volume Shadow Copy (VSS) Overhead:$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "Volume Shadow Copy (VSS) Overhead:" -Color "White"
     if ($vssOverhead.TotalOverhead -gt 0) {
-        Write-Output "$($Script:Colors.White)  Used VSS Space: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $vssOverhead.UsedSpace)$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)  Allocated VSS Space: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $vssOverhead.AllocatedSpace)$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)  Total VSS Overhead: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $vssOverhead.TotalOverhead)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "  Used VSS Space: $(Format-FileSize -SizeInBytes $vssOverhead.UsedSpace)" -Color "White"
+        Write-ColorOutput -Message "  Allocated VSS Space: $(Format-FileSize -SizeInBytes $vssOverhead.AllocatedSpace)" -Color "White"
+        Write-ColorOutput -Message "  Total VSS Overhead: $(Format-FileSize -SizeInBytes $vssOverhead.TotalOverhead)" -Color "White"
     } else {
-        Write-Output "$($Script:Colors.White)  No VSS storage detected$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "  No VSS storage detected" -Color "White"
     }
 
     # Get system files
     $systemFiles = Get-SystemFilesSize -DriveLetter $DriveLetter
     Write-Output ""
-    Write-Output "$($Script:Colors.White)System Files:$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "System Files:" -Color "White"
     if ($systemFiles.PageFileSize -gt 0) {
-        Write-Output "$($Script:Colors.White)  Page File: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $systemFiles.PageFileSize)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "  Page File: $(Format-FileSize -SizeInBytes $systemFiles.PageFileSize)" -Color "White"
     }
     if ($systemFiles.HibernationFileSize -gt 0) {
-        Write-Output "$($Script:Colors.White)  Hibernation File: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $systemFiles.HibernationFileSize)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "  Hibernation File: $(Format-FileSize -SizeInBytes $systemFiles.HibernationFileSize)" -Color "White"
     }
     if ($systemFiles.SystemVolumeInfoSize -gt 0) {
-        Write-Output "$($Script:Colors.White)  System Volume Information: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $systemFiles.SystemVolumeInfoSize)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "  System Volume Information: $(Format-FileSize -SizeInBytes $systemFiles.SystemVolumeInfoSize)" -Color "White"
     }
     if ($systemFiles.RecycleBinSize -gt 0) {
-        Write-Output "$($Script:Colors.White)  Recycle Bin: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $systemFiles.RecycleBinSize)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "  Recycle Bin: $(Format-FileSize -SizeInBytes $systemFiles.RecycleBinSize)" -Color "White"
     }
-    Write-Output "$($Script:Colors.White)  Total System Files: $($Script:Colors.Cyan)$(Format-FileSize -SizeInBytes $systemFiles.TotalSystemSize)$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "  Total System Files: $(Format-FileSize -SizeInBytes $systemFiles.TotalSystemSize)" -Color "White"
 
     # Calculate total overhead
     $totalOverhead = $ntfsOverhead.TotalOverhead + $vssOverhead.TotalOverhead + $systemFiles.TotalSystemSize
     Write-Output ""
-    Write-Output "$($Script:Colors.Bold)$($Script:Colors.Yellow)Total System Overhead: $(Format-FileSize -SizeInBytes $totalOverhead)$($Script:Colors.Reset)"
+    Write-ColorOutput -Message "Total System Overhead: $(Format-FileSize -SizeInBytes $totalOverhead)" -Color "Yellow"
     return $totalOverhead
 }
 
@@ -843,22 +837,63 @@ function Show-DriveInfo {
         [string]$DriveLetter
     )
     try {
-        $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop
-        Write-Output "`n$($Script:Colors.Bold)$($Script:Colors.Green)Drive Volume Details for ${DriveLetter}:$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.Green)------------------------$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Drive Letter: $($Script:Colors.Cyan)$($volume.DriveLetter):$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Drive Label: $($Script:Colors.Cyan)$($volume.FileSystemLabel)$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)File System: $($Script:Colors.Cyan)$($volume.FileSystem)$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Drive Type: $($Script:Colors.Cyan)$($volume.DriveType)$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Size: $($Script:Colors.Cyan)$([math]::Round($volume.Size/1GB, 2)) GB$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Free Space: $($Script:Colors.Cyan)$([math]::Round($volume.SizeRemaining/1GB, 2)) GB$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Used Space: $($Script:Colors.Cyan)$([math]::Round(($volume.Size - $volume.SizeRemaining)/1GB, 2)) GB$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Free Space %: $($Script:Colors.Cyan)$([math]::Round(($volume.SizeRemaining/$volume.Size) * 100, 2))%$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Health Status: $($Script:Colors.Cyan)$($volume.HealthStatus)$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.White)Operational Status: $($Script:Colors.Cyan)$($volume.OperationalStatus)$($Script:Colors.Reset)"
+        $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop        Write-Output ""
+        Write-ColorOutput -Message "Drive Volume Details for ${DriveLetter}:" -Color "Green"
+        Write-ColorOutput -Message "------------------------" -Color "Green"
+        Write-ColorOutput -Message "Drive Letter: $($volume.DriveLetter):" -Color "White"
+        Write-ColorOutput -Message "Drive Label: $($volume.FileSystemLabel)" -Color "White"
+        Write-ColorOutput -Message "File System: $($volume.FileSystem)" -Color "White"
+        Write-ColorOutput -Message "Drive Type: $($volume.DriveType)" -Color "White"
+        Write-ColorOutput -Message "Size: $([math]::Round($volume.Size/1GB, 2)) GB" -Color "White"
+        Write-ColorOutput -Message "Free Space: $([math]::Round($volume.SizeRemaining/1GB, 2)) GB" -Color "White"
+        Write-ColorOutput -Message "Used Space: $([math]::Round(($volume.Size - $volume.SizeRemaining)/1GB, 2)) GB" -Color "White"
+        Write-ColorOutput -Message "Free Space %: $([math]::Round(($volume.SizeRemaining/$volume.Size) * 100, 2))%" -Color "White"
+        Write-ColorOutput -Message "Health Status: $($volume.HealthStatus)" -Color "White"
+        Write-ColorOutput -Message "Operational Status: $($volume.OperationalStatus)" -Color "White"
         Write-Output ""
     } catch {
-        Write-Output "$($Script:Colors.Red)Error retrieving drive information for ${DriveLetter}: $($_.Exception.Message)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "Error retrieving drive information for ${DriveLetter}: $($_.Exception.Message)" -Color "Red"
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Writes colored output that works in both PowerShell 5.1 and 7+ without using Write-Host.
+    .DESCRIPTION
+    Uses ANSI escape codes for PowerShell 7+ and console color changes for PowerShell 5.1.
+    This function complies with copilot-instructions.md by using Write-Output instead of Write-Host.
+    .PARAMETER Message
+    The message to write with color.
+    .PARAMETER Color
+    The color to use (White, Cyan, Green, Yellow, Red, Magenta, DarkGray).
+    .EXAMPLE
+    Write-ColorOutput -Message "Success!" -Color "Green"
+    Writes "Success!" in green color.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    if ($Script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($Script:Colors[$Color] -and $Script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $Script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
     }
 }
 
@@ -885,14 +920,13 @@ process {
                     $StartPath = $StartPath + '\'
                 }
             }
-
-            Write-Output "$($Script:Colors.Bold)$($Script:Colors.Green)Find Largest Folders Analyzer v1.2.3$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.Green)===============================================$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Start Path: $($Script:Colors.Cyan)$StartPath$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Max Depth: $($Script:Colors.Cyan)$MaxDepth$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Top Count: $($Script:Colors.Cyan)$TopCount$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Min Size: $($Script:Colors.Cyan)$MinSizeGB GB$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Started: $($Script:Colors.Cyan)$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')$($Script:Colors.Reset)"
+            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.4.0" -Color "Green"
+            Write-ColorOutput -Message "===============================================" -Color "Green"
+            Write-ColorOutput -Message "Start Path: $StartPath" -Color "White"
+            Write-ColorOutput -Message "Max Depth: $MaxDepth" -Color "White"
+            Write-ColorOutput -Message "Top Count: $TopCount" -Color "White"
+            Write-ColorOutput -Message "Min Size: $MinSizeGB GB" -Color "White"
+            Write-ColorOutput -Message "Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color "White"
             Write-Output ""
             # Validate start path
             if (-not (Test-Path -Path $StartPath -PathType Container)) {
@@ -915,36 +949,34 @@ process {
             $endTime = Get-Date
             $duration = $endTime - $Script:StartTime
             Write-Output ""
-            Write-Output "$($Script:Colors.Bold)$($Script:Colors.Green)Analysis Complete$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.Green)==================$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Folders Processed: $($Script:Colors.Cyan)$Script:ProcessedFolders$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Total Duration: $($Script:Colors.Cyan)$($duration.ToString('hh\:mm\:ss'))$($Script:Colors.Reset)"
-            Write-Output "$($Script:Colors.White)Completed: $($Script:Colors.Cyan)$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')$($Script:Colors.Reset)"
-
+            Write-ColorOutput -Message "Analysis Complete" -Color "Green"
+            Write-ColorOutput -Message "==================" -Color "Green"
+            Write-ColorOutput -Message "Folders Processed: $Script:ProcessedFolders" -Color "White"
+            Write-ColorOutput -Message "Total Duration: $($duration.ToString('hh\:mm\:ss'))" -Color "White"
+            Write-ColorOutput -Message "Completed: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color "White"
             # Report the largest file found
             if ($Script:LargestFileFound) {
                 Write-Output ""
-                Write-Output "$($Script:Colors.Bold)$($Script:Colors.Yellow)Largest File Found During Scan:$($Script:Colors.Reset)"
-                Write-Output "$($Script:Colors.Yellow)======================================$($Script:Colors.Reset)"
-                Write-Output "$($Script:Colors.White)File: $($Script:Colors.Cyan)$($Script:LargestFileFound.Name)$($Script:Colors.Reset)"
-                Write-Output "$($Script:Colors.White)Size: $($Script:Colors.Cyan)$($Script:LargestFileFound.SizeFormatted)$($Script:Colors.Reset)"
-                Write-Output "$($Script:Colors.White)Path: $($Script:Colors.Cyan)$($Script:LargestFileFound.Path)$($Script:Colors.Reset)"
+                Write-ColorOutput -Message "Largest File Found During Scan:" -Color "Yellow"
+                Write-ColorOutput -Message "======================================" -Color "Yellow"
+                Write-ColorOutput -Message "File: $($Script:LargestFileFound.Name)" -Color "White"
+                Write-ColorOutput -Message "Size: $($Script:LargestFileFound.SizeFormatted)" -Color "White"
+                Write-ColorOutput -Message "Path: $($Script:LargestFileFound.Path)" -Color "White"
             }
 
             # Show drive information at the end if we have a drive letter
             if ($driveLetter) {
                 Show-DriveInfo -DriveLetter $driveLetter
             }
-
             if ($transcriptPath) {
-                Write-Output "$($Script:Colors.White)Log File: $($Script:Colors.Cyan)$transcriptPath$($Script:Colors.Reset)"
+                Write-ColorOutput -Message "Log File: $transcriptPath" -Color "White"
             }
 
             Write-Output ""
         }
     } catch {
-        Write-Output "$($Script:Colors.Red)Script execution failed: $($_.Exception.Message)$($Script:Colors.Reset)"
-        Write-Output "$($Script:Colors.Red)$($_.ScriptStackTrace)$($Script:Colors.Reset)"
+        Write-ColorOutput -Message "Script execution failed: $($_.Exception.Message)" -Color "Red"
+        Write-ColorOutput -Message "$($_.ScriptStackTrace)" -Color "Red"
     } finally {
         # Stop transcript
         Stop-AdvancedTranscript
