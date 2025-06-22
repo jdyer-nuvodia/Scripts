@@ -2,10 +2,10 @@
 # Script: Find-LargestFolders.ps1
 # Created: 2025-06-21 00:50:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-20 23:00:00 UTC
+# Last Updated: 2025-06-21 03:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Removed 'drilling down into' output to clean up console display while keeping level headers
+# Version: 1.2.3
+# Additional Info: Fixed table formatting in PowerShell 5.1 by replacing Format-Table with manual formatting to prevent terminal resize issues
 # =============================================================================
 
 <#
@@ -33,10 +33,10 @@ This approach is much faster than scanning entire drives and focuses on finding 
 The root directory path to begin analysis. Default is "C:\"
 
 .PARAMETER MaxDepth
-Maximum recursion depth for drilling down. Default is 50 levels.
+Maximum recursion depth for drilling down. Default is 15 levels.
 
 .PARAMETER TopCount
-Number of largest folders/files to display at each level. Default is 50.
+Number of largest folders/files to display at each level. Default is 3.
 
 .PARAMETER MinSizeGB
 Minimum size in GB to display a folder/file. Default is 0.1 GB (100 MB).
@@ -70,11 +70,11 @@ param(
 
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 100)]
-    [int]$MaxDepth = 50,
+    [int]$MaxDepth = 15,
 
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 100)]
-    [int]$TopCount = 50,
+    [int]$TopCount = 3,
 
     [Parameter(Mandatory = $false)]
     [ValidateRange(0, [double]::MaxValue)]
@@ -232,7 +232,7 @@ function Get-LargestItem {
                     SizeFormatted = Format-FileSize -SizeInBytes $file.Length
                 }
                 $results += $fileItem
-                
+
                 # Track the largest file found globally
                 if ($null -eq $Script:LargestFileFound -or $file.Length -gt $Script:LargestFileFound.SizeBytes) {
                     $Script:LargestFileFound = $fileItem
@@ -262,19 +262,34 @@ function Show-LargestItemsTable {
         Write-Output "$($Script:Colors.Yellow)No items found meeting the minimum size criteria.$($Script:Colors.Reset)"
         return
     }
-
     $indent = "  " * $Depth
     Write-Output ""
     Write-Output "$($Script:Colors.Bold)$($Script:Colors.Green)$indent=== LEVEL $($Depth + 1): $Path ===$($Script:Colors.Reset)"
     Write-Output ""
-    # Create table and sort by actual size in bytes (not formatted string)
-    $tableData = $Items | Select-Object Type, Name, SizeFormatted, SizeBytes | Sort-Object @{Expression={$_.Type}; Descending=$true}, @{Expression={$_.SizeBytes}; Descending=$true}
-
-    $tableData | Format-Table -Property @(
-        @{Label="Type"; Expression={$_.Type}; Width=8},
-        @{Label="Name"; Expression={$_.Name}; Width=50},
-        @{Label="Size"; Expression={$_.SizeFormatted}; Width=12; Alignment="Right"}
-    ) -AutoSize | Out-String | Write-Output
+      # Sort by actual size in bytes (not formatted string) and filter out invalid items
+    $sortedItems = $Items | Where-Object { 
+        $_.Type -and $_.Name -and $_.SizeFormatted -and $_.SizeBytes -gt 0 
+    } | Sort-Object @{Expression={$_.Type}; Descending=$true}, @{Expression={$_.SizeBytes}; Descending=$true}
+    
+    # Create simple table header
+    Write-Output "Type   Name                        Size"
+    Write-Output "----   ----                        ----"
+      # Display each item with proper formatting
+    foreach ($item in $sortedItems) {
+        # Null safety for all properties
+        $type = if ($item.Type) { $item.Type } else { "Unknown" }
+        $name = if ($item.Name) { $item.Name } else { "Unknown" }
+        $sizeFormatted = if ($item.SizeFormatted) { $item.SizeFormatted } else { "0 B" }
+        $typeFormatted = $type.PadRight(6)
+        $nameFormatted = if ($name.Length -gt 25) {
+            $name.Substring(0, 22) + "..."
+        } else {
+            $name.PadRight(25)
+        }
+        $sizeFormattedPadded = $sizeFormatted.PadLeft(12)
+        
+        Write-Output "$typeFormatted $nameFormatted $sizeFormattedPadded"
+    }
 }
 
 function Find-LargestFoldersRecursive {
@@ -329,7 +344,7 @@ function Start-AdvancedTranscript {
             # Create header
             $headerText = @"
 ===============================================
-FIND LARGEST FOLDERS ANALYZER v1.2.1
+FIND LARGEST FOLDERS ANALYZER v1.2.3
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -858,11 +873,20 @@ process {
 
             # Start transcript logging
             $transcriptPath = Start-AdvancedTranscript -LogPath $PSScriptRoot
+            # Normalize the start path - handle drive roots specially
+            if ($StartPath -match '^[A-Za-z]:$') {
+                # If just drive letter (e.g., "C:"), add backslash to make it root
+                $StartPath = $StartPath + '\'
+            } else {
+                # Otherwise, trim any trailing backslashes except for drive roots
+                $StartPath = $StartPath.TrimEnd('\')
+                # Re-add backslash if it's a drive root
+                if ($StartPath -match '^[A-Za-z]:$') {
+                    $StartPath = $StartPath + '\'
+                }
+            }
 
-            # Normalize the start path
-            $StartPath = $StartPath.TrimEnd('\')
-
-            Write-Output "$($Script:Colors.Bold)$($Script:Colors.Green)Find Largest Folders Analyzer v1.2.0$($Script:Colors.Reset)"
+            Write-Output "$($Script:Colors.Bold)$($Script:Colors.Green)Find Largest Folders Analyzer v1.2.3$($Script:Colors.Reset)"
             Write-Output "$($Script:Colors.Green)===============================================$($Script:Colors.Reset)"
             Write-Output "$($Script:Colors.White)Start Path: $($Script:Colors.Cyan)$StartPath$($Script:Colors.Reset)"
             Write-Output "$($Script:Colors.White)Max Depth: $($Script:Colors.Cyan)$MaxDepth$($Script:Colors.Reset)"
