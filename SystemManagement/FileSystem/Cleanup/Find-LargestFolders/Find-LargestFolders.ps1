@@ -2,10 +2,10 @@
 # Script: Find-LargestFolders.ps1
 # Created: 2025-06-21 00:50:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-22 03:50:00 UTC
+# Last Updated: 2025-06-22 03:51:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Implemented PowerShell 5.1 and 7+ compatible color output function using Write-Output and console color changes instead of Write-Host
+# Version: 1.4.1
+# Additional Info: Fixed typo in Join-Path parameter (-ChildChild to -ChildPath) in Get-SystemFilesSize function
 # =============================================================================
 
 <#
@@ -686,9 +686,8 @@ function Get-SystemFilesSize {
                 Write-DebugInfo -Message "Cannot access pagefile.sys: $($_.Exception.Message)" -Category "SYSTEM"
             }
         }
-
         # Check for hiberfil.sys
-        $hiberFilePath = Join-Path -Path $drivePath -ChildChild "hiberfil.sys"
+        $hiberFilePath = Join-Path -Path $drivePath -ChildPath "hiberfil.sys"
         if (Test-Path -Path $hiberFilePath) {
             try {
                 $hiberFile = Get-Item -Path $hiberFilePath -Force -ErrorAction SilentlyContinue
@@ -920,7 +919,7 @@ process {
                     $StartPath = $StartPath + '\'
                 }
             }
-            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.4.0" -Color "Green"
+            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.4.1" -Color "Green"
             Write-ColorOutput -Message "===============================================" -Color "Green"
             Write-ColorOutput -Message "Start Path: $StartPath" -Color "White"
             Write-ColorOutput -Message "Max Depth: $MaxDepth" -Color "White"
