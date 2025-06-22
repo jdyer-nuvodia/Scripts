@@ -341,7 +341,7 @@ function Start-AdvancedTranscript {
             # Create header
             $headerText = @"
 ===============================================
-FIND LARGEST FOLDERS ANALYZER v1.3.0
+FIND LARGEST FOLDERS ANALYZER v1.4.1
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
