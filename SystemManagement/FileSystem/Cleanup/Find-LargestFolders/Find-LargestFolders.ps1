@@ -2,7 +2,7 @@
 # Script: Find-LargestFolders.ps1
 # Created: 2025-06-21 00:50:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-21 21:50:00 UTC
+# Last Updated: 2025-06-22 03:50:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.4.0
 # Additional Info: Implemented PowerShell 5.1 and 7+ compatible color output function using Write-Output and console color changes instead of Write-Host
