@@ -22,6 +22,8 @@ Do NOT ignore any PSScriptAnalyzer warnings, information, or errors. All scripts
 
 Never assume any PSScriptAnalyzer warnings, info, or errors are acceptable, fix them all, do not comment them out.
 
+You can run this script to fix whitespace issues and identify any potential missing newline errors by running it from the target script's directory: Invoke-PowerShellCodeCleanup.ps1
+
 DO NOT USE Write-Host in scripts!
 
 ALWAYS use named parameters instead of positional parameters when calling a command in a script. If you see a positonal parameter warning in PSScriptAnalyzer, it is likely a newline issue where a newline didn't get put in correctly.
