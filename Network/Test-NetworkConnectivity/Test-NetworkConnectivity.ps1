@@ -57,7 +57,7 @@ param(
     [int]$Count = 0,  # 0 means continuous
     
     [Parameter()]
-    [string]$OutputPath = "C:\PingLogs"  # Changed default path
+    [string]$OutputPath = "C:\Temp"  # Changed default path
 )
 
 # Initialize script variables
