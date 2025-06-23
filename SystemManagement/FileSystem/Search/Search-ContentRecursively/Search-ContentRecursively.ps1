@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-14 20:55:00 UTC
+# Last Updated: 2025-06-23 21:22:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.2
-# Additional Info: Fixed regex pattern handling for backslashes in search terms
+# Version: 2.0.4
+# Additional Info: Added -Force parameter to include hidden files and folders in recursive search
 # =============================================================================
 
 <#
@@ -52,11 +52,11 @@ param(
         Position = 1,
         HelpMessage = "Enter the starting directory path")]
     [string]$StartPath,
-    
+
     [Parameter(Mandatory = $false,
         HelpMessage = "Hashtable of search terms and their replacements")]
     [hashtable]$SearchReplacePairs,
-    
+
     [Parameter(Mandatory = $false,
         HelpMessage = "Automatically replace without prompting")]
     [switch]$AutoReplace
@@ -67,12 +67,21 @@ function Write-ColorOutput {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$ForegroundColor
     )
-    
-    Write-Host $Message -ForegroundColor $ForegroundColor
+
+    # Use Write-Information with appropriate color-coded prefixes for different message types
+    switch ($ForegroundColor) {
+        'Red' { Write-Information "ERROR: $Message" -InformationAction Continue }
+        'Yellow' { Write-Information "WARNING: $Message" -InformationAction Continue }
+        'Green' { Write-Information "SUCCESS: $Message" -InformationAction Continue }
+        'Cyan' { Write-Information "INFO: $Message" -InformationAction Continue }
+        'Magenta' { Write-Information "DEBUG: $Message" -InformationAction Continue }
+        'DarkGray' { Write-Information "DETAIL: $Message" -InformationAction Continue }
+        default { Write-Information $Message -InformationAction Continue }
+    }
 }
 
 # Initialize logging
@@ -88,27 +97,29 @@ try {
         Write-ColorOutput "Error: The specified path '$StartPath' does not exist." -ForegroundColor Red
         exit 1
     }
-    
+
     # Handle parameters - support both new hashtable and legacy keyword parameter
     if (-not $SearchReplacePairs -and $Keyword) {
-        $SearchReplacePairs = @{ $Keyword = "" }  # Empty replacement will be filled during interactive prompt
+        $SearchReplacePairs = @{ $Keyword = "" }
+        # Empty replacement will be filled during interactive prompt
     }
     elseif (-not $SearchReplacePairs -and -not $Keyword) {
         Write-ColorOutput "Error: Either -Keyword or -SearchReplacePairs must be provided." -ForegroundColor Red
         exit 1
     }
-    
+
     Write-ColorOutput "Starting search in path '$StartPath' for keywords: '$($SearchReplacePairs.Keys -join "', '")'..." -ForegroundColor Cyan
     Write-ColorOutput "`nSearching in metadata..." -ForegroundColor White
     try {
-        $metadataMatches = Get-ChildItem -Path $StartPath -Recurse | ForEach-Object {
+        $metadataMatches = Get-ChildItem -Path $StartPath -Recurse -Force | ForEach-Object {
             $item = $_
             $metadata = Get-ItemProperty -Path $item.FullName -ErrorAction SilentlyContinue
-            if ($metadata) {                foreach ($searchTerm in $SearchReplacePairs.Keys) {
+            if ($metadata) {
+                foreach ($searchTerm in $SearchReplacePairs.Keys) {
                     # Escape the search term for regex pattern matching
                     $escapedSearchTerm = [regex]::Escape($searchTerm)
-                    $props = $metadata.PSObject.Properties | 
-                        Where-Object { $_.Value -is [string] -and $_.Value -match $escapedSearchTerm }
+                    $props = $metadata.PSObject.Properties |
+                            Where-Object { $_.Value -is [string] -and $_.Value -imatch $escapedSearchTerm }
                     if ($props) {
                         foreach ($prop in $props) {
                             [PSCustomObject]@{
@@ -134,15 +145,17 @@ try {
         }
     } catch {
         Write-ColorOutput "Error occurred while searching metadata: $_" -ForegroundColor Red
-    }    # Search in file and directory names
+    }
+    # Search in file and directory names
     Write-ColorOutput "`nSearching in file and directory names..." -ForegroundColor White
     $nameMatches = @()
     foreach ($searchTerm in $SearchReplacePairs.Keys) {
-        $foundItems = Get-ChildItem -Path $StartPath -Recurse | 
-            Where-Object { $_.Name -like "*$searchTerm*" }
-        
+        $foundItems = Get-ChildItem -Path $StartPath -Recurse -Force |
+            Where-Object { $_.Name -ilike "*$searchTerm*" }
+
         if ($foundItems) {
-            foreach ($match in $foundItems) {                $nameMatches += [PSCustomObject]@{
+            foreach ($match in $foundItems) {
+                $nameMatches += [PSCustomObject]@{
                     FullName = $match.FullName
                     Name = $match.Name
                     Type = if ($match.PSIsContainer) { "Directory" } else { "File" }
@@ -156,26 +169,28 @@ try {
         Write-ColorOutput "Found matches in names:" -ForegroundColor Green
         foreach ($match in $nameMatches) {
             Write-ColorOutput "  $($match.FullName)" -ForegroundColor White
-        }    } else {
+        }
+    } else {
         Write-ColorOutput "No matches found in file or directory names." -ForegroundColor DarkGray
     }
-    
+
     # Search in file contents
     Write-ColorOutput "`nSearching in file contents..." -ForegroundColor White
     try {
-        $contentMatches = Get-ChildItem -Path $StartPath -Recurse -File |
-            Where-Object { 
+        $contentMatches = Get-ChildItem -Path $StartPath -Recurse -Force -File |
+            Where-Object {
                 $_.Extension -notmatch '\.(exe|dll|zip|png|jpg|jpeg|gif|pdf|doc|docx|xls|xlsx)$' -and
                 -not ($_.DirectoryName -eq $PSScriptRoot -and $_.Extension -eq '.log')
             } |
             ForEach-Object {
                 $file = $_
                 $lineNumber = 1
-                
+
                 # Get file content once to avoid multiple reads for performance
                 $fileContent = Get-Content $file.FullName -ErrorAction SilentlyContinue
-                
-                if ($fileContent) {                    foreach ($searchTerm in $SearchReplacePairs.Keys) {
+
+                if ($fileContent) {
+                    foreach ($searchTerm in $SearchReplacePairs.Keys) {
                         $lineNumber = 1
                         # Escape the search term for regex pattern matching
                         $escapedSearchTerm = [regex]::Escape($searchTerm)
@@ -208,12 +223,12 @@ try {
     }
 
     Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
-    
+
     # Offer replacement if matches were found
     if ($contentMatches -or $nameMatches -or $metadataMatches) {
         # Determine if we need to prompt or auto-replace
         $performReplacements = $AutoReplace
-        
+
         if (-not $AutoReplace) {
             foreach ($searchTerm in $SearchReplacePairs.Keys) {
                 $replaceWith = $SearchReplacePairs[$searchTerm]
@@ -229,35 +244,35 @@ try {
                     $confirmation = Read-Host "`nWould you like to replace all instances of '$searchTerm' with '$replaceWith'? (Y/N)"
                     $performReplacements = $confirmation -eq 'Y'
                 }
-                
+
                 if (-not $performReplacements) {
                     break
                 }
             }
         }
-        
+
         if ($performReplacements) {
             Write-ColorOutput "`nPerforming replacements..." -ForegroundColor Cyan
-            
+
             # Process each search term
             foreach ($searchTerm in $SearchReplacePairs.Keys) {
                 $replaceWith = $SearchReplacePairs[$searchTerm]
-                
+
                 # Skip if replacement is empty and this is auto-replace mode
                 if ([string]::IsNullOrEmpty($replaceWith) -and $AutoReplace) {
                     Write-ColorOutput "Skipping '$searchTerm' as no replacement was provided." -ForegroundColor Yellow
                     continue
                 }
-                
+
                 Write-ColorOutput "Replacing '$searchTerm' with '$replaceWith'..." -ForegroundColor White
-                
+
                 # Replace in file contents
                 $termContentMatches = $contentMatches | Where-Object { $_.SearchTerm -eq $searchTerm }
                 if ($termContentMatches) {
                     $termContentMatches | Select-Object -ExpandProperty File -Unique | ForEach-Object {
                         $filePath = $_
                         try {
-                            (Get-Content $filePath) | 
+                            (Get-Content $filePath) |
                                 ForEach-Object { $_ -replace [regex]::Escape($searchTerm), $replaceWith } |
                                 Set-Content $filePath
                             Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
@@ -292,7 +307,7 @@ try {
         }
     }
 } catch {
-    Write-Host "Error: $_" -ForegroundColor Red
+    Write-ColorOutput "Error: $_" -ForegroundColor Red
 } finally {
     if ($logFile) {
         Stop-Transcript
