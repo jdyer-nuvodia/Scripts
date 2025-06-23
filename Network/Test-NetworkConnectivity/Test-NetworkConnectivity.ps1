@@ -18,15 +18,15 @@
      - Statistical analysis of connectivity
      - Formatted output with color-coded status
      - Automatic log file generation
-     
+
     Dependencies:
      - Windows PowerShell 5.1 or higher
      - Administrator rights for network configuration
-     
+
     Security considerations:
      - Requires network access to target
      - Creates log files in specified directory
-     
+
     Performance impact:
      - Minimal CPU usage
      - Network bandwidth based on ICMP packet size
@@ -52,12 +52,12 @@
 param(
     [Parameter(Position=0)]
     [string]$Target = "8.8.8.8",
-    
+
     [Parameter(Position=1)]
-    [int]$Count = 0,  # 0 means continuous
-    
+    [int]$Count = 0,
+    # 0 means continuous
     [Parameter()]
-    [string]$OutputPath = "C:\Temp"  # Changed default path
+    [string]$OutputPath = "C:\Temp"
 )
 
 # Initialize script variables
@@ -71,12 +71,12 @@ $script:interrupted = $false
 
 function Write-FinalStatistics {
     param([switch]$Interrupted)
-    
+
     if ($script:logFile) {
         try {
             $packetLoss = if ($script:sent -gt 0) { 100 - ($script:received / $script:sent * 100) } else { 0 }
             $avgTime = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
-            
+
             $finalStats = @"
 
 ========================================
@@ -92,9 +92,9 @@ Log file size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
 "@
             # Force write the final statistics
             $finalStats | Out-File -FilePath $script:logFile -Append -Force
-            
+
             Write-Host $finalStats -ForegroundColor $(if($Interrupted){"Yellow"}else{"Cyan"})
-            
+
             # Add clear message about log file location
             Write-Host "`n==================================================" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
             Write-Host "Log file has been saved:" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
@@ -120,13 +120,13 @@ function Write-LogMessage {
         [switch]$NoConsole,
         [string]$ForegroundColor = 'White'
     )
-    
+
     # Add timestamp to message
     $timestampedMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
-    
+
     # Write to file
     Add-Content -Path $FilePath -Value $timestampedMessage
-    
+
     # Write to console if not suppressed
     if (!$NoConsole) {
         Write-Host $timestampedMessage -ForegroundColor $ForegroundColor
@@ -135,7 +135,7 @@ function Write-LogMessage {
 
 function Get-FormattedSize {
     param([int64]$Size)
-    
+
     if ($Size -gt 1GB) { return "{0:N2} GB" -f ($Size / 1GB) }
     if ($Size -gt 1MB) { return "{0:N2} MB" -f ($Size / 1MB) }
     if ($Size -gt 1KB) { return "{0:N2} KB" -f ($Size / 1KB) }
@@ -157,7 +157,7 @@ try {
     $computerName = $env:COMPUTERNAME
     $fileName = "PingTest_${computerName}_${timestamp}.log"
     $script:logFile = Join-Path $OutputPath $fileName
-    
+
     # Create log file with header
     $header = @"
 ========================================
@@ -171,39 +171,39 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
 
 "@
     Set-Content -Path $script:logFile -Value $header
-    
+
     Write-Host "Starting network test - Results will be saved to: $script:logFile" -ForegroundColor Cyan
     Write-Host "Press Ctrl+C to stop continuous mode" -ForegroundColor Yellow
-    
+
     # Get and log network configuration
     Write-LogMessage -Message "Getting network configuration..." -FilePath $script:logFile
     Write-LogMessage -Message "`nNETWORK CONFIGURATION:" -FilePath $script:logFile
     Write-LogMessage -Message "----------------------------------------" -FilePath $script:logFile
-    
+
     $ipConfig = ipconfig /all
     Add-Content -Path $script:logFile -Value $ipConfig
     Write-LogMessage -Message "----------------------------------------`n" -FilePath $script:logFile
-    
+
     # Start ping test
     Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $script:logFile -ForegroundColor Cyan
-    
+
     while (!$script:interrupted) {
         try {
             $startTime = Get-Date
             $pingResult = Test-Connection -ComputerName $Target -Count 1 -ErrorAction SilentlyContinue
             $endTime = Get-Date
             $responseTime = [math]::Round(($endTime - $startTime).TotalMilliseconds)
-            
+
             $script:sent++
-            
+
             $currentTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-            
+
             if ($pingResult) {
                 $script:received++
                 $script:totalTime += $responseTime
                 $script:minTime = [Math]::Min($script:minTime, $responseTime)
                 $script:maxTime = [Math]::Max($script:maxTime, $responseTime)
-                
+
                 # Get the IP address from the ping result
                 $ipAddress = if ($pingResult.Address) {
                     $pingResult.Address
@@ -214,7 +214,7 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
                 } else {
                     $Target
                 }
-                
+
                 $result = "Reply from $ipAddress`: time=${responseTime}ms"
                 Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
                 Write-Host "[$currentTime] $result" -ForegroundColor Green
@@ -224,12 +224,12 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
                 Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
                 Write-Host "[$currentTime] $result" -ForegroundColor Red
             }
-            
+
             # Update statistics every 10 pings
             if ($script:sent % 10 -eq 0) {
                 $packetLoss = 100 - ($script:received / $script:sent * 100)
                 $avgTime = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
-                
+
                 $stats = @"
 
 Current Statistics:
@@ -241,12 +241,12 @@ Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue){"0"}else{$scri
                 Write-LogMessage -Message $stats -FilePath $script:logFile
                 Write-Host $stats -ForegroundColor Cyan
             }
-            
+
             # Check if we should stop
             if ($Count -gt 0 -and $script:sent -ge $Count) {
                 break
             }
-            
+
             # Small delay between pings
             Start-Sleep -Milliseconds 1000
         }
