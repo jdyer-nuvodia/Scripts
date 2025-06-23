@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-23 21:22:00 UTC
+# Last Updated: 2025-06-23 21:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.4
-# Additional Info: Added -Force parameter to include hidden files and folders in recursive search
+# Version: 2.0.5
+# Additional Info: Added system name to log file naming convention
 # =============================================================================
 
 <#
@@ -86,7 +86,8 @@ function Write-ColorOutput {
 
 # Initialize logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$logFile = Join-Path $PSScriptRoot "Search-ContentRecursively_${timestamp}.transcript.log"
+$systemName = $env:COMPUTERNAME
+$logFile = Join-Path $PSScriptRoot "Search-ContentRecursively_${systemName}_${timestamp}.log"
 $null = Start-Transcript -Path $logFile
 
 try {
