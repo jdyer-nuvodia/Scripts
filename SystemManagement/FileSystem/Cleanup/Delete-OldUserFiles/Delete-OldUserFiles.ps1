@@ -2,10 +2,10 @@
 # Script: Delete-OldUserFiles.ps1
 # Created: 2025-06-23 20:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-23 20:15:00 UTC
+# Last Updated: 2025-06-23 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Fixed transcript error handling in finally block
+# Version: 1.1.0
+# Additional Info: Changed ExcludeUsers parameter to be additive to system exclusions
 # =============================================================================
 
 <#
@@ -29,7 +29,8 @@
     Number of months of inactivity before a user directory is considered for deletion (default: 6)
 
 .PARAMETER ExcludeUsers
-    Array of user directory names to exclude from deletion (case-insensitive)
+    Array of additional user directory names to exclude from deletion (case-insensitive).
+    These will be added to the default system exclusions: Administrator, Default, Public, All Users, Default User
 
 .EXAMPLE
     .\Delete-OldUserFiles.ps1
@@ -40,8 +41,8 @@
     Deletes user directories from D:\UserProfiles that have been inactive for 12 months or more
 
 .EXAMPLE
-    .\Delete-OldUserFiles.ps1 -ExcludeUsers @("Administrator", "DefaultUser", "Public") -WhatIf
-    Shows what would be deleted, excluding specified user directories
+    .\Delete-OldUserFiles.ps1 -ExcludeUsers @("TestUser", "ServiceAccount") -WhatIf
+    Shows what would be deleted, excluding TestUser and ServiceAccount in addition to the default system accounts
 #>
 
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
@@ -53,7 +54,7 @@ param(
     [int]$MonthsOld = 6,
 
     [Parameter(Mandatory=$false)]
-    [string[]]$ExcludeUsers = @("Administrator", "Default", "Public", "All Users", "Default User")
+    [string[]]$ExcludeUsers = @()
 )
 
 function Show-DriveInfo {
@@ -104,6 +105,10 @@ try {
         throw "Parent path '$ParentPath' does not exist or is not a directory."
     }
 
+    # Combine system exclusions with user-specified exclusions
+    $systemExclusions = @("Administrator", "Default", "Public", "All Users", "Default User", "nuvodialocal")
+    $allExcludedUsers = ($systemExclusions + $ExcludeUsers) | Select-Object -Unique
+
     # Setup logging
     $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
     $logFileName = "DeleteOldUserFiles_$($env:COMPUTERNAME)_$timestamp.log"
@@ -116,7 +121,9 @@ try {
     Write-LogEntry -Message "Starting Delete-OldUserFiles script execution" -LogPath $detailLogPath -Level "INFO"
     Write-LogEntry -Message "Parent Path: $ParentPath" -LogPath $detailLogPath -Level "INFO"
     Write-LogEntry -Message "Months Old Threshold: $MonthsOld" -LogPath $detailLogPath -Level "INFO"
-    Write-LogEntry -Message "Excluded Users: $($ExcludeUsers -join ', ')" -LogPath $detailLogPath -Level "INFO"
+    Write-LogEntry -Message "System Excluded Users: $($systemExclusions -join ', ')" -LogPath $detailLogPath -Level "INFO"
+    Write-LogEntry -Message "Additional Excluded Users: $($ExcludeUsers -join ', ')" -LogPath $detailLogPath -Level "INFO"
+    Write-LogEntry -Message "All Excluded Users: $($allExcludedUsers -join ', ')" -LogPath $detailLogPath -Level "INFO"
 
     # Get the drive letter from the parent path
     $driveLetter = Split-Path -Path $ParentPath -Qualifier
@@ -158,7 +165,7 @@ try {
                       -CurrentOperation $userDir.Name
 
         # Skip excluded users (case-insensitive)
-        if ($ExcludeUsers -contains $userDir.Name) {
+        if ($allExcludedUsers -contains $userDir.Name) {
             Write-LogEntry -Message "Skipping excluded user directory: $($userDir.Name)" -LogPath $detailLogPath -Level "INFO"
             continue
         }
