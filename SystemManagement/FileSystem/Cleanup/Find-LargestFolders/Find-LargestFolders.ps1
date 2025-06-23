@@ -836,7 +836,8 @@ function Show-DriveInfo {
         [string]$DriveLetter
     )
     try {
-        $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop        Write-Output ""
+        $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop
+        Write-Output ""
         Write-ColorOutput -Message "Drive Volume Details for ${DriveLetter}:" -Color "Green"
         Write-ColorOutput -Message "------------------------" -Color "Green"
         Write-ColorOutput -Message "Drive Letter: $($volume.DriveLetter):" -Color "White"
