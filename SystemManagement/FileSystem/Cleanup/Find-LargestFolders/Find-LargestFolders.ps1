@@ -2,15 +2,15 @@
 # Script: Find-LargestFolders.ps1
 # Created: 2025-06-21 00:50:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-22 03:51:00 UTC
+# Last Updated: 2025-06-23 16:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Fixed typo in Join-Path parameter (-ChildChild to -ChildPath) in Get-SystemFilesSize function
+# Version: 1.5.1
+# Additional Info: Fixed table column alignment issue where size column was misaligned with header
 # =============================================================================
 
 <#
 .SYNOPSIS
-Efficiently finds the largest folders by recursively drilling down into only the largest subdirectories.
+Efficiently finds the largest folders by recursively drilling down into only the largest subdirectories, showing size and last access time.
 
 .DESCRIPTION
 This script scans a directory and identifies the largest subdirectories and files without scanning the entire drive.
@@ -19,15 +19,17 @@ It now includes comprehensive system overhead detection including:
 - Volume Shadow Copy (VSS) storage overhead
 - System files (pagefile.sys, hiberfil.sys, System Volume Information, Recycle Bin)
 - Hidden and system files/directories using the -Force parameter
+- Last access time for both files and folders to help identify unused space consumers
 
 The script works by:
 1. Scanning the top-level directories in the specified path (including hidden/system directories)
 2. Identifying the largest folders and files (including hidden/system files)
-3. Recursively drilling down into only the largest folder
-4. Repeating this process until reaching the specified depth or finding no more subdirectories
-5. Displaying system overhead information when analyzing drive roots
+3. Displaying size, type, and last access time for each item
+4. Recursively drilling down into only the largest folder
+5. Repeating this process until reaching the specified depth or finding no more subdirectories
+6. Displaying system overhead information when analyzing drive roots
 
-This approach is much faster than scanning entire drives and focuses on finding the largest space consumers while accounting for all system overhead.
+This approach is much faster than scanning entire drives and focuses on finding the largest space consumers while accounting for all system overhead and providing access time information to identify potentially unused files and folders.
 
 .PARAMETER StartPath
 The root directory path to begin analysis. Default is "C:\"
@@ -46,15 +48,15 @@ Shows what would be analyzed without performing the actual scan.
 
 .EXAMPLE
 .\Find-LargestFolders.ps1
-Analyzes C:\ and drills down into the largest folders.
+Analyzes C:\ and drills down into the largest folders, displaying size and last access time.
 
 .EXAMPLE
 .\Find-LargestFolders.ps1 -StartPath "D:\Data" -MaxDepth 5 -TopCount 5
-Analyzes D:\Data with max depth of 5 levels, showing top 5 items at each level.
+Analyzes D:\Data with max depth of 5 levels, showing top 5 items at each level with access times.
 
 .EXAMPLE
 .\Find-LargestFolders.ps1 -StartPath "C:\Users" -MinSizeGB 1.0 -Debug
-Analyzes C:\Users, only shows items larger than 1 GB, and enables debug output for detailed system overhead analysis.
+Analyzes C:\Users, only shows items larger than 1 GB with access times, and enables debug output for detailed system overhead analysis.
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
@@ -133,6 +135,32 @@ function Format-FileSize {
         return "{0:N2} KB" -f ($SizeInBytes / 1KB)
     } else {
         return "$SizeInBytes bytes"
+    }
+}
+
+function Format-AccessTime {
+    <#
+    .SYNOPSIS
+    Formats a DateTime object into a readable string for access time display.
+    .DESCRIPTION
+    Converts a DateTime object to a formatted string showing the last access time.
+    Returns a shortened format that fits well in table displays.
+    .PARAMETER DateTime
+    The DateTime object to format.
+    .EXAMPLE
+    Format-AccessTime -DateTime (Get-Date)
+    Returns formatted access time string.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [DateTime]$DateTime
+    )
+
+    try {
+        # Format as MM/dd/yyyy HH:mm for compact display
+        return $DateTime.ToString("MM/dd/yyyy HH:mm")
+    } catch {
+        return "Unknown"
     }
 }
 
@@ -217,6 +245,8 @@ function Get-LargestItem {
                     Path = $subdir.FullName
                     SizeBytes = $totalSize
                     SizeFormatted = Format-FileSize -SizeInBytes $totalSize
+                    LastAccessTime = $subdir.LastAccessTime
+                    LastAccessFormatted = Format-AccessTime -DateTime $subdir.LastAccessTime
                 }
             }
         }
@@ -231,6 +261,8 @@ function Get-LargestItem {
                     Path = $file.FullName
                     SizeBytes = $file.Length
                     SizeFormatted = Format-FileSize -SizeInBytes $file.Length
+                    LastAccessTime = $file.LastAccessTime
+                    LastAccessFormatted = Format-AccessTime -DateTime $file.LastAccessTime
                 }
                 $results += $fileItem
 
@@ -270,24 +302,27 @@ function Show-LargestItemsTable {
         $_.Type -and $_.Name -and $_.SizeFormatted -and $_.SizeBytes -gt 0
     } | Sort-Object @{Expression={$_.Type}; Descending=$true}, @{Expression={$_.SizeBytes}; Descending=$true}
 
-    # Create simple table header
-    Write-Output "Type   Name                        Size"
-    Write-Output "----   ----                        ----"
+    # Create simple table header with access time
+    Write-Output "Type   Name                 Size        Last Accessed"
+    Write-Output "----   ----                 ----        -------------"
       # Display each item with proper formatting
     foreach ($item in $sortedItems) {
         # Null safety for all properties
         $type = if ($item.Type) { $item.Type } else { "Unknown" }
         $name = if ($item.Name) { $item.Name } else { "Unknown" }
         $sizeFormatted = if ($item.SizeFormatted) { $item.SizeFormatted } else { "0 B" }
-        $typeFormatted = $type.PadRight(6)
-        $nameFormatted = if ($name.Length -gt 25) {
-            $name.Substring(0, 22) + "..."
-        } else {
-            $name.PadRight(25)
-        }
-        $sizeFormattedPadded = $sizeFormatted.PadLeft(12)
+        $accessFormatted = if ($item.LastAccessFormatted) { $item.LastAccessFormatted } else { "Unknown" }
 
-        Write-Output "$typeFormatted $nameFormatted $sizeFormattedPadded"
+        $typeFormatted = $type.PadRight(6)
+        $nameFormatted = if ($name.Length -gt 20) {
+            $name.Substring(0, 17) + "..."
+        } else {
+            $name.PadRight(20)
+        }
+        $sizeFormattedPadded = $sizeFormatted.PadRight(11)
+        $accessFormattedPadded = $accessFormatted.PadRight(16)
+
+        Write-Output "$typeFormatted $nameFormatted $sizeFormattedPadded $accessFormattedPadded"
     }
 }
 
@@ -341,7 +376,7 @@ function Start-AdvancedTranscript {
             # Create header
             $headerText = @"
 ===============================================
-FIND LARGEST FOLDERS ANALYZER v1.4.1
+FIND LARGEST FOLDERS ANALYZER v1.5.1
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -673,7 +708,7 @@ function Get-SystemFilesSize {
         $drivePath = "${DriveLetter}:"
 
         # Check for pagefile.sys
-        $pageFilePath = Join-Path -Path $drivePath -ChildPath "pagefile.sys"
+        $pageFilePath = Join-Path -Path $drivePath -ChildChild "pagefile.sys"
         if (Test-Path -Path $pageFilePath) {
             try {
                 $pageFile = Get-Item -Path $pageFilePath -Force -ErrorAction SilentlyContinue
@@ -687,7 +722,7 @@ function Get-SystemFilesSize {
             }
         }
         # Check for hiberfil.sys
-        $hiberFilePath = Join-Path -Path $drivePath -ChildPath "hiberfil.sys"
+        $hiberFilePath = Join-Path -Path $drivePath -ChildChild "hiberfil.sys"
         if (Test-Path -Path $hiberFilePath) {
             try {
                 $hiberFile = Get-Item -Path $hiberFilePath -Force -ErrorAction SilentlyContinue
@@ -702,7 +737,7 @@ function Get-SystemFilesSize {
         }
 
         # Check System Volume Information (VSS snapshots location)
-        $sviPath = Join-Path -Path $drivePath -ChildPath "System Volume Information"
+        $sviPath = Join-Path -Path $drivePath -ChildChild "System Volume Information"
         if (Test-Path -Path $sviPath) {
             try {
                 $sviFiles = Get-ChildItem -Path $sviPath -File -Recurse -Force -ErrorAction SilentlyContinue
@@ -720,7 +755,7 @@ function Get-SystemFilesSize {
         }
 
         # Check $Recycle.Bin
-        $recycleBinPath = Join-Path -Path $drivePath -ChildPath '$Recycle.Bin'
+        $recycleBinPath = Join-Path -Path $drivePath -ChildChild '$Recycle.Bin'
         if (Test-Path -Path $recycleBinPath) {
             try {
                 $recycleFiles = Get-ChildItem -Path $recycleBinPath -File -Recurse -Force -ErrorAction SilentlyContinue
@@ -920,7 +955,7 @@ process {
                     $StartPath = $StartPath + '\'
                 }
             }
-            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.4.1" -Color "Green"
+            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.5.1" -Color "Green"
             Write-ColorOutput -Message "===============================================" -Color "Green"
             Write-ColorOutput -Message "Start Path: $StartPath" -Color "White"
             Write-ColorOutput -Message "Max Depth: $MaxDepth" -Color "White"
