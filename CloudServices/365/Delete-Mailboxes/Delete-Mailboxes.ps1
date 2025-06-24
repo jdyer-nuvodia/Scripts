@@ -2,10 +2,10 @@
 # Script: Delete-Mailboxes.ps1
 # Created: 2025-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:30:00 UTC
+# Last Updated: 2025-06-24 21:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added SupportsShouldProcess for safer mailbox deletion
+# Version: 1.2.1
+# Additional Info: Implemented appropriate output cmdlets for better script compatibility
 # =============================================================================
 
 <#
@@ -17,13 +17,13 @@
      - Verifying Exchange Management Shell is loaded
      - Deleting each mailbox and providing status updates
      - Generating a summary of successful and failed deletions
-     
+
     Supports -WhatIf parameter to preview changes without making them.
-     
+
     Dependencies:
      - Exchange Management Shell
      - Text file containing list of mailboxes (one per line)
-     
+
     Security considerations:
      - Requires Exchange administrator privileges
      - Supports -WhatIf for previewing changes
@@ -60,7 +60,7 @@ param(
 # Function to check if Exchange Management Shell is loaded
 function Test-ExchangeShell {
     if (!(Get-Command Get-Mailbox -ErrorAction SilentlyContinue)) {
-        Write-Host "Exchange Management Shell is not loaded. Please run this script in Exchange Management Shell." -ForegroundColor Red
+        Write-Error "Exchange Management Shell is not loaded. Please run this script in Exchange Management Shell."
         return $false
     }
     return $true
@@ -73,7 +73,7 @@ if (!(Test-ExchangeShell)) {
 
 # Check if the file exists
 if (!(Test-Path $userListPath)) {
-    Write-Host "The specified file does not exist: $userListPath" -ForegroundColor Red
+    Write-Error "The specified file does not exist: $userListPath"
     exit
 }
 
@@ -90,18 +90,18 @@ foreach ($user in $users) {
         # Attempt to remove the mailbox
         if ($PSCmdlet.ShouldProcess($user, "Delete mailbox")) {
             Remove-Mailbox -Identity $user -Confirm:$false -ErrorAction Stop
-            Write-Host "Successfully deleted mailbox for: $user" -ForegroundColor Green
+            Write-Information "Successfully deleted mailbox for: $user" -InformationAction Continue
             $successCount++
         }
     }
     catch {
-        Write-Host "Failed to delete mailbox for: $user" -ForegroundColor Red
-        Write-Host "Error: $_" -ForegroundColor Red
+        Write-Error "Failed to delete mailbox for: $user"
+        Write-Error "Error: $_"
         $failCount++
     }
 }
 
 # Display summary
-Write-Host "`nDeletion Summary:" -ForegroundColor Cyan
-Write-Host "Successfully deleted: $successCount mailbox(es)" -ForegroundColor Green
-Write-Host "Failed to delete: $failCount mailbox(es)" -ForegroundColor Red
+Write-Information "`nDeletion Summary:" -InformationAction Continue
+Write-Information "Successfully deleted: $successCount mailbox(es)" -InformationAction Continue
+Write-Information "Failed to delete: $failCount mailbox(es)" -InformationAction Continue
