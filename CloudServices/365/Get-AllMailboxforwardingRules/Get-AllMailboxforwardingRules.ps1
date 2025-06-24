@@ -5,7 +5,7 @@
 # Last Updated: 2025-06-24 20:45:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.2.0
-# Additional Info: Replaced Write-Host with Write-Information for unattended execution compliance
+# Additional Info: Implemented Write-Information for unattended execution compliance
 # =============================================================================
 
 <#
