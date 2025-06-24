@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-23 21:25:00 UTC
+# Last Updated: 2025-06-24 04:01:0 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.5
-# Additional Info: Added system name to log file naming convention
+# Version: 2.0.7
+# Additional Info: Updated transcript logging to use Write-Output for proper log capture
 # =============================================================================
 
 <#
@@ -72,16 +72,19 @@ function Write-ColorOutput {
         [string]$ForegroundColor
     )
 
-    # Use Write-Information with appropriate color-coded prefixes for different message types
-    switch ($ForegroundColor) {
-        'Red' { Write-Information "ERROR: $Message" -InformationAction Continue }
-        'Yellow' { Write-Information "WARNING: $Message" -InformationAction Continue }
-        'Green' { Write-Information "SUCCESS: $Message" -InformationAction Continue }
-        'Cyan' { Write-Information "INFO: $Message" -InformationAction Continue }
-        'Magenta' { Write-Information "DEBUG: $Message" -InformationAction Continue }
-        'DarkGray' { Write-Information "DETAIL: $Message" -InformationAction Continue }
-        default { Write-Information $Message -InformationAction Continue }
+    # Format message with color-coded prefixes and output to both console and transcript
+    $formattedMessage = switch ($ForegroundColor) {
+        'Red' { "ERROR: $Message" }
+        'Yellow' { "WARNING: $Message" }
+        'Green' { "SUCCESS: $Message" }
+        'Cyan' { "INFO: $Message" }
+        'Magenta' { "DEBUG: $Message" }
+        'DarkGray' { "DETAIL: $Message" }
+        default { $Message }
     }
+
+    # Write to transcript log (captured by Start-Transcript)
+    Write-Output $formattedMessage
 }
 
 # Initialize logging
