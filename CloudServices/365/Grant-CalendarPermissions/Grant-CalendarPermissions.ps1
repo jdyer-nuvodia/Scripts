@@ -2,10 +2,10 @@
 # Script: Grant-CalendarPermissions.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:25:00 UTC
+# Last Updated: 2025-06-24 20:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added SupportsShouldProcess for safer permission grants
+# Version: 1.4.0
+# Additional Info: Implemented proper PowerShell output cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -14,9 +14,9 @@
 .DESCRIPTION
     This script grants Editor access with delegate permissions to calendars for multiple mailboxes
     listed in a text file. It requires Exchange Online PowerShell module.
-    
+
     Supports -WhatIf parameter to preview changes without making them.
-    
+
     The script includes logging of all operations and proper error handling.
 .PARAMETER UserName
     The email address of the user who will receive calendar access permissions.
@@ -47,23 +47,23 @@ Connect-ExchangeOnline
 $mailboxes = Get-Content "$PSScriptRoot\mailboxes.txt"
 
 foreach ($mailboxEmail in $mailboxes) {
-    Write-Host "Processing calendar permissions for $mailboxEmail..." -ForegroundColor Cyan
+    Write-Output "Processing calendar permissions for $mailboxEmail..."
     $calendarPath = "${mailboxEmail}:\Calendar"
-    
+
     try {
         # Check if the mailbox exists and store the result
         if ($null -eq (Get-Mailbox -Identity $mailboxEmail -ErrorAction Stop)) {
-            Write-Host "Mailbox $mailboxEmail not found" -ForegroundColor Yellow
+            Write-Warning "Mailbox $mailboxEmail not found"
             continue
         }
-        
+
         # Set calendar permissions
         if ($PSCmdlet.ShouldProcess($calendarPath, "Grant Editor calendar permissions to $UserName")) {
             Set-MailboxFolderPermission -Identity $calendarPath -User $UserName -AccessRights Editor -SharingPermissionFlags Delegate,CanViewPrivateItems
-            Write-Host "Successfully granted Editor access to $mailboxEmail's calendar for user $UserName" -ForegroundColor Green
+            Write-Output "Successfully granted Editor access to $mailboxEmail's calendar for user $UserName"
         }
     }
     catch {
-        Write-Host "Error processing $mailboxEmail's calendar: $_" -ForegroundColor Red
+        Write-Error "Error processing $mailboxEmail's calendar: $_"
     }
 }
