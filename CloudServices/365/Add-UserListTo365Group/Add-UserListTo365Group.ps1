@@ -2,10 +2,10 @@
 # Script: Add-UserListTo365Group.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:23:00 UTC
+# Last Updated: 2025-06-24 18:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added SupportsShouldProcess for safer group member additions
+# Version: 1.2.1
+# Additional Info: Implemented proper PowerShell output streams
 # =============================================================================
 
 <#
@@ -15,17 +15,17 @@
     This script reads a CSV file containing user principal names and adds each user
     to a specified Microsoft 365 distribution group. The script bypasses security
     group manager check for bulk operations.
-    
+
     Supports -WhatIf parameter to preview changes without making them.
-    
+
     Dependencies:
     - Exchange Online PowerShell Module (Install-Module -Name ExchangeOnlineManagement)
     - CSV file with UserPrincipalName column
     - Appropriate permissions to modify distribution groups
-    
+
     The CSV file must contain at minimum:
     - UserPrincipalName: The email or UPN of the user to add
-    
+
     The script will:
     1. Validate the CSV file exists and is properly formatted
     2. Check if the distribution group exists
@@ -46,14 +46,10 @@
 .NOTES
     Security Level: Medium
     Required Permissions: Exchange Online Administrator
-    Validation Requirements: 
+    Validation Requirements:
     - Verify CSV file exists and is accessible
     - Verify distribution group exists
     - Verify current user has appropriate permissions
-    Change Log:
-    - v1.2.0: Added SupportsShouldProcess for safer group member additions
-    - v1.1.0: Added parameter validation and enhanced error handling
-    - v1.0.0: Initial script creation
 #>
 
 [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
@@ -79,27 +75,42 @@ param(
 )
 
 # Initialize logging
-$LogPath = Join-Path $PSScriptRoot "GroupAdditions_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$LogPath = Join-Path $PSScriptRoot "GroupAdditions_$($env:COMPUTERNAME)_$((Get-Date).ToUniversalTime().ToString('yyyyMMdd_HHmmss_UTC')).log"
 $ErrorActionPreference = "Stop"
 
-function Write-Log {
-    param($Message, $Level = "Information")
-    
-    $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+function Write-LogMessage {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("Information", "Success", "Warning", "Error")]
+        [string]$Level = "Information"
+    )
+
+    $TimeStamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss UTC")
     $LogMessage = "$TimeStamp [$Level] $Message"
     Add-Content -Path $LogPath -Value $LogMessage
-    
+
     switch ($Level) {
-        "Information" { Write-Host $Message -ForegroundColor White }
-        "Success"     { Write-Host $Message -ForegroundColor Green }
-        "Warning"     { Write-Host $Message -ForegroundColor Yellow }
-        "Error"       { Write-Host $Message -ForegroundColor Red }
+        "Information" {
+            Write-Information -MessageData $Message -InformationAction Continue
+        }
+        "Success" {
+            Write-Information -MessageData $Message -InformationAction Continue
+        }
+        "Warning" {
+            Write-Warning -Message $Message
+        }
+        "Error" {
+            Write-Error -Message $Message -ErrorAction Continue
+        }
     }
 }
 
 try {
-    Write-Log "Starting user addition process for group: $GroupName" "Information"
-    Write-Log "Using CSV file: $CsvPath" "Information"
+    Write-LogMessage "Starting user addition process for group: $GroupName" "Information"
+    Write-LogMessage "Using CSV file: $CsvPath" "Information"
 
     # Validate CSV content
     $users = Import-Csv -Path $CsvPath
@@ -110,7 +121,7 @@ try {
     # Verify group exists
     try {
         $null = Get-DistributionGroup -Identity $GroupName -ErrorAction Stop
-        Write-Log "Verified group '$GroupName' exists" "Success"
+        Write-LogMessage "Verified group '$GroupName' exists" "Success"
     }
     catch {
         throw "Distribution group '$GroupName' not found or access denied: $_"
@@ -123,22 +134,22 @@ try {
         try {
             if ($PSCmdlet.ShouldProcess($user.UserPrincipalName, "Add to distribution group '$GroupName'")) {
                 Add-DistributionGroupMember -Identity $GroupName -Member $user.UserPrincipalName -BypassSecurityGroupManagerCheck -ErrorAction Stop
-                Write-Log "Successfully added user: $($user.UserPrincipalName)" "Success"
+                Write-LogMessage "Successfully added user: $($user.UserPrincipalName)" "Success"
                 $successCount++
             }
         }
         catch {
-            Write-Log "Failed to add user $($user.UserPrincipalName): $_" "Error"
+            Write-LogMessage "Failed to add user $($user.UserPrincipalName): $_" "Error"
             $failureCount++
         }
     }
 
-    Write-Log "Operation complete. Successfully added: $successCount users. Failed: $failureCount users" "Information"
+    Write-LogMessage "Operation complete. Successfully added: $successCount users. Failed: $failureCount users" "Information"
 }
 catch {
-    Write-Log "Script execution failed: $_" "Error"
+    Write-LogMessage "Script execution failed: $_" "Error"
     throw
 }
 finally {
-    Write-Log "Script execution finished" "Information"
+    Write-LogMessage "Script execution finished" "Information"
 }
