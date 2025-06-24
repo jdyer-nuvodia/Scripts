@@ -2,10 +2,10 @@
 # Script: Get-AllMailboxforwardingRules.ps1
 # Created: 2024-02-21 10:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-21 11:00:00 UTC
+# Last Updated: 2025-06-24 20:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Added error handling, progress tracking, and parameter support
+# Version: 1.2.0
+# Additional Info: Replaced Write-Host with Write-Information for unattended execution compliance
 # =============================================================================
 
 <#
@@ -42,9 +42,9 @@ param (
 
 # Verify Exchange Online connection
 try {
-    Write-Host "Checking Exchange Online connection..." -ForegroundColor Cyan
+    Write-Information "Checking Exchange Online connection..." -InformationAction Continue
     Get-OrganizationConfig -ErrorAction Stop | Out-Null
-    Write-Host "Successfully connected to Exchange Online" -ForegroundColor Green
+    Write-Information "Successfully connected to Exchange Online" -InformationAction Continue
 } catch {
     Write-Error "Not connected to Exchange Online. Please run Connect-ExchangeOnline first."
     return
@@ -55,10 +55,10 @@ if (-not $ExportPath) {
     $ExportPath = Join-Path $PSScriptRoot "MailboxForwardingRules_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv"
 }
 
-Write-Host "Retrieving mailboxes..." -ForegroundColor Cyan
+Write-Information "Retrieving mailboxes..." -InformationAction Continue
 $mailboxes = Get-Mailbox -ResultSize Unlimited
 $totalMailboxes = $mailboxes.Count
-Write-Host "Found $totalMailboxes mailboxes to process" -ForegroundColor Green
+Write-Information "Found $totalMailboxes mailboxes to process" -InformationAction Continue
 
 $results = @()
 $processedCount = 0
@@ -85,7 +85,7 @@ foreach ($mailbox in $mailboxes) {
 
         if ($inboxRules -or $mailbox.ForwardingAddress -or $mailbox.ForwardingSmtpAddress) {
             $forwardingFound++
-            Write-Host "Forwarding configuration found for $($mailbox.UserPrincipalName)" -ForegroundColor Yellow
+            Write-Verbose "Forwarding configuration found for $($mailbox.UserPrincipalName)"
         }
 
         if ($inboxRules) {
@@ -105,13 +105,13 @@ Write-Progress -Activity "Processing Mailboxes" -Completed
 # Export and display summary
 try {
     $results | Export-Csv -Path $ExportPath -NoTypeInformation
-    Write-Host "`nResults exported to: $ExportPath" -ForegroundColor Green
+    Write-Information "`nResults exported to: $ExportPath" -InformationAction Continue
 } catch {
     Write-Error "Failed to export results: $_"
 }
 
 # Display summary
-Write-Host "`nSummary:" -ForegroundColor Cyan
-Write-Host "Total mailboxes processed: $totalMailboxes" -ForegroundColor Green
-Write-Host "Mailboxes with forwarding: $forwardingFound" -ForegroundColor Yellow
-Write-Host "Export location: $ExportPath" -ForegroundColor Green
+Write-Information "`nSummary:" -InformationAction Continue
+Write-Information "Total mailboxes processed: $totalMailboxes" -InformationAction Continue
+Write-Information "Mailboxes with forwarding: $forwardingFound" -InformationAction Continue
+Write-Information "Export location: $ExportPath" -InformationAction Continue
