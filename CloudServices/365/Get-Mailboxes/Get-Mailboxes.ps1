@@ -2,10 +2,10 @@
 # Script: Get-Mailboxes.ps1
 # Created: 2025-02-05 21:58:42 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-21 17:15:00 UTC
+# Last Updated: 2025-06-24 21:01:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2
-# Additional Info: Added default names.txt file handling
+# Version: 2.3.0
+# Additional Info: Implemented proper PowerShell output cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -18,11 +18,11 @@
      - Display name
      - Mailbox type
      - Existence status
-     
+
     Dependencies:
      - Exchange Online PowerShell Module
      - Active Exchange Online connection
-     
+
     The script provides color-coded output for better visibility and exports
     detailed results to a CSV file if specified.
 .PARAMETER InputFile
@@ -36,7 +36,7 @@
 .NOTES
     Security Level: Medium
     Required Permissions: Exchange Online View-Only Recipients role
-    Validation Requirements: 
+    Validation Requirements:
      - Verify Exchange Online connection
      - Validate input file exists and is readable
      - Ensure write permissions if using OutputFile parameter
@@ -46,7 +46,7 @@
 param(
     [Parameter(Mandatory=$false)]
     [string]$InputFile = (Join-Path $PSScriptRoot "names.txt"),
-    
+
     [Parameter(Mandatory=$false)]
     [string]$OutputFile
 )
@@ -58,11 +58,11 @@ $nonExistingMailboxes = @()
 # Import the list of mailboxes to check
 try {
     if (-not (Test-Path -Path $InputFile)) {
-        Write-Host "Warning: Input file not found at: $InputFile" -ForegroundColor Yellow
+        Write-Warning "Input file not found at: $InputFile"
         if ($InputFile -ne (Join-Path $PSScriptRoot "names.txt")) {
             $defaultFile = Join-Path $PSScriptRoot "names.txt"
             if (Test-Path -Path $defaultFile) {
-                Write-Host "Using default names.txt file instead" -ForegroundColor Cyan
+                Write-Output "Using default names.txt file instead"
                 $InputFile = $defaultFile
             } else {
                 Write-Error "Neither specified input file nor default names.txt exists"
@@ -74,7 +74,7 @@ try {
         }
     }
     $mailboxList = Get-Content -Path $InputFile -ErrorAction Stop
-    Write-Host "Successfully loaded $($mailboxList.Count) mailboxes from $InputFile" -ForegroundColor Cyan
+    Write-Output "Successfully loaded $($mailboxList.Count) mailboxes from $InputFile"
 } catch {
     Write-Error "Error loading input file: $_"
     exit 1
@@ -97,7 +97,7 @@ foreach ($mailbox in $mailboxList) {
                 MailboxType = $mbx.RecipientTypeDetails
                 Status = "Found"
             }
-            Write-Host "Mailbox exists: $mailbox ($($mbx.PrimarySmtpAddress))" -ForegroundColor Green
+            Write-Output "Mailbox exists: $mailbox ($($mbx.PrimarySmtpAddress))"
         } else {
             $nonExistingMailboxes += $mailbox
             $results += [PSCustomObject]@{
@@ -108,32 +108,32 @@ foreach ($mailbox in $mailboxList) {
                 MailboxType = $null
                 Status = "Not Found"
             }
-            Write-Host "Mailbox does not exist: $mailbox" -ForegroundColor Red
+            Write-Output "Mailbox does not exist: $mailbox"
         }
     } catch {
-        Write-Host "Error processing mailbox $mailbox : $_" -ForegroundColor Red
+        Write-Error "Error processing mailbox $mailbox : $_"
     }
 }
 
 # Output summary
-Write-Host "`n=== Summary ===" -ForegroundColor Cyan
-Write-Host "Total mailboxes checked: $($mailboxList.Count)" -ForegroundColor White
-Write-Host "Existing mailboxes: $($existingMailboxes.Count)" -ForegroundColor Green
-Write-Host "Non-existing mailboxes: $($nonExistingMailboxes.Count)" -ForegroundColor Red
+Write-Output "`n=== Summary ==="
+Write-Output "Total mailboxes checked: $($mailboxList.Count)"
+Write-Output "Existing mailboxes: $($existingMailboxes.Count)"
+Write-Output "Non-existing mailboxes: $($nonExistingMailboxes.Count)"
 
 # Export results if output file specified
 if ($OutputFile) {
     try {
         $results | Export-Csv -Path $OutputFile -NoTypeInformation
-        Write-Host "`nDetailed results exported to: $OutputFile" -ForegroundColor Cyan
+        Write-Output "`nDetailed results exported to: $OutputFile"
     } catch {
-        Write-Host "Error exporting results: $_" -ForegroundColor Red
+        Write-Error "Error exporting results: $_"
     }
 }
 
 # Display detailed results
-Write-Host "`n=== Existing Mailboxes ===" -ForegroundColor Green
+Write-Output "`n=== Existing Mailboxes ==="
 $results | Where-Object { $_.Exists } | Format-Table Mailbox, PrimarySmtpAddress, MailboxType -AutoSize
 
-Write-Host "`n=== Non-Existing Mailboxes ===" -ForegroundColor Red
+Write-Output "`n=== Non-Existing Mailboxes ==="
 $nonExistingMailboxes | Format-Table -AutoSize
