@@ -2,19 +2,19 @@
 # Script: Get-CalendarPermissions.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:15:00 UTC
+# Last Updated: 2025-06-24 20:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0
-# Additional Info: Initial script creation with standard header format
+# Version: 1.0.1
+# Additional Info: Implemented Write-Output for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
 .SYNOPSIS
     Retrieves calendar permissions for a list of mailboxes.
 .DESCRIPTION
-    This script reads a list of mailboxes from a text file and retrieves the calendar 
+    This script reads a list of mailboxes from a text file and retrieves the calendar
     permissions for each mailbox. It includes error handling for failed permission checks.
-    
+
     Dependencies:
     - Exchange Online PowerShell module
     - Appropriate Exchange Online permissions
@@ -31,20 +31,20 @@
 #>
 
 # Read the list of mailboxes from a text file in the same directory as the script
-$mailboxesFile = Join-Path $PSScriptRoot "mailboxes.txt"
+$mailboxesFile = Join-Path -Path $PSScriptRoot -ChildPath "mailboxes.txt"
 
-Write-Host "Reading mailboxes from: $mailboxesFile" -ForegroundColor Cyan
+Write-Output "Reading mailboxes from: $mailboxesFile"
 
-if (-not (Test-Path $mailboxesFile)) {
+if (-not (Test-Path -Path $mailboxesFile)) {
     Write-Error "Mailboxes file not found: $mailboxesFile"
     exit
 }
 
-$mailboxes = Get-Content $mailboxesFile
+$mailboxes = Get-Content -Path $mailboxesFile
 
 foreach ($mailbox in $mailboxes) {
     $identity = $mailbox.UserPrincipalName + ":\Calendar"
-    
+
     try {
         Get-MailboxFolderPermission -Identity $identity -ErrorAction Stop
     }
