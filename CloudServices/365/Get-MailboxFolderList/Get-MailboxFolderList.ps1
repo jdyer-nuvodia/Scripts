@@ -2,10 +2,10 @@
 # Script: Get-MailboxFolderList.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 20:47:00 UTC
+# Last Updated: 2025-06-24 21:04:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Enhanced documentation, added parameter validation and Exchange connection check
+# Version: 1.3.0
+# Additional Info: Implemented with proper PowerShell output cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -18,12 +18,12 @@
     - Folder types (Calendar, Mail, Contacts, etc.)
     - Item counts per folder
     - Folder sizes
-    
+
     Dependencies:
     - Exchange Online PowerShell Module (ExchangeOnlineManagement)
     - Active Exchange Online connection
     - Appropriate mailbox permissions
-    
+
     The script performs the following actions:
     1. Validates Exchange Online connectivity
     2. Retrieves mailbox folder statistics
@@ -80,57 +80,57 @@ param(
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $LogFile = Join-Path $ExportPath "MailboxFolderList_$($MailboxName.Split('@')[0])_${TimeStamp}.log"
 
-function Write-Log {
+function Write-ScriptLog {
     param($Message, $Level = "Information")
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "$TimeStamp [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
-    
+
     switch ($Level) {
-        "Information" { Write-Host $Message -ForegroundColor White }
-        "Success"     { Write-Host $Message -ForegroundColor Green }
-        "Warning"     { Write-Host $Message -ForegroundColor Yellow }
-        "Error"       { Write-Host $Message -ForegroundColor Red }
-        "Process"     { Write-Host $Message -ForegroundColor Cyan }
+        "Information" { Write-Output $Message }
+        "Success"     { Write-Output $Message }
+        "Warning"     { Write-Warning $Message }
+        "Error"       { Write-Error $Message }
+        "Process"     { Write-Output $Message }
     }
 }
 
 try {
-    Write-Log "Starting mailbox folder analysis for: $MailboxName" "Process"
-    
+    Write-ScriptLog "Starting mailbox folder analysis for: $MailboxName" "Process"
+
     # Verify Exchange Online connection
     try {
         $null = Get-EXOMailbox -Identity $MailboxName -ErrorAction Stop
-        Write-Log "Successfully connected to Exchange Online" "Success"
+        Write-ScriptLog "Successfully connected to Exchange Online" "Success"
     }
     catch {
         if ($_.Exception.Message -like "*Connect-ExchangeOnline*") {
-            Write-Log "Not connected to Exchange Online. Please run Connect-ExchangeOnline first" "Error"
+            Write-ScriptLog "Not connected to Exchange Online. Please run Connect-ExchangeOnline first" "Error"
             throw "Exchange Online connection required"
         }
         if ($_.Exception.Message -like "*couldn't be found*") {
-            Write-Log "Mailbox $MailboxName not found" "Error"
+            Write-ScriptLog "Mailbox $MailboxName not found" "Error"
             throw "Mailbox not found"
         }
         throw
     }
-    
+
     # Create export filename with timestamp
     $ExportFile = Join-Path $ExportPath "MailboxFolders_$($MailboxName.Split('@')[0])_${TimeStamp}.csv"
-    Write-Log "Export will be saved to: $ExportFile" "Information"
-    
+    Write-ScriptLog "Export will be saved to: $ExportFile" "Information"
+
     # Get folder statistics
-    Write-Log "Retrieving folder statistics..." "Process"
-    $Folders = Get-MailboxFolderStatistics -Identity $MailboxName | 
+    Write-ScriptLog "Retrieving folder statistics..." "Process"
+    $Folders = Get-MailboxFolderStatistics -Identity $MailboxName |
                Where-Object {$_.StartPath -like $FolderFilter}
-    
-    Write-Log "Found $($Folders.Count) folders matching filter" "Success"
-    
+
+    Write-ScriptLog "Found $($Folders.Count) folders matching filter" "Success"
+
     # Export to CSV with enhanced information
-    $Folders | 
+    $Folders |
         Select-Object @{N='Mailbox';E={$MailboxName}},
-                      StartPath, 
+                      StartPath,
                       FolderType,
                       ItemsInFolder,
                       @{N='FolderSizeInMB';E={[math]::Round($_.FolderSize.ToMB(), 2)}},
@@ -138,15 +138,15 @@ try {
                       ContentMailboxGuid,
                       ContentMailboxServerName |
         Export-Csv -Path $ExportFile -NoTypeInformation
-    
-    Write-Log "Export completed successfully to: $ExportFile" "Success"
-    Write-Log "Total folders exported: $($Folders.Count)" "Success"
+
+    Write-ScriptLog "Export completed successfully to: $ExportFile" "Success"
+    Write-ScriptLog "Total folders exported: $($Folders.Count)" "Success"
 }
 catch {
-    Write-Log "Error processing mailbox: $_" "Error"
-    Write-Log "Stack Trace: $($_.ScriptStackTrace)" "Error"
+    Write-ScriptLog "Error processing mailbox: $_" "Error"
+    Write-ScriptLog "Stack Trace: $($_.ScriptStackTrace)" "Error"
     throw
 }
 finally {
-    Write-Log "Script execution finished" "Information"
+    Write-ScriptLog "Script execution finished" "Information"
 }
