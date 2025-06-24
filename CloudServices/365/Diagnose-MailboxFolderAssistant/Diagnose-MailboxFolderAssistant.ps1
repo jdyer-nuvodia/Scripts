@@ -2,10 +2,10 @@
 # Script: Diagnose-MailboxFolderAssistant.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 21:00:00 UTC
+# Last Updated: 2025-06-24 21:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Enhanced documentation, added security notes and validation requirements
+# Version: 1.3.0
+# Additional Info: Implemented Write-Information for better PowerShell compliance
 # =============================================================================
 
 <#
@@ -18,7 +18,7 @@
     - MRM (Messaging Records Management) components
     - Retention policy settings
     - Folder assistant processing status
-    
+
     Key features:
     - Exports mailbox diagnostic logs with extended properties
     - Filters for ELC-related properties
@@ -26,12 +26,12 @@
     - Validates Exchange Online connectivity
     - Provides formatted, color-coded output
     - Handles errors gracefully
-    
+
     Dependencies:
     - Exchange Online PowerShell Module (ExchangeOnlineManagement)
     - Active Exchange Online connection
     - Exchange Administrator or Global Reader role
-    
+
     The script creates detailed logs that help diagnose issues with:
     - Retention policies not being applied
     - Folder assistant processing delays
@@ -79,27 +79,27 @@ function Test-ExchangeOnlineConnection {
 
 # Main script execution
 try {
-    Write-Host "Starting mailbox folder assistant diagnostics..." -ForegroundColor Cyan
+    Write-Information "Starting mailbox folder assistant diagnostics..." -InformationAction Continue
 
     if (-not (Test-ExchangeOnlineConnection)) {
         exit 1
     }
 
-    Write-Host "Analyzing mailbox: $Mailbox" -ForegroundColor Cyan
+    Write-Information "Analyzing mailbox: $Mailbox" -InformationAction Continue
 
     # Export and analyze diagnostic logs
     [xml]$diag = (Export-MailboxDiagnosticLogs $Mailbox -ExtendedProperties -ErrorAction Stop).MailboxLog
-    
-    Write-Host "`nELC Properties:" -ForegroundColor Cyan
-    $elcProperties = $diag.Properties.MailboxTable.Property | Where-Object {$_.Name -like "ELC*"} | 
+
+    Write-Information "`nELC Properties:" -InformationAction Continue
+    $elcProperties = $diag.Properties.MailboxTable.Property | Where-Object {$_.Name -like "ELC*"} |
         Select-Object @{N='Property';E={$_.Name}}, @{N='Value';E={$_.Value}}
     $elcProperties | Format-Table -AutoSize
 
-    Write-Host "`nExporting MRM diagnostic logs..." -ForegroundColor Cyan
+    Write-Information "`nExporting MRM diagnostic logs..." -InformationAction Continue
     $mrmLogs = Export-MailboxDiagnosticLogs $Mailbox -ComponentName MRM -ErrorAction Stop
     $mrmLogs | Format-List
 
-    Write-Host "`nDiagnostic analysis completed successfully." -ForegroundColor Green
+    Write-Information "`nDiagnostic analysis completed successfully." -InformationAction Continue
 }
 catch {
     Write-Error "An error occurred during diagnostic analysis: $_"
