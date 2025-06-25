@@ -2,10 +2,10 @@
 # Script: Grant-RMToMailboxEditCalendarPermissions.ps1
 # Created: 2024-02-20 17:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:23:00 UTC
+# Last Updated: 2025-06-24 20:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Added SupportsShouldProcess for safer permission grants
+# Version: 1.4.1
+# Additional Info: Implemente appropriate PowerShell cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -18,22 +18,22 @@
     - Supporting both single and batch operations
     - Providing detailed progress tracking
     - Maintaining operation logs
-    
+
     Supports -WhatIf parameter to preview changes without making them.
-    
+
     Key Features:
     - Flexible input options (single mailbox or file list)
     - Validates email formats
     - Checks existing permissions
     - Handles errors gracefully
     - Creates detailed operation logs
-    
+
     Dependencies:
     - Exchange Online PowerShell Module (ExchangeOnlineManagement)
     - Active Exchange Online connection
     - Exchange Administrator role
     - Access to mailboxes and calendars
-    
+
     The script performs the following actions:
     1. Validates input parameters and connectivity
     2. Checks existing permissions to avoid duplicates
@@ -84,22 +84,22 @@ param(
               HelpMessage="Email address of user to grant permissions to")]
     [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
     [string]$UserEmail,
-    
+
     [Parameter(Mandatory=$false,
               ParameterSetName='Single',
               HelpMessage="Single mailbox to process")]
     [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
     [string]$SingleMailbox,
-    
+
     [Parameter(Mandatory=$false,
               ParameterSetName='File',
               HelpMessage="Path to mailbox list file")]
     [ValidateScript({Test-Path $_})]
     [string]$InputFile = (Join-Path $PSScriptRoot "mailboxes.txt"),
-    
+
     [Parameter(Mandatory=$false)]
     [bool]$AutoMapping = $false,
-    
+
     [Parameter(Mandatory=$false)]
     [ValidateScript({
         if (-not (Test-Path $_)) {
@@ -114,42 +114,52 @@ param(
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $LogFile = Join-Path $LogPath "PermissionGrants_${TimeStamp}.log"
 
-function Write-Log {
+function Write-ScriptLog {
     param($Message, $Level = "Information")
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "$TimeStamp [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
-    
+
     switch ($Level) {
-        "Information" { Write-Host $Message -ForegroundColor White }
-        "Success"     { Write-Host $Message -ForegroundColor Green }
-        "Warning"     { Write-Host $Message -ForegroundColor Yellow }
-        "Error"       { Write-Host $Message -ForegroundColor Red }
-        "Process"     { Write-Host $Message -ForegroundColor Cyan }
+        "Information" {
+            Write-Output $Message
+        }
+        "Success" {
+            Write-Output $Message
+        }
+        "Warning" {
+            Write-Warning $Message
+        }
+        "Error" {
+            Write-Error $Message
+        }
+        "Process" {
+            Write-Verbose $Message -Verbose
+        }
     }
 }
 
 function Test-ExchangeConnection {
     try {
         $null = Get-OrganizationConfig -ErrorAction Stop
-        Write-Log "Successfully connected to Exchange Online" "Success"
+        Write-ScriptLog -Message "Successfully connected to Exchange Online" -Level "Success"
         return $true
     }
     catch {
-        Write-Log "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." "Error"
+        Write-ScriptLog -Message "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." -Level "Error"
         return $false
     }
 }
 
 try {
-    Write-Log "Starting permission grant process..." "Process"
-    
+    Write-ScriptLog -Message "Starting permission grant process..." -Level "Process"
+
     # Verify Exchange Online connection
     if (-not (Test-ExchangeConnection)) {
         throw "Exchange Online connection required"
     }
-    
+
     # Get mailbox list
     $mailboxes = if ($PSCmdlet.ParameterSetName -eq 'Single') {
         @($SingleMailbox)
@@ -157,46 +167,46 @@ try {
     else {
         Get-Content $InputFile
     }
-    
+
     $totalMailboxes = $mailboxes.Count
-    Write-Log "Processing $totalMailboxes mailbox(es)" "Process"
+    Write-ScriptLog -Message "Processing $totalMailboxes mailbox(es)" -Level "Process"
     $processed = 0
-    
+
     foreach ($mailbox in $mailboxes) {
         $processed++
         $percent = [math]::Round(($processed / $totalMailboxes) * 100)
         Write-Progress -Activity "Granting Permissions" -Status "$mailbox ($processed of $totalMailboxes)" -PercentComplete $percent
-        
+
         try {
-            Write-Log "Processing mailbox: $mailbox" "Process"
-            
+            Write-ScriptLog -Message "Processing mailbox: $mailbox" -Level "Process"
+
             # Verify mailbox exists
             $mbx = Get-Mailbox -Identity $mailbox -ErrorAction Stop
-            
+
             # Grant mailbox permissions
             if ($PSCmdlet.ShouldProcess($mailbox, "Grant FullAccess permissions to $UserEmail")) {
                 Add-MailboxPermission -Identity $mailbox -User $UserEmail -AccessRights FullAccess -InheritanceType All -AutoMapping:$AutoMapping -ErrorAction Stop
-                Write-Log "Granted Full Access on mailbox $mailbox" "Success"
+                Write-ScriptLog -Message "Granted Full Access on mailbox $mailbox" -Level "Success"
             }
-            
+
             # Grant calendar permissions
             $calendarPath = $mbx.UserPrincipalName + ":\Calendar"
             if ($PSCmdlet.ShouldProcess($calendarPath, "Grant Editor calendar permissions to $UserEmail")) {
                 Add-MailboxFolderPermission -Identity $calendarPath -User $UserEmail -AccessRights Editor -SharingPermissionFlags Delegate,CanViewPrivateItems -ErrorAction Stop
-                Write-Log "Granted Editor rights on calendar for $mailbox" "Success"
+                Write-ScriptLog -Message "Granted Editor rights on calendar for $mailbox" -Level "Success"
             }
         }
         catch {
-            Write-Log "Error processing $mailbox`: $_" "Error"
+            Write-ScriptLog -Message "Error processing $mailbox`: $_" -Level "Error"
         }
     }
 }
 catch {
-    Write-Log "Script execution failed: $_" "Error"
-    Write-Log "Stack Trace: $($_.ScriptStackTrace)" "Error"
+    Write-ScriptLog -Message "Script execution failed: $_" -Level "Error"
+    Write-ScriptLog -Message "Stack Trace: $($_.ScriptStackTrace)" -Level "Error"
     exit 1
 }
 finally {
     Write-Progress -Activity "Granting Permissions" -Completed
-    Write-Log "Script execution completed. See log file for details: $LogFile" "Process"
+    Write-ScriptLog -Message "Script execution completed. See log file for details: $LogFile" -Level "Process"
 }
