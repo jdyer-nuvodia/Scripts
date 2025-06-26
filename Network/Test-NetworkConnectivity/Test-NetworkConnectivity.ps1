@@ -2,10 +2,10 @@
 # Script: Test-NetworkConnectivity.ps1
 # Created: 2025-02-06 21:24:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-27 15:37:00 UTC
+# Last Updated: 2025-06-26 23:37:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.15
-# Additional Info: Updated script header format and documentation
+# Version: 2.16.0
+# Additional Info: Added -DetailedOutput parameter for detailed ping response information
 # =============================================================================
 
 <#
@@ -35,13 +35,18 @@
 .PARAMETER Count
     Number of pings to send. 0 means continuous mode. Default is 0
 .PARAMETER OutputPath
-    Directory path for log files. Default is C:\PingLogs
+    Directory path for log files. Default is C:\Temp
+.PARAMETER DetailedOutput
+    Enables detailed verbose output showing full ping response information
 .EXAMPLE
     .\Test-NetworkConnectivity.ps1
     Tests connectivity to 8.8.8.8 continuously
 .EXAMPLE
     .\Test-NetworkConnectivity.ps1 -Target "microsoft.com" -Count 100
     Sends 100 pings to microsoft.com
+.EXAMPLE
+    .\Test-NetworkConnectivity.ps1 -Target "8.8.8.8" -DetailedOutput
+    Tests connectivity with detailed response information
 .NOTES
     Security Level: Low
     Required Permissions: Network access
@@ -57,7 +62,10 @@ param(
     [int]$Count = 0,
     # 0 means continuous
     [Parameter()]
-    [string]$OutputPath = "C:\Temp"
+    [string]$OutputPath = "C:\Temp",
+
+    [Parameter()]
+    [switch]$DetailedOutput
 )
 
 # Initialize script variables
@@ -69,7 +77,7 @@ $script:minTime = [int]::MaxValue
 $script:maxTime = 0
 $script:interrupted = $false
 
-function Write-FinalStatistics {
+function Write-FinalStatistic {
     param([switch]$Interrupted)
 
     if ($script:logFile) {
@@ -93,22 +101,26 @@ Log file size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
             # Force write the final statistics
             $finalStats | Out-File -FilePath $script:logFile -Append -Force
 
-            Write-Host $finalStats -ForegroundColor $(if($Interrupted){"Yellow"}else{"Cyan"})
+            Write-Information -MessageData $finalStats -InformationAction Continue
 
             # Add clear message about log file location
-            Write-Host "`n==================================================" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
-            Write-Host "Log file has been saved:" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
-            Write-Host "Name: $(Split-Path $script:logFile -Leaf)" -ForegroundColor Yellow
-            Write-Host "Location: $(Split-Path $script:logFile)" -ForegroundColor Yellow
-            Write-Host "Full Path: $script:logFile" -ForegroundColor Yellow
-            Write-Host "Size: $(Get-FormattedSize (Get-Item $script:logFile).Length)" -ForegroundColor Yellow
-            Write-Host "==================================================" -ForegroundColor $(if($Interrupted){"Yellow"}else{"Green"})
+            $logInfo = @"
+
+==================================================
+Log file has been saved:
+Name: $(Split-Path $script:logFile -Leaf)
+Location: $(Split-Path $script:logFile)
+Full Path: $script:logFile
+Size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
+==================================================
+"@
+            Write-Information -MessageData $logInfo -InformationAction Continue
 
             # Ensure file is flushed
             [System.IO.File]::WriteAllText($script:logFile, (Get-Content $script:logFile -Raw))
         }
         catch {
-            Write-Host "Error writing final statistics: $_" -ForegroundColor Red
+            Write-Error "Error writing final statistics: $_"
         }
     }
 }
@@ -117,8 +129,7 @@ function Write-LogMessage {
     param(
         [string]$Message,
         [string]$FilePath,
-        [switch]$NoConsole,
-        [string]$ForegroundColor = 'White'
+        [switch]$NoConsole
     )
 
     # Add timestamp to message
@@ -129,7 +140,7 @@ function Write-LogMessage {
 
     # Write to console if not suppressed
     if (!$NoConsole) {
-        Write-Host $timestampedMessage -ForegroundColor $ForegroundColor
+        Write-Information -MessageData $timestampedMessage -InformationAction Continue
     }
 }
 
@@ -142,6 +153,84 @@ function Get-FormattedSize {
     return "$Size Bytes"
 }
 
+function Get-DetailedPingResult {
+    param(
+        [string]$Target,
+        [switch]$DetailedOutput
+    )
+
+    $result = @{
+        Success = $false
+        ResponseTime = 0
+        IPAddress = $null
+        ResponseMessage = $null
+        DetailedOutput = $null
+    }
+
+    try {
+        # Use native ping command for detailed information
+        $pingOutput = ping $Target -n 1 -w 5000 | Out-String
+
+        if ($DetailedOutput) {
+            $result.DetailedOutput = $pingOutput
+        }
+
+        # Parse ping output for detailed information
+        $lines = $pingOutput -split "`r?`n"
+
+        foreach ($line in $lines) {
+            $line = $line.Trim()
+
+            # Check for successful reply
+            if ($line -match "Reply from ([0-9\.]+): bytes=\d+ time=(\d+)ms TTL=\d+") {
+                $result.Success = $true
+                $result.IPAddress = $matches[1]
+                $result.ResponseTime = [int]$matches[2]
+                $result.ResponseMessage = $line
+                break
+            }
+            # Check for reply with time<1ms
+            elseif ($line -match "Reply from ([0-9\.]+): bytes=\d+ time<(\d+)ms TTL=\d+") {
+                $result.Success = $true
+                $result.IPAddress = $matches[1]
+                $result.ResponseTime = 1
+                $result.ResponseMessage = $line
+                break
+            }
+            # Check for destination host unreachable
+            elseif ($line -match "Reply from ([0-9\.]+): Destination host unreachable") {
+                $result.Success = $false
+                $result.IPAddress = $matches[1]
+                $result.ResponseMessage = $line
+                break
+            }
+            # Check for request timed out
+            elseif ($line -match "Request timed out") {
+                $result.Success = $false
+                $result.ResponseMessage = $line
+                break
+            }
+            # Check for other error messages
+            elseif ($line -match "Destination net unreachable|General failure|Unable to contact IP driver") {
+                $result.Success = $false
+                $result.ResponseMessage = $line
+                break
+            }
+        }
+
+        # If no specific message found but we have output, use a generic timeout
+        if (-not $result.ResponseMessage -and $pingOutput) {
+            $result.ResponseMessage = "Request timed out."
+        }
+    }
+    catch {
+        $result.Success = $false
+        $result.ResponseMessage = "Error executing ping: $_"
+    }
+
+    return $result
+}
+
 # Handle Ctrl+C
 $null = [Console]::TreatControlCAsInput = $false
 
@@ -149,7 +238,7 @@ try {
     # Create output directory if it doesn't exist
     if (!(Test-Path -Path $OutputPath)) {
         New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
-        Write-Host "Created output directory: $OutputPath" -ForegroundColor Yellow
+        Write-Information -MessageData "Created output directory: $OutputPath" -InformationAction Continue
     }
 
     # Create timestamp and filename
@@ -172,8 +261,8 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
 "@
     Set-Content -Path $script:logFile -Value $header
 
-    Write-Host "Starting network test - Results will be saved to: $script:logFile" -ForegroundColor Cyan
-    Write-Host "Press Ctrl+C to stop continuous mode" -ForegroundColor Yellow
+    Write-Information -MessageData "Starting network test - Results will be saved to: $script:logFile" -InformationAction Continue
+    Write-Information -MessageData "Press Ctrl+C to stop continuous mode" -InformationAction Continue
 
     # Get and log network configuration
     Write-LogMessage -Message "Getting network configuration..." -FilePath $script:logFile
@@ -185,44 +274,47 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
     Write-LogMessage -Message "----------------------------------------`n" -FilePath $script:logFile
 
     # Start ping test
-    Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $script:logFile -ForegroundColor Cyan
+    Write-LogMessage -Message "Starting ping test to $Target..." -FilePath $script:logFile
+    if ($DetailedOutput) {
+        Write-LogMessage -Message "Detailed output mode enabled - full ping information will be shown" -FilePath $script:logFile
+    }
 
     while (!$script:interrupted) {
         try {
-            $startTime = Get-Date
-            $pingResult = Test-Connection -ComputerName $Target -Count 1 -ErrorAction SilentlyContinue
-            $endTime = Get-Date
-            $responseTime = [math]::Round(($endTime - $startTime).TotalMilliseconds)
+            $pingResult = Get-DetailedPingResult -Target $Target -DetailedOutput:$DetailedOutput
 
             $script:sent++
-
             $currentTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
-            if ($pingResult) {
+            if ($pingResult.Success) {
                 $script:received++
+                $responseTime = $pingResult.ResponseTime
                 $script:totalTime += $responseTime
                 $script:minTime = [Math]::Min($script:minTime, $responseTime)
                 $script:maxTime = [Math]::Max($script:maxTime, $responseTime)
 
-                # Get the IP address from the ping result
-                $ipAddress = if ($pingResult.Address) {
-                    $pingResult.Address
-                } elseif ($pingResult.IPV4Address) {
-                    $pingResult.IPV4Address
-                } elseif ($pingResult.IPAddress) {
-                    $pingResult.IPAddress
-                } else {
-                    $Target
-                }
-
-                $result = "Reply from $ipAddress`: time=${responseTime}ms"
+                $result = $pingResult.ResponseMessage
                 Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
-                Write-Host "[$currentTime] $result" -ForegroundColor Green
+                Write-Information -MessageData "[$currentTime] $result" -InformationAction Continue
+
+                if ($DetailedOutput -and $pingResult.DetailedOutput) {
+                    Write-LogMessage -Message "Detailed ping output:" -FilePath $script:logFile
+                    Write-LogMessage -Message $pingResult.DetailedOutput -FilePath $script:logFile
+                    Write-Information -MessageData "Detailed ping output:" -InformationAction Continue
+                    Write-Information -MessageData $pingResult.DetailedOutput -InformationAction Continue
+                }
             }
             else {
-                $result = "Request timed out."
+                $result = $pingResult.ResponseMessage
                 Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
-                Write-Host "[$currentTime] $result" -ForegroundColor Red
+                Write-Information -MessageData "[$currentTime] $result" -InformationAction Continue
+
+                if ($DetailedOutput -and $pingResult.DetailedOutput) {
+                    Write-LogMessage -Message "Detailed ping output:" -FilePath $script:logFile
+                    Write-LogMessage -Message $pingResult.DetailedOutput -FilePath $script:logFile
+                    Write-Information -MessageData "Detailed ping output:" -InformationAction Continue
+                    Write-Information -MessageData $pingResult.DetailedOutput -InformationAction Continue
+                }
             }
 
             # Update statistics every 10 pings
@@ -239,7 +331,7 @@ Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue){"0"}else{$scri
 
 "@
                 Write-LogMessage -Message $stats -FilePath $script:logFile
-                Write-Host $stats -ForegroundColor Cyan
+                Write-Information -MessageData $stats -InformationAction Continue
             }
 
             # Check if we should stop
@@ -261,7 +353,7 @@ Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue){"0"}else{$scri
 }
 catch {
     Write-Error "Error during ping test: $_"
-    Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
+    Write-Information -MessageData "Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
     if ($script:logFile) {
         Write-LogMessage -Message "ERROR: $_" -FilePath $script:logFile
         Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $script:logFile
@@ -269,9 +361,9 @@ catch {
 }
 finally {
     if ($script:interrupted) {
-        Write-FinalStatistics -Interrupted
+        Write-FinalStatistic -Interrupted
     }
     else {
-        Write-FinalStatistics
+        Write-FinalStatistic
     }
 }
