@@ -2,10 +2,10 @@
 # Script: Test-AdvancedNetworkConnectivity.ps1
 # Created: 2025-06-23 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-27 18:07:00 UTC
+# Last Updated: 2025-06-27 18:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Added comprehensive result analysis with scoring system and local network testing including default gateway detection and traceroute functionality
+# Version: 1.6.0
+# Additional Info: Enhanced scoring system to exclude expected failures (DNS servers not serving HTTP, web servers not running DNS, etc.) for more accurate network health assessment
 # =============================================================================
 
 <#
@@ -649,6 +649,56 @@ function Test-TracerouteConnectivity {
     return $traceResults
 }
 
+function Get-AdjustedTracerouteScore {
+    <#
+    .SYNOPSIS
+    Calculates traceroute reliability excluding expected non-responsive hops.
+
+    .DESCRIPTION
+    Some routers don't respond to traceroute requests but still forward packets correctly.
+    This function provides a more accurate assessment by considering:
+    - Hops that show 0.0.0.0 (router policy, not failure)
+    - Final destination reachability (most important)
+    - Overall path stability
+    #>
+    param(
+        [hashtable]$TracerouteResults
+    )
+
+    if ($TracerouteResults.TotalHops -eq 0) {
+        return 0
+    }
+
+    # If we reached the destination successfully, that's the most important factor
+    $destinationReached = $TracerouteResults.Success
+    $baseScore = if ($destinationReached) { 80 } else { 20 }
+
+    # Analyze hop failures
+    $expectedFailures = 0
+    $unexpectedFailures = 0
+
+    foreach ($hop in $TracerouteResults.Hops) {
+        if ($hop.ResponseTime -eq -1 -or $hop.IPAddress -eq "0.0.0.0") {
+            # This is often expected behavior for security/policy reasons
+            $expectedFailures++
+        }
+        elseif ($hop.ResponseTime -gt 5000) {
+            # Very high latency might indicate issues
+            $unexpectedFailures++
+        }
+    }
+
+    # Bonus for successful hops
+    $successfulHops = $TracerouteResults.TotalHops - $TracerouteResults.FailedHops
+    if ($TracerouteResults.TotalHops -gt 0) {
+        # Up to 20 bonus points
+        $hopSuccessRate = ($successfulHops / $TracerouteResults.TotalHops) * 20
+        $baseScore += $hopSuccessRate
+    }
+
+    return [Math]::Min([Math]::Round($baseScore, 2), 100)
+}
+
 function Test-LocalNetworkConnectivity {
     param(
         [int]$TestTimeout = 5000,
@@ -767,8 +817,7 @@ function Get-NetworkHealthScore {
     # DNS scoring (25% weight)
     if ($null -ne $TestResult.DNSResults.Success) {
         if ($TestResult.DNSResults.Success) {
-            $scores.DNSScore = 100
-            # Bonus for fast resolution
+            # Score based on resolution time
             if ($TestResult.DNSResults.ResolutionTime -le 100) {
                 $scores.DNSScore = 100
             }
@@ -784,10 +833,9 @@ function Get-NetworkHealthScore {
         }
     }
 
-    # Port scoring (20% weight)
+    # Port scoring (20% weight) - using adjusted scoring that excludes expected failures
     if ($TestResult.PortResults.TestedPorts.Count -gt 0) {
-        $portSuccessRate = ($TestResult.PortResults.OpenPorts.Count / $TestResult.PortResults.TestedPorts.Count) * 100
-        $scores.PortScore = $portSuccessRate
+        $scores.PortScore = Get-AdjustedPortScore -PortResults $TestResult.PortResults -Target $TestResult.Target
     }
 
     # MTU scoring (15% weight)
@@ -910,10 +958,123 @@ function Write-NetworkAnalysis {
         Write-LogMessage -Message "Local Network Health: $($LocalNetworkResults.LocalNetworkHealth)" -FilePath $FilePath
         Write-LogMessage -Message "Active Network Adapters: $($LocalNetworkResults.NetworkAdapters.Count)" -FilePath $FilePath
 
-        if ($LocalNetworkResults.TracerouteResults.Success) {
+        if ($localNetworkResults.TracerouteResults.Success) {
             Write-LogMessage -Message "Traceroute to 8.8.8.8: $($LocalNetworkResults.TracerouteResults.TotalHops) hops, $($LocalNetworkResults.TracerouteResults.FailedHops) failed" -FilePath $FilePath
         }
     }
+}
+
+function Test-ExpectedPortFailure {
+    <#
+    .SYNOPSIS
+    Determines if a port failure is expected based on target and port combination.
+
+    .DESCRIPTION
+    Identifies common expected port failures to prevent them from negatively impacting scoring:
+    - DNS servers (8.8.8.8, 1.1.1.1) typically don't serve HTTP on port 80
+    - Web servers (microsoft.com, google.com) typically don't run DNS on port 53
+    - Many services only run specific protocols on expected ports
+    #>
+    param(
+        [string]$Target,
+        [int]$Port
+    )
+
+    # Convert target to lowercase for comparison
+    $targetLower = $Target.ToLower()
+
+    # Expected failures for DNS servers
+    if ($targetLower -match '^(8\.8\.8\.8|1\.1\.1\.1|208\.67\.222\.222|208\.67\.220\.220)$') {
+        # DNS servers typically don't serve HTTP
+        if ($Port -eq 80) {
+            return $true
+        }
+    }
+
+    # Expected failures for web servers
+    if ($targetLower -match '\.(com|org|net|edu|gov)$' -or $targetLower -match '^(www\.|web\.|mail\.)') {
+        # Most web servers don't run DNS services
+        if ($Port -eq 53) {
+            return $true
+        }
+    }
+
+    # Expected failures for specific well-known services
+    switch ($targetLower) {
+        'microsoft.com' {
+              # Microsoft.com doesn't run DNS
+              if ($Port -eq 53) { return $true }
+        }
+        'google.com' {
+            # Google.com doesn't run DNS (different from 8.8.8.8)
+            if ($Port -eq 53) { return $true }
+        }
+        'cloudflare.com' {
+              # Cloudflare.com website doesn't run DNS
+              if ($Port -eq 53) { return $true }
+        }
+    }
+
+    return $false
+}
+
+function Get-AdjustedPortScore {
+    <#
+    .SYNOPSIS
+    Calculates port score excluding expected failures from negative scoring.
+
+    .DESCRIPTION
+    Provides more accurate port scoring by:
+    1. Identifying expected port failures
+    2. Calculating success rate based only on ports that should reasonably be open
+    3. Providing bonus points for unexpected successful connections
+    #>
+    param(
+        [hashtable]$PortResults,
+        [string]$Target
+    )
+
+    if ($PortResults.TestedPorts.Count -eq 0) {
+        return 0
+    }
+
+    $expectedFailures = 0
+    $unexpectedFailures = 0
+    $successfulPorts = $PortResults.OpenPorts.Count
+    $bonusPoints = 0
+
+    # Analyze each tested port
+    foreach ($port in $PortResults.TestedPorts) {
+        $isOpen = $port -in $PortResults.OpenPorts
+        $isExpectedFailure = Test-ExpectedPortFailure -Target $Target -Port $port
+
+        if (-not $isOpen) {
+            if ($isExpectedFailure) {
+                $expectedFailures++
+            }
+            else {
+                $unexpectedFailures++
+            }
+        }
+        elseif ($isExpectedFailure) {
+            # Bonus for unexpected successful connections
+            $bonusPoints += 5
+        }
+    }
+
+    # Calculate effective ports tested (excluding expected failures)
+    $effectivePortsTested = $PortResults.TestedPorts.Count - $expectedFailures
+
+    if ($effectivePortsTested -eq 0) {
+        # All failures were expected, give full score
+        return [Math]::Min(100 + $bonusPoints, 100)
+    }
+
+    # Calculate success rate based on ports that should work
+    $baseScore = ($successfulPorts / $effectivePortsTested) * 100
+    $finalScore = [Math]::Min($baseScore + $bonusPoints, 100)
+
+    return [Math]::Round($finalScore, 2)
 }
 
 # Main execution
