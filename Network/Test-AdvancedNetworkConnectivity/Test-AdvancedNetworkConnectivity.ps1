@@ -2,10 +2,10 @@
 # Script: Test-AdvancedNetworkConnectivity.ps1
 # Created: 2025-06-23 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-27 15:09:00 UTC
+# Last Updated: 2025-06-27 18:07:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Fixed parallel processing serialization issue by replacing custom class with hashtable-based approach
+# Version: 1.5.0
+# Additional Info: Added comprehensive result analysis with scoring system and local network testing including default gateway detection and traceroute functionality
 # =============================================================================
 
 <#
@@ -58,12 +58,20 @@
     Timeout in milliseconds for network operations.
     Default: 5000
 
+.PARAMETER IncludeLocalNetwork
+    Include local network testing (default gateway and traceroute).
+    Default: $true
+
+.PARAMETER IncludeResultAnalysis
+    Include comprehensive result analysis and scoring.
+    Default: $true
+
 .PARAMETER WhatIf
     Shows what would be performed without executing the operations.
 
 .EXAMPLE
     .\Test-AdvancedNetworkConnectivity.ps1
-    Performs comprehensive testing (All test types) on default targets (8.8.8.8, 1.1.1.1, microsoft.com)
+    Performs comprehensive testing (All test types) on default targets with local network analysis
 
 .EXAMPLE
     .\Test-AdvancedNetworkConnectivity.ps1 -Target @("google.com", "cloudflare.com") -Count 50 -TestType All
@@ -74,8 +82,8 @@
     Tests targets from CSV file with parallel processing, testing ping and specific ports
 
 .EXAMPLE
-    .\Test-AdvancedNetworkConnectivity.ps1 -Target "server01.domain.com" -TestType MTU -MaxMTU 9000
-    Performs MTU discovery on specified target up to 9000 bytes
+    .\Test-AdvancedNetworkConnectivity.ps1 -Target "server01.domain.com" -TestType MTU -MaxMTU 9000 -IncludeLocalNetwork $false
+    Performs MTU discovery on specified target up to 9000 bytes without local network testing
 
 .NOTES
     Validation Requirements: Verify network connectivity, file system access, DNS resolution capabilities
@@ -100,7 +108,11 @@ param(
 
     [int]$MaxMTU = 1500,
 
-    [int]$Timeout = 5000
+    [int]$Timeout = 5000,
+
+    [bool]$IncludeLocalNetwork = $true,
+
+    [bool]$IncludeResultAnalysis = $true
 )
 
 # Initialize script variables
@@ -248,7 +260,7 @@ function Test-PingConnectivity {
         try {
             $ping = Test-Connection -ComputerName $TargetHost -Count 1 -TimeoutSeconds ($TimeoutMs / 1000) -ErrorAction Stop
 
-            $responseTime = $ping.ResponseTime
+            $responseTime = $ping.Latency
             $pingResults.Sent++
             $pingResults.Received++
             $pingResults.TotalTime += $responseTime
@@ -497,7 +509,7 @@ function Write-TestSummary {
         Write-LogMessage -Message "Test Duration: $((($result.TestEndTime - $result.TestStartTime).TotalSeconds).ToString('N2')) seconds" -FilePath $script:logFile
 
         # Ping Summary
-        if ($result.PingResults.Count -gt 0) {
+        if ($result.PingResults.Sent -gt 0) {
             $ping = $result.PingResults
             Write-LogMessage -Message "Ping Results: $($ping.Received)/$($ping.Sent) successful ($($ping.PacketLoss)% loss)" -FilePath $script:logFile
             if ($ping.Received -gt 0) {
@@ -506,7 +518,7 @@ function Write-TestSummary {
         }
 
         # DNS Summary
-        if ($result.DNSResults.Count -gt 0) {
+        if ($null -ne $result.DNSResults.Success) {
             $dns = $result.DNSResults
             if ($dns.Success) {
                 Write-LogMessage -Message "DNS Resolution: Success ($($dns.ResolutionTime)ms) - $($dns.IPAddresses -join ', ')" -FilePath $script:logFile
@@ -517,7 +529,7 @@ function Write-TestSummary {
         }
 
         # Port Summary
-        if ($result.PortResults.Count -gt 0) {
+        if ($result.PortResults.TestedPorts.Count -gt 0) {
             $ports = $result.PortResults
             Write-LogMessage -Message "Port Test: $($ports.OpenPorts.Count) open, $($ports.ClosedPorts.Count) closed/filtered" -FilePath $script:logFile
             if ($ports.OpenPorts.Count -gt 0) {
@@ -526,7 +538,7 @@ function Write-TestSummary {
         }
 
         # MTU Summary
-        if ($result.MTUResults.Count -gt 0) {
+        if ($null -ne $result.MTUResults.Success) {
             $mtu = $result.MTUResults
             if ($mtu.Success) {
                 Write-LogMessage -Message "MTU Discovery: Maximum MTU = $($mtu.MaxMTU) bytes" -FilePath $script:logFile
@@ -550,6 +562,358 @@ function Write-TestSummary {
         Write-LogMessage -Message "Log file size: 0 Bytes (WhatIf mode)" -FilePath $script:logFile
     }
     Write-LogMessage -Message "========================================" -FilePath $script:logFile
+}
+
+function Get-DefaultGateway {
+    try {
+        $defaultRoute = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction Stop | Select-Object -First 1
+        return $defaultRoute.NextHop
+    }
+    catch {
+        Write-Warning -Message "Could not determine default gateway: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Test-TracerouteConnectivity {
+    param(
+        [string]$TargetHost,
+        [int]$MaxHops = 30,
+        [ref]$LogBuffer
+    )
+
+    $traceResults = @{
+        Target = $TargetHost
+        Hops = @()
+        TotalHops = 0
+        Success = $false
+        CompletionTime = 0
+        FailedHops = 0
+    }
+
+    Write-LogMessage -Message "Starting traceroute to $TargetHost (max $MaxHops hops)" -LogBuffer $LogBuffer
+
+    try {
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+        # Use Test-NetConnection for traceroute functionality
+        $traceRoute = Test-NetConnection -ComputerName $TargetHost -TraceRoute -ErrorAction Stop
+
+        $stopwatch.Stop()
+        $traceResults.CompletionTime = $stopwatch.ElapsedMilliseconds
+
+        if ($traceRoute.TraceRoute) {
+            $hopNumber = 1
+            foreach ($hop in $traceRoute.TraceRoute) {
+                $hopInfo = @{
+                    HopNumber = $hopNumber
+                    IPAddress = $hop
+                    HostName = ""
+                    ResponseTime = 0
+                }
+
+                # Try to resolve hostname
+                try {
+                    $hostInfo = [System.Net.Dns]::GetHostEntry($hop)
+                    $hopInfo.HostName = $hostInfo.HostName
+                }
+                catch {
+                    $hopInfo.HostName = "Unknown"
+                }
+
+                # Test response time for this hop
+                try {
+                    $hopPing = Test-Connection -ComputerName $hop -Count 1 -ErrorAction Stop
+                    $hopInfo.ResponseTime = $hopPing.Latency
+                }
+                catch {
+                    $hopInfo.ResponseTime = -1
+                    $traceResults.FailedHops++
+                }
+
+                $traceResults.Hops += $hopInfo
+                Write-LogMessage -Message "Hop $hopNumber`: $hop ($($hopInfo.HostName)) - $($hopInfo.ResponseTime)ms" -LogBuffer $LogBuffer
+                $hopNumber++
+            }
+
+            $traceResults.TotalHops = $traceResults.Hops.Count
+            $traceResults.Success = $traceRoute.PingSucceeded
+        }
+
+        Write-LogMessage -Message "Traceroute to $TargetHost completed: $($traceResults.TotalHops) hops, $($traceResults.FailedHops) failed" -LogBuffer $LogBuffer
+    }
+    catch {
+        Write-LogMessage -Message "Traceroute to $TargetHost failed: $($_.Exception.Message)" -LogBuffer $LogBuffer
+    }
+
+    return $traceResults
+}
+
+function Test-LocalNetworkConnectivity {
+    param(
+        [int]$TestTimeout = 5000,
+        [ref]$LogBuffer
+    )
+
+    $localResults = @{
+        DefaultGateway = ""
+        GatewayReachable = $false
+        GatewayLatency = 0
+        NetworkAdapters = @()
+        TracerouteResults = @()
+        LocalNetworkHealth = "Unknown"
+    }
+
+    Write-LogMessage -Message "Starting local network connectivity tests" -LogBuffer $LogBuffer
+
+    # Get default gateway
+    $gateway = Get-DefaultGateway
+    if ($gateway) {
+        $localResults.DefaultGateway = $gateway
+        Write-LogMessage -Message "Default gateway detected: $gateway" -LogBuffer $LogBuffer
+
+        # Test gateway connectivity
+        try {
+            $gatewayPing = Test-Connection -ComputerName $gateway -Count 3 -TimeoutSeconds ($TestTimeout / 1000) -ErrorAction Stop
+            $localResults.GatewayReachable = $true
+            $localResults.GatewayLatency = ($gatewayPing | Measure-Object -Property Latency -Average).Average
+            Write-LogMessage -Message "Gateway ping successful: Average latency $($localResults.GatewayLatency)ms" -LogBuffer $LogBuffer
+        }
+        catch {
+            Write-LogMessage -Message "Gateway ping failed: $($_.Exception.Message)" -LogBuffer $LogBuffer
+        }
+
+        # Test traceroute to a common external target through gateway
+        $localResults.TracerouteResults = Test-TracerouteConnectivity -TargetHost "8.8.8.8" -LogBuffer $LogBuffer
+    }
+    else {
+        Write-LogMessage -Message "Could not detect default gateway" -LogBuffer $LogBuffer
+    }
+
+    # Get network adapter information
+    try {
+        $adapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" -and $_.Virtual -eq $false }
+        foreach ($adapter in $adapters) {
+            $adapterInfo = @{
+                Name = $adapter.Name
+                InterfaceDescription = $adapter.InterfaceDescription
+                LinkSpeed = $adapter.LinkSpeed
+                Status = $adapter.Status
+                IPAddresses = @()
+            }
+
+            # Get IP addresses for this adapter
+            $ipConfig = Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -ErrorAction SilentlyContinue
+            foreach ($ip in $ipConfig) {
+                if ($ip.AddressFamily -eq "IPv4" -and $ip.IPAddress -ne "127.0.0.1") {
+                    $adapterInfo.IPAddresses += $ip.IPAddress
+                }
+            }
+
+            $localResults.NetworkAdapters += $adapterInfo
+            Write-LogMessage -Message "Network adapter: $($adapter.Name) - $($adapterInfo.IPAddresses -join ', ')" -LogBuffer $LogBuffer
+        }
+    }
+    catch {
+        Write-LogMessage -Message "Error getting network adapter information: $($_.Exception.Message)" -LogBuffer $LogBuffer
+    }
+
+    # Determine local network health
+    if ($localResults.GatewayReachable -and $localResults.GatewayLatency -lt 50 -and $localResults.NetworkAdapters.Count -gt 0) {
+        $localResults.LocalNetworkHealth = "Excellent"
+    }
+    elseif ($localResults.GatewayReachable -and $localResults.GatewayLatency -lt 100) {
+        $localResults.LocalNetworkHealth = "Good"
+    }
+    elseif ($localResults.GatewayReachable) {
+        $localResults.LocalNetworkHealth = "Concerning"
+    }
+    else {
+        $localResults.LocalNetworkHealth = "Poor"
+    }
+
+    return $localResults
+}
+
+function Get-NetworkHealthScore {
+    param([hashtable]$TestResult)
+
+    $scores = @{
+        PingScore = 0
+        DNSScore = 0
+        PortScore = 0
+        MTUScore = 0
+        OverallScore = 0
+        HealthStatus = "Unknown"
+    }
+
+    # Ping scoring (40% weight)
+    if ($TestResult.PingResults.Sent -gt 0) {
+        $pingSuccessRate = ($TestResult.PingResults.Received / $TestResult.PingResults.Sent) * 100
+        $scores.PingScore = $pingSuccessRate
+
+        # Bonus/penalty for latency
+        if ($TestResult.PingResults.Received -gt 0) {
+            $avgLatency = $TestResult.PingResults.AvgTime
+            if ($avgLatency -le 50) {
+                $scores.PingScore = [Math]::Min($scores.PingScore + 5, 100)
+            }
+            elseif ($avgLatency -gt 200) {
+                $scores.PingScore = [Math]::Max($scores.PingScore - 10, 0)
+            }
+        }
+    }
+
+    # DNS scoring (25% weight)
+    if ($null -ne $TestResult.DNSResults.Success) {
+        if ($TestResult.DNSResults.Success) {
+            $scores.DNSScore = 100
+            # Bonus for fast resolution
+            if ($TestResult.DNSResults.ResolutionTime -le 100) {
+                $scores.DNSScore = 100
+            }
+            elseif ($TestResult.DNSResults.ResolutionTime -le 500) {
+                $scores.DNSScore = 95
+            }
+            else {
+                $scores.DNSScore = 85
+            }
+        }
+        else {
+            $scores.DNSScore = 0
+        }
+    }
+
+    # Port scoring (20% weight)
+    if ($TestResult.PortResults.TestedPorts.Count -gt 0) {
+        $portSuccessRate = ($TestResult.PortResults.OpenPorts.Count / $TestResult.PortResults.TestedPorts.Count) * 100
+        $scores.PortScore = $portSuccessRate
+    }
+
+    # MTU scoring (15% weight)
+    if ($null -ne $TestResult.MTUResults.Success) {
+        if ($TestResult.MTUResults.Success -and $TestResult.MTUResults.MaxMTU -ge 1500) {
+            $scores.MTUScore = 100
+        }
+        elseif ($TestResult.MTUResults.Success -and $TestResult.MTUResults.MaxMTU -ge 1200) {
+            $scores.MTUScore = 80
+        }
+        elseif ($TestResult.MTUResults.Success) {
+            $scores.MTUScore = 60
+        }
+        else {
+            $scores.MTUScore = 0
+        }
+    }
+
+    # Calculate weighted overall score
+    $scores.OverallScore = [Math]::Round(
+        ($scores.PingScore * 0.40) +
+        ($scores.DNSScore * 0.25) +
+        ($scores.PortScore * 0.20) +
+        ($scores.MTUScore * 0.15), 2
+    )
+
+    # Determine health status
+    if ($scores.OverallScore -ge 98) {
+        $scores.HealthStatus = "Excellent"
+    }
+    elseif ($scores.OverallScore -ge 90) {
+        $scores.HealthStatus = "Concerning"
+    }
+    else {
+        $scores.HealthStatus = "Poor"
+    }
+
+    return $scores
+}
+
+function Write-NetworkAnalysis {
+    param(
+        [hashtable]$AllResults,
+        [hashtable]$LocalNetworkResults = $null,
+        [string]$FilePath
+    )
+
+    Write-LogMessage -Message "`n========================================" -FilePath $FilePath
+    Write-LogMessage -Message "NETWORK ANALYSIS AND SCORING" -FilePath $FilePath
+    Write-LogMessage -Message "========================================" -FilePath $FilePath
+
+    $overallScores = @()
+    $excellentCount = 0
+    $concerningCount = 0
+    $poorCount = 0
+
+    # Analyze each target
+    foreach ($targetName in $AllResults.Keys) {
+        $result = $AllResults[$targetName]
+        $scores = Get-NetworkHealthScore -TestResult $result
+
+        Write-LogMessage -Message "`nTarget: $($result.Target)" -FilePath $FilePath
+        Write-LogMessage -Message "Health Status: $($scores.HealthStatus)" -FilePath $FilePath
+        Write-LogMessage -Message "Overall Score: $($scores.OverallScore)%" -FilePath $FilePath
+        Write-LogMessage -Message "  Ping Score: $($scores.PingScore)% (Weight: 40%)" -FilePath $FilePath
+        Write-LogMessage -Message "  DNS Score: $($scores.DNSScore)% (Weight: 25%)" -FilePath $FilePath
+        Write-LogMessage -Message "  Port Score: $($scores.PortScore)% (Weight: 20%)" -FilePath $FilePath
+        Write-LogMessage -Message "  MTU Score: $($scores.MTUScore)% (Weight: 15%)" -FilePath $FilePath
+
+        $overallScores += $scores.OverallScore
+
+        switch ($scores.HealthStatus) {
+            "Excellent" { $excellentCount++ }
+            "Concerning" { $concerningCount++ }
+            "Poor" { $poorCount++ }
+        }
+    }
+
+    # Overall network assessment
+    Write-LogMessage -Message "`n========================================" -FilePath $FilePath
+    Write-LogMessage -Message "OVERALL NETWORK ASSESSMENT" -FilePath $FilePath
+    Write-LogMessage -Message "========================================" -FilePath $FilePath
+
+    $totalTargets = $AllResults.Keys.Count
+    $averageScore = if ($overallScores.Count -gt 0) { ($overallScores | Measure-Object -Average).Average } else { 0 }
+
+    Write-LogMessage -Message "Total Targets Tested: $totalTargets" -FilePath $FilePath
+    Write-LogMessage -Message "Average Network Score: $([Math]::Round($averageScore, 2))%" -FilePath $FilePath
+    Write-LogMessage -Message "Excellent Targets: $excellentCount ($([Math]::Round(($excellentCount/$totalTargets)*100, 1))%)" -FilePath $FilePath
+    Write-LogMessage -Message "Concerning Targets: $concerningCount ($([Math]::Round(($concerningCount/$totalTargets)*100, 1))%)" -FilePath $FilePath
+    Write-LogMessage -Message "Poor Targets: $poorCount ($([Math]::Round(($poorCount/$totalTargets)*100, 1))%)" -FilePath $FilePath
+
+    # Overall recommendation
+    $overallStatus = if ($averageScore -ge 98) { "Excellent" } elseif ($averageScore -ge 90) { "Concerning" } else { "Poor" }
+    Write-LogMessage -Message "`nOverall Network Status: $overallStatus" -FilePath $FilePath
+
+    switch ($overallStatus) {
+        "Excellent" {
+            Write-LogMessage -Message "Recommendation: Network performance is excellent. No immediate action required." -FilePath $FilePath
+        }
+        "Concerning" {
+            Write-LogMessage -Message "Recommendation: Network performance has some issues. Review concerning targets and consider network optimization." -FilePath $FilePath
+        }
+        "Poor" {
+            Write-LogMessage -Message "Recommendation: Network performance is poor. Immediate investigation and remediation required." -FilePath $FilePath
+        }
+    }
+
+    # Local network analysis
+    if ($LocalNetworkResults) {
+        Write-LogMessage -Message "`n========================================" -FilePath $FilePath
+        Write-LogMessage -Message "LOCAL NETWORK ANALYSIS" -FilePath $FilePath
+        Write-LogMessage -Message "========================================" -FilePath $FilePath
+
+        Write-LogMessage -Message "Default Gateway: $($LocalNetworkResults.DefaultGateway)" -FilePath $FilePath
+        Write-LogMessage -Message "Gateway Reachable: $($LocalNetworkResults.GatewayReachable)" -FilePath $FilePath
+        if ($LocalNetworkResults.GatewayReachable) {
+            Write-LogMessage -Message "Gateway Latency: $([Math]::Round($LocalNetworkResults.GatewayLatency, 2))ms" -FilePath $FilePath
+        }
+        Write-LogMessage -Message "Local Network Health: $($LocalNetworkResults.LocalNetworkHealth)" -FilePath $FilePath
+        Write-LogMessage -Message "Active Network Adapters: $($LocalNetworkResults.NetworkAdapters.Count)" -FilePath $FilePath
+
+        if ($LocalNetworkResults.TracerouteResults.Success) {
+            Write-LogMessage -Message "Traceroute to 8.8.8.8: $($LocalNetworkResults.TracerouteResults.TotalHops) hops, $($LocalNetworkResults.TracerouteResults.FailedHops) failed" -FilePath $FilePath
+        }
+    }
 }
 
 # Main execution
@@ -695,7 +1059,7 @@ Timeout: $Timeout ms
                         try {
                             $ping = Test-Connection -ComputerName $TargetHost -Count 1 -TimeoutSeconds ($TimeoutMs / 1000) -ErrorAction Stop
 
-                            $responseTime = $ping.ResponseTime
+                            $responseTime = $ping.Latency
                             $pingResults.Sent++
                             $pingResults.Received++
                             $pingResults.TotalTime += $responseTime
@@ -972,8 +1336,36 @@ Timeout: $Timeout ms
         }
     }
 
+    # Perform local network testing if enabled
+    $localNetworkResults = $null
+    if ($IncludeLocalNetwork) {
+        Write-Information -MessageData "Running local network connectivity tests..." -InformationAction Continue
+        $localNetworkResults = Test-LocalNetworkConnectivity -TestTimeout $Timeout -LogBuffer ([ref]@())
+
+        # Write local network results to log
+        Write-LogMessage -Message "`n========================================" -FilePath $script:logFile
+        Write-LogMessage -Message "LOCAL NETWORK TEST RESULTS" -FilePath $script:logFile
+        Write-LogMessage -Message "========================================" -FilePath $script:logFile
+        Write-LogMessage -Message "Default Gateway: $($localNetworkResults.DefaultGateway)" -FilePath $script:logFile
+        Write-LogMessage -Message "Gateway Reachable: $($localNetworkResults.GatewayReachable)" -FilePath $script:logFile
+        if ($localNetworkResults.GatewayReachable) {
+            Write-LogMessage -Message "Gateway Latency: $([Math]::Round($localNetworkResults.GatewayLatency, 2))ms" -FilePath $script:logFile
+        }
+        Write-LogMessage -Message "Local Network Health: $($localNetworkResults.LocalNetworkHealth)" -FilePath $script:logFile
+        Write-LogMessage -Message "Active Network Adapters: $($localNetworkResults.NetworkAdapters.Count)" -FilePath $script:logFile
+
+        if ($localNetworkResults.TracerouteResults.Success) {
+            Write-LogMessage -Message "Traceroute Results: $($localNetworkResults.TracerouteResults.TotalHops) hops, $($localNetworkResults.TracerouteResults.FailedHops) failed" -FilePath $script:logFile
+        }
+    }
+
     # Write summary
     Write-TestSummary -AllResults $script:results
+
+    # Write comprehensive network analysis if enabled
+    if ($IncludeResultAnalysis) {
+        Write-NetworkAnalysis -AllResults $script:results -LocalNetworkResults $localNetworkResults -FilePath $script:logFile
+    }
 
     Write-Information -MessageData "`nAdvanced Network Connectivity Test Completed Successfully" -InformationAction Continue
     Write-Information -MessageData "Results saved to: $script:logFile" -InformationAction Continue
