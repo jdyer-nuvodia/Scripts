@@ -2,10 +2,10 @@
 # Script: Invoke-PowerShellCodeCleanup.ps1
 # Created: 2025-06-23 15:30
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-27 21:15:00 UTC
+# Last Updated: 2025-06-27 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added Fix-InlineComments function to automatically correct inline comment issues
+# Version: 1.3.0
+# Additional Info: Enhanced regex patterns to exclude false positives from quoted strings containing multiple spaces or ellipses
 # =============================================================================
 
 <#
@@ -45,7 +45,7 @@ param()
 function Clear-TrailingWhitespace {
     <#
     .SYNOPSIS
-    Removes trailing whitespace from a PowerShell script file.
+    Removes trailing whitespace from a PowerShell script file. "   this is ok" but not trailing spaces
 
     .DESCRIPTION
     Reads the specified PowerShell script file, trims trailing whitespace from each line,
@@ -152,11 +152,11 @@ function Find-NewlineError {
         Write-Information -MessageData "Searching for newline errors in: $ScriptPath" -InformationAction Continue
 
         # Search for the specified patterns
-        # Pattern 1: Multiple consecutive spaces not followed by comments
+        # Pattern 1: Multiple consecutive spaces not followed by comments (excluding content inside quotes)
         # Pattern 2: Inline comments after code (but exclude lines that start with whitespace + comment markers)
         # Also exclude lines that contain quoted strings with hash symbols to avoid false positives
         $results = Select-String -Path $ScriptPath -Pattern @(
-            '\S {2,}(?!#)\S',
+            '(?=^(?:[^"'']*"[^"]*")*[^"'']*$)(?=^(?:[^"'']*''[^'']*'')*[^"'']*$)\S {2,}(?!#)\S',
             "^(?!\s*<#)(?!\s*#>)(?!\s*#)(?!.*'.*#.*')(?!.*`".*#.*`").*\S.*#"
         )
 
@@ -223,8 +223,8 @@ function Find-PotentialMissingCode {
 
         Write-Information -MessageData "Searching for potential missing code patterns in: $ScriptPath" -InformationAction Continue
 
-        # Search for ellipses patterns that may indicate incomplete code
-        $results = Select-String -Path $ScriptPath -Pattern '\.{3,}'
+        # Search for ellipses patterns that may indicate incomplete code (excluding content inside quotes)
+        $results = Select-String -Path $ScriptPath -Pattern '(?=^(?:[^"'']*"[^"]*")*[^"'']*$)(?=^(?:[^"'']*''[^'']*'')*[^"'']*$)\.{3,}'
 
         if ($results) {
             Write-Information -MessageData "Found potential missing code indicators (ellipses):" -InformationAction Continue
