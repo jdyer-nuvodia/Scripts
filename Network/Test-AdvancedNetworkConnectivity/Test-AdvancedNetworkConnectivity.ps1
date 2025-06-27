@@ -2,10 +2,10 @@
 # Script: Test-AdvancedNetworkConnectivity.ps1
 # Created: 2025-06-23 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-27 18:25:00 UTC
+# Last Updated: 2025-06-27 20:06:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.0
-# Additional Info: Enhanced scoring system to exclude expected failures (DNS servers not serving HTTP, web servers not running DNS, etc.) for more accurate network health assessment
+# Version: 1.7.1
+# Additional Info: Fixed PSScriptAnalyzer issues - renamed functions to use singular nouns and added ShouldProcess support to Update-AggregatedStatistic
 # =============================================================================
 
 <#
@@ -18,10 +18,12 @@
     - Advanced diagnostics beyond basic ping (DNS resolution, port connectivity, MTU discovery)
     - Comprehensive logging and reporting
     - Intelligent defaults for quick testing without configuration
-    - Support for both continuous and count-based testing
+    - Support for both continuous loop testing and single-run testing
+    - Aggregated statistics across multiple test iterations
 
     The script uses intelligent defaults including common DNS servers and connectivity test targets
-    to enable immediate testing without requiring target specification.
+    to enable immediate testing without requiring target specification. By default, the script runs
+    in continuous loop mode, performing repeated test cycles and aggregating results until manually stopped.
 
 .PARAMETER Target
     Array of target hosts to test. Can be IP addresses, hostnames, or FQDNs.
@@ -31,8 +33,12 @@
     Path to CSV file containing targets to test. CSV format: Target,Description,Priority
 
 .PARAMETER Count
-    Number of pings to send to each target. Use 0 for continuous testing.
+    Number of tests to perform per target in each loop iteration.
     Default: 10
+
+.PARAMETER Loop
+    Enable continuous loop testing mode. When enabled, the script runs test cycles continuously until manually stopped with Ctrl+C.
+    Default: $true
 
 .PARAMETER TestType
     Types of network tests to perform. Options: Ping, DNS, Port, MTU, All
@@ -71,19 +77,19 @@
 
 .EXAMPLE
     .\Test-AdvancedNetworkConnectivity.ps1
-    Performs comprehensive testing (All test types) on default targets with local network analysis
+    Performs comprehensive testing (All test types) on default targets with continuous loop mode and local network analysis
 
 .EXAMPLE
-    .\Test-AdvancedNetworkConnectivity.ps1 -Target @("google.com", "cloudflare.com") -Count 50 -TestType All
-    Performs comprehensive testing on specified targets with 50 iterations each
+    .\Test-AdvancedNetworkConnectivity.ps1 -Target @("google.com", "cloudflare.com") -Count 50 -TestType All -Loop $true
+    Performs comprehensive testing on specified targets with 50 tests per cycle in continuous loop mode
 
 .EXAMPLE
-    .\Test-AdvancedNetworkConnectivity.ps1 -TargetFile "C:\targets.csv" -Parallel -TestType @("Ping", "Port") -Ports @(80, 443, 22)
-    Tests targets from CSV file with parallel processing, testing ping and specific ports
+    .\Test-AdvancedNetworkConnectivity.ps1 -TargetFile "C:\targets.csv" -Parallel -TestType @("Ping", "Port") -Ports @(80, 443, 22) -Loop $false
+    Tests targets from CSV file with parallel processing, testing ping and specific ports in single-run mode
 
 .EXAMPLE
-    .\Test-AdvancedNetworkConnectivity.ps1 -Target "server01.domain.com" -TestType MTU -MaxMTU 9000 -IncludeLocalNetwork $false
-    Performs MTU discovery on specified target up to 9000 bytes without local network testing
+    .\Test-AdvancedNetworkConnectivity.ps1 -Target "server01.domain.com" -TestType MTU -MaxMTU 9000 -IncludeLocalNetwork $false -Loop $false
+    Performs MTU discovery on specified target up to 9000 bytes without local network testing in single-run mode
 
 .NOTES
     Validation Requirements: Verify network connectivity, file system access, DNS resolution capabilities
@@ -96,6 +102,8 @@ param(
     [string]$TargetFile,
 
     [int]$Count = 10,
+
+    [bool]$Loop = $true,
 
     [ValidateSet("Ping", "DNS", "Port", "MTU", "All")]
     [string[]]$TestType = @("All"),
@@ -120,6 +128,14 @@ $script:logFile = $null
 $script:results = @{}
 $script:interrupted = $false
 
+# Loop aggregation variables (matching Test-NetworkConnectivity.ps1 exactly)
+$script:totalTestRuns = 0
+$script:totalTargetTests = 0
+$script:totalSuccessfulTests = 0
+$script:totalFailedTests = 0
+$script:aggregatedResults = @{}
+$script:loopStartTime = $null
+
 # Target test results structure
 function Initialize-NetworkTestResult {
     param([string]$Target)
@@ -137,6 +153,57 @@ function Initialize-NetworkTestResult {
         Status = "Running"
         Errors = @()
         LogBuffer = @()
+    }
+}
+
+function Write-FinalLoopStatistic {
+    param([switch]$Interrupted)
+
+    if ($script:logFile) {
+        try {
+            $testDuration = if ($script:loopStartTime) { (Get-Date) - $script:loopStartTime } else { New-TimeSpan }
+            $successRate = if ($script:totalTargetTests -gt 0) { ($script:totalSuccessfulTests / $script:totalTargetTests * 100) } else { 0 }
+
+            $finalStats = @"
+
+========================================
+Final Loop Statistics $(if($Interrupted){"(Script Interrupted)"}):
+========================================
+Test Duration: $testDuration
+Total Test Runs: $script:totalTestRuns
+Total Target Tests: $script:totalTargetTests
+Successful Tests: $script:totalSuccessfulTests
+Failed Tests: $script:totalFailedTests
+Success Rate: $($successRate.ToString('N2'))%
+========================================
+Test completed$(if($Interrupted){" (Interrupted)"}): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Log file size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
+========================================
+"@
+            # Force write the final statistics
+            $finalStats | Out-File -FilePath $script:logFile -Append -Force
+
+            Write-Information -MessageData $finalStats -InformationAction Continue
+
+            # Add clear message about log file location
+            $logInfo = @"
+
+==================================================
+Log file has been saved:
+Name: $(Split-Path $script:logFile -Leaf)
+Location: $(Split-Path $script:logFile)
+Full Path: $script:logFile
+Size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
+==================================================
+"@
+            Write-Information -MessageData $logInfo -InformationAction Continue
+
+            # Ensure file is flushed
+            [System.IO.File]::WriteAllText($script:logFile, (Get-Content $script:logFile -Raw))
+        }
+        catch {
+            Write-Error "Error writing final statistics: $_"
+        }
     }
 }
 
@@ -494,6 +561,200 @@ function Test-SingleTarget {
     return $testResult
 }
 
+function Update-AggregatedStatistic {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([hashtable]$TestResults)
+
+    if ($PSCmdlet.ShouldProcess("Script aggregated statistics", "Update aggregated test statistics")) {
+        foreach ($targetName in $TestResults.Keys) {
+            $result = $TestResults[$targetName]
+
+            # Initialize aggregated results for this target if not exists
+            if (-not $script:aggregatedResults.ContainsKey($targetName)) {
+                $script:aggregatedResults[$targetName] = @{
+                    Target = $result.Target
+                    TotalTests = 0
+                    SuccessfulTests = 0
+                    FailedTests = 0
+                    PingStats = @{
+                        TotalSent = 0
+                        TotalReceived = 0
+                        TotalLost = 0
+                        TotalTime = 0
+                        MinTime = [int]::MaxValue
+                        MaxTime = 0
+                    }
+                    DNSStats = @{
+                        TotalAttempts = 0
+                        SuccessfulAttempts = 0
+                        TotalResolutionTime = 0
+                    }
+                    PortStats = @{
+                        TotalPortTests = 0
+                        SuccessfulPortTests = 0
+                    }
+                    MTUStats = @{
+                        TotalMTUTests = 0
+                        SuccessfulMTUTests = 0
+                        MaxMTUFound = 0
+                    }
+                }
+            }
+
+            $agg = $script:aggregatedResults[$targetName]
+            $agg.TotalTests++
+
+            if ($result.Status -eq "Completed") {
+                $agg.SuccessfulTests++
+                $script:totalSuccessfulTests++
+            } else {
+                $agg.FailedTests++
+                $script:totalFailedTests++
+            }
+
+            # Aggregate ping statistics
+            if ($result.PingResults.Sent -gt 0) {
+                $ping = $result.PingResults
+                $agg.PingStats.TotalSent += $ping.Sent
+                $agg.PingStats.TotalReceived += $ping.Received
+                $agg.PingStats.TotalLost += $ping.Lost
+                $agg.PingStats.TotalTime += $ping.TotalTime
+                if ($ping.MinTime -lt $agg.PingStats.MinTime -and $ping.MinTime -gt 0) {
+                    $agg.PingStats.MinTime = $ping.MinTime
+                }
+                if ($ping.MaxTime -gt $agg.PingStats.MaxTime) {
+                    $agg.PingStats.MaxTime = $ping.MaxTime
+                }
+            }
+
+            # Aggregate DNS statistics
+            if ($null -ne $result.DNSResults.Success) {
+                $agg.DNSStats.TotalAttempts++
+                if ($result.DNSResults.Success) {
+                    $agg.DNSStats.SuccessfulAttempts++
+                    $agg.DNSStats.TotalResolutionTime += $result.DNSResults.ResolutionTime
+                }
+            }
+
+            # Aggregate port statistics
+            if ($result.PortResults.TestedPorts.Count -gt 0) {
+                $agg.PortStats.TotalPortTests += $result.PortResults.TestedPorts.Count
+                $agg.PortStats.SuccessfulPortTests += $result.PortResults.OpenPorts.Count
+            }
+
+            # Aggregate MTU statistics
+            if ($null -ne $result.MTUResults.Success) {
+                $agg.MTUStats.TotalMTUTests++
+                if ($result.MTUResults.Success) {
+                    $agg.MTUStats.SuccessfulMTUTests++
+                    if ($result.MTUResults.MaxMTU -gt $agg.MTUStats.MaxMTUFound) {
+                        $agg.MTUStats.MaxMTUFound = $result.MTUResults.MaxMTU
+                    }
+                }
+            }
+
+            $script:totalTargetTests++
+        }
+    }
+}
+
+function Write-LoopIterationSummary {
+    param(
+        [int]$IterationNumber,
+        [hashtable]$IterationResults
+    )
+
+    Write-LogMessage -Message "`n========================================" -FilePath $script:logFile
+    Write-LogMessage -Message "LOOP ITERATION #$IterationNumber SUMMARY" -FilePath $script:logFile
+    Write-LogMessage -Message "========================================" -FilePath $script:logFile
+
+    foreach ($targetName in $IterationResults.Keys | Sort-Object) {
+        $result = $IterationResults[$targetName]
+        Write-LogMessage -Message "Target: $($result.Target) - Status: $($result.Status)" -FilePath $script:logFile
+
+        # Brief summary for each target
+        if ($result.PingResults.Sent -gt 0) {
+            $ping = $result.PingResults
+            Write-LogMessage -Message "  Ping: $($ping.Received)/$($ping.Sent) successful ($($ping.PacketLoss)% loss), Avg: $($ping.AvgTime)ms" -FilePath $script:logFile
+        }
+
+        if ($null -ne $result.DNSResults.Success) {
+            $dns = $result.DNSResults
+            Write-LogMessage -Message "  DNS: $(if($dns.Success){'Success'}else{'Failed'}) $(if($dns.Success){'(' + $dns.ResolutionTime + 'ms)'}else{''})" -FilePath $script:logFile
+        }
+
+        if ($result.PortResults.TestedPorts.Count -gt 0) {
+            $ports = $result.PortResults
+            Write-LogMessage -Message "  Ports: $($ports.OpenPorts.Count)/$($ports.TestedPorts.Count) open" -FilePath $script:logFile
+        }
+
+        if ($null -ne $result.MTUResults.Success) {
+            $mtu = $result.MTUResults
+            Write-LogMessage -Message "  MTU: $(if($mtu.Success){$mtu.MaxMTU.ToString()}else{'Failed'})" -FilePath $script:logFile
+        }
+    }
+
+    Write-LogMessage -Message "========================================" -FilePath $script:logFile
+}
+
+function Write-AggregatedStatistic {
+    param([int]$IterationNumber)
+
+    if ($IterationNumber % 10 -eq 0) {
+        Write-LogMessage -Message "`n========================================" -FilePath $script:logFile
+        Write-LogMessage -Message "AGGREGATED STATISTICS (After $IterationNumber runs)" -FilePath $script:logFile
+        Write-LogMessage -Message "========================================" -FilePath $script:logFile
+
+        $overallSuccessRate = if ($script:totalTargetTests -gt 0) { ($script:totalSuccessfulTests / $script:totalTargetTests * 100) } else { 0 }
+        Write-LogMessage -Message "Overall Success Rate: $([Math]::Round($overallSuccessRate, 2))% ($script:totalSuccessfulTests/$script:totalTargetTests)" -FilePath $script:logFile
+
+        foreach ($targetName in $script:aggregatedResults.Keys | Sort-Object) {
+            $agg = $script:aggregatedResults[$targetName]
+            Write-LogMessage -Message "`nTarget: $($agg.Target)" -FilePath $script:logFile
+            Write-LogMessage -Message "  Total Tests: $($agg.TotalTests) (Success: $($agg.SuccessfulTests), Failed: $($agg.FailedTests))" -FilePath $script:logFile
+
+            # Ping aggregation
+            if ($agg.PingStats.TotalSent -gt 0) {
+                $avgPingTime = if ($agg.PingStats.TotalReceived -gt 0) { $agg.PingStats.TotalTime / $agg.PingStats.TotalReceived } else { 0 }
+                $pingLossRate = ($agg.PingStats.TotalLost / $agg.PingStats.TotalSent) * 100
+                Write-LogMessage -Message "  Ping Totals: $($agg.PingStats.TotalReceived)/$($agg.PingStats.TotalSent) successful ($([Math]::Round($pingLossRate, 2))% loss)" -FilePath $script:logFile
+                if ($agg.PingStats.TotalReceived -gt 0) {
+                    $minTime = if ($agg.PingStats.MinTime -eq [int]::MaxValue) { 0 } else { $agg.PingStats.MinTime }
+                    Write-LogMessage -Message "  Ping Times: Min=$($minTime)ms, Max=$($agg.PingStats.MaxTime)ms, Avg=$([Math]::Round($avgPingTime, 2))ms" -FilePath $script:logFile
+                }
+            }
+
+            # DNS aggregation
+            if ($agg.DNSStats.TotalAttempts -gt 0) {
+                $dnsSuccessRate = ($agg.DNSStats.SuccessfulAttempts / $agg.DNSStats.TotalAttempts) * 100
+                $avgDNSTime = if ($agg.DNSStats.SuccessfulAttempts -gt 0) { $agg.DNSStats.TotalResolutionTime / $agg.DNSStats.SuccessfulAttempts } else { 0 }
+                Write-LogMessage -Message "  DNS Success Rate: $([Math]::Round($dnsSuccessRate, 2))% ($($agg.DNSStats.SuccessfulAttempts)/$($agg.DNSStats.TotalAttempts))" -FilePath $script:logFile
+                if ($agg.DNSStats.SuccessfulAttempts -gt 0) {
+                    Write-LogMessage -Message "  DNS Avg Time: $([Math]::Round($avgDNSTime, 2))ms" -FilePath $script:logFile
+                }
+            }
+
+            # Port aggregation
+            if ($agg.PortStats.TotalPortTests -gt 0) {
+                $portSuccessRate = ($agg.PortStats.SuccessfulPortTests / $agg.PortStats.TotalPortTests) * 100
+                Write-LogMessage -Message "  Port Success Rate: $([Math]::Round($portSuccessRate, 2))% ($($agg.PortStats.SuccessfulPortTests)/$($agg.PortStats.TotalPortTests))" -FilePath $script:logFile
+            }
+
+            # MTU aggregation
+            if ($agg.MTUStats.TotalMTUTests -gt 0) {
+                $mtuSuccessRate = ($agg.MTUStats.SuccessfulMTUTests / $agg.MTUStats.TotalMTUTests) * 100
+                Write-LogMessage -Message "  MTU Success Rate: $([Math]::Round($mtuSuccessRate, 2))% ($($agg.MTUStats.SuccessfulMTUTests)/$($agg.MTUStats.TotalMTUTests))" -FilePath $script:logFile
+                if ($agg.MTUStats.MaxMTUFound -gt 0) {
+                    Write-LogMessage -Message "  Max MTU Found: $($agg.MTUStats.MaxMTUFound)" -FilePath $script:logFile
+                }
+            }
+        }
+
+        Write-LogMessage -Message "========================================" -FilePath $script:logFile
+        Write-Information -MessageData "Aggregated statistics updated after $IterationNumber test runs" -InformationAction Continue
+    }
+}
+
 function Write-TestSummary {
     param([hashtable]$AllResults)
 
@@ -647,56 +908,6 @@ function Test-TracerouteConnectivity {
     }
 
     return $traceResults
-}
-
-function Get-AdjustedTracerouteScore {
-    <#
-    .SYNOPSIS
-    Calculates traceroute reliability excluding expected non-responsive hops.
-
-    .DESCRIPTION
-    Some routers don't respond to traceroute requests but still forward packets correctly.
-    This function provides a more accurate assessment by considering:
-    - Hops that show 0.0.0.0 (router policy, not failure)
-    - Final destination reachability (most important)
-    - Overall path stability
-    #>
-    param(
-        [hashtable]$TracerouteResults
-    )
-
-    if ($TracerouteResults.TotalHops -eq 0) {
-        return 0
-    }
-
-    # If we reached the destination successfully, that's the most important factor
-    $destinationReached = $TracerouteResults.Success
-    $baseScore = if ($destinationReached) { 80 } else { 20 }
-
-    # Analyze hop failures
-    $expectedFailures = 0
-    $unexpectedFailures = 0
-
-    foreach ($hop in $TracerouteResults.Hops) {
-        if ($hop.ResponseTime -eq -1 -or $hop.IPAddress -eq "0.0.0.0") {
-            # This is often expected behavior for security/policy reasons
-            $expectedFailures++
-        }
-        elseif ($hop.ResponseTime -gt 5000) {
-            # Very high latency might indicate issues
-            $unexpectedFailures++
-        }
-    }
-
-    # Bonus for successful hops
-    $successfulHops = $TracerouteResults.TotalHops - $TracerouteResults.FailedHops
-    if ($TracerouteResults.TotalHops -gt 0) {
-        # Up to 20 bonus points
-        $hopSuccessRate = ($successfulHops / $TracerouteResults.TotalHops) * 20
-        $baseScore += $hopSuccessRate
-    }
-
-    return [Math]::Min([Math]::Round($baseScore, 2), 100)
 }
 
 function Test-LocalNetworkConnectivity {
@@ -876,6 +1087,99 @@ function Get-NetworkHealthScore {
     return $scores
 }
 
+function Test-ExpectedPortFailure {
+    param(
+        [string]$Target,
+        [int]$Port
+    )
+
+    # Convert target to lowercase for comparison
+    $targetLower = $Target.ToLower()
+
+    # Expected failures for DNS servers
+    if ($targetLower -match '^(8\.8\.8\.8|1\.1\.1\.1|208\.67\.222\.222|208\.67\.220\.220)$') {
+        # DNS servers typically don't serve HTTP
+        if ($Port -eq 80) {
+            return $true
+        }
+    }
+
+    # Expected failures for web servers
+    if ($targetLower -match '\.(com|org|net|edu|gov)$' -or $targetLower -match '^(www\.|web\.|mail\.)') {
+        # Most web servers don't run DNS services
+        if ($Port -eq 53) {
+            return $true
+        }
+    }
+
+    # Expected failures for specific well-known services
+    switch ($targetLower) {
+        'microsoft.com' {
+              # Microsoft.com doesn't run DNS
+              if ($Port -eq 53) { return $true }
+        }
+        'google.com' {
+            # Google.com doesn't run DNS (different from 8.8.8.8)
+            if ($Port -eq 53) { return $true }
+        }
+        'cloudflare.com' {
+              # Cloudflare.com website doesn't run DNS
+              if ($Port -eq 53) { return $true }
+        }
+    }
+
+    return $false
+}
+
+function Get-AdjustedPortScore {
+    param(
+        [hashtable]$PortResults,
+        [string]$Target
+    )
+
+    if ($PortResults.TestedPorts.Count -eq 0) {
+        return 0
+    }
+
+    $expectedFailures = 0
+    $unexpectedFailures = 0
+    $successfulPorts = $PortResults.OpenPorts.Count
+    $bonusPoints = 0
+
+    # Analyze each tested port
+    foreach ($port in $PortResults.TestedPorts) {
+        $isOpen = $port -in $PortResults.OpenPorts
+        $isExpectedFailure = Test-ExpectedPortFailure -Target $Target -Port $port
+
+        if (-not $isOpen) {
+            if ($isExpectedFailure) {
+                $expectedFailures++
+            }
+            else {
+                $unexpectedFailures++
+            }
+        }
+        elseif ($isExpectedFailure) {
+            # Bonus for unexpected successful connections
+            $bonusPoints += 5
+        }
+    }
+
+    # Calculate effective ports tested (excluding expected failures)
+    $effectivePortsTested = $PortResults.TestedPorts.Count - $expectedFailures
+
+    if ($effectivePortsTested -eq 0) {
+        # All failures were expected, give full score
+        return [Math]::Min(100 + $bonusPoints, 100)
+    }
+
+    # Calculate success rate based on ports that should work
+    $baseScore = ($successfulPorts / $effectivePortsTested) * 100
+    $finalScore = [Math]::Min($baseScore + $bonusPoints, 100)
+
+    return [Math]::Round($finalScore, 2)
+}
+
 function Write-NetworkAnalysis {
     param(
         [hashtable]$AllResults,
@@ -958,124 +1262,14 @@ function Write-NetworkAnalysis {
         Write-LogMessage -Message "Local Network Health: $($LocalNetworkResults.LocalNetworkHealth)" -FilePath $FilePath
         Write-LogMessage -Message "Active Network Adapters: $($LocalNetworkResults.NetworkAdapters.Count)" -FilePath $FilePath
 
-        if ($localNetworkResults.TracerouteResults.Success) {
+        if ($LocalNetworkResults.TracerouteResults.Success) {
             Write-LogMessage -Message "Traceroute to 8.8.8.8: $($LocalNetworkResults.TracerouteResults.TotalHops) hops, $($LocalNetworkResults.TracerouteResults.FailedHops) failed" -FilePath $FilePath
         }
     }
 }
 
-function Test-ExpectedPortFailure {
-    <#
-    .SYNOPSIS
-    Determines if a port failure is expected based on target and port combination.
-
-    .DESCRIPTION
-    Identifies common expected port failures to prevent them from negatively impacting scoring:
-    - DNS servers (8.8.8.8, 1.1.1.1) typically don't serve HTTP on port 80
-    - Web servers (microsoft.com, google.com) typically don't run DNS on port 53
-    - Many services only run specific protocols on expected ports
-    #>
-    param(
-        [string]$Target,
-        [int]$Port
-    )
-
-    # Convert target to lowercase for comparison
-    $targetLower = $Target.ToLower()
-
-    # Expected failures for DNS servers
-    if ($targetLower -match '^(8\.8\.8\.8|1\.1\.1\.1|208\.67\.222\.222|208\.67\.220\.220)$') {
-        # DNS servers typically don't serve HTTP
-        if ($Port -eq 80) {
-            return $true
-        }
-    }
-
-    # Expected failures for web servers
-    if ($targetLower -match '\.(com|org|net|edu|gov)$' -or $targetLower -match '^(www\.|web\.|mail\.)') {
-        # Most web servers don't run DNS services
-        if ($Port -eq 53) {
-            return $true
-        }
-    }
-
-    # Expected failures for specific well-known services
-    switch ($targetLower) {
-        'microsoft.com' {
-              # Microsoft.com doesn't run DNS
-              if ($Port -eq 53) { return $true }
-        }
-        'google.com' {
-            # Google.com doesn't run DNS (different from 8.8.8.8)
-            if ($Port -eq 53) { return $true }
-        }
-        'cloudflare.com' {
-              # Cloudflare.com website doesn't run DNS
-              if ($Port -eq 53) { return $true }
-        }
-    }
-
-    return $false
-}
-
-function Get-AdjustedPortScore {
-    <#
-    .SYNOPSIS
-    Calculates port score excluding expected failures from negative scoring.
-
-    .DESCRIPTION
-    Provides more accurate port scoring by:
-    1. Identifying expected port failures
-    2. Calculating success rate based only on ports that should reasonably be open
-    3. Providing bonus points for unexpected successful connections
-    #>
-    param(
-        [hashtable]$PortResults,
-        [string]$Target
-    )
-
-    if ($PortResults.TestedPorts.Count -eq 0) {
-        return 0
-    }
-
-    $expectedFailures = 0
-    $unexpectedFailures = 0
-    $successfulPorts = $PortResults.OpenPorts.Count
-    $bonusPoints = 0
-
-    # Analyze each tested port
-    foreach ($port in $PortResults.TestedPorts) {
-        $isOpen = $port -in $PortResults.OpenPorts
-        $isExpectedFailure = Test-ExpectedPortFailure -Target $Target -Port $port
-
-        if (-not $isOpen) {
-            if ($isExpectedFailure) {
-                $expectedFailures++
-            }
-            else {
-                $unexpectedFailures++
-            }
-        }
-        elseif ($isExpectedFailure) {
-            # Bonus for unexpected successful connections
-            $bonusPoints += 5
-        }
-    }
-
-    # Calculate effective ports tested (excluding expected failures)
-    $effectivePortsTested = $PortResults.TestedPorts.Count - $expectedFailures
-
-    if ($effectivePortsTested -eq 0) {
-        # All failures were expected, give full score
-        return [Math]::Min(100 + $bonusPoints, 100)
-    }
-
-    # Calculate success rate based on ports that should work
-    $baseScore = ($successfulPorts / $effectivePortsTested) * 100
-    $finalScore = [Math]::Min($baseScore + $bonusPoints, 100)
-
-    return [Math]::Round($finalScore, 2)
-}
+# Handle Ctrl+C
+$null = [Console]::TreatControlCAsInput = $false
 
 # Main execution
 try {
@@ -1103,7 +1297,8 @@ Advanced Network Connectivity Test Results
 Computer Name: $computerName
 Test Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Test Types: $($TestType -join ', ')
-Count per Target: $(if($Count -eq 0){"Continuous"}else{$Count})
+Count per Target: $Count
+Loop Mode: $(if($Loop){"Enabled (Continuous)"}else{"Disabled (Single Run)"})
 Parallel Processing: $(if($Parallel){"Enabled"}else{"Disabled"})
 Timeout: $Timeout ms
 ========================================
@@ -1139,16 +1334,32 @@ Timeout: $Timeout ms
         }
     }
 
-    Write-Information -MessageData "Testing $($targetList.Count) target(s)" -InformationAction Continue
+    Write-Information -MessageData "Testing $($targetList.Count) target(s)$(if($Loop){" in continuous loop mode"}else{" in single-run mode"})" -InformationAction Continue
+    if ($Loop) {
+        Write-Information -MessageData "Press Ctrl+C to stop continuous loop mode" -InformationAction Continue
+    }
 
-    # Execute tests
-    if ($Parallel -and $targetList.Count -gt 1) {
-        Write-Information -MessageData "Running tests in parallel..." -InformationAction Continue
+    # Initialize loop tracking
+    $script:loopStartTime = Get-Date
+    $script:totalTestRuns = 0
 
-        $jobs = @()
-        foreach ($targetInfo in $targetList) {
-            $jobScriptBlock = {
-                param($TargetHost, $Description, $Priority, $TestTypes, $TestCount, $TestTimeout, $TestPorts, $TestMaxMTU)
+    # Main execution loop (matches Test-NetworkConnectivity.ps1 pattern exactly)
+    while (!$script:interrupted) {
+        try {
+            $script:totalTestRuns++
+            $script:results = @{}
+
+            Write-Information -MessageData "`nStarting test run #$script:totalTestRuns..." -InformationAction Continue
+            Write-LogMessage -Message "`n======================================== TEST RUN #$script:totalTestRuns ========================================" -FilePath $script:logFile
+
+            # Execute tests for this iteration
+            if ($Parallel -and $targetList.Count -gt 1) {
+                Write-Information -MessageData "Running tests in parallel..." -InformationAction Continue
+
+                $jobs = @()
+                foreach ($targetInfo in $targetList) {
+                    $jobScriptBlock = {
+                        param($TargetHost, $Description, $Priority, $TestTypes, $TestCount, $TestTimeout, $TestPorts, $TestMaxMTU)
 
                 # Define Initialize-NetworkTestResult function in job scope
                 function Initialize-NetworkTestResult {
@@ -1490,22 +1701,28 @@ Timeout: $Timeout ms
         }
     }
 
-    # Write organized target sections to log file
+    # Update aggregated statistics
+    Update-AggregatedStatistic -TestResults $script:results
+
+    # Write iteration summary to log
+    Write-LoopIterationSummary -IterationNumber $script:totalTestRuns -IterationResults $script:results
+
+    # Write organized target sections to log file for this iteration
     if ($PSCmdlet.ShouldProcess($script:logFile, "Write Target Test Sections")) {
         foreach ($targetName in $script:results.Keys | Sort-Object) {
             Write-TargetLogSection -TestResult $script:results[$targetName] -FilePath $script:logFile
         }
     }
 
-    # Perform local network testing if enabled
+    # Perform local network testing if enabled (only on first run or every 10th run to avoid log bloat)
     $localNetworkResults = $null
-    if ($IncludeLocalNetwork) {
+    if ($IncludeLocalNetwork -and ($script:totalTestRuns -eq 1 -or $script:totalTestRuns % 10 -eq 0)) {
         Write-Information -MessageData "Running local network connectivity tests..." -InformationAction Continue
         $localNetworkResults = Test-LocalNetworkConnectivity -TestTimeout $Timeout -LogBuffer ([ref]@())
 
         # Write local network results to log
         Write-LogMessage -Message "`n========================================" -FilePath $script:logFile
-        Write-LogMessage -Message "LOCAL NETWORK TEST RESULTS" -FilePath $script:logFile
+        Write-LogMessage -Message "LOCAL NETWORK TEST RESULTS (Run #$script:totalTestRuns)" -FilePath $script:logFile
         Write-LogMessage -Message "========================================" -FilePath $script:logFile
         Write-LogMessage -Message "Default Gateway: $($localNetworkResults.DefaultGateway)" -FilePath $script:logFile
         Write-LogMessage -Message "Gateway Reachable: $($localNetworkResults.GatewayReachable)" -FilePath $script:logFile
@@ -1520,21 +1737,56 @@ Timeout: $Timeout ms
         }
     }
 
-    # Write summary
-    Write-TestSummary -AllResults $script:results
+    # Write aggregated statistics every 10 iterations
+    Write-AggregatedStatistic -IterationNumber $script:totalTestRuns
 
-    # Write comprehensive network analysis if enabled
-    if ($IncludeResultAnalysis) {
+    # Write comprehensive network analysis if enabled (only on first run or every 10th run)
+    if ($IncludeResultAnalysis -and ($script:totalTestRuns -eq 1 -or $script:totalTestRuns % 10 -eq 0)) {
         Write-NetworkAnalysis -AllResults $script:results -LocalNetworkResults $localNetworkResults -FilePath $script:logFile
     }
 
-    Write-Information -MessageData "`nAdvanced Network Connectivity Test Completed Successfully" -InformationAction Continue
+    Write-Information -MessageData "Test run #$script:totalTestRuns completed" -InformationAction Continue
+
+    # Check if we should stop (single run mode)
+    if (-not $Loop) {
+        Write-Information -MessageData "`nSingle-run mode: Test completed" -InformationAction Continue
+        break
+    }
+
+    # Small delay between test runs in loop mode
+    if ($Loop) {
+        Start-Sleep -Seconds 5
+    }
+
+}
+catch {
+            if ($_.Exception.Message -match "cancelled by the user") {
+                $script:interrupted = $true
+                break
+            }
+            throw
+        }
+    }
+
+    # Write final summary and statistics
+    Write-TestSummary -AllResults $script:results
+
+    Write-Information -MessageData "`nAdvanced Network Connectivity Test Completed$(if($script:interrupted){" (Interrupted)"})" -InformationAction Continue
     Write-Information -MessageData "Results saved to: $script:logFile" -InformationAction Continue
 }
 catch {
     Write-Error -Message "Error during network connectivity test: $($_.Exception.Message)"
+    Write-Information -MessageData "Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
     if ($script:logFile) {
         Write-LogMessage -Message "ERROR: $($_.Exception.Message)" -FilePath $script:logFile
+        Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $script:logFile
     }
-    exit 1
+}
+finally {
+    if ($script:interrupted) {
+        Write-FinalLoopStatistic -Interrupted
+    }
+    else {
+        Write-FinalLoopStatistic
+    }
 }
