@@ -2,10 +2,10 @@
 # Script: Test-AdvancedNetworkConnectivity.ps1
 # Created: 2025-06-23 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-23 21:45:00 UTC
+# Last Updated: 2025-06-27 15:09:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Reorganized log output to group all tests under target headers for better readability
+# Version: 1.4.0
+# Additional Info: Fixed parallel processing serialization issue by replacing custom class with hashtable-based approach
 # =============================================================================
 
 <#
@@ -109,32 +109,22 @@ $script:results = @{}
 $script:interrupted = $false
 
 # Target test results structure
-class NetworkTestResult {
-    [string]$Target
-    [string]$Description
-    [string]$Priority
-    [hashtable]$PingResults
-    [hashtable]$DNSResults
-    [hashtable]$PortResults
-    [hashtable]$MTUResults
-    [datetime]$TestStartTime
-    [datetime]$TestEndTime
-    [string]$Status
-    [string[]]$Errors
-    [string[]]$LogBuffer
+function Initialize-NetworkTestResult {
+    param([string]$Target)
 
-    NetworkTestResult([string]$target) {
-        $this.Target = $target
-        $this.Description = ""
-        $this.Priority = "Medium"
-        $this.PingResults = @{}
-        $this.DNSResults = @{}
-        $this.PortResults = @{}
-        $this.MTUResults = @{}
-        $this.TestStartTime = Get-Date
-        $this.Status = "Running"
-        $this.Errors = @()
-        $this.LogBuffer = @()
+    return @{
+        Target = $Target
+        Description = ""
+        Priority = "Medium"
+        PingResults = @{}
+        DNSResults = @{}
+        PortResults = @{}
+        MTUResults = @{}
+        TestStartTime = Get-Date
+        TestEndTime = $null
+        Status = "Running"
+        Errors = @()
+        LogBuffer = @()
     }
 }
 
@@ -162,7 +152,7 @@ function Write-LogMessage {
 
 function Write-TargetLogSection {
     param(
-        [NetworkTestResult]$TestResult,
+        [hashtable]$TestResult,
         [string]$FilePath
     )
 
@@ -415,7 +405,8 @@ function Test-MTUDiscovery {
         if ($size -gt $MaxMTUSize) { continue }
 
         try {
-            $pingSize = $size - 28  # Subtract IP and ICMP headers
+            $pingSize = $size - 28
+            # Subtract IP and ICMP headers
             if ($pingSize -lt 1) { continue }
 
             $ping = Test-Connection -ComputerName $TargetHost -BufferSize $pingSize -Count 1 -ErrorAction Stop
@@ -453,7 +444,7 @@ function Test-SingleTarget {
         [int]$TestMaxMTU = 1500
     )
 
-    $testResult = [NetworkTestResult]::new($TargetHost)
+    $testResult = Initialize-NetworkTestResult -Target $TargetHost
     $testResult.Description = $Description
     $testResult.Priority = $Priority
 
@@ -634,33 +625,23 @@ Timeout: $Timeout ms
             $jobScriptBlock = {
                 param($TargetHost, $Description, $Priority, $TestTypes, $TestCount, $TestTimeout, $TestPorts, $TestMaxMTU)
 
-                # Define NetworkTestResult class in job scope
-                class NetworkTestResult {
-                    [string]$Target
-                    [string]$Description
-                    [string]$Priority
-                    [hashtable]$PingResults
-                    [hashtable]$DNSResults
-                    [hashtable]$PortResults
-                    [hashtable]$MTUResults
-                    [datetime]$TestStartTime
-                    [datetime]$TestEndTime
-                    [string]$Status
-                    [string[]]$Errors
-                    [string[]]$LogBuffer
+                # Define Initialize-NetworkTestResult function in job scope
+                function Initialize-NetworkTestResult {
+                    param([string]$Target)
 
-                    NetworkTestResult([string]$target) {
-                        $this.Target = $target
-                        $this.Description = ""
-                        $this.Priority = "Medium"
-                        $this.PingResults = @{}
-                        $this.DNSResults = @{}
-                        $this.PortResults = @{}
-                        $this.MTUResults = @{}
-                        $this.TestStartTime = Get-Date
-                        $this.Status = "Running"
-                        $this.Errors = @()
-                        $this.LogBuffer = @()
+                    return @{
+                        Target = $Target
+                        Description = ""
+                        Priority = "Medium"
+                        PingResults = @{}
+                        DNSResults = @{}
+                        PortResults = @{}
+                        MTUResults = @{}
+                        TestStartTime = Get-Date
+                        TestEndTime = $null
+                        Status = "Running"
+                        Errors = @()
+                        LogBuffer = @()
                     }
                 }
 
@@ -874,7 +855,8 @@ Timeout: $Timeout ms
                         if ($size -gt $MaxMTUSize) { continue }
 
                         try {
-                            $pingSize = $size - 28  # Subtract IP and ICMP headers
+                            $pingSize = $size - 28
+                            # Subtract IP and ICMP headers
                             if ($pingSize -lt 1) { continue }
 
                             $ping = Test-Connection -ComputerName $TargetHost -BufferSize $pingSize -Count 1 -ErrorAction Stop
@@ -913,7 +895,7 @@ Timeout: $Timeout ms
                         [int]$TestMaxMTU = 1500
                     )
 
-                    $testResult = [NetworkTestResult]::new($TargetHost)
+                    $testResult = Initialize-NetworkTestResult -Target $TargetHost
                     $testResult.Description = $Description
                     $testResult.Priority = $Priority
 
