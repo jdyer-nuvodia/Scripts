@@ -2,10 +2,10 @@
 # Script: Deploy-ActionGroup.ps1
 # Created: 2025-01-16 17:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 20:43:00 UTC
+# Last Updated: 2025-06-30 22:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Added parameter validation and enhanced documentation
+# Version: 1.1.1
+# Additional Info: Implemented appropriate PowerShell output cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -89,7 +89,7 @@ param(
 $LogPath = Join-Path $PSScriptRoot "AGDeployment_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $ErrorActionPreference = "Stop"
 
-function Write-Log {
+function Write-LogMessage {
     param($Message, $Level = "Information")
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
@@ -97,36 +97,36 @@ function Write-Log {
     Add-Content -Path $LogPath -Value $LogMessage
 
     switch ($Level) {
-        "Information" { Write-Host $Message -ForegroundColor White }
-        "Success"     { Write-Host $Message -ForegroundColor Green }
-        "Warning"     { Write-Host $Message -ForegroundColor Yellow }
-        "Error"       { Write-Host $Message -ForegroundColor Red }
-        "Process"     { Write-Host $Message -ForegroundColor Cyan }
+        "Information" { Write-Output $Message }
+        "Success"     { Write-Output $Message }
+        "Warning"     { Write-Warning $Message }
+        "Error"       { Write-Error $Message -ErrorAction Continue }
+        "Process"     { Write-Verbose $Message -Verbose }
     }
 }
 
 try {
-    Write-Log "Starting Action Group deployment process" "Process"
+    Write-LogMessage "Starting Action Group deployment process" "Process"
 
     # Verify Az module is installed
     if (-not (Get-Module -ListAvailable -Name Az)) {
-        Write-Log "Az PowerShell module not found. Please install using: Install-Module -Name Az" "Error"
+        Write-LogMessage "Az PowerShell module not found. Please install using: Install-Module -Name Az" "Error"
         throw "Required Az module not installed"
     }
 
     # Connect to Azure if needed
     try {
         $null = Get-AzContext -ErrorAction Stop
-        Write-Log "Already connected to Azure" "Success"
+        Write-LogMessage "Already connected to Azure" "Success"
     }
     catch {
-        Write-Log "Not connected to Azure. Initiating sign-in..." "Process"
+        Write-LogMessage "Not connected to Azure. Initiating sign-in..." "Process"
         Connect-AzAccount
     }
 
     # Set subscription context if provided
     if ($SubscriptionId) {
-        Write-Log "Setting context to subscription: $SubscriptionId" "Process"
+        Write-LogMessage "Setting context to subscription: $SubscriptionId" "Process"
         Set-AzContext -SubscriptionId $SubscriptionId
     }
 
@@ -139,10 +139,10 @@ try {
     $TemplateFile = Join-Path $TemplateFolder "template.json"
     $ParameterFile = Join-Path $TemplateFolder "parameters.json"
 
-    Write-Log "Deploying Action Group..." "Process"
-    Write-Log "Resource Group: $ResourceGroupName" "Information"
-    Write-Log "Template File: $TemplateFile" "Information"
-    Write-Log "Parameter File: $ParameterFile" "Information"
+    Write-LogMessage "Deploying Action Group..." "Process"
+    Write-LogMessage "Resource Group: $ResourceGroupName" "Information"
+    Write-LogMessage "Template File: $TemplateFile" "Information"
+    Write-LogMessage "Parameter File: $ParameterFile" "Information"
 
     # Deploy ARM template
     $deployment = New-AzResourceGroupDeployment `
@@ -152,16 +152,16 @@ try {
         -TemplateParameterFile $ParameterFile
 
     if ($deployment.ProvisioningState -eq "Succeeded") {
-        Write-Log "Action Group deployment completed successfully" "Success"
+        Write-LogMessage "Action Group deployment completed successfully" "Success"
     }
     else {
         throw "Deployment failed with state: $($deployment.ProvisioningState)"
     }
 }
 catch {
-    Write-Log "Deployment failed: $_" "Error"
+    Write-LogMessage "Deployment failed: $_" "Error"
     throw
 }
 finally {
-    Write-Log "Deployment process finished" "Information"
+    Write-LogMessage "Deployment process finished" "Information"
 }
