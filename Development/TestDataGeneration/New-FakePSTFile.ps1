@@ -2,10 +2,10 @@
 # Script: New-FakePSTFile.ps1
 # Created: 2025-06-03 21:25:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-04 20:52:00 UTC
+# Last Updated: 2025-06-30 22:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.9.0
-# Additional Info: Added random attachment generation functionality (2-5MB files)
+# Version: 2.9.2
+# Additional Info: Removed non-ASCII characters for compatibility
 # ===================================================================================================================================================
 
 <#
@@ -94,16 +94,14 @@ function Write-ColoredOutput {
         [string]$Message,
 
         [Parameter(Mandatory = $false)]
-        [ValidateSet('White', 'Cyan', 'Green', 'Yellow', 'Red', 'Magenta', 'DarkGray')]
-        [string]$Color = 'White',
-
-        [Parameter(Mandatory = $false)]
         [switch]$NoLog
-    )    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $logMessage = "[$timestamp] $Message"
 
-    # Write to console with color
-    Microsoft.PowerShell.Utility\Write-Host $Message -ForegroundColor $Color
+    # Write to console
+    Write-Output $Message
 
     if (-not $NoLog) {
         Add-Content -Path $logPath -Value $logMessage -ErrorAction SilentlyContinue
@@ -167,7 +165,7 @@ function New-RandomFile {
         }
     }
     catch {
-        Write-ColoredOutput -Message "WARNING: Failed to create random file '$FilePath': $($_.Exception.Message)" -Color Yellow
+        Write-ColoredOutput -Message "WARNING: Failed to create random file '$FilePath': $($_.Exception.Message)"
         return $false
     }
 }
@@ -227,7 +225,7 @@ function New-RandomAttachment {
         }
     }
     catch {
-        Write-ColoredOutput -Message "WARNING: Failed to generate random attachment: $($_.Exception.Message)" -Color Yellow
+        Write-ColoredOutput -Message "WARNING: Failed to generate random attachment: $($_.Exception.Message)"
         return @{Success = $false}
     }
 }
@@ -241,7 +239,7 @@ function Test-OutlookPrerequisite {
         [bool]$SkipCOMTest = $false
     )
 
-    Write-ColoredOutput -Message "Checking Outlook prerequisites..." -Color Cyan
+    Write-ColoredOutput -Message "Checking Outlook prerequisites..."
 
     # Comprehensive check for Outlook installation in Program Files directories
     $programFilesPaths = @(
@@ -299,31 +297,31 @@ function Test-OutlookPrerequisite {
     # Check each potential path
     $outlookInstalled = $false
 
-    Write-ColoredOutput -Message "Searching for Outlook executable in Program Files directories..." -Color Cyan
+    Write-ColoredOutput -Message "Searching for Outlook executable in Program Files directories..."
 
     foreach ($path in $outlookPaths) {
         Write-Verbose "Checking path: $path"
         if (Test-Path -Path $path -PathType Leaf) {
             $outlookInstalled = $true
             $fileInfo = Get-Item -Path $path
-            Write-ColoredOutput -Message "Found Outlook installation at: $path" -Color Green
-            Write-ColoredOutput -Message "Version: $($fileInfo.VersionInfo.FileVersion)" -Color DarkGray
-            Write-ColoredOutput -Message "Product: $($fileInfo.VersionInfo.ProductName)" -Color DarkGray
+            Write-ColoredOutput -Message "Found Outlook installation at: $path"
+            Write-ColoredOutput -Message "Version: $($fileInfo.VersionInfo.FileVersion)"
+            Write-ColoredOutput -Message "Product: $($fileInfo.VersionInfo.ProductName)"
             break
         }
     }
 
     if (-not $outlookInstalled) {
-        Write-ColoredOutput -Message "WARNING: Outlook executable not found in standard Program Files locations" -Color Yellow
-        Write-ColoredOutput -Message "Checked paths in:" -Color DarkGray
-        Write-ColoredOutput -Message "  - $env:ProgramFiles" -Color DarkGray
+        Write-ColoredOutput -Message "WARNING: Outlook executable not found in standard Program Files locations"
+        Write-ColoredOutput -Message "Checked paths in:"
+        Write-ColoredOutput -Message "  - $env:ProgramFiles"
         if ($env:ProgramFiles -ne ${env:ProgramFiles(x86)}) {
-            Write-ColoredOutput -Message "  - ${env:ProgramFiles(x86)}" -Color DarkGray
+            Write-ColoredOutput -Message "  - ${env:ProgramFiles(x86)}"
         }
     }
 
     # Check Windows Registry for Outlook installation
-    Write-ColoredOutput -Message "Checking Windows Registry for Outlook registration..." -Color Cyan
+    Write-ColoredOutput -Message "Checking Windows Registry for Outlook registration..."
 
     $registryPaths = @(
         "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration",
@@ -339,22 +337,22 @@ function Test-OutlookPrerequisite {
     foreach ($regPath in $registryPaths) {
         if (Test-Path -Path $regPath) {
             $registryFound = $true
-            Write-ColoredOutput -Message "Found Outlook registry entry at: $regPath" -Color Green
+            Write-ColoredOutput -Message "Found Outlook registry entry at: $regPath"
             break
         }
     }
 
     if (-not $registryFound) {
-        Write-ColoredOutput -Message "WARNING: No Outlook registry entries found" -Color Yellow
+        Write-ColoredOutput -Message "WARNING: No Outlook registry entries found"
     }
 
     # Test COM interface if not skipped
     if (-not $SkipCOMTest) {
-        Write-ColoredOutput -Message "Testing Outlook COM interface..." -Color Cyan
+        Write-ColoredOutput -Message "Testing Outlook COM interface..."
 
         try {
             $testOutlook = New-Object -ComObject Outlook.Application
-            Write-ColoredOutput -Message "Outlook COM interface test successful" -Color Green
+            Write-ColoredOutput -Message "Outlook COM interface test successful"
 
             # Clean up test object
             [System.Runtime.Interopservices.Marshal]::ReleaseComObject($testOutlook) | Out-Null
@@ -364,12 +362,12 @@ function Test-OutlookPrerequisite {
             return $true
         }
         catch {
-            Write-ColoredOutput -Message "ERROR: Outlook COM interface test failed: $($_.Exception.Message)" -Color Red
+            Write-ColoredOutput -Message "ERROR: Outlook COM interface test failed: $($_.Exception.Message)"
             return $false
         }
     }
     else {
-        Write-ColoredOutput -Message "COM interface test skipped as requested" -Color DarkGray
+        Write-ColoredOutput -Message "COM interface test skipped as requested"
         return ($outlookInstalled -or $registryFound)
     }
 }
@@ -414,21 +412,21 @@ function New-PSTFileWithData {
         [string]$AttachmentTempPath = "C:\Temp\PST_Attachments"
     )    try {        if (-not $IsWhatIfMode) {
             if ($PSCmdlet.ShouldProcess($FilePath, "Create PST file with $EmailCount emails")) {
-                Write-ColoredOutput -Message "Creating PST file with $EmailCount emails at: $FilePath" -Color Green
+                Write-ColoredOutput -Message "Creating PST file with $EmailCount emails at: $FilePath"
 
                 # Initialize attachment generation if needed
                 $attachmentTempFiles = @()
                 if ($AttachmentPercentage -gt 0) {
-                    Write-ColoredOutput -Message "Attachment generation enabled: $AttachmentPercentage% of emails will include random attachments (2-5MB each)" -Color Cyan
+                    Write-ColoredOutput -Message "Attachment generation enabled: $AttachmentPercentage% of emails will include random attachments (2-5MB each)"
 
                     # Ensure temp directory exists
                     if (-not (Test-Path -Path $AttachmentTempPath)) {
-                        Write-ColoredOutput -Message "Creating temporary attachment directory: $AttachmentTempPath" -Color DarkGray
+                        Write-ColoredOutput -Message "Creating temporary attachment directory: $AttachmentTempPath"
                         New-Item -Path $AttachmentTempPath -ItemType Directory -Force | Out-Null
                     }
                 }
                 else {
-                    Write-ColoredOutput -Message "No attachments will be generated (AttachmentPercentage = 0)" -Color DarkGray
+                    Write-ColoredOutput -Message "No attachments will be generated (AttachmentPercentage = 0)"
                 }
 
             # Test Outlook prerequisites first
@@ -438,28 +436,28 @@ function New-PSTFileWithData {
 
             # Delete existing file if it exists
             if (Test-Path -Path $FilePath) {
-                Write-ColoredOutput -Message "Removing existing PST file..." -Color Yellow
+                Write-ColoredOutput -Message "Removing existing PST file..."
                 Remove-Item -Path $FilePath -Force
             }
 
             # Ensure target directory exists
             $targetDir = Split-Path -Path $FilePath -Parent
             if (-not (Test-Path -Path $targetDir)) {
-                Write-ColoredOutput -Message "Creating target directory: $targetDir" -Color Cyan
+                Write-ColoredOutput -Message "Creating target directory: $targetDir"
                 New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
             }
 
             # Create Outlook application object
-            Write-ColoredOutput -Message "Initializing Outlook COM interface..." -Color Cyan
+            Write-ColoredOutput -Message "Initializing Outlook COM interface..."
             $outlook = New-Object -ComObject Outlook.Application
 
-            Write-ColoredOutput -Message "Outlook application object created successfully" -Color Green
+            Write-ColoredOutput -Message "Outlook application object created successfully"
 
             # Get namespace
             $namespace = $outlook.GetNamespace("MAPI")
 
             # Create new PST file
-            Write-ColoredOutput -Message "Adding new PST data store..." -Color Cyan
+            Write-ColoredOutput -Message "Adding new PST data store..."
             $namespace.AddStore($FilePath)
 
             # Find the newly created PST store
@@ -468,25 +466,25 @@ function New-PSTFileWithData {
                 throw "Failed to create or access PST file: $FilePath"
             }
 
-            Write-ColoredOutput -Message "PST store created successfully: $($store.DisplayName)" -Color Green
+            Write-ColoredOutput -Message "PST store created successfully: $($store.DisplayName)"
 
             # Get root folder
             $rootFolder = $store.GetRootFolder()
-            Write-ColoredOutput -Message "Root folder accessed: $($rootFolder.Name)" -Color DarkGray
+            Write-ColoredOutput -Message "Root folder accessed: $($rootFolder.Name)"
 
             # Ensure default folders exist (create Inbox if it doesn't exist)
-            Write-ColoredOutput -Message "Setting up default folder structure..." -Color Cyan
+            Write-ColoredOutput -Message "Setting up default folder structure..."
 
             # Check if Inbox exists, create if not
             $inbox = $rootFolder.Folders | Where-Object { $_.Name -eq "Inbox" }
             if (-not $inbox) {
-                Write-ColoredOutput -Message "Creating Inbox folder..." -Color DarkGray
+                Write-ColoredOutput -Message "Creating Inbox folder..."
                 $inbox = $rootFolder.Folders.Add("Inbox")
             }
 
             # Create custom folders for sample organization
-                        Write-ColoredOutput -Message "PST folder structure initialized successfully" -Color Green
-            Write-ColoredOutput -Message "Creating custom sample folders..." -Color Cyan
+                        Write-ColoredOutput -Message "PST folder structure initialized successfully"
+            Write-ColoredOutput -Message "Creating custom sample folders..."
             $customFolders = @("Important", "Projects", "Personal", "Archive")
             $allFolders = @{"Inbox" = $inbox}
 
@@ -496,23 +494,23 @@ function New-PSTFileWithData {
                     $existingCustomFolder = $rootFolder.Folders | Where-Object { $_.Name -eq $customFolderName }
 
                     if (-not $existingCustomFolder) {
-                        Write-ColoredOutput -Message "Creating custom folder: $customFolderName" -Color DarkGray
+                        Write-ColoredOutput -Message "Creating custom folder: $customFolderName"
                         $newCustomFolder = $rootFolder.Folders.Add($customFolderName)
                         $allFolders[$customFolderName] = $newCustomFolder
                     }
                     else {
-                        Write-ColoredOutput -Message "Custom folder already exists: $customFolderName" -Color DarkGray
+                        Write-ColoredOutput -Message "Custom folder already exists: $customFolderName"
                         $allFolders[$customFolderName] = $existingCustomFolder
                     }
                 }
                 catch {
-                    Write-ColoredOutput -Message "WARNING: Could not create custom folder '$customFolderName': $($_.Exception.Message)" -Color Yellow
+                    Write-ColoredOutput -Message "WARNING: Could not create custom folder '$customFolderName': $($_.Exception.Message)"
                 }
             }
 
             # Randomly distribute emails across all folders
             $folderNames = $allFolders.Keys
-            Write-ColoredOutput -Message "Randomly distributing $EmailCount emails across all folders ($($folderNames -join ', '))..." -Color Cyan
+            Write-ColoredOutput -Message "Randomly distributing $EmailCount emails across all folders ($($folderNames -join ', '))..."
 
             # Create random distribution array
             $folderDistribution = @{}
@@ -526,10 +524,10 @@ function New-PSTFileWithData {
                 $folderDistribution[$randomFolder]++
             # Display distribution
                         }
-            Write-ColoredOutput -Message "Email distribution plan:" -Color Cyan
+            Write-ColoredOutput -Message "Email distribution plan:"
             foreach ($folderName in $folderNames) {
                 $count = $folderDistribution[$folderName]
-                Write-ColoredOutput -Message "  $folderName`: $count emails" -Color DarkGray
+                Write-ColoredOutput -Message "  $folderName`: $count emails"
             }
 
             # Sample data arrays for email generation
@@ -564,11 +562,11 @@ function New-PSTFileWithData {
                 $emailsForThisFolder = $folderDistribution[$folderName]
 
                 if ($emailsForThisFolder -eq 0) {
-                    Write-ColoredOutput -Message "Skipping $folderName (no emails assigned)" -Color DarkGray
+                    Write-ColoredOutput -Message "Skipping $folderName (no emails assigned)"
                     continue
                 }
 
-                Write-ColoredOutput -Message "Creating $emailsForThisFolder emails for $folderName..." -Color Cyan
+                Write-ColoredOutput -Message "Creating $emailsForThisFolder emails for $folderName..."
                 $folderSuccessCount = 0
                 $targetFolder = $allFolders[$folderName]
 
@@ -669,7 +667,7 @@ function New-PSTFileWithData {
                                     }
                                 }
                                 catch {
-                                    Write-ColoredOutput -Message "  WARNING: Failed to add attachment to email $j in $folderName`: $($_.Exception.Message)" -Color Yellow
+                                    Write-ColoredOutput -Message "  WARNING: Failed to add attachment to email $j in $folderName`: $($_.Exception.Message)"
                                 }
                             }
                         # Save the email first
@@ -698,35 +696,35 @@ function New-PSTFileWithData {
                         }
 
                         if ($j % 5 -eq 0 -or $j -eq $emailsForThisFolder) {
-                            Write-ColoredOutput -Message "  Created email $j of $emailsForThisFolder for $folderName" -Color DarkGray
+                            Write-ColoredOutput -Message "  Created email $j of $emailsForThisFolder for $folderName"
                         }
                     }
                     catch {
-                        Write-ColoredOutput -Message "  WARNING: Failed to create email $j for $folderName`: $($_.Exception.Message)" -Color Yellow
+                        Write-ColoredOutput -Message "  WARNING: Failed to create email $j for $folderName`: $($_.Exception.Message)"
                     }
                 }
 
                 if ($folderSuccessCount -gt 0) {
-                    Write-ColoredOutput -Message "Successfully created $folderSuccessCount emails for $folderName" -Color Green
+                    Write-ColoredOutput -Message "Successfully created $folderSuccessCount emails for $folderName"
                 }
-            }            Write-ColoredOutput -Message "PST file creation completed: $FilePath" -Color Green
+            }            Write-ColoredOutput -Message "PST file creation completed: $FilePath"
 
             # Summary of what was created            Write-Output ""
-            Write-ColoredOutput -Message "=== Summary ===" -Color Green
-            Write-ColoredOutput -Message "✓ PST file created with folder structure" -Color Green
-            Write-ColoredOutput -Message "✓ $totalSuccessfulEmails of $EmailCount emails created and saved to PST folders" -Color Green
-            Write-ColoredOutput -Message "✓ Emails distributed across PST folders (not in default mailbox)" -Color Green
+            Write-ColoredOutput -Message "=== Summary ==="
+            Write-ColoredOutput -Message "[SUCCESS] PST file created with folder structure"
+            Write-ColoredOutput -Message "[SUCCESS] $totalSuccessfulEmails of $EmailCount emails created and saved to PST folders"
+            Write-ColoredOutput -Message "[SUCCESS] Emails distributed across PST folders (not in default mailbox)"
             if ($AttachmentPercentage -gt 0) {
                 $expectedAttachmentCount = [Math]::Ceiling($EmailCount * ($AttachmentPercentage / 100))
-                Write-ColoredOutput -Message "✓ Random attachments (2-5MB) added to approximately $AttachmentPercentage% of emails" -Color Green
+                Write-ColoredOutput -Message "[SUCCESS] Random attachments (2-5MB) added to approximately $AttachmentPercentage% of emails"
             }
             Write-Output ""
-            Write-ColoredOutput -Message "PST file ready for use: $FilePath" -Color Cyan
-            Write-ColoredOutput -Message "You can now import this PST file into Outlook or other applications" -Color Cyan
+            Write-ColoredOutput -Message "PST file ready for use: $FilePath"
+            Write-ColoredOutput -Message "You can now import this PST file into Outlook or other applications"
 
             # Clean up any remaining temporary attachment files
             if ($AttachmentPercentage -gt 0) {
-                Write-ColoredOutput -Message "Cleaning up temporary attachment files..." -Color DarkGray
+                Write-ColoredOutput -Message "Cleaning up temporary attachment files..."
                 try {
                     if (Test-Path -Path $AttachmentTempPath) {
                         $remainingFiles = Get-ChildItem -Path $AttachmentTempPath -File -ErrorAction SilentlyContinue
@@ -744,36 +742,36 @@ function New-PSTFileWithData {
                         $remainingItems = Get-ChildItem -Path $AttachmentTempPath -ErrorAction SilentlyContinue
                         if (-not $remainingItems) {
                             Remove-Item -Path $AttachmentTempPath -Force -ErrorAction SilentlyContinue
-                            Write-ColoredOutput -Message "Temporary attachment directory cleaned up" -Color DarkGray
+                            Write-ColoredOutput -Message "Temporary attachment directory cleaned up"
                         }
                     }
                 }
                 catch {
-                    Write-ColoredOutput -Message "WARNING: Could not fully clean up temporary attachment directory: $($_.Exception.Message)" -Color Yellow
+                    Write-ColoredOutput -Message "WARNING: Could not fully clean up temporary attachment directory: $($_.Exception.Message)"
                 }
             # Optional: Remove the PST from Outlook profile (keep file but remove from profile)
                         }
             # This prevents the test PST from remaining in the user's Outlook
-            Write-ColoredOutput -Message "Removing PST from Outlook profile (file remains on disk)..." -Color Cyan
+            Write-ColoredOutput -Message "Removing PST from Outlook profile (file remains on disk)..."
             try {
                 $namespace.RemoveStore($store.GetRootFolder())
-                Write-ColoredOutput -Message "PST removed from Outlook profile successfully" -Color Green
+                Write-ColoredOutput -Message "PST removed from Outlook profile successfully"
             }
             catch {
-                Write-ColoredOutput -Message "WARNING: Could not remove PST from profile: $($_.Exception.Message)" -Color Yellow
-                Write-ColoredOutput -Message "You may need to manually remove it from Outlook" -Color Yellow
+                Write-ColoredOutput -Message "WARNING: Could not remove PST from profile: $($_.Exception.Message)"
+                Write-ColoredOutput -Message "You may need to manually remove it from Outlook"
             }}        }
         else {
-            Write-ColoredOutput -Message "WHATIF: Would create PST file at $FilePath with $EmailCount emails randomly distributed across folders" -Color Magenta
+            Write-ColoredOutput -Message "WHATIF: Would create PST file at $FilePath with $EmailCount emails randomly distributed across folders"
             if ($AttachmentPercentage -gt 0) {
                 $expectedAttachmentCount = [Math]::Ceiling($EmailCount * ($AttachmentPercentage / 100))
-                Write-ColoredOutput -Message "WHATIF: Would add random attachments (2-5MB) to approximately $expectedAttachmentCount emails ($AttachmentPercentage%)" -Color Magenta
-                Write-ColoredOutput -Message "WHATIF: Would use temporary attachment directory: $AttachmentTempPath" -Color Magenta
+                Write-ColoredOutput -Message "WHATIF: Would add random attachments (2-5MB) to approximately $expectedAttachmentCount emails ($AttachmentPercentage%)"
+                Write-ColoredOutput -Message "WHATIF: Would use temporary attachment directory: $AttachmentTempPath"
             }
         }
     }
     catch {
-        Write-ColoredOutput -Message "ERROR: $($_.Exception.Message)" -Color Red
+        Write-ColoredOutput -Message "ERROR: $($_.Exception.Message)"
         throw
     }    finally {
         # Clean up COM objects - be more careful with cleanup order
@@ -819,17 +817,17 @@ function New-PSTFileWithData {
 # Main execution block
 try {
     # Initialize log file
-    Write-ColoredOutput -Message "=== New-FakePSTFile.ps1 Execution Started ===" -Color White
-    Write-ColoredOutput -Message "Script Version: 2.9.0" -Color White
-    Write-ColoredOutput -Message "Execution Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" -Color White
-    Write-ColoredOutput -Message "System: $systemName" -Color White
-    Write-ColoredOutput -Message "Log File: $logPath" -Color White
-    Write-ColoredOutput -Message "Target PST Path: $PSTPath" -Color White
-    Write-ColoredOutput -Message "Number of Emails: $EmailCount" -Color White
-    Write-ColoredOutput -Message "Attachment Percentage: $AttachmentPercentage%" -Color White
-    Write-ColoredOutput -Message "Attachment Temp Path: $AttachmentTempPath" -Color White
-    Write-ColoredOutput -Message "WhatIf Mode: $($PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf'])" -Color White
-    Write-ColoredOutput -Message "===========================================" -Color White
+    Write-ColoredOutput -Message "=== New-FakePSTFile.ps1 Execution Started ==="
+    Write-ColoredOutput -Message "Script Version: 2.9.2"
+    Write-ColoredOutput -Message "Execution Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
+    Write-ColoredOutput -Message "System: $systemName"
+    Write-ColoredOutput -Message "Log File: $logPath"
+    Write-ColoredOutput -Message "Target PST Path: $PSTPath"
+    Write-ColoredOutput -Message "Number of Emails: $EmailCount"
+    Write-ColoredOutput -Message "Attachment Percentage: $AttachmentPercentage%"
+    Write-ColoredOutput -Message "Attachment Temp Path: $AttachmentTempPath"
+    Write-ColoredOutput -Message "WhatIf Mode: $($PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf'])"
+    Write-ColoredOutput -Message "==========================================="
 
     # Validate parameters
     if ([string]::IsNullOrWhiteSpace($PSTPath)) {
@@ -843,10 +841,10 @@ try {
     # Check if PST file already exists
     if (Test-Path -Path $PSTPath) {
         if ($PSCmdlet.ShouldProcess($PSTPath, "Overwrite existing PST file")) {
-            Write-ColoredOutput -Message "WARNING: PST file already exists and will be overwritten: $PSTPath" -Color Yellow
+            Write-ColoredOutput -Message "WARNING: PST file already exists and will be overwritten: $PSTPath"
         }
         else {
-            Write-ColoredOutput -Message "WHATIF: Would overwrite existing PST file: $PSTPath" -Color Magenta
+            Write-ColoredOutput -Message "WHATIF: Would overwrite existing PST file: $PSTPath"
         }
     # Create the PST file with data
         }
@@ -856,19 +854,20 @@ try {
     $endTime = Get-Date
     $duration = $endTime - $startTime
 
-    Write-ColoredOutput -Message "=== Execution Completed Successfully ===" -Color Green
-    Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds" -Color Green
+    Write-ColoredOutput -Message "=== Execution Completed Successfully ==="
+    Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds"
 }
 catch {
     $endTime = Get-Date
     $duration = $endTime - $startTime
 
-    Write-ColoredOutput -Message "=== Execution Failed ===" -Color Red
-    Write-ColoredOutput -Message "ERROR: $($_.Exception.Message)" -Color Red
-    Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds" -Color Red
+    Write-ColoredOutput -Message "=== Execution Failed ==="
+    Write-ColoredOutput -Message "ERROR: $($_.Exception.Message)"
+    Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds"
 
     exit 1
 }
 finally {
-    Write-ColoredOutput -Message "Log file saved to: $logPath" -Color DarkGray
+    Write-ColoredOutput -Message "Log file saved to: $logPath"
 }
+
