@@ -32,7 +32,7 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$Username,
-    
+
     [Parameter(Mandatory=$true)]
     [string]$NewPassword
 )

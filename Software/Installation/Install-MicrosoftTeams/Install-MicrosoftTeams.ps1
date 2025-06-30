@@ -30,8 +30,8 @@ This script manages Microsoft Teams installation with these major functions:
    - Validates configuration files
    - Checks correct installation paths
 
-The script handles many common Teams installation issues, providing detailed feedback and 
-appropriate error handling. It supports PowerShell 5.1 and later versions and includes 
+The script handles many common Teams installation issues, providing detailed feedback and
+appropriate error handling. It supports PowerShell 5.1 and later versions and includes
 -WhatIf support for all actions.
 
 .PARAMETER None
@@ -53,15 +53,15 @@ function Uninstall-Teams {
     [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
     param()
     Write-Host 'Scanning for existing Microsoft Teams installations...' -ForegroundColor Cyan
-    
+
     # Track successful uninstalls
     $uninstallCount = 0
-    
+
     # First check running processes to ensure they're terminated before uninstallation
     Write-Host 'Checking for running Teams processes...' -ForegroundColor DarkGray
     try {
         $teamsProcesses = Get-Process -Name "*teams*" -ErrorAction SilentlyContinue
-        
+
         if ($teamsProcesses) {
             if ($PSCmdlet.ShouldProcess("Running Teams processes", "Terminate")) {
                 Write-Host "Found running Teams processes. Terminating..." -ForegroundColor Cyan
@@ -73,7 +73,7 @@ function Uninstall-Teams {
     catch {
         Write-Host "Error checking for Teams processes: $_" -ForegroundColor Red
     }
-    
+
     #region Registry-based uninstallation
     Write-Host 'Checking registry uninstall keys...' -ForegroundColor DarkGray
     $uninstallPaths = @(
@@ -109,14 +109,14 @@ function Uninstall-Teams {
         }
     }
     #endregion
-    
+
     #region Per-user Teams installations
     Write-Host 'Checking for per-user Teams installations...' -ForegroundColor DarkGray
     $teamsUserFolders = @(
         "$env:LOCALAPPDATA\Microsoft\Teams",
         "$env:APPDATA\Microsoft\Teams"
     )
-    
+
     foreach ($folder in $teamsUserFolders) {
         if (Test-Path -Path $folder) {
             if ($PSCmdlet.ShouldProcess("Teams folder: $folder", "Remove")) {
@@ -128,14 +128,14 @@ function Uninstall-Teams {
                         $processes | Stop-Process -Force -ErrorAction SilentlyContinue
                         Start-Sleep -Seconds 2
                     }
-                    
+
                     # Try to uninstall using Update.exe
                     $updateExe = Join-Path -Path $folder -ChildPath "Update.exe"
                     if (Test-Path -Path $updateExe) {
                         Write-Host "Running Teams uninstaller: $updateExe --uninstall" -ForegroundColor Cyan
                         Start-Process -FilePath $updateExe -ArgumentList "--uninstall" -Wait -ErrorAction SilentlyContinue
                     }
-                    
+
                     # Remove the folder
                     Write-Host "Removing Teams folder: $folder" -ForegroundColor Cyan
                     Remove-Item -Path $folder -Recurse -Force -ErrorAction Stop
@@ -149,7 +149,7 @@ function Uninstall-Teams {
         }
     }
     #endregion
-    
+
     #region AppX/Store version of Teams
     Write-Host 'Checking for Microsoft Store version of Teams...' -ForegroundColor DarkGray
     try {
@@ -158,17 +158,17 @@ function Uninstall-Teams {
             foreach ($app in $teamsAppx) {
                 if ($PSCmdlet.ShouldProcess("Microsoft Store Teams: $($app.Name) v$($app.Version)", "Remove")) {
                     Write-Host "Removing Microsoft Store Teams app: $($app.Name) v$($app.Version)" -ForegroundColor Cyan
-                    
+
                     # First terminate any running Teams processes from WindowsApps
-                    $teamsProcesses = Get-Process -Name "*Teams*" -ErrorAction SilentlyContinue | 
+                    $teamsProcesses = Get-Process -Name "*Teams*" -ErrorAction SilentlyContinue |
                                       Where-Object { $null -ne $_.Path -and $_.Path -like "*WindowsApps*" }
-                    
+
                     if ($teamsProcesses) {
                         Write-Host "  Terminating Teams processes from Windows Store..." -ForegroundColor Yellow
                         $teamsProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
                         Start-Sleep -Seconds 2
                     }
-                    
+
                     # Now remove the AppX package
                     Remove-AppxPackage -Package $app.PackageFullName -ErrorAction Stop
                     Write-Host "Successfully removed Microsoft Store Teams app." -ForegroundColor Green
@@ -183,21 +183,21 @@ function Uninstall-Teams {
         Write-Host "      Try running this script with 'Run as administrator'" -ForegroundColor Yellow
     }
     #endregion
-    
+
     #region WMI/CIM-based Teams detection
     Write-Host 'Checking for Teams installations via WMI/CIM...' -ForegroundColor DarkGray
     try {
-        $cimProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue | 
+        $cimProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue |
                        Where-Object { $_.Name -like "*Teams*" -or ($_.Vendor -like "*Microsoft*" -and $_.Name -like "*Teams*") }
-        
+
         foreach ($product in $cimProducts) {
             if ($PSCmdlet.ShouldProcess("WMI Product: $($product.Name) v$($product.Version)", "Uninstall")) {
                 Write-Host "Uninstalling Teams via WMI: $($product.Name) v$($product.Version)" -ForegroundColor Cyan
-                
+
                 try {
                     # Try using the IdentifyingNumber (equivalent to GUID)
                     $guid = $product.IdentifyingNumber
-                    
+
                     if ($guid) {
                         Start-Process -FilePath 'msiexec.exe' -ArgumentList "/x $guid /qn /norestart" -Wait
                         Write-Host "Successfully uninstalled Teams via WMI: $($product.Name)" -ForegroundColor Green
@@ -206,7 +206,7 @@ function Uninstall-Teams {
                     else {
                         # Alternative: use the Win32_Product.Uninstall() method
                         $result = $product | Invoke-CimMethod -MethodName "Uninstall"
-                        
+
                         if ($result.ReturnValue -eq 0) {
                             Write-Host "Successfully uninstalled Teams via WMI method: $($product.Name)" -ForegroundColor Green
                             $uninstallCount++
@@ -226,12 +226,12 @@ function Uninstall-Teams {
         Write-Host "Error accessing WMI product information: $_" -ForegroundColor Red
     }
     #endregion
-    
+
     #region Process-based Teams detection
     Write-Host 'Checking for running Teams processes...' -ForegroundColor DarkGray
     try {
         $teamsProcesses = Get-Process -Name "*teams*" -ErrorAction SilentlyContinue
-        
+
         if ($teamsProcesses) {
             if ($PSCmdlet.ShouldProcess("Running Teams processes", "Terminate")) {
                 Write-Host "Found running Teams processes. Terminating..." -ForegroundColor Cyan
@@ -240,34 +240,34 @@ function Uninstall-Teams {
                         # Get process details
                         $processPath = $_.Path
                         $processVersion = $null
-                        
+
                         if ($processPath -and (Test-Path -Path $processPath)) {
                             # Get version information
                             $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($processPath)
                             $processVersion = $fileInfo.FileVersion
-                            
+
                             Write-Host "Found Teams process: $processPath (Version $processVersion)" -ForegroundColor Cyan
-                            
+
                             # Stop the process
                             $_ | Stop-Process -Force
                             Write-Host "Process terminated" -ForegroundColor Yellow
-                            
+
                             # Check if this is from a directory we haven't seen yet
                             $processDir = Split-Path -Parent $processPath
                             $parentDir = Split-Path -Parent $processDir
-                            
+
                             # If this is a unique directory not in our lists, try to remove it
-                            if ((Test-Path -Path $parentDir) -and 
+                            if ((Test-Path -Path $parentDir) -and
                                 ($parentDir -like "*Teams*" -or $processDir -like "*Teams*") -and
-                                ($parentDir -notlike "$env:LOCALAPPDATA\Microsoft\Teams*") -and 
+                                ($parentDir -notlike "$env:LOCALAPPDATA\Microsoft\Teams*") -and
                                 ($parentDir -notlike "$env:APPDATA\Microsoft\Teams*") -and
                                 ($parentDir -notlike "${env:ProgramFiles}\Microsoft\Teams*") -and
                                 ($parentDir -notlike "${env:ProgramFiles(x86)}\Microsoft\Teams*") -and
                                 ($parentDir -notlike "$env:ProgramData\Microsoft\Teams*")) {
-                                
+
                                 # Wait a moment for process resources to release
                                 Start-Sleep -Seconds 2
-                                
+
                                 if ($PSCmdlet.ShouldProcess("Teams directory: $parentDir", "Remove")) {
                                     try {
                                         Write-Host "Attempting to remove Teams directory: $parentDir" -ForegroundColor Cyan
@@ -293,7 +293,7 @@ function Uninstall-Teams {
         Write-Host "Error checking for Teams processes: $_" -ForegroundColor Red
     }
     #endregion
-    
+
     #region Check common installation directories
     Write-Host 'Checking common Teams installation directories...' -ForegroundColor DarkGray
     $teamsCommonLocations = @(
@@ -301,7 +301,7 @@ function Uninstall-Teams {
         "${env:ProgramFiles(x86)}\Microsoft\Teams",
         "$env:ProgramData\Microsoft\Teams"
     )
-    
+
     foreach ($location in $teamsCommonLocations) {
         if (Test-Path -Path $location) {
             if ($PSCmdlet.ShouldProcess("Teams directory: $location", "Remove")) {
@@ -312,7 +312,7 @@ function Uninstall-Teams {
                         Write-Host "Running Teams uninstaller: $($uninstaller.FullName)" -ForegroundColor Cyan
                         Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S", "/Silent", "/Q", "/quiet", "/qn", "/norestart" -Wait -ErrorAction SilentlyContinue
                     }
-                    
+
                     # Remove the directory
                     Write-Host "Removing Teams directory: $location" -ForegroundColor Cyan
                     Remove-Item -Path $location -Recurse -Force -ErrorAction Stop
@@ -326,25 +326,25 @@ function Uninstall-Teams {
         }
     }
     #endregion
-    
+
     #region Check WindowsApps directory (Store apps)
     Write-Host 'Checking Windows Store apps directory for Teams...' -ForegroundColor DarkGray
     $windowsAppsPath = "${env:ProgramFiles}\WindowsApps"
-    
+
     if (Test-Path -Path $windowsAppsPath) {
         try {
             $teamsWindowsAppDirs = Get-ChildItem -Path $windowsAppsPath -Directory -Filter "*Teams*" -ErrorAction SilentlyContinue
-            
+
             if ($teamsWindowsAppDirs) {
                 foreach ($dir in $teamsWindowsAppDirs) {
                     Write-Host "Found Windows Store Teams installation: $($dir.FullName)" -ForegroundColor Cyan
                     Write-Host "NOTE: Windows Store apps are protected and require special handling." -ForegroundColor Yellow
                     Write-Host "      Try removing via Settings > Apps > Apps & features" -ForegroundColor Yellow
-                    
+
                     # Try to get the AppX package for this directory
                     $packageName = ($dir.Name -split '_')[0]
                     $teamsAppx = Get-AppxPackage -Name "*$packageName*" -ErrorAction SilentlyContinue
-                    
+
                     if ($teamsAppx -and $PSCmdlet.ShouldProcess("Windows Store Teams: $($teamsAppx.Name)", "Remove")) {
                         Write-Host "Attempting to remove Windows Store Teams package: $($teamsAppx.Name)" -ForegroundColor Cyan
                         try {
@@ -367,14 +367,14 @@ function Uninstall-Teams {
         }
     }
     #endregion
-    
+
     #region Shortcut-based Teams detection
     Write-Host 'Checking for Teams shortcuts...' -ForegroundColor DarkGray
     $startMenuPaths = @(
         "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
         "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
     )
-    
+
     $teamsShortcuts = @()
     foreach ($startMenuPath in $startMenuPaths) {
         try {
@@ -387,33 +387,33 @@ function Uninstall-Teams {
             Write-Host "Error accessing shortcuts in $startMenuPath" -ForegroundColor DarkGray
         }
     }
-    
+
     foreach ($shortcut in $teamsShortcuts) {
         if ($PSCmdlet.ShouldProcess("Teams shortcut: $($shortcut.FullName)", "Remove")) {
             try {
                 # Get the target of the shortcut
                 $shell = New-Object -ComObject WScript.Shell
                 $shortcutTarget = $shell.CreateShortcut($shortcut.FullName).TargetPath
-                
+
                 # Check if the target exists and looks like a Teams executable
                 if (Test-Path $shortcutTarget) {
                     $targetInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($shortcutTarget)
-                    
+
                     if ($targetInfo.ProductName -like "*Teams*" -or $targetInfo.FileDescription -like "*Teams*") {
                         Write-Host "Found Teams shortcut target: $shortcutTarget (Version $($targetInfo.FileVersion))" -ForegroundColor Cyan
-                        
+
                         # Check if this is a directory we haven't processed yet
                         $targetDir = Split-Path -Parent $shortcutTarget
                         $parentDir = Split-Path -Parent $targetDir
-                        
-                        if ((Test-Path -Path $parentDir) -and 
+
+                        if ((Test-Path -Path $parentDir) -and
                             ($parentDir -like "*Teams*" -or $targetDir -like "*Teams*") -and
-                            ($parentDir -notlike "$env:LOCALAPPDATA\Microsoft\Teams*") -and 
+                            ($parentDir -notlike "$env:LOCALAPPDATA\Microsoft\Teams*") -and
                             ($parentDir -notlike "$env:APPDATA\Microsoft\Teams*") -and
                             ($parentDir -notlike "${env:ProgramFiles}\Microsoft\Teams*") -and
                             ($parentDir -notlike "${env:ProgramFiles(x86)}\Microsoft\Teams*") -and
                             ($parentDir -notlike "$env:ProgramData\Microsoft\Teams*")) {
-                            
+
                             if ($PSCmdlet.ShouldProcess("Teams directory: $parentDir", "Remove")) {
                                 try {
                                     # First try to stop any related processes
@@ -423,7 +423,7 @@ function Uninstall-Teams {
                                         $processes | Stop-Process -Force -ErrorAction SilentlyContinue
                                         Start-Sleep -Seconds 2
                                     }
-                                    
+
                                     # Now remove the directory
                                     Write-Host "Removing Teams directory: $parentDir" -ForegroundColor Cyan
                                     Remove-Item -Path $parentDir -Recurse -Force -ErrorAction Stop
@@ -437,7 +437,7 @@ function Uninstall-Teams {
                         }
                     }
                 }
-                
+
                 # Remove the shortcut itself
                 Write-Host "Removing Teams shortcut: $($shortcut.FullName)" -ForegroundColor Cyan
                 Remove-Item -Path $shortcut.FullName -Force -ErrorAction Stop
@@ -449,14 +449,14 @@ function Uninstall-Teams {
         }
     }
     #endregion
-    
+
     # Final status
     if ($uninstallCount -eq 0) {
         Write-Host 'No Microsoft Teams installations found.' -ForegroundColor Yellow
-        
+
         # Perform additional detection similar to verification phase
         Write-Host 'Running additional detection methods...' -ForegroundColor Cyan
-        
+
         # Check AppX Packages again (sometimes they need special handling)
         try {
             $teamsAppx = Get-AppxPackage -Name "*MicrosoftTeams*" -ErrorAction SilentlyContinue
@@ -465,7 +465,7 @@ function Uninstall-Teams {
                 Write-Host "       Try running this script again with administrator privileges" -ForegroundColor Yellow
             }
         } catch { }
-        
+
         # Check for Teams in processes
         try {
             $teamsProcesses = Get-Process -Name "*Teams*" -ErrorAction SilentlyContinue | Where-Object { $null -ne $_.Path }
@@ -477,7 +477,7 @@ function Uninstall-Teams {
                 }
             }
         } catch { }
-        
+
         # Check WindowsApps folder which requires admin access
         if (Test-Path -Path "$env:ProgramFiles\WindowsApps") {
             Write-Host "NOTE: The Windows Store apps folder exists but may require administrator privileges to access" -ForegroundColor Yellow
@@ -486,7 +486,7 @@ function Uninstall-Teams {
     else {
         Write-Host "Successfully uninstalled/removed $uninstallCount Teams components." -ForegroundColor Green
     }
-    
+
     # Give the system a moment to finalize uninstallation
     Start-Sleep -Seconds 3
 }
@@ -494,23 +494,25 @@ function Uninstall-Teams {
 function Install-Teams {
     [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
     param()
-    
+
     $tempDir = [System.IO.Path]::GetTempPath()
     $osArch = Get-SystemArchitecture
     $exeInstallerPath = Join-Path -Path $tempDir -ChildPath "Teams_windows_$osArch.exe"
     $downloadSuccess = $false
-    
+
     if ($PSCmdlet.ShouldProcess('Download Microsoft Teams', "Download latest installer")) {
         # Use the current Teams EXE installer URL (updated for 2025)
         # Microsoft periodically changes the Teams download URLs and link IDs
         $teamsExeUrl = "https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=$osArch&managedInstaller=true&download=true"
         $teamsExeFallbackUrl = if ($osArch -eq "x64") {
-            "https://go.microsoft.com/fwlink/?linkid=2187327" # 64-bit link
+            # 64-bit link
+                        "https://go.microsoft.com/fwlink/?linkid=2187327"
         } else {
-            "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+            # 32-bit link
+                        "https://go.microsoft.com/fwlink/?linkid=2187323"
         }
         $teamsExeBackupUrl = "https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=$osArch&download=true"
-        
+
         # Try direct exe download first
         Write-Host "Downloading Microsoft Teams EXE installer..." -ForegroundColor Cyan
         try {
@@ -527,7 +529,7 @@ function Install-Teams {
         }
         catch {
             Write-Host "Error with primary download URL: $($_.Exception.Message)" -ForegroundColor Yellow
-            
+
             # Try fallback URL
             Write-Host "Trying fallback download URL..." -ForegroundColor Cyan
             try {
@@ -542,7 +544,7 @@ function Install-Teams {
             }
             catch {
                 Write-Host "Error downloading Teams EXE installer: $_" -ForegroundColor Red
-                  
+
                 # Try the third/backup URL as a last resort
                 Write-Host "Trying backup download URL..." -ForegroundColor Cyan
                 try {
@@ -564,15 +566,15 @@ function Install-Teams {
                 }
             }        }
     }
-    
+
     if (-not $downloadSuccess) {
         Write-Host "Unable to download a valid Teams installer. Installation aborted." -ForegroundColor Red
         return
     }
-    
+
     if ($PSCmdlet.ShouldProcess('Install Microsoft Teams', "Install using $exeInstallerPath")) {
         Write-Host "Installing Microsoft Teams silently..." -ForegroundColor Cyan
-        
+
         # Verify the downloaded file is valid
         try {
             # Check if the file exists
@@ -580,16 +582,16 @@ function Install-Teams {
                 Write-Host "ERROR: Installer file not found at $exeInstallerPath" -ForegroundColor Red
                 return
             }
-            
+
             # Get file information
             $fileSize = (Get-Item -Path $exeInstallerPath).Length
             Write-Host "Installer file size: $([math]::Round($fileSize / 1MB, 2)) MB" -ForegroundColor DarkGray
-                
+
             if ($fileSize -lt 1MB) {
                 Write-Host "ERROR: The installer file appears to be too small and may be corrupted" -ForegroundColor Red
                 return
             }
-            
+
             # Check file signature if available
             $signature = Get-AuthenticodeSignature -FilePath $exeInstallerPath -ErrorAction SilentlyContinue
             if ($signature) {
@@ -598,19 +600,19 @@ function Install-Teams {
                     Write-Host "WARNING: The installer does not have a valid signature. Proceeding with caution." -ForegroundColor Yellow
                 }
             }
-            
+
             # Handle both EXE and MSI formats (in case the download returned an MSI)
             $installerExtension = [System.IO.Path]::GetExtension($exeInstallerPath).ToLower()
             $installerArguments = ""
-            
+
             if ($installerExtension -eq ".exe") {
                 $installerArguments = "--silent"
-                
+
                 # Remove incompatible files if they exist
                 if (Test-Path -Path "$exeInstallerPath.old") {
                     Remove-Item -Path "$exeInstallerPath.old" -Force -ErrorAction SilentlyContinue
                 }
-                
+
                 Write-Host "Using EXE installer with silent arguments" -ForegroundColor DarkGray
                   # Check if the EXE is compatible with this system
                 try {
@@ -621,15 +623,15 @@ function Install-Teams {
                     $pinfo.RedirectStandardOutput = $true
                     $pinfo.UseShellExecute = $false
                     $pinfo.CreateNoWindow = $true
-                    
+
                     $process = New-Object System.Diagnostics.Process
                     $process.StartInfo = $pinfo
-                    
+
                     try {
                         # Try to start the process just to verify compatibility
                         [void]$process.Start()
                         $process.Kill()
-                        
+
                         # If we get here, the file is compatible
                         Write-Host "EXE installer format compatibility verified" -ForegroundColor Green
                     }
@@ -638,30 +640,31 @@ function Install-Teams {
                             # Error 193: Not a valid Win32 application - incompatible bitness
                             Write-Host "ERROR: The installer is not compatible with this OS platform (Error 193)" -ForegroundColor Red
                             Write-Host "This typically indicates an architecture mismatch (e.g., trying to run 64-bit EXE on 32-bit Windows)" -ForegroundColor Yellow
-                            
+
                             # Always download the x86 installer as a fallback
                             $correctArch = "x86"
                             Write-Host "Attempting to download $correctArch installer instead..." -ForegroundColor Cyan
-                            
+
                             $correctUrl = "https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=$correctArch&download=true"
                             $correctInstallerPath = Join-Path -Path $tempDir -ChildPath "Teams_windows_$correctArch.exe"
-                            
+
                             try {
                                 # Try direct download for x86
                                 $webClient = New-Object System.Net.WebClient
                                 $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                                 $webClient.DownloadFile($correctUrl, $correctInstallerPath)
-                                
+
                                 if ((Test-Path -Path $correctInstallerPath) -and ((Get-Item -Path $correctInstallerPath).Length -gt 10MB)) {
                                     Write-Host "Successfully downloaded alternative architecture Teams installer" -ForegroundColor Green
                                     $exeInstallerPath = $correctInstallerPath
                                 }
                                 else {
                                     # Try fallback link for x86
-                                    $fallbackX86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                                    # 32-bit link
+                                                                        $fallbackX86Url = "https://go.microsoft.com/fwlink/?linkid=2187323"
                                     Write-Host "Trying fallback link for x86..." -ForegroundColor Yellow
                                     $webClient.DownloadFile($fallbackX86Url, $correctInstallerPath)
-                                    
+
                                     if ((Test-Path -Path $correctInstallerPath) -and ((Get-Item -Path $correctInstallerPath).Length -gt 10MB)) {
                                         Write-Host "Successfully downloaded x86 Teams installer from fallback link" -ForegroundColor Green
                                         $exeInstallerPath = $correctInstallerPath
@@ -670,17 +673,18 @@ function Install-Teams {
                                     }
                                 }
                             }
-                            catch {                                
+                            catch {
                                 Write-Host "Failed to download alternative installer: $_" -ForegroundColor Red
                                 Write-Host "Attempting to extract installer from MSI package..." -ForegroundColor Yellow
-                                
+
                                 # Try using MSI as a last resort
-                                $msiUrl = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                                # 32-bit link
+                                                                $msiUrl = "https://go.microsoft.com/fwlink/?linkid=2187323"
                                 $msiPath = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86.msi"
-                                
+
                                 try {
                                     Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing
-                                    
+
                                     if ((Test-Path -Path $msiPath) -and ((Get-Item -Path $msiPath).Length -gt 10MB)) {
                                         Write-Host "Successfully downloaded Teams MSI installer" -ForegroundColor Green
                                         $exeInstallerPath = $msiPath
@@ -697,14 +701,15 @@ function Install-Teams {
                         else {
                             Write-Host "WARNING: Installer compatibility check failed: $($_.Exception.Message)" -ForegroundColor Yellow
                             Write-Host "Will try to download x86 version as fallback..." -ForegroundColor Yellow
-                            
+
                             # Force x86 download
-                            $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                            # 32-bit link
+                                                        $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323"
                             $x86Path = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86.exe"
-                            
+
                             try {
                                 Invoke-WebRequest -Uri $x86Url -OutFile $x86Path -UseBasicParsing
-                                
+
                                 if ((Test-Path -Path $x86Path) -and ((Get-Item -Path $x86Path).Length -gt 10MB)) {
                                     Write-Host "Successfully downloaded x86 Teams installer" -ForegroundColor Green
                                     $exeInstallerPath = $x86Path
@@ -721,14 +726,15 @@ function Install-Teams {
                 catch {
                     Write-Host "WARNING: Installer compatibility check failed: $_" -ForegroundColor Yellow
                     Write-Host "Will try to download x86 version as fallback..." -ForegroundColor Yellow
-                    
+
                     # Force x86 download
-                    $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                    # 32-bit link
+                                        $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323"
                     $x86Path = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86.exe"
-                    
+
                     try {
                         Invoke-WebRequest -Uri $x86Url -OutFile $x86Path -UseBasicParsing
-                        
+
                         if ((Test-Path -Path $x86Path) -and ((Get-Item -Path $x86Path).Length -gt 10MB)) {
                             Write-Host "Successfully downloaded x86 Teams installer" -ForegroundColor Green
                             $exeInstallerPath = $x86Path
@@ -748,28 +754,28 @@ function Install-Teams {
                 }
                 catch {
                     Write-Host "Error during Teams installation: $_" -ForegroundColor Red
-                    
+
                     # Try alternative installer approach by extracting and using the embedded MSI
                     try {
                         Write-Host "Trying to extract MSI from EXE installer..." -ForegroundColor Yellow
                         $extractDir = Join-Path -Path $tempDir -ChildPath "TeamsExtract"
-                        
+
                         # Create extraction directory if it doesn't exist
                         if (-not (Test-Path -Path $extractDir)) {
                             New-Item -Path $extractDir -ItemType Directory -Force | Out-Null
                         }
-                        
+
                         # Try to extract with /extract parameter (common for many installers)
                         Write-Host "Attempting to extract installer contents..." -ForegroundColor Cyan
                         Start-Process -FilePath $exeInstallerPath -ArgumentList "/extract:`"$extractDir`"", "/quiet" -Wait -NoNewWindow
 
                         # Look for MSI files in extract directory
                         $msiFiles = Get-ChildItem -Path $extractDir -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
-                        
+
                         if ($msiFiles.Count -gt 0) {
                             $msiPath = $msiFiles[0].FullName
                             Write-Host "Found MSI file: $msiPath" -ForegroundColor Green
-                            
+
                             # Install using the extracted MSI
                             Write-Host "Installing Teams using extracted MSI..." -ForegroundColor Cyan
                             $msiArgs = "/i `"$msiPath`" /qn /norestart ALLUSERS=1"
@@ -778,14 +784,15 @@ function Install-Teams {
                         else {
                             # Try the x86 direct download link as a last resort
                             Write-Host "No MSI found. Trying direct download of x86 teams..." -ForegroundColor Yellow
-                            $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323" # 32-bit link
+                            # 32-bit link
+                                                        $x86Url = "https://go.microsoft.com/fwlink/?linkid=2187323"
                             $x86Path = Join-Path -Path $tempDir -ChildPath "Teams_windows_x86_direct.exe"
-                            
+
                             try {
                                 $webClient = New-Object System.Net.WebClient
                                 $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                                 $webClient.DownloadFile($x86Url, $x86Path)
-                                
+
                                 if ((Test-Path -Path $x86Path) -and ((Get-Item -Path $x86Path).Length -gt 10MB)) {
                                     Write-Host "Successfully downloaded x86 Teams installer" -ForegroundColor Green
                                     $process = Start-Process -FilePath $x86Path -ArgumentList "--silent" -Wait -PassThru -NoNewWindow
@@ -809,7 +816,7 @@ function Install-Teams {
                 # If we somehow got an MSI file instead of EXE
                 Write-Host "Detected MSI installer format, using MSI installation method" -ForegroundColor Yellow
                 $installerArguments = "/i `"$exeInstallerPath`" /qn /norestart ALLUSERS=1"
-                
+
                 try {
                     Write-Host "Using MSI installer with silent arguments" -ForegroundColor DarkGray
                     Write-Host "Running: msiexec.exe $installerArguments" -ForegroundColor Cyan
@@ -817,7 +824,7 @@ function Install-Teams {
                 }
                 catch {
                     Write-Host "Error during Teams MSI installation: $_" -ForegroundColor Red
-                    
+
                     # Try an alternative MSI installation approach
                     try {
                         Write-Host "Trying alternative MSI installation method..." -ForegroundColor Yellow
@@ -843,7 +850,7 @@ function Install-Teams {
                     throw "Teams generic installation failed"
                 }
             }
-            
+
             if ($process.ExitCode -eq 0) {
                 Write-Host "Microsoft Teams installed successfully." -ForegroundColor Green
             }
@@ -870,25 +877,25 @@ function Install-Teams {
         }
         catch {
             Write-Host "Error installing Microsoft Teams: $_" -ForegroundColor Red
-            
+
             # Attempt to provide more detailed diagnostics
             Write-Host "Performing additional diagnostics..." -ForegroundColor Cyan
-            
+
             # Check if the file exists
             if (-not (Test-Path -Path $exeInstallerPath)) {
                 Write-Host "ERROR: The installer file no longer exists at $exeInstallerPath" -ForegroundColor Red
                 return
             }
-            
+
             # Verify file is not corrupted
             try {
                 $fileSize = (Get-Item -Path $exeInstallerPath).Length
                 Write-Host "Installer file size: $([math]::Round($fileSize / 1MB, 2)) MB" -ForegroundColor DarkGray
-                
+
                 if ($fileSize -lt 1MB) {
                     Write-Host "ERROR: The installer file appears to be too small and may be corrupted" -ForegroundColor Red
                     return                }
-                
+
                 # Check file signature if available
                 $signature = Get-AuthenticodeSignature -FilePath $exeInstallerPath -ErrorAction SilentlyContinue
                 if ($signature) {
@@ -897,34 +904,34 @@ function Install-Teams {
                         Write-Host "WARNING: The installer does not have a valid signature" -ForegroundColor Yellow
                     }
                 }
-                
+
                 # Try alternate installation method as a last resort
                 Write-Host "Attempting alternate installation method..." -ForegroundColor Cyan
-                
+
                 # Try using the alternate architecture as a fallback
                 $alternateArch = if ($osArch -eq "x64") { "x86" } else { "x64" }
                 Write-Host "Attempting to download $alternateArch installer as a fallback..." -ForegroundColor Cyan
-                
+
                 $alternateUrl = "https://teams.microsoft.com/downloads/desktopurl?env=production&plat=windows&arch=$alternateArch&download=true"
                 $alternateInstallerPath = Join-Path -Path $tempDir -ChildPath "Teams_windows_$alternateArch.exe"
-                
+
                 try {
                     Invoke-WebRequest -Uri $alternateUrl -OutFile $alternateInstallerPath -UseBasicParsing
-                    
+
                     if ((Test-Path -Path $alternateInstallerPath) -and ((Get-Item -Path $alternateInstallerPath).Length -gt 10MB)) {
                         Write-Host "Successfully downloaded alternative architecture Teams installer" -ForegroundColor Green
-                        
+
                         # Try installing with the alternate architecture
                         Write-Host "Attempting installation with $alternateArch installer..." -ForegroundColor Cyan
                         Start-Process -FilePath $alternateInstallerPath -ArgumentList "--silent" -Wait -NoNewWindow
-                        
+
                         # Check if Teams is now installed
                         $possibleTeamsPaths = @(
                             "$env:LOCALAPPDATA\Microsoft\Teams\current\Teams.exe",
                             "${env:ProgramFiles}\Microsoft\Teams\current\Teams.exe",
                             "${env:ProgramFiles(x86)}\Microsoft\Teams\current\Teams.exe"
                         )
-                        
+
                         $teamsInstalled = $false
                         foreach ($path in $possibleTeamsPaths) {
                             if (Test-Path -Path $path) {
@@ -933,7 +940,7 @@ function Install-Teams {
                                 break
                             }
                         }
-                        
+
                         if (-not $teamsInstalled) {
                             Write-Host "Alternative architecture installation attempt completed, but Teams installation could not be verified." -ForegroundColor Yellow
                         }
@@ -944,11 +951,11 @@ function Install-Teams {
                 }
                 catch {
                     Write-Host "Error with alternative architecture installation: $_" -ForegroundColor Red
-                    
+
                     # Try copying to a new location with .new extension and execute from there
                     $newInstallerPath = "$exeInstallerPath.new"
                     Copy-Item -Path $exeInstallerPath -Destination $newInstallerPath -Force
-                    
+
                     if (Test-Path -Path $newInstallerPath) {
                         Write-Host "Executing installer from alternate location: $newInstallerPath" -ForegroundColor Yellow
                         # Start process without waiting, just to get it going
@@ -966,13 +973,13 @@ function Install-Teams {
 function Test-TeamsInstallationHealth {
     Write-Host "Performing additional Teams installation health checks..." -ForegroundColor Cyan
     $healthStatus = $true
-    
+
     # Check if Teams process starts properly
     try {
         $teamsPath = "$env:LOCALAPPDATA\Microsoft\Teams\current\Teams.exe"
         if (Test-Path -Path $teamsPath) {
             Write-Host "Found Teams executable at $teamsPath" -ForegroundColor Green
-            
+
             # Check if Teams is already running
             $teamsProcesses = Get-Process -Name "Teams" -ErrorAction SilentlyContinue
             if (-not $teamsProcesses) {
@@ -983,14 +990,14 @@ function Test-TeamsInstallationHealth {
                     $startInfo.FileName = $teamsPath
                     $startInfo.Arguments = "--processStart ""Teams.exe"""
                     $startInfo.UseShellExecute = $true
-                    
+
                     # Start the process
                     $proc = [System.Diagnostics.Process]::Start($startInfo)
                     Start-Sleep -Seconds 5
-                    
+
                     if ($proc) {
                         Write-Host "Teams process started successfully" -ForegroundColor Green
-                        
+
                         # Try gracefully closing Teams
                         try {
                             $runningTeams = Get-Process -Name "Teams" -ErrorAction SilentlyContinue
@@ -1031,19 +1038,19 @@ function Test-TeamsInstallationHealth {
         Write-Host "Error testing Teams process: $_" -ForegroundColor Red
         $healthStatus = $false
     }
-    
+
     # Check for Teams configuration files
     try {
         $configPath = "$env:APPDATA\Microsoft\Teams"
         if (Test-Path -Path $configPath) {
             Write-Host "Teams configuration directory found at $configPath" -ForegroundColor Green
-            
+
             # Look for essential configuration files
             $configFiles = @(
                 "desktop-config.json",
                 "storage.json"
             )
-            
+
             foreach ($file in $configFiles) {
                 $filePath = Join-Path -Path $configPath -ChildPath $file
                 if (Test-Path -Path $filePath) {
@@ -1061,13 +1068,13 @@ function Test-TeamsInstallationHealth {
     catch {
         Write-Host "Error checking Teams configuration: $_" -ForegroundColor Red
     }
-    
+
     return $healthStatus
 }
 
 function Stop-TeamsProcesses {
     Write-Host "Checking for running Teams processes..." -ForegroundColor Cyan
-    
+
     # List of process names associated with Teams
     $teamsProcessNames = @(
         "Teams",
@@ -1076,7 +1083,7 @@ function Stop-TeamsProcesses {
         "TeamsUpdate",
         "Update"
     )
-    
+
     $processCount = 0
     foreach ($processName in $teamsProcessNames) {
         $processes = Get-Process -Name $processName -ErrorAction SilentlyContinue
@@ -1088,13 +1095,13 @@ function Stop-TeamsProcesses {
                     # Use CloseMainWindow but don't need to capture return value
                     $process.CloseMainWindow() | Out-Null
                     Start-Sleep -Seconds 2
-                    
+
                     # If still running, force kill
                     if (-not $process.HasExited) {
                         Write-Host "Forcefully stopping $($process.Name) (PID: $($process.Id))..." -ForegroundColor Yellow
                         Stop-Process -Id $process.Id -Force -ErrorAction Stop
                     }
-                    
+
                     Write-Host "Successfully stopped $($process.Name) process" -ForegroundColor Green
                     $processCount++
                 }
@@ -1104,7 +1111,7 @@ function Stop-TeamsProcesses {
             }
         }
     }
-    
+
     # Double-check for any remaining processes
     $remainingProcessCount = 0
     foreach ($processName in $teamsProcessNames) {
@@ -1113,7 +1120,7 @@ function Stop-TeamsProcesses {
             $remainingProcessCount += $remaining.Count
         }
     }
-    
+
     if ($remainingProcessCount -gt 0) {
         Write-Host "WARNING: $remainingProcessCount Teams processes could not be stopped" -ForegroundColor Red
         return $false
@@ -1132,7 +1139,7 @@ function Stop-TeamsProcesses {
 function Get-SystemArchitecture {
     # Detect system architecture and return OS-specific info
     $osArch = "x64"
-    
+
     # Start with basic OS architecture detection
     if (-not [Environment]::Is64BitOperatingSystem) {
         $osArch = "x86"
@@ -1140,25 +1147,25 @@ function Get-SystemArchitecture {
     } else {
         Write-Host "Detected 64-bit operating system" -ForegroundColor DarkGray
     }
-    
+
     # Check if we're running in a 32-bit process on 64-bit OS
     if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) {
         Write-Host "Running in 32-bit process on 64-bit OS" -ForegroundColor Yellow
         # For Teams, we should use x86 installer in this case
         $osArch = "x86"
     }
-    
+
     # Additional architecture detection
     try {
         $procArch = $env:PROCESSOR_ARCHITECTURE
         Write-Host "Processor architecture: $procArch" -ForegroundColor DarkGray
         $osVersion = [Environment]::OSVersion.Version
         Write-Host "OS Version: $($osVersion.Major).$($osVersion.Minor) (Build $($osVersion.Build))" -ForegroundColor DarkGray
-        
+
         # Check if running in WOW64 (Windows 32-bit on Windows 64-bit)
         if (Test-Path -Path "$env:SystemRoot\SysWOW64") {
             Write-Host "System has WOW64 subsystem" -ForegroundColor DarkGray
-            
+
             # Detect if process is running in 32-bit mode on 64-bit Windows
             if ($null -ne $env:PROCESSOR_ARCHITEW6432) {
                 Write-Host "Current process is running under WOW64 emulation" -ForegroundColor Yellow
@@ -1168,7 +1175,7 @@ function Get-SystemArchitecture {
                 Write-Host "Adjusting download architecture to x86 due to WOW64 process" -ForegroundColor Yellow
             }
         }
-        
+
         # Double-check bit process vs OS architecture
         if ([IntPtr]::Size -eq 4) {
             # Running in 32-bit process
@@ -1178,10 +1185,10 @@ function Get-SystemArchitecture {
     } catch {
         Write-Host "Error detecting detailed system architecture: $_" -ForegroundColor DarkGray
         # Default to x86 in case of detection errors
-        $osArch = "x86" 
+        $osArch = "x86"
         Write-Host "Defaulting to x86 architecture due to detection error" -ForegroundColor Yellow
     }
-    
+
     Write-Host "Using $osArch architecture for Teams installer" -ForegroundColor Cyan
     return $osArch
 }
@@ -1227,8 +1234,8 @@ foreach ($path in $uninstallPaths) {
 
 # Check WMI/CIM for Teams
 try {
-    $cimProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue | 
-                   Where-Object { $_.Name -like "*Teams*" -or ($_.Vendor -like "*Microsoft*" -and $_.Name -like "*Teams*") }    
+    $cimProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -like "*Teams*" -or ($_.Vendor -like "*Microsoft*" -and $_.Name -like "*Teams*") }
     foreach ($product in $cimProducts) {
         Write-Host "Microsoft Teams found in WMI: $($product.Name) v$($product.Version)" -ForegroundColor Green
         $script:teamsInstalled = $true
@@ -1260,8 +1267,8 @@ $teamsLocations = @(
 
 foreach ($location in $teamsLocations) {
     if (Test-Path -Path $location) {
-        $exeFiles = Get-ChildItem -Path $location -Filter "Teams*.exe" -Recurse -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } | 
+        $exeFiles = Get-ChildItem -Path $location -Filter "Teams*.exe" -Recurse -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } |
                     Select-Object -First 1
           if ($exeFiles) {
             $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exeFiles[0].FullName)
@@ -1277,10 +1284,10 @@ foreach ($location in $teamsLocations) {
 # Check for per-user installation
 $perUserPath = "$env:LOCALAPPDATA\Microsoft\Teams"
 if (Test-Path -Path $perUserPath) {
-    $exeFiles = Get-ChildItem -Path $perUserPath -Filter "Teams*.exe" -Recurse -ErrorAction SilentlyContinue | 
-                Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } | 
+    $exeFiles = Get-ChildItem -Path $perUserPath -Filter "Teams*.exe" -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } |
                 Select-Object -First 1
-    
+
     if ($exeFiles) {
         $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exeFiles[0].FullName)
         Write-Host "Microsoft Teams found (per-user installation): $($exeFiles[0].FullName) v$($fileInfo.FileVersion)" -ForegroundColor Green
@@ -1311,15 +1318,15 @@ try {
         "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
         "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
     )
-    
+
     foreach ($startMenuPath in $startMenuPaths) {
         if (Test-Path $startMenuPath) {
             $shortcuts = Get-ChildItem -Path $startMenuPath -Filter "*Teams*.lnk" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            
+
             if ($shortcuts) {
                 $shell = New-Object -ComObject WScript.Shell
                 $shortcutTarget = $shell.CreateShortcut($shortcuts.FullName).TargetPath
-                
+
                 if (Test-Path $shortcutTarget) {
                     $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($shortcutTarget)
                     Write-Host "Microsoft Teams shortcut found: $($shortcuts.FullName) pointing to v$($fileInfo.FileVersion)" -ForegroundColor Green
@@ -1335,7 +1342,7 @@ catch {
 
 if (-not $teamsInstalled) {
     Write-Host "Warning: Microsoft Teams installation could not be verified. It may not have installed correctly." -ForegroundColor Yellow
-    
+
     # Provide troubleshooting guidance
     Write-Host "`nTroubleshooting suggestions:" -ForegroundColor Yellow
     Write-Host "1. Verify your internet connection is working properly." -ForegroundColor Yellow

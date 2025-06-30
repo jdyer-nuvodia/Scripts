@@ -80,7 +80,8 @@ $job = Start-Job -ScriptBlock {
     Write-Host "OneDrive update process completed successfully." -ForegroundColor Green
 }
 
-$timeout = 300 # 5 minutes in seconds
+# 5 minutes in seconds
+$timeout = 300
 $completed = Wait-Job $job -Timeout $timeout
 
 if ($completed -eq $null) {

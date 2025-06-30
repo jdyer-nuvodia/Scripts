@@ -27,7 +27,7 @@ Path to the Markdown file or directory containing Markdown files to convert.
 If a directory is specified, all .md files in the directory will be processed.
 
 .PARAMETER Recurse
-When specified, processes Markdown files in subdirectories as well. 
+When specified, processes Markdown files in subdirectories as well.
 Only applicable when Path points to a directory.
 
 .PARAMETER Destination
@@ -56,13 +56,13 @@ param(
     [Parameter(Mandatory=$true, Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
     [ValidateNotNullOrEmpty()]
     [string]$Path,
-    
+
     [Parameter(Mandatory=$false)]
     [switch]$Recurse,
-    
+
     [Parameter(Mandatory=$false)]
     [string]$Destination,
-    
+
     [Parameter(Mandatory=$false)]
     [switch]$Force
 )
@@ -74,23 +74,23 @@ function ConvertFrom-Markdown {
         [Parameter(Mandatory=$true)]
         [ValidateNotNullOrEmpty()]
         [string]$MarkdownFile,
-        
+
         [Parameter(Mandatory=$false)]
         [string]$OutputDirectory,
-        
+
         [Parameter(Mandatory=$false)]
         [switch]$Force
     )
-    
+
     try {
         Write-Host "Processing $MarkdownFile..." -ForegroundColor Cyan
-        
+
         # Validate the input file
         if (-not (Test-Path -Path $MarkdownFile -PathType Leaf)) {
             Write-Host "Error: File not found - $MarkdownFile" -ForegroundColor Red
             return $false
         }
-        
+
         # Determine the output path
         $fileName = [System.IO.Path]::GetFileNameWithoutExtension($MarkdownFile)
         if ([string]::IsNullOrEmpty($OutputDirectory)) {
@@ -98,7 +98,7 @@ function ConvertFrom-Markdown {
         } else {
             $outputPath = [System.IO.Path]::Combine($OutputDirectory, "$fileName.txt")
         }
-        
+
         # Check if output file already exists
         if ((Test-Path -Path $outputPath) -and -not $Force) {
             $response = Read-Host "Output file $outputPath already exists. Overwrite? (Y/N)"
@@ -107,47 +107,47 @@ function ConvertFrom-Markdown {
                 return $false
             }
         }
-        
+
         # Read the Markdown content
         $content = Get-Content -Path $MarkdownFile -Raw
-        
+
         # Apply Markdown to text conversion rules
         $plainText = $content
-        
+
         # Remove HTML tags
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '<[^>]+>', '')
-        
+
         # Convert headers to plain text with emphasis
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '#{1,6}\s*(.+)$', '$1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-        
+
         # Convert links [text](url) to just text
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\[([^\]]+)\]\([^\)]+\)', '$1')
-        
+
         # Convert image notations to just alt text
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '!\[([^\]]+)\]\([^\)]+\)', '$1')
-        
+
         # Remove bold and italic formatting
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\*\*(.+?)\*\*', '$1')
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '__(.+?)__', '$1')
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\*(.+?)\*', '$1')
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '_(.+?)_', '$1')
-        
+
         # Convert code blocks, both inline and multi-line
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '```[\s\S]*?```', '')
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '`([^`]+)`', '$1')
-        
+
         # Replace horizontal rules with a line of dashes
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*[-*_]{3,}\s*$', '-------------------------------------------', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-        
+
         # Convert bullet lists to plain text with dashes
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*[-*+]\s+(.+)$', '- $1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-        
+
         # Convert numbered lists to plain text
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*\d+\.\s+(.+)$', '$1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-        
+
         # Fix extra blank lines
         $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\n{3,}', "`n`n")
-        
+
         # Ensure output directory exists
         if (-not [string]::IsNullOrEmpty($OutputDirectory)) {
             if (-not (Test-Path -Path $OutputDirectory)) {
@@ -157,14 +157,14 @@ function ConvertFrom-Markdown {
                 }
             }
         }
-        
+
         # Write the plain text to the output file
         if ($PSCmdlet.ShouldProcess($outputPath, "Create Text File")) {
             Set-Content -Path $outputPath -Value $plainText
             Write-Host "Converted to text file: $outputPath" -ForegroundColor Green
             return $true
         }
-        
+
         return $true
     }
     catch {
@@ -179,20 +179,20 @@ try {
     $fileCount = 0
     $successCount = 0
     $errorCount = 0
-    
+
     # Define the file extension filter for markdown files
     $mdExtensions = @("*.md", "*.markdown")
-    
+
     # Process single file or directory
     if (Test-Path -Path $Path -PathType Container) {
         # It's a directory, process all Markdown files
         Write-Host "Processing directory: $Path" -ForegroundColor Cyan
-        
+
         foreach ($extension in $mdExtensions) {
             $mdFiles = Get-ChildItem -Path $Path -Filter $extension -Recurse:$Recurse
             foreach ($file in $mdFiles) {
                 $fileCount++
-                
+
                 if (ConvertFrom-Markdown -MarkdownFile $file.FullName -OutputDirectory $Destination -Force:$Force) {
                     $successCount++
                 } else {
@@ -204,7 +204,7 @@ try {
     elseif (Test-Path -Path $Path -PathType Leaf) {
         # It's a file, process it directly
         $fileCount++
-        
+
         # Make sure it's a markdown file
         $extension = [System.IO.Path]::GetExtension($Path).ToLower()
         if ($extension -eq ".md" -or $extension -eq ".markdown") {
@@ -222,26 +222,29 @@ try {
         Write-Host "Error: Path not found - $Path" -ForegroundColor Red
         $errorCount++
     }
-    
+
     # Output summary
     Write-Host "`nConversion Summary:" -ForegroundColor Cyan
     Write-Host "-------------------" -ForegroundColor DarkGray
     Write-Host "Total files processed: $fileCount" -ForegroundColor White
     Write-Host "Successfully converted: $successCount" -ForegroundColor Green
-    
+
     if ($errorCount -gt 0) {
         Write-Host "Errors encountered: $errorCount" -ForegroundColor Red
     } else {
         Write-Host "Errors encountered: 0" -ForegroundColor Green
     }
-    
+
     # Return exit code based on success
     if ($errorCount -eq 0 -and $successCount -gt 0) {
-        exit 0  # Success
+        # Success
+                exit 0
     } elseif ($errorCount -gt 0) {
-        exit 1  # Error
+        # Error
+                exit 1
     } else {
-        exit 2  # No files processed
+        # No files processed
+                exit 2
     }
 }
 catch {

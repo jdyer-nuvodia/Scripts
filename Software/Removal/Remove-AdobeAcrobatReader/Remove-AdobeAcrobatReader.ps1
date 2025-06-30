@@ -17,17 +17,17 @@
      - Removing associated directories
      - Cleaning registry entries
      - Removing Creative Cloud Files shortcuts
-     
+
     Supports -WhatIf parameter to preview changes without making them.
-     
+
     Dependencies:
      - Must be run with administrative privileges
      - Windows PowerShell 5.1 or later
-     
+
     Security considerations:
      - Requires registry modification permissions
      - Requires file system modification permissions
-     
+
     Performance impact:
      - Minimal system impact
      - May take several minutes depending on installed versions
@@ -37,7 +37,7 @@
 .NOTES
     Security Level: Medium
     Required Permissions: Local Administrator
-    Validation Requirements: 
+    Validation Requirements:
     - Verify Adobe Reader is uninstalled
     - Check for removal of specified directories
     - Validate registry cleanup
@@ -47,8 +47,8 @@
 param()
 
 # Run this script as an administrator
-if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))  
-{  
+if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+{
     Write-Warning "You do not have Administrator rights to run this script!`nPlease re-run this script as an Administrator!"
     Break
 }
@@ -74,13 +74,13 @@ $foundInstallations = $false
 
 foreach ($key in $uninstallKeys) {
     Write-Log "Searching for Adobe Reader in $key"
-    $adobeReaderEntries = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
-        Get-ItemProperty | 
-        Where-Object { 
+    $adobeReaderEntries = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
+        Get-ItemProperty |
+        Where-Object {
             $_.DisplayName -like "*Adobe Acrobat Reader*" -or
-            $_.DisplayName -like "*Adobe Reader*" -and 
-            $_.DisplayName -notlike "*Standard*" -and 
-            $_.DisplayName -notlike "*Professional*" 
+            $_.DisplayName -like "*Adobe Reader*" -and
+            $_.DisplayName -notlike "*Standard*" -and
+            $_.DisplayName -notlike "*Professional*"
         }
 
     if ($adobeReaderEntries) {
@@ -151,7 +151,7 @@ foreach ($key in $adobeKeys) {
         foreach ($version in $versions) {
             $versionNumber = $version.PSChildName
             Write-Log "Found Adobe Reader/Acrobat version: $versionNumber in $key"
-            
+
             if ($PSCmdlet.ShouldProcess("$key\$versionNumber", "Remove registry key")) {
                 try {
                     Remove-Item -Path $version.PSPath -Recurse -Force

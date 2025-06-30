@@ -18,12 +18,12 @@
     - Searches Windows services for names or descriptions matching the specified keyword
     - Displays matches with color-coded output based on result type
     - Optionally exports results to a CSV file
-    
+
     Dependencies:
     - PowerShell 5.1 or higher
     - Registry read access
     - Service enumeration permissions
-    
+
 .PARAMETER Keyword
     The keyword to search for in software names, descriptions, and services.
     This parameter is mandatory.
@@ -60,13 +60,13 @@
 param (
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Keyword,
-    
+
     [Parameter(Mandatory = $false)]
     [string]$ExportPath,
-    
+
     [Parameter(Mandatory = $false)]
     [switch]$IncludeServices,
-    
+
     [Parameter(Mandatory = $false)]
     [switch]$IncludeSoftware
 )
@@ -85,7 +85,7 @@ function Write-ColorOutput {
         [string]$Message,
         [string]$ForegroundColor = "White"
     )
-    
+
     Write-Host $Message -ForegroundColor $ForegroundColor
 }
 
@@ -94,23 +94,23 @@ function Search-InstalledSoftware {
     param (
         [string]$Keyword
     )
-    
+
     Write-ColorOutput "Searching for installed software matching keyword: $Keyword..." -ForegroundColor Cyan
-    
+
     # Define paths for installed software
     $registryPaths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
     )
-    
+
     $softwareResults = @()
-    
+
     # Loop through each registry path and retrieve software details
     foreach ($path in $registryPaths) {
         if (Test-Path $path) {
             $installedSoftware = Get-ItemProperty -Path "$path\*" -ErrorAction SilentlyContinue
-            
+
             foreach ($software in $installedSoftware) {
                 if ($software.DisplayName -and ($software.DisplayName -like "*$Keyword*" -or $software.Publisher -like "*$Keyword*")) {
                     $softwareObj = [PSCustomObject]@{
@@ -122,13 +122,13 @@ function Search-InstalledSoftware {
                         InstallLocation = $software.InstallLocation
                         UninstallString = $software.UninstallString
                     }
-                    
+
                     $softwareResults += $softwareObj
                 }
             }
         }
     }
-    
+
     return $softwareResults
 }
 
@@ -137,21 +137,21 @@ function Search-WindowsServices {
     param (
         [string]$Keyword
     )
-    
+
     Write-ColorOutput "Searching for services matching keyword: $Keyword..." -ForegroundColor Cyan
-    
+
     $serviceResults = @()
-    
+
     # Get services matching the keyword with error handling
     try {
         # Capture non-terminating errors using ErrorVariable
-        $services = Get-Service -ErrorAction SilentlyContinue -ErrorVariable serviceErrors | 
-            Where-Object { 
-                $_.DisplayName -like "*$Keyword*" -or 
-                $_.Name -like "*$Keyword*" -or 
+        $services = Get-Service -ErrorAction SilentlyContinue -ErrorVariable serviceErrors |
+            Where-Object {
+                $_.DisplayName -like "*$Keyword*" -or
+                $_.Name -like "*$Keyword*" -or
                 ($null -ne $_.Description -and $_.Description -like "*$Keyword*")
             }
-        
+
         # Log permission errors if verbose
         if ($serviceErrors) {
             $permissionDeniedCount = ($serviceErrors | Where-Object { $_.Exception.Message -like "*PermissionDenied*" }).Count
@@ -165,11 +165,11 @@ function Search-WindowsServices {
         Write-ColorOutput "Error retrieving services: $_" -ForegroundColor Red
         return $serviceResults
     }
-    
+
     foreach ($service in $services) {
         try {
             $serviceDetails = Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
-            
+
             $serviceObj = [PSCustomObject]@{
                 Type = "Service"
                 Name = $service.DisplayName
@@ -186,7 +186,7 @@ function Search-WindowsServices {
             Write-Verbose "Error processing service $($service.Name): $_"
         }
     }
-    
+
     return $serviceResults
 }
 
@@ -198,9 +198,9 @@ if ($IncludeSoftware) {
     if ($PSCmdlet.ShouldProcess("System", "Search installed software for keyword: $Keyword")) {
         $softwareResults = Search-InstalledSoftware -Keyword $Keyword
         $results += $softwareResults
-        
+
         Write-ColorOutput "Found $($softwareResults.Count) software item(s) matching '$Keyword'" -ForegroundColor Green
-        
+
         # Display software results
         foreach ($item in $softwareResults) {
             Write-ColorOutput "`nSoftware: $($item.Name)" -ForegroundColor Green
@@ -221,9 +221,9 @@ if ($IncludeServices) {
     if ($PSCmdlet.ShouldProcess("System", "Search services for keyword: $Keyword")) {
         $serviceResults = Search-WindowsServices -Keyword $Keyword
         $results += $serviceResults
-        
+
         Write-ColorOutput "`nFound $($serviceResults.Count) service(s) matching '$Keyword'" -ForegroundColor Green
-        
+
         # Display service results
         foreach ($item in $serviceResults) {
             # Color based on service status
@@ -232,7 +232,7 @@ if ($IncludeServices) {
                 "Stopped" { "Yellow" }
                 default { "White" }
             }
-            
+
             Write-ColorOutput "`nService: $($item.Name) [$($item.ServiceName)]" -ForegroundColor Cyan
             Write-ColorOutput "  Status: $($item.Status)" -ForegroundColor $statusColor
             Write-ColorOutput "  Start Type: $($item.StartType)" -ForegroundColor White

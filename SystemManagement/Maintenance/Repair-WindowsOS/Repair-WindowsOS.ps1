@@ -18,17 +18,17 @@
         2. SFC - Repairs system files using the repaired component store
         3. Windows Update cache cleanup
         4. Disk health verification
-    
+
     Dependencies:
     - Windows PowerShell 5.1 or later
     - Administrative privileges
     - Windows built-in repair tools (DISM, SFC, CHKDSK)
-    
+
     Security considerations:
     - Requires elevation to run as Administrator
     - Modifies system files and Windows components
     - Interacts with critical Windows services
-    
+
     Performance impact:
     - CPU intensive during repairs
     - May take 30+ minutes to complete
@@ -55,24 +55,24 @@ function Write-RepairLog {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory=$false)]
         [string]$Color = "White",
-        
+
         [Parameter(Mandatory=$false)]
         [switch]$NoNewLine
     )
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logEntry = "[$timestamp] $Message"
-    
+
     # Write to console with color
     if ($NoNewLine) {
         Write-Host $logEntry -ForegroundColor $Color -NoNewline
     } else {
         Write-Host $logEntry -ForegroundColor $Color
     }
-    
+
     # Write to log file
     Add-Content -Path $logFile -Value $logEntry
 }
@@ -80,15 +80,15 @@ function Write-RepairLog {
 # Function to check disk health
 function Test-DiskHealth {
     Write-RepairLog "Checking disk health..." -Color Cyan
-    
+
     # Get system drive letter
     $systemDrive = $env:SystemDrive.TrimEnd(':')
-    
+
     try {
         # First check if chkdsk is already scheduled
         Start-Process "fsutil" -ArgumentList "dirty query $systemDrive`:" -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput "$env:TEMP\fsutil.txt" | Out-Null
         $isDirty = Get-Content "$env:TEMP\fsutil.txt" | Select-String "dirty bit"
-        
+
         if ($isDirty) {
             Write-RepairLog "Disk check is already scheduled for next restart." -Color Yellow
             $script:restartNeeded = $true
@@ -98,7 +98,7 @@ function Test-DiskHealth {
         # Run initial disk analysis
         Write-RepairLog "Running disk analysis on $systemDrive..." -Color Cyan
         $chkdskOutput = & chkdsk.exe $systemDrive`: /scan
-        
+
         # Display chkdsk findings
         Write-RepairLog "Disk Analysis Results:" -Color White
         foreach ($line in $chkdskOutput) {
@@ -112,7 +112,7 @@ function Test-DiskHealth {
         # If problems found, schedule full chkdsk
         if ($chkdskOutput -match "found \d+ problems" -or $chkdskOutput -match "Windows needs to repair") {
             Write-RepairLog "Disk errors detected. Scheduling full disk check..." -Color Yellow
-            
+
             # Create temporary VBScript to handle UAC and show progress
             $vbsScript = @"
 Set Shell = CreateObject("Shell.Application")
@@ -121,11 +121,11 @@ Shell.ShellExecute "cmd.exe", "/c " & cmd, "", "runas", 1
 "@
             $vbsPath = Join-Path $env:TEMP "RunChkDsk.vbs"
             $vbsScript | Out-File -FilePath $vbsPath -Encoding ASCII
-            
+
             # Run the VBScript to schedule chkdsk
             Start-Process "wscript.exe" -ArgumentList $vbsPath -Wait
             Remove-Item $vbsPath -Force
-            
+
             Write-RepairLog "Full disk check has been scheduled for next system restart" -Color Yellow
             $script:restartNeeded = $true
             $script:repairsMade = $true
@@ -145,14 +145,15 @@ Shell.ShellExecute "cmd.exe", "/c " & cmd, "", "runas", 1
 # Function to repair Windows image
 function Repair-WindowsImage {
     Write-RepairLog "Scanning Windows image for corruption..." -Color Cyan
-    
+
     # Function to run DISM with timeout
     function Start-DISMWithTimeout {
         param (
             [string]$Arguments,
-            [int]$TimeoutMinutes = 60  # Increased from 30 to 60 minutes
+            # Increased from 30 to 60 minutes
+                        [int]$TimeoutMinutes = 60
         )
-        
+
         try {
             # Kill any existing DISM processes first
             Get-Process "DISM" -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -160,7 +161,7 @@ function Repair-WindowsImage {
 
             $process = Start-Process "DISM.exe" -ArgumentList $Arguments -PassThru -NoNewWindow -Wait:$false
             $timeoutSeconds = $TimeoutMinutes * 60
-            
+
             # Monitor process with progress indication
             $elapsed = 0
             while (-not $process.HasExited -and $elapsed -lt $timeoutSeconds) {
@@ -169,17 +170,17 @@ function Repair-WindowsImage {
                 Start-Sleep -Seconds 10
                 $elapsed += 10
             }
-            
+
             if (-not $process.HasExited) {
                 Write-RepairLog "`nDISM operation timed out after $TimeoutMinutes minutes. Cleaning up..." -Color Yellow
                 Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
                 Start-Sleep -Seconds 10
-                
+
                 # Cleanup any pending operations
                 Start-Process "DISM.exe" -ArgumentList "/Online /Cleanup-Image /RevertPendingActions" -Wait -NoNewWindow
                 return $false
             }
-            
+
             return ($process.ExitCode -eq 0)
         }
         catch {
@@ -187,30 +188,30 @@ function Repair-WindowsImage {
             return $false
         }
     }
-    
+
     # Clear any potential pending operations
     Write-RepairLog "Cleaning up any pending DISM operations..." -Color Cyan
     Start-DISMWithTimeout "/Online /Cleanup-Image /RevertPendingActions" | Out-Null
-    
+
     # Try cleanup first
     Write-RepairLog "Starting component store cleanup..." -Color Cyan
     Start-DISMWithTimeout "/Online /Cleanup-Image /StartComponentCleanup" | Out-Null
-    
+
     # Perform the scan
     Write-RepairLog "Starting DISM scan..." -Color Cyan
     $scanSuccess = Start-DISMWithTimeout "/Online /Cleanup-Image /ScanHealth"
-    
+
     if (-not $scanSuccess) {
         Write-RepairLog "DISM scan failed. Attempting repair without scan..." -Color Yellow
     }
-    
+
     # Attempt repair with increasing aggressiveness
     $repairMethods = @(
         @{Args="/Online /Cleanup-Image /RestoreHealth /LimitAccess"; Desc="limited access"},
         @{Args="/Online /Cleanup-Image /RestoreHealth"; Desc="online sources"},
         @{Args="/Online /Cleanup-Image /RestoreHealth /Source:WIM:D:\sources\install.wim:1 /LimitAccess"; Desc="WIM source"}
     )
-    
+
     $repairSuccess = $false
     foreach ($method in $repairMethods) {
         if (-not $repairSuccess) {
@@ -219,7 +220,7 @@ function Repair-WindowsImage {
             if ($repairSuccess) { break }
         }
     }
-    
+
     if ($repairSuccess) {
         Write-RepairLog "Windows image repair completed successfully." -Color Green
     } else {
@@ -232,15 +233,15 @@ function Repair-WindowsImage {
 # Function to check system file integrity
 function Test-SystemFileIntegrity {
     Write-RepairLog "Checking system file integrity..." -Color Cyan
-    
+
     # Run SFC with multiple attempts
     $maxAttempts = 3
     $attempt = 1
     $success = $false
-    
+
     while (-not $success -and $attempt -le $maxAttempts) {
         Write-RepairLog "SFC scan attempt $attempt of $maxAttempts..." -Color Cyan
-        
+
         $sfc = Start-Process "sfc.exe" -ArgumentList "/scannow" -Wait -PassThru
         if ($sfc.ExitCode -eq 0) {
             $success = $true
@@ -254,7 +255,7 @@ function Test-SystemFileIntegrity {
             $attempt++
         }
     }
-    
+
     if (-not $success) {
         Write-RepairLog "System File Checker failed after $maxAttempts attempts." -Color Red
         $script:repairsMade = $true
@@ -265,25 +266,25 @@ function Test-SystemFileIntegrity {
 # Function to clear Windows Update cache
 function Clear-WindowsUpdateCache {
     Write-RepairLog "Clearing Windows Update cache..." -Color Cyan
-    
+
     $services = @("wuauserv", "cryptSvc", "bits", "msiserver")
-    
+
     # Stop services
     foreach ($service in $services) {
         Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
         Write-RepairLog "Stopped service: $service" -Color Gray
     }
-    
+
     # Clear Windows Update cache
     Remove-Item "$env:SystemRoot\SoftwareDistribution\*" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item "$env:SystemRoot\System32\catroot2\*" -Recurse -Force -ErrorAction SilentlyContinue
-    
+
     # Start services
     foreach ($service in $services) {
         Start-Service -Name $service -ErrorAction SilentlyContinue
         Write-RepairLog "Started service: $service" -Color Gray
     }
-    
+
     Write-RepairLog "Windows Update cache cleared." -Color Green
     $script:repairsMade = $true
 }
@@ -294,33 +295,36 @@ try {
     Write-RepairLog "Started by: $env:USERNAME" -Color Cyan
     Write-RepairLog "Start Time (UTC): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color Cyan
     Write-RepairLog "----------------------------------------" -Color Cyan
-    
+
     # Verify running as administrator
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw "This script requires administrator privileges."
     }
-    
+
     # Execute repair functions in correct order
-    Test-DiskHealth         # Run disk check first
-    Repair-WindowsImage     # Run DISM second to repair component store
-    Test-SystemFileIntegrity # Run SFC last to repair system files
+    # Run disk check first
+        Test-DiskHealth
+    # Run DISM second to repair component store
+        Repair-WindowsImage
+    # Run SFC last to repair system files
+        Test-SystemFileIntegrity
     Clear-WindowsUpdateCache
-    
+
     # Report results
     Write-RepairLog "----------------------------------------" -Color Cyan
-    
+
     $repairsStatus = if ($script:repairsMade) { 'Yes' } else { 'No' }
     $repairsColor = if ($script:repairsMade) { 'Yellow' } else { 'Green' }
     Write-RepairLog "Repairs performed: $repairsStatus" -Color $repairsColor
-    
+
     $restartStatus = if ($script:restartNeeded) { 'Yes' } else { 'No' }
     $restartColor = if ($script:restartNeeded) { 'Yellow' } else { 'Green' }
     Write-RepairLog "Restart required: $restartStatus" -Color $restartColor
-    
+
     Write-RepairLog "End Time (UTC): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color Cyan
     Write-RepairLog "Log file: $logFile" -Color Cyan
-    
+
 } catch {
     Write-RepairLog "Error: $($_.Exception.Message)" -Color Red
     exit 1

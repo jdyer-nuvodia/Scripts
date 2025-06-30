@@ -41,10 +41,10 @@
 param(
     [Parameter(Mandatory=$false)]
     [string]$User,
-    
+
     [Parameter(Mandatory=$true)]
     [string]$StartPath,
-    
+
     [Parameter(Mandatory=$false)]
     [string]$SIDFile
 )
@@ -56,7 +56,8 @@ $systemName = $env:COMPUTERNAME
 # Determine user string for filename
 $userString = if ($User) {
     $userParts = $User.Split('\')
-    $userParts[-1]  # Take the last part after splitting on backslash
+    # Take the last part after splitting on backslash
+        $userParts[-1]
 } elseif ($SIDFile) {
     "multiple_users"
 } else {
@@ -100,12 +101,12 @@ try {
         try {
             $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
             $ownerSid = $acl.Owner
-            
+
             # If already in domain\user format, return as is
             if ($ownerSid -notmatch '^S-1-') {
                 return $ownerSid
             }
-            
+
             # Try to resolve the SID
             try {
                 $objSID = New-Object System.Security.Principal.SecurityIdentifier($ownerSid)
@@ -166,7 +167,7 @@ try {
         try {
             $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
             $foundPermissions = $false
-            
+
             # Get owner SID, handling the "O:" prefix
             $ownerSid = $acl.Owner
             if ($ownerSid -match '^O:(?<sid>S-1-[0-9-]+)') {
@@ -179,19 +180,19 @@ try {
                     Write-DebugLog "Could not convert owner to SID: $ownerSid - $_" -IsError
                 }
             }
-    
+
             # Filter out empty identities and process each valid one
             $IdentityList | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
                 $cleanIdentity = $_.Trim()
-                
+
                 # Compare owner SID with identity
                 $isOwner = $ownerSid -eq $cleanIdentity -or $acl.Owner -eq $cleanIdentity
-                
+
                 # Get access rules for this identity
-                $accessRules = $acl.Access | Where-Object { 
-                    $_.IdentityReference.Value -eq $cleanIdentity 
+                $accessRules = $acl.Access | Where-Object {
+                    $_.IdentityReference.Value -eq $cleanIdentity
                 }
-                
+
                 if ($isOwner) {
                     $foundPermissions = $true
                     Write-Host "`n[Found owner match!]" -ForegroundColor Yellow
@@ -201,7 +202,7 @@ try {
                                         -AccessType ([System.Security.AccessControl.AccessControlType]::Allow) `
                                         -OwnerStatus "Owner"
                 }
-                
+
                 if ($accessRules) {
                     $foundPermissions = $true
                     foreach ($rule in $accessRules) {
@@ -213,25 +214,26 @@ try {
                     }
                 }
             }
-            
+
             if ($foundPermissions) {
                 Write-DebugLog "Found permissions/ownership in: $FolderPath"
             } else {
                 Write-DebugLog "No matching permissions found in: $FolderPath"
             }
-            
+
             $ProcessedCount.Value++
             $percentComplete = [math]::Min(($ProcessedCount.Value / $totalFolders) * 100, 100)
             Write-Progress -Activity "Scanning folders for permissions and ownership" -Status "Processing: $FolderPath" -PercentComplete $percentComplete
 
-            return $foundPermissions  # Return the flag indicating if permissions were found
+            # Return the flag indicating if permissions were found
+                        return $foundPermissions
         }
         catch {
             Write-DebugLog "Error checking permissions/ownership for $FolderPath : $_" -IsError
             return $false
         }
     }
-    
+
     # Enhanced folder scanning function with progress tracking
     function Find-Folder {
         param(
@@ -268,7 +270,7 @@ try {
             [System.Security.AccessControl.AccessControlType]$AccessType,
             [string]$OwnerStatus = "Not Owner"
         )
-        
+
         $owner = Get-FolderOwner -FolderPath $Path
         $permissionInfo = "`nFolder: $Path`n" +
                          "Owner: $owner`n" +
@@ -276,7 +278,7 @@ try {
                          "Access: $Access`n" +
                          "Type: $AccessType`n" +
                          "Owner Status: $OwnerStatus"
-        
+
         Write-Host $permissionInfo -ForegroundColor Cyan
         Write-DebugLog $permissionInfo
     }
@@ -287,11 +289,11 @@ try {
             [string]$Path,
             [string[]]$Identities
         )
-        
+
         try {
             $Acl = Get-Acl -Path $Path -ErrorAction Stop
             $Owner = $Acl.Owner
-            
+
             foreach($Identity in $Identities) {
                 # Convert username to SID if it's not already a SID
                 $Sid = if($Identity -match '^S-1-') {
@@ -305,7 +307,7 @@ try {
                         continue
                     }
                 }
-                
+
                 # Check ownership - comparing both SID forms and string forms
                 $OwnerSid = try {
                     $NTAccount = New-Object System.Security.Principal.NTAccount($Owner)
@@ -313,7 +315,7 @@ try {
                 } catch {
                     $Owner
                 }
-                
+
                 if($OwnerSid -eq $Sid -or $Owner -eq $Identity) {
                     Write-Output "Owner Status: Owner"
                     Write-Output "Path: $Path"
@@ -333,7 +335,7 @@ try {
             [string]$Folder,
             [string[]]$TargetIdentities
         )
-        
+
         try {
             $acl = Get-Acl -Path $Folder
             $ownerSID = $acl.Owner
@@ -368,13 +370,13 @@ try {
                     }
                 }
             }
-            
+
             if ($permissions.Count -gt 0) {
                 foreach ($perm in $permissions) {
                     Write-Host "$($perm.Identity) has $($perm.Type) $($perm.Rights) $(if($perm.IsInherited){'(Inherited)'})"
                 }
             }
-            
+
             return $permissions
         }
         catch {

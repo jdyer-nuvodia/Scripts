@@ -43,19 +43,19 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$SourceUser,
-    
+
     [Parameter(Mandatory = $true)]
     [string]$NewUserName,
-    
+
     [Parameter(Mandatory = $true)]
     [string]$NewUserGivenName,
-    
+
     [Parameter(Mandatory = $true)]
     [string]$NewUserSurname,
-    
+
     [Parameter(Mandatory = $true)]
     [string]$NewUserPassword,
-    
+
     [Parameter(Mandatory = $true)]
     [string]$NewUserDescription
 )

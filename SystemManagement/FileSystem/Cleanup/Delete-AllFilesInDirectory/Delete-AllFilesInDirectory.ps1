@@ -17,9 +17,9 @@
     1. Takes ownership of all files and folders recursively
     2. Removes all files recursively
     3. Removes all folders in descending order to handle nested directories
-    
+
     Supports -WhatIf parameter to preview changes without making them.
-    
+
     Dependencies:
     - PowerShell 5.1 or higher
     - Appropriate permissions on target directory
@@ -50,7 +50,7 @@ function Set-Ownership {
         [Parameter(Mandatory=$true)]
         [string]$StartPath
     )
-    
+
     Write-Host "Taking ownership of path: $StartPath" -ForegroundColor Cyan
       try {
         # Take ownership using takeown command
@@ -58,13 +58,13 @@ function Set-Ownership {
         if ($takeOwnResult.ExitCode -ne 0) {
             Write-Host "Warning: Failed to take ownership of $StartPath (Exit code: $($takeOwnResult.ExitCode))" -ForegroundColor Yellow
         }
-        
+
         # Grant full control to the current user/system
         $grantResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$StartPath`" /grant *S-1-5-18:F /T /C /Q" -NoNewWindow -PassThru -Wait
         if ($grantResult.ExitCode -ne 0) {
             Write-Host "Warning: Failed to grant permissions on $StartPath (Exit code: $($grantResult.ExitCode))" -ForegroundColor Yellow
         }
-        
+
         return $true
     }
     catch {
@@ -80,11 +80,11 @@ try {
     # Step 1: Take ownership of the target directory and all contents
     Write-Host "Taking ownership of all files and folders..." -ForegroundColor Cyan
     $ownershipResult = Set-Ownership -StartPath $TargetPath
-    
+
     if (-not $ownershipResult) {
         Write-Host "Continuing with deletion despite ownership issues. Some files may be skipped." -ForegroundColor Yellow
     }
-    
+
     # Remove all files
     Write-Host "Removing files..." -ForegroundColor Cyan
     Get-ChildItem -Path $TargetPath -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
@@ -101,8 +101,8 @@ try {
 
     # Remove all folders with improved error handling and long path support
     Write-Host "Removing folders..." -ForegroundColor Cyan
-    Get-ChildItem -Path $TargetPath -Directory -Recurse -ErrorAction SilentlyContinue | 
-        Sort-Object -Property FullName -Descending | 
+    Get-ChildItem -Path $TargetPath -Directory -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object -Property FullName -Descending |
         ForEach-Object {
             $StartPath = $_.FullName
             if ($PSCmdlet.ShouldProcess($StartPath, "Delete folder")) {
@@ -113,12 +113,12 @@ try {
                         $StartPath = "\\?\$StartPath"
                         Write-Host "Using long path format: $StartPath" -ForegroundColor Yellow
                     }
-                    
+
                     # Try up to 3 times with a small delay between attempts
                     $maxAttempts = 3
                     $attempt = 1
                     $success = $false
-                    
+
                     while (-not $success -and $attempt -le $maxAttempts) {
                         try {
                             Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
@@ -147,7 +147,7 @@ try {
         }
 
     Write-Host "Directory cleanup completed successfully!" -ForegroundColor Green
-} 
+}
 catch {
     Write-Error "An error occurred during the cleanup process: $_"
     exit 1
@@ -158,7 +158,7 @@ function Show-DriveInfo {
         [Parameter(Mandatory=$true)]
         [object]$Volume
     )
-    
+
     Write-Host "`nDrive Volume Details:" -ForegroundColor Green
     Write-Host "------------------------" -ForegroundColor Green
     Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
@@ -172,8 +172,8 @@ function Show-DriveInfo {
 
 try {
     # Get all available volumes with drive letters and sort them
-    $volumes = Get-Volume | 
-        Where-Object { $_.DriveLetter } | 
+    $volumes = Get-Volume |
+        Where-Object { $_.DriveLetter } |
         Sort-Object DriveLetter
 
     if ($volumes.Count -eq 0) {
@@ -183,7 +183,7 @@ try {
 
     # Select the volume with lowest drive letter
     $lowestVolume = $volumes[0]
-    
+
     Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
     Show-DriveInfo -Volume $lowestVolume
 }

@@ -18,17 +18,17 @@
     - Detailed logging with timestamps
     - Interactive continuation prompts
     - Customizable service list
-    
+
     The script monitors services that are crucial for:
     - System operation (RPC, Workstation)
     - Security (Windows Defender, Event Log)
     - Networking (DNS Client, Server service)
     - System updates (Windows Update, BITS)
-    
+
     Dependencies:
     - Windows PowerShell 5.1 or higher
     - Administrator rights for service status access
-    
+
     The script creates a log file in the script directory with detailed
     monitoring information including timestamps and service states.
 .PARAMETER Services
@@ -61,14 +61,22 @@
 param(
     [Parameter(Mandatory=$false)]
     [string[]]$Services = @(
-        "wuauserv",        # Windows Update
-        "WinDefend",       # Windows Defender
-        "EventLog",        # Windows Event Log
-        "Dnscache",        # DNS Client
-        "BITS",           # Background Intelligent Transfer Service
-        "LanmanServer",   # Server
-        "LanmanWorkstation", # Workstation
-        "RpcSs"           # Remote Procedure Call
+        # Windows Update
+                "wuauserv",
+        # Windows Defender
+                "WinDefend",
+        # Windows Event Log
+                "EventLog",
+        # DNS Client
+                "Dnscache",
+        # Background Intelligent Transfer Service
+                "BITS",
+        # Server
+                "LanmanServer",
+        # Workstation
+                "LanmanWorkstation",
+        # Remote Procedure Call
+                "RpcSs"
     ),
 
     [Parameter(Mandatory=$false)]
@@ -108,26 +116,26 @@ function Write-ServiceStatus {
     param(
         [Parameter(Mandatory=$true)]
         [string]$ServiceName,
-        
+
         [Parameter(Mandatory=$true)]
         [string]$Status,
-        
+
         [Parameter(Mandatory=$true)]
         [string]$DisplayName
     )
-    
+
     switch ($Status) {
-        "Running" { 
+        "Running" {
             Write-Host "$DisplayName : " -NoNewline -ForegroundColor White
-            Write-Host $Status -ForegroundColor Green 
+            Write-Host $Status -ForegroundColor Green
         }
-        "Stopped" { 
+        "Stopped" {
             Write-Host "$DisplayName : " -NoNewline -ForegroundColor White
-            Write-Host $Status -ForegroundColor Red 
+            Write-Host $Status -ForegroundColor Red
         }
-        default { 
+        default {
             Write-Host "$DisplayName : " -NoNewline -ForegroundColor White
-            Write-Host $Status -ForegroundColor Yellow 
+            Write-Host $Status -ForegroundColor Yellow
         }
     }
 }
@@ -148,12 +156,12 @@ function Write-ServiceStatus {
 function Watch-Services {
     [CmdletBinding()]
     param()
-    
+
     # Create log file with system name and timestamp
     $systemName = $env:COMPUTERNAME
     $dateStamp = Get-Date -Format "yyyyMMdd"
     $logFile = Join-Path $LogPath "ServiceMonitor_${systemName}_${dateStamp}.log"
-    
+
     try {
         do {
             Clear-Host
@@ -190,7 +198,7 @@ function Watch-Services {
                 Write-Host "`nPress 'Y' to continue monitoring, any other key to exit..." -ForegroundColor Cyan
                 $continue = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
             }
-            
+
         } while ($continue.Character -eq 'y' -or $continue.Character -eq 'Y')
     }
     catch {

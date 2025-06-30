@@ -14,18 +14,18 @@
 .DESCRIPTION
     This script creates a new Active Directory user account with specified parameters
     and optionally adds them to designated AD groups. It includes:
-    
+
     - Secure password handling using SecureString
     - Parameter validation
     - Group membership management
     - Error handling and logging
     - Support for -WhatIf to preview changes
-    
+
     Dependencies:
     - Active Directory PowerShell module
     - Domain Admin or Account Operator permissions
     - Network connectivity to Domain Controller
-    
+
     The script performs the following actions:
     1. Validates all input parameters
     2. Processes secure password
@@ -59,7 +59,7 @@
     .\Create-ADUser.ps1 -Name "John Doe" -GivenName "John" -Surname "Doe" `
         -SamAccountName "jdoe" -UserPrincipalName "jdoe@domain.com" `
         -Password $securePass -OUPath "OU=Users,DC=domain,DC=com"
-    
+
     Creates a new user account for John Doe with minimal parameters using secure password input
 .EXAMPLE
     $securePass = ConvertTo-SecureString "InitialP@ss123" -AsPlainText -Force
@@ -67,7 +67,7 @@
         -SamAccountName "jsmith" -UserPrincipalName "jsmith@domain.com" `
         -Password $securePass -OUPath "OU=Sales,OU=Users,DC=domain,DC=com" `
         -Groups @("Sales Team", "Remote Users", "VPN Users")
-    
+
     Creates a new user account for Jane Smith and adds her to multiple groups
 .NOTES
     Security Level: High
@@ -85,27 +85,27 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$Name,
-    
+
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$GivenName,
-    
+
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$Surname,
-    
+
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-zA-Z0-9\-\.]{1,20}$')]
     [string]$SamAccountName,
-    
+
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[\w-]+$')]
     [string]$UserPrincipalName,
-    
+
     [Parameter(Mandatory = $true)]
     [ValidateNotNull()]
     [System.Security.SecureString]$Password,
-    
+
     [Parameter(Mandatory = $true)]
     [ValidateScript({
         if (-not (Test-Path "AD:$_")) {
@@ -114,7 +114,7 @@ param(
         return $true
     })]
     [string]$OUPath,
-    
+
     [Parameter(Mandatory = $false)]
     [string[]]$Groups = @()
 )
@@ -125,11 +125,11 @@ $ErrorActionPreference = "Stop"
 
 function Write-Log {
     param($Message, $Level = "Information")
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "$TimeStamp [$Level] $Message"
     Add-Content -Path $LogPath -Value $LogMessage
-    
+
     switch ($Level) {
         "Information" { Write-Host $Message -ForegroundColor White }
         "Success"     { Write-Host $Message -ForegroundColor Green }
@@ -140,18 +140,18 @@ function Write-Log {
 
 try {
     Write-Log "Starting user creation process for: $Name" "Information"
-    
+
     # Verify AD module is loaded
     if (-not (Get-Module -Name ActiveDirectory)) {
         Import-Module ActiveDirectory -ErrorAction Stop
         Write-Log "Loaded Active Directory module" "Success"
     }
-    
+
     # Verify SamAccountName is unique
     if (Get-ADUser -Filter {SamAccountName -eq $SamAccountName} -ErrorAction SilentlyContinue) {
         throw "SamAccountName '$SamAccountName' already exists"
     }
-    
+
     # Create the new user
     Write-Log "Creating new AD user account..." "Information"
     if ($PSCmdlet.ShouldProcess($Name, "Create new AD user with SamAccountName '$SamAccountName'")) {
@@ -164,9 +164,9 @@ try {
             -Enabled $true `
             -Path $OUPath `
             -ErrorAction Stop
-        
+
         Write-Log "Successfully created user account: $Name" "Success"
-        
+
         # Add user to specified groups
         if ($Groups.Count -gt 0) {
             Write-Log "Adding user to specified groups..." "Information"
@@ -183,7 +183,7 @@ try {
             }
         }
     }
-    
+
     Write-Log "User creation process completed successfully" "Success"
 }
 catch {

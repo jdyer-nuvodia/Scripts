@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # Script: New-FakePSTFile.ps1
 # Created: 2025-06-03 21:25:00 UTC
 # Author: jdyer-nuvodia
@@ -38,7 +38,7 @@ Shows what would happen if the cmdlet runs without actually executing the operat
 The percentage of emails that should include random attachments (0-100). Default is 30
 
 .PARAMETER AttachmentTempPath
-The temporary directory path where attachment files will be created before being added to emails. 
+The temporary directory path where attachment files will be created before being added to emails.
 Files are automatically cleaned up after use. Default is "C:\Temp\PST_Attachments"
 
 .PARAMETER Verbose
@@ -134,7 +134,8 @@ function New-RandomFile {
 
         if ($PSCmdlet.ShouldProcess($FilePath, "Create random file ($([Math]::Round($SizeInBytes / 1MB, 2)) MB)")) {
             # Generate random content efficiently for large files
-            $buffer = New-Object byte[] 65536  # 64KB buffer for efficiency
+            # 64KB buffer for efficiency
+                        $buffer = New-Object byte[] 65536
             $random = New-Object System.Random
             $remainingBytes = $SizeInBytes
 
@@ -142,7 +143,7 @@ function New-RandomFile {
 
             while ($remainingBytes -gt 0) {
                 $bytesToWrite = [Math]::Min($buffer.Length, $remainingBytes)
-                
+
                 if ($bytesToWrite -eq $buffer.Length) {
                     $random.NextBytes($buffer)
                     $fileStream.Write($buffer, 0, $buffer.Length)
@@ -152,7 +153,7 @@ function New-RandomFile {
                     $random.NextBytes($smallBuffer)
                     $fileStream.Write($smallBuffer, 0, $smallBuffer.Length)
                 }
-                
+
                 $remainingBytes -= $bytesToWrite
             }
 
@@ -197,17 +198,20 @@ function New-RandomAttachment {
 
         # Select random file type
         $selectedType = $fileTypes | Get-Random
-        
+
         # Generate random size between 2MB and 5MB
-        $minSizeBytes = 2 * 1024 * 1024  # 2MB
-        $maxSizeBytes = 5 * 1024 * 1024  # 5MB
+        # 2MB
+                $minSizeBytes = 2 * 1024 * 1024
+        # 5MB
+                $maxSizeBytes = 5 * 1024 * 1024
         $randomSize = Get-Random -Minimum $minSizeBytes -Maximum $maxSizeBytes
 
         # Generate unique filename with timestamp
         $timestamp = Get-Date -Format "yyyyMMdd_HHmmss_fff"
         $randomNumber = Get-Random -Minimum 1000 -Maximum 9999
         $fileName = "$($selectedType.Name)_$timestamp`_$randomNumber$($selectedType.Extension)"
-        $fullPath = Join-Path -Path $TempDirectory -ChildPath $fileName        # Create the random file
+        # Create the random file
+                $fullPath = Join-Path -Path $TempDirectory -ChildPath $fileName
         $success = New-RandomFile -FilePath $fullPath -SizeInBytes $randomSize
 
         if ($success) {
@@ -252,14 +256,22 @@ function Test-OutlookPrerequisite {
         if ($programPath -and (Test-Path -Path $programPath)) {
             # Office versions and their typical paths
             $officeVersions = @(
-                "Microsoft Office\root\Office16",    # Office 2016/2019/2021/365 Click-to-Run
-                "Microsoft Office\Office16",         # Office 2016 MSI
-                "Microsoft Office\root\Office15",    # Office 2013 Click-to-Run
-                "Microsoft Office\Office15",         # Office 2013 MSI
-                "Microsoft Office\root\Office14",    # Office 2010 Click-to-Run
-                "Microsoft Office\Office14",         # Office 2010 MSI
-                "Microsoft Office\OFFICE12",         # Office 2007
-                "Microsoft Office\OFFICE11"          # Office 2003
+                # Office 2016/2019/2021/365 Click-to-Run
+                                "Microsoft Office\root\Office16",
+                # Office 2016 MSI
+                                "Microsoft Office\Office16",
+                # Office 2013 Click-to-Run
+                                "Microsoft Office\root\Office15",
+                # Office 2013 MSI
+                                "Microsoft Office\Office15",
+                # Office 2010 Click-to-Run
+                                "Microsoft Office\root\Office14",
+                # Office 2010 MSI
+                                "Microsoft Office\Office14",
+                # Office 2007
+                                "Microsoft Office\OFFICE12",
+                # Office 2003
+                                "Microsoft Office\OFFICE11"
             )
 
             foreach ($version in $officeVersions) {
@@ -408,7 +420,7 @@ function New-PSTFileWithData {
                 $attachmentTempFiles = @()
                 if ($AttachmentPercentage -gt 0) {
                     Write-ColoredOutput -Message "Attachment generation enabled: $AttachmentPercentage% of emails will include random attachments (2-5MB each)" -Color Cyan
-                    
+
                     # Ensure temp directory exists
                     if (-not (Test-Path -Path $AttachmentTempPath)) {
                         Write-ColoredOutput -Message "Creating temporary attachment directory: $AttachmentTempPath" -Color DarkGray
@@ -472,7 +484,8 @@ function New-PSTFileWithData {
                 $inbox = $rootFolder.Folders.Add("Inbox")
             }
 
-            Write-ColoredOutput -Message "PST folder structure initialized successfully" -Color Green            # Create custom folders for sample organization
+            # Create custom folders for sample organization
+                        Write-ColoredOutput -Message "PST folder structure initialized successfully" -Color Green
             Write-ColoredOutput -Message "Creating custom sample folders..." -Color Cyan
             $customFolders = @("Important", "Projects", "Personal", "Archive")
             $allFolders = @{"Inbox" = $inbox}
@@ -511,7 +524,8 @@ function New-PSTFileWithData {
             for ($i = 1; $i -le $EmailCount; $i++) {
                 $randomFolder = $folderNames | Get-Random
                 $folderDistribution[$randomFolder]++
-            }            # Display distribution
+            # Display distribution
+                        }
             Write-ColoredOutput -Message "Email distribution plan:" -Color Cyan
             foreach ($folderName in $folderNames) {
                 $count = $folderDistribution[$folderName]
@@ -559,13 +573,15 @@ function New-PSTFileWithData {
                 $targetFolder = $allFolders[$folderName]
 
                 for ($j = 1; $j -le $emailsForThisFolder; $j++) {
-                    try {                        # Get random content
+                    # Get random content
+                                        try {
                         $randomSubject = $sampleSubjects | Get-Random
                         $randomSender = $sampleSenders | Get-Random
                         $randomBody = $sampleBodies | Get-Random
 
                         # Create email item using CreateItem method
-                        $mailItem = $outlook.CreateItem(0)  # 0 = olMailItem
+                        # 0 = olMailItem
+                                                $mailItem = $outlook.CreateItem(0)
 
                         # Set email properties with folder context
                         if ($folderName -eq "Inbox") {
@@ -599,7 +615,7 @@ function New-PSTFileWithData {
                         $minutesBack = Get-Random -Minimum 1 -Maximum 60
                         $randomSentDate = (Get-Date).AddDays(-$daysBack).AddHours(-$hoursBack).AddMinutes(-$minutesBack)
                         $randomReceivedDate = $randomSentDate.AddMinutes((Get-Random -Minimum 1 -Maximum 30))
-                        
+
                         try {
                             $mailItem.SentOn = $randomSentDate
                             $mailItem.ReceivedTime = $randomReceivedDate
@@ -610,12 +626,15 @@ function New-PSTFileWithData {
 
                         # Set read status randomly for more realistic data
                         try {
-                            $mailItem.UnRead = (Get-Random -Maximum 2) -eq 1  # Randomly mark some as unread
+                            # Randomly mark some as unread
+                                                        $mailItem.UnRead = (Get-Random -Maximum 2) -eq 1
                         } catch {
                             Write-Verbose "Could not set read status: $($_.Exception.Message)"
-                        }                        # Set importance randomly for more realistic data
+                        # Set importance randomly for more realistic data
+                                                }
                         try {
-                            $mailItem.Importance = Get-Random -Minimum 0 -Maximum 3  # 0=Low, 1=Normal, 2=High
+                            # 0=Low, 1=Normal, 2=High
+                                                        $mailItem.Importance = Get-Random -Minimum 0 -Maximum 3
                         } catch {
                             Write-Verbose "Could not set importance: $($_.Exception.Message)"
                         }
@@ -624,25 +643,25 @@ function New-PSTFileWithData {
                         $currentAttachmentFiles = @()
                         if ($AttachmentPercentage -gt 0) {
                             $shouldAddAttachment = (Get-Random -Minimum 1 -Maximum 101) -le $AttachmentPercentage
-                            
+
                             if ($shouldAddAttachment) {
                                 try {
                                     Write-Verbose "Generating attachment for email $j in $folderName..."
                                     $attachmentInfo = New-RandomAttachment -TempDirectory $AttachmentTempPath
-                                    
+
                                     if ($attachmentInfo.Success) {
                                         Write-Verbose "Adding attachment: $($attachmentInfo.FileName) ($($attachmentInfo.SizeMB) MB)"
                                         $attachment = $mailItem.Attachments.Add($attachmentInfo.FilePath)
                                         $attachment.DisplayName = $attachmentInfo.FileName
-                                        
+
                                         # Track temp files for cleanup
                                         $currentAttachmentFiles += $attachmentInfo.FilePath
                                         $attachmentTempFiles += $attachmentInfo.FilePath
-                                        
+
                                         # Update email body to mention attachment
                                         $attachmentNote = "`n`n--- Attachment ---`nFile: $($attachmentInfo.FileName)`nSize: $($attachmentInfo.SizeMB) MB"
                                         $mailItem.Body += $attachmentNote
-                                        
+
                                         Write-Verbose "Successfully added attachment: $($attachmentInfo.FileName)"
                                     }
                                     else {
@@ -653,14 +672,16 @@ function New-PSTFileWithData {
                                     Write-ColoredOutput -Message "  WARNING: Failed to add attachment to email $j in $folderName`: $($_.Exception.Message)" -Color Yellow
                                 }
                             }
-                        }# Save the email first
+                        # Save the email first
+                                                }
                         $mailItem.Save()
 
                         # Move the email to the target folder
                         $mailItem = $mailItem.Move($targetFolder)
 
                         $folderSuccessCount++
-                        $totalSuccessfulEmails++                        # Clean up
+                        # Clean up
+                                                $totalSuccessfulEmails++
                         [System.Runtime.Interopservices.Marshal]::ReleaseComObject($mailItem) | Out-Null
 
                         # Clean up temporary attachment files for this email
@@ -718,7 +739,7 @@ function New-PSTFileWithData {
                                 Write-Verbose "Could not clean up temp file '$($file.Name)': $($_.Exception.Message)"
                             }
                         }
-                        
+
                         # Try to remove the temp directory if it's empty
                         $remainingItems = Get-ChildItem -Path $AttachmentTempPath -ErrorAction SilentlyContinue
                         if (-not $remainingItems) {
@@ -730,7 +751,8 @@ function New-PSTFileWithData {
                 catch {
                     Write-ColoredOutput -Message "WARNING: Could not fully clean up temporary attachment directory: $($_.Exception.Message)" -Color Yellow
                 }
-            }# Optional: Remove the PST from Outlook profile (keep file but remove from profile)
+            # Optional: Remove the PST from Outlook profile (keep file but remove from profile)
+                        }
             # This prevents the test PST from remaining in the user's Outlook
             Write-ColoredOutput -Message "Removing PST from Outlook profile (file remains on disk)..." -Color Cyan
             try {
@@ -826,7 +848,8 @@ try {
         else {
             Write-ColoredOutput -Message "WHATIF: Would overwrite existing PST file: $PSTPath" -Color Magenta
         }
-    }    # Create the PST file with data
+    # Create the PST file with data
+        }
     $isWhatIfMode = $PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf']
     New-PSTFileWithData -FilePath $PSTPath -EmailCount $EmailCount -IsWhatIfMode $isWhatIfMode -AttachmentPercentage $AttachmentPercentage -AttachmentTempPath $AttachmentTempPath
 

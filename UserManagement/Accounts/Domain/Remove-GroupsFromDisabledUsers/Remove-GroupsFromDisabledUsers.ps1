@@ -18,9 +18,9 @@
      - Key actions are logged to a transcript file
      - Automatically opens the log file upon completion
      - Keeps the PowerShell window open until user interaction
-     
+
     Supports -WhatIf parameter to preview changes without making them.
-     
+
     Dependencies:
      - Active Directory PowerShell module
      - Appropriate AD permissions to modify users and groups
@@ -35,7 +35,7 @@
 .NOTES
     Security Level: High
     Required Permissions: Domain Admin or delegated AD permissions
-    Validation Requirements: 
+    Validation Requirements:
     - Review log file after completion
     - Verify users have appropriate group membership
 #>
@@ -48,7 +48,8 @@ Add-Type -AssemblyName System.Windows.Forms
 
 # Get the current domain
 $CurrentDomain = Get-ADDomain
-$DomainUsersGroup = "Domain Users" # Default primary group
+# Default primary group
+$DomainUsersGroup = "Domain Users"
 
 # Set log file location
 $logfilename = "C:\Temp\DisabledUsers_" + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".log"
@@ -99,16 +100,16 @@ Try {
         # Calculate and display progress percentage
         $PercentComplete = [math]::Round(($UserCounter / $DisabledUsersCount) * 100, 1)
         Write-Host "Processing user $UserCounter of $DisabledUsersCount ($PercentComplete%): ${User}" -ForegroundColor Cyan
-        
+
         try {
             # Get user details
             $UserInfo = Get-ADUser -Identity $User -Properties Description, PrimaryGroupID
-            
+
             # Get all group memberships
             $UserGroups = Get-ADPrincipalGroupMembership $User
             $GroupCount = $UserGroups.Count
             Write-Host "User is a member of $GroupCount groups" -ForegroundColor DarkGray
-            
+
             # Process group removals
             if ($GroupCount -gt 0) {
                 # Ensure Domain Users is the primary group before removing other groups
@@ -129,7 +130,7 @@ Try {
                         Write-Host "Error setting Domain Users as primary group: $($_.Exception.Message)" -ForegroundColor Red
                     }
                 }
-                
+
                 # Now remove all group memberships
                 foreach ($Group in $UserGroups) {
                     # Skip if it's Domain Users and it's now the primary group
@@ -148,7 +149,7 @@ Try {
             } else {
                 Write-Host "User is not a member of any groups" -ForegroundColor Yellow
             }
-            
+
             # Update User Description
             $DisabledDate = Get-Date
             if ($null -eq $UserInfo.Description -or -not $UserInfo.Description.StartsWith("User disabled")) {
@@ -166,7 +167,7 @@ Try {
         } catch {
             Write-Host "Error processing user ${User} - $($_.Exception.Message)" -ForegroundColor Red
         }
-        
+
         Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
     }
 } catch {
@@ -194,7 +195,7 @@ try {
 
 # Keep console window open regardless of how script was launched
 Write-Host "`n`n" -NoNewline
-Write-Host "Script execution complete." -ForegroundColor Green  
+Write-Host "Script execution complete." -ForegroundColor Green
 Write-Host "Window will remain open for your review." -ForegroundColor Cyan
 Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 

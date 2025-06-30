@@ -34,26 +34,26 @@
 param(
     [Parameter()]
     [string[]]$LogNames = @("Application", "System"),
-    
+
     [Parameter()]
     [int]$Hours = 1,
 
     [Parameter()]
     [ValidateScript({
-        if ($_ -match '^\d{14}$') { 
-            $true 
-        } else { 
-            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959" 
+        if ($_ -match '^\d{14}$') {
+            $true
+        } else {
+            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"
         }
     })]
     [string]$StartDate,
 
     [Parameter()]
     [ValidateScript({
-        if ($_ -match '^\d{14}$') { 
-            $true 
-        } else { 
-            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959" 
+        if ($_ -match '^\d{14}$') {
+            $true
+        } else {
+            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"
         }
     })]
     [string]$EndDate
@@ -96,23 +96,23 @@ try {
 
     $startTimeFormatted = $startTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
     $endTimeFormatted = $endTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
-    
+
     # Ensure output directory exists
     Initialize-OutputDirectory
-    
+
     foreach ($logName in $LogNames) {
         Write-Verbose "Exporting events from $logName"
         $outputFile = "C:\Temp\${logName}_$(Get-TimeStamp).evtx"
-        
+
         # Create query string for time filter
         $timeQuery = "*[System[TimeCreated[@SystemTime>=`'$startTimeFormatted`'] and TimeCreated[@SystemTime<=`'$endTimeFormatted`']]]"
-        
+
         Write-Verbose "Using query: $timeQuery"
-        
+
         try {
             # Export events using wevtutil
             $result = wevtutil.exe export-log $logName $outputFile "/q:$timeQuery" 2>&1
-            
+
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "Events from $logName exported to: $outputFile"
             } else {

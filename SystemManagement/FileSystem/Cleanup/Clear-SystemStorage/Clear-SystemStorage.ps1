@@ -19,7 +19,7 @@
     - Windows Error Reports cleanup
     - Browser cache cleanup
     - Windows logs cleanup
-    
+
     Uses .NET methods where available for improved performance.
 .PARAMETER Force
     Bypasses confirmation prompts for cleanup operations
@@ -54,14 +54,14 @@ function Write-Log {
         [string]$Color = 'White',
         [switch]$NoConsole
     )
-    
+
     $timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')
     $logMessage = "[$timestamp] $Message"
-    
+
     # Write to log file
     $script:logStream.WriteLine($logMessage)
     $script:logStream.Flush()
-    
+
     # Write to console if not suppressed
     if (-not $NoConsole) {
         Write-Host $Message -ForegroundColor $Color
@@ -73,7 +73,7 @@ function Show-DriveInfo {
         [Parameter(Mandatory=$true)]
         [object]$Volume
     )
-    
+
     Write-Log "`nDrive Volume Details:" -Color Green
     Write-Log "------------------------" -Color Green
     Write-Log "Drive Letter: $($Volume.DriveLetter)" -Color Cyan
@@ -158,16 +158,16 @@ function Remove-TempFiles {
     try {
         $usersPath = [System.IO.Path]::Combine($env:SystemDrive, "Users")
         $cutoffDate = (Get-Date).AddDays(-180)
-        
+
         [System.IO.Directory]::GetDirectories($usersPath) | ForEach-Object {
             $downloadPath = [System.IO.Path]::Combine($_, "Downloads")
-            
+
             if ([System.IO.Directory]::Exists($downloadPath)) {
                 Write-Log "Processing Downloads folder for $([System.IO.Path]::GetFileName($_))..." -Color Cyan
-                
+
                 try {
-                    Get-ChildItem -Path $downloadPath -File -Force -ErrorAction SilentlyContinue | 
-                        Where-Object { $_.LastWriteTime -lt $cutoffDate } | 
+                    Get-ChildItem -Path $downloadPath -File -Force -ErrorAction SilentlyContinue |
+                        Where-Object { $_.LastWriteTime -lt $cutoffDate } |
                         ForEach-Object {
                             try {
                                 $fileSize = $_.Length
@@ -215,7 +215,7 @@ function Clear-RecycleBinContents {
             # Fallback for older PowerShell versions
             $shell = New-Object -ComObject Shell.Application
             $recycleBin = $shell.NameSpace(0xa)
-            $recycleBin.Items() | ForEach-Object { 
+            $recycleBin.Items() | ForEach-Object {
                 Remove-Item $_.Path -Force -Recurse
             }
             if ($null -ne $shell) {
@@ -240,16 +240,16 @@ function Clear-ShadowCopies {
         }
         $shadowList = [System.IO.File]::ReadAllText($tempFile)
         [System.IO.File]::Delete($tempFile)
-        
+
         # Parse shadow copies
-        $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: {(.*?)}" -AllMatches | 
+        $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: {(.*?)}" -AllMatches |
             ForEach-Object { $_.Matches.Groups[1].Value })
-            
+
         $totalCopies = $shadowCopies.Count
-        
+
         if ($totalCopies -gt 1) {
             Write-StatusMessage "Found $totalCopies shadow copies. Keeping most recent only." -Color Yellow
-            
+
             # Keep the last one (most recent), delete the rest
             $shadowCopies | Select-Object -SkipLast 1 | ForEach-Object {
                 try {
@@ -292,14 +292,14 @@ function Remove-WindowsErrorReports {
 
 function Clear-BrowserCaches {
     Write-StatusMessage "Clearing browser caches..." -Color Cyan
-    
+
     # Get all user profile folders
     $userFolders = [System.IO.Directory]::GetDirectories("C:\Users")
-    
+
     foreach ($userFolder in $userFolders) {
         $userName = [System.IO.Path]::GetFileName($userFolder)
         Write-Log "Processing browser caches for user: $userName" -Color DarkGray
-        
+
         # Define browser cache paths for this user
         $browserPaths = @{
             'Chrome' = [System.IO.Path]::Combine($userFolder, "AppData\Local\Google\Chrome\User Data\Default\Cache")
@@ -309,7 +309,7 @@ function Clear-BrowserCaches {
 
         foreach ($browser in $browserPaths.Keys) {
             $cachePath = $browserPaths[$browser]
-            
+
             if (-not [System.IO.Directory]::Exists($cachePath)) {
                 Write-Log "$browser cache not found for user $userName" -Color DarkGray -NoConsole
                 continue
@@ -328,7 +328,7 @@ function Clear-BrowserCaches {
                             catch {
                                 $errorMsg = $_.Exception.Message
                                 Write-Log "Error clearing Firefox cache for $userName`: $errorMsg" -Color Yellow
-                                
+
                                 if ($_.Exception -is [System.UnauthorizedAccessException]) {
                                     Write-Log "Access denied. Browser may be running for user $userName." -Color Yellow
                                 }
@@ -345,7 +345,7 @@ function Clear-BrowserCaches {
             catch {
                 $errorMsg = $_.Exception.Message
                 Write-Log "Failed to clear $browser cache for $userName`: $errorMsg" -Color Yellow
-                
+
                 if ($_.Exception -is [System.UnauthorizedAccessException]) {
                     Write-Log "Access denied for $browser cache. Browser may be running for user $userName." -Color Yellow
                 }
@@ -367,11 +367,11 @@ function Remove-WindowsLogs {
                     Write-Log "Skipped empty log name" -Color Yellow -NoConsole
                     continue
                 }
-                
+
                 # Only clear logs older than 30 days
                 $cutoffDate = (Get-Date).AddDays(-30)
                 $oldEntries = $_.Entries | Where-Object { $_.TimeGenerated -lt $cutoffDate }
-                
+
                 if ($oldEntries.Count -gt 0) {
                     $_.Clear()
                     Write-StatusMessage "Cleared old entries from $($_.Log) log" -Color Green
@@ -408,7 +408,7 @@ try {
         else {
             Write-Log "Skipping restore point creation as requested." -Color Yellow
         }
-    
+
     # Get initial drive space information
     try {
         Write-StatusMessage "Getting initial drive space information..." -Color Cyan
@@ -417,7 +417,7 @@ try {
             Write-Log "No drives with letters found on the system." -Color Red
             exit 1
         }
-        
+
         foreach ($volume in $volumes) {
             Write-Log "Initial drive space for $($volume.DriveLetter):" -Color Yellow
             Show-DriveInfo -Volume $volume
@@ -425,7 +425,8 @@ try {
     }
     catch {
         Write-Log "Error accessing initial drive information: $_" -Color Red
-    }    # Perform cleanup operations
+    # Perform cleanup operations
+        }
     Remove-TempFiles
     Clear-RecycleBinContents
     Clear-ShadowCopies
@@ -447,7 +448,7 @@ try {
     catch {
         Write-Log "Error accessing final drive information: $_" -Color Red
     }
-    
+
     Write-Log "System storage cleanup completed successfully. See log file for details: $logFile" -Color Green
 }
 catch {

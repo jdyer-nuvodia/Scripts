@@ -15,22 +15,22 @@
     This script modifies the PATH environment variable for either the current user or machine-wide.
     It creates a backup of the existing PATH and sets a new predefined list of directories.
     When using the Machine scope, the script requires administrative privileges.
-    
+
     Key actions:
      - Verifies administrative privileges when needed
      - Creates backup of current PATH
      - Sets new PATH with predefined directories for either User or Machine scope
-    
+
     Dependencies:
      - Windows Operating System
      - Administrative privileges (for Machine PATH only)
-     
+
     Security considerations:
      - Modifies environment variables at specified scope
      - Machine scope requires elevation to run
      - Creates backup file in script directory
      - WhatIf parameter allows previewing changes without applying them
-     
+
     Performance impact:
      - Minimal system impact
      - One-time environment variable modification
@@ -54,7 +54,7 @@
 .NOTES
     Security Level: High
     Required Permissions: Administrative privileges (for Machine PATH only)
-    Validation Requirements: 
+    Validation Requirements:
      - Verify PATH after modification
      - Ensure critical system paths are included
      - Test environment variable accessibility
@@ -86,12 +86,12 @@ function Write-Log {
         [string]$Message,
         [string]$Level = "INFO"
     )
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Level] $Message"
-    
+
     Add-Content -Path $logPath -Value $logMessage
-    
+
     switch ($Level) {
         "INFO"    { Write-Host $Message -ForegroundColor White }
         "PROCESS" { Write-Host $Message -ForegroundColor Cyan }
@@ -131,23 +131,23 @@ $newPathEntries = if ($Scope -eq "Machine") {
 
 try {
     Write-Log "Starting PATH reset for $pathType scope" "PROCESS"
-    
+
     # Backup current PATH
     $currentPath = [Environment]::GetEnvironmentVariable('PATH', $pathType)
     $backupPath = Join-Path -Path $PSScriptRoot -ChildPath "${pathType}_PATH_Backup_${timestamp}.txt"
-    
+
     Write-Log "Current $pathType PATH: $currentPath" "DETAIL"
-    
+
     if ($PSCmdlet.ShouldProcess("$pathType PATH", "Reset to default values")) {
         $currentPath | Out-File -FilePath $backupPath -Encoding UTF8
         Write-Log "Backup of previous $pathType PATH saved to: $backupPath" "PROCESS"
-        
+
         # Join the new paths with semicolon
         $newPath = $newPathEntries -join ';'
-        
+
         # Set the new PATH
         [Environment]::SetEnvironmentVariable('PATH', $newPath, $pathType)
-        
+
         Write-Log "$pathType PATH has been successfully updated" "SUCCESS"
         Write-Log "Please restart your terminal/applications for the changes to take effect" "PROCESS"
     } else {
@@ -163,7 +163,7 @@ catch {
 if (Get-Command -Name Invoke-ScriptAnalyzer -ErrorAction SilentlyContinue) {
     Write-Log "Running PSScriptAnalyzer..." "PROCESS"
     $scriptAnalyzerResults = Invoke-ScriptAnalyzer -Path $MyInvocation.MyCommand.Path
-    
+
     if ($scriptAnalyzerResults) {
         Write-Log "PSScriptAnalyzer found issues:" "WARNING"
         foreach ($result in $scriptAnalyzerResults) {

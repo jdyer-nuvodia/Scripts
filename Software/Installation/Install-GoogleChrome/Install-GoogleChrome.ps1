@@ -51,15 +51,15 @@ function Write-Log {
     param (
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $false)]
         [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
         [string]$Level = "INFO"
     )
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logEntry = "$timestamp [$Level] $Message"
-    
+
     # Output to console with colors
     switch ($Level) {
         "INFO"    { Write-Host $logEntry -ForegroundColor White }
@@ -68,7 +68,7 @@ function Write-Log {
         "SUCCESS" { Write-Host $logEntry -ForegroundColor Green }
         "DEBUG"   { Write-Host $logEntry -ForegroundColor Magenta }
     }
-    
+
     # Write to log file
     Add-Content -Path $logFile -Value $logEntry
 }
@@ -88,7 +88,7 @@ try {
             Write-Log "WhatIf: Would create temporary directory: $tempDir" "INFO"
         }
     }
-    
+
     # Download Chrome Enterprise Bundle
     if ($PSCmdlet.ShouldProcess("Download Chrome Enterprise installer", "Invoke-WebRequest")) {
         Write-Log "Downloading Chrome Enterprise installer from $downloadUrl" "INFO"
@@ -99,7 +99,7 @@ try {
     else {
         Write-Log "WhatIf: Would download Chrome Enterprise installer from $downloadUrl" "INFO"
     }
-    
+
     # Extract the zip file
     if ($PSCmdlet.ShouldProcess("Extract Chrome Enterprise installer", "Expand-Archive")) {
         Write-Log "Extracting Chrome Enterprise installer" "INFO"
@@ -109,20 +109,20 @@ try {
     else {
         Write-Log "WhatIf: Would extract Chrome Enterprise installer" "INFO"
     }
-    
+
     # Check if MSI exists
     if (-not ($WhatIfPreference) -and -not (Test-Path -Path $msiPath)) {
         Write-Log "MSI file not found at expected location: $msiPath" "ERROR"
         throw "MSI file not found at expected location: $msiPath"
     }
-    
+
     # Install Chrome silently
     if ($PSCmdlet.ShouldProcess("Install Google Chrome", "Start-Process msiexec.exe")) {
         Write-Log "Installing Google Chrome silently" "INFO"
-        
+
         $arguments = "/i `"$msiPath`" /qn /norestart /l*v `"$tempDir\chrome_install_log.txt`""
         $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $arguments -Wait -PassThru
-        
+
         if ($process.ExitCode -eq 0) {
             Write-Log "Google Chrome installed successfully" "SUCCESS"
         }
@@ -135,7 +135,7 @@ try {
     else {
         Write-Log "WhatIf: Would install Google Chrome silently" "INFO"
     }
-    
+
     # Clean up temporary files
     if ($PSCmdlet.ShouldProcess("Remove temporary files", "Remove-Item")) {
         Write-Log "Cleaning up temporary files" "INFO"
@@ -145,14 +145,14 @@ try {
     else {
         Write-Log "WhatIf: Would remove temporary files" "INFO"
     }
-    
+
     Write-Log "Google Chrome installation completed successfully" "SUCCESS"
 }
 catch {
     Write-Log "An error occurred: $_" "ERROR"
     Write-Log "Exception details: $($_.Exception.Message)" "ERROR"
     Write-Log "Stack trace: $($_.ScriptStackTrace)" "DEBUG"
-    
+
     # Ensure we attempt to clean up even if there was an error
     if (Test-Path -Path $tempDir) {
         try {
@@ -165,6 +165,6 @@ catch {
             Write-Log "Failed to clean up temporary files: $_" "WARNING"
         }
     }
-    
+
     exit 1
 }

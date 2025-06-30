@@ -111,15 +111,15 @@ function Write-Log {
     param (
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $false)]
         [ValidateSet("INFO", "WARNING", "ERROR", "SUCCESS", "DEBUG")]
         [string]$Level = "INFO"
     )
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logEntry = "$timestamp [$Level] $Message"
-    
+
     # Output to console with colors
     switch ($Level) {
         "INFO"    { Write-Host $logEntry -ForegroundColor White }
@@ -129,13 +129,13 @@ function Write-Log {
         "DEBUG"   { Write-Host $logEntry -ForegroundColor Magenta }
         Default   { Write-Host $logEntry -ForegroundColor DarkGray }
     }
-    
+
     # Create log directory if it does not exist
     $logDir = Split-Path -Path $logFile -Parent
     if (-not (Test-Path -Path $logDir)) {
         New-Item -Path $logDir -ItemType Directory -Force | Out-Null
     }
-    
+
     # Write to log file
     Add-Content -Path $logFile -Value $logEntry
 }
@@ -145,43 +145,43 @@ function Remove-DirectorySilently {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$LogPrefix = "",
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$SkipProtectedFolders,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$Force
     )
-    
+
     # If global $Force is set, use it (unless overridden by parameter)
     $useForce = if ($Force) { $true } elseif ($global:Force) { $true } else { $false }
-    
+
     if (Test-Path $Path) {
         Write-Log "$LogPrefix Removing directory: $Path" "INFO"
-        
+
         # Check if this is a manufacturer system folder that should be handled carefully
         $isManufacturerFolder = ($Path -like "*\Dell*" -or $Path -like "*\Lenovo*" -or $Path -like "*\HP*")
-        
+
         # If this is a manufacturer folder and we're not skipping protected items
         # and force isn't enabled, use selective removal
         if ($isManufacturerFolder -and -not $SkipProtectedFolders -and -not $useForce) {
             try {
                 # Get list of files/folders in the directory
                 $items = Get-ChildItem -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
-                
+
                 # Count how many items might be in use
                 $protectedItems = @()
                 $deletableItems = @()
-                
+
                 # Separate items into protected (likely in use) and deletable
                 foreach ($item in $items) {
                     if ($item.PSIsContainer) {
                         # It's a directory, check if it contains special protected folders
-                        if ($item.Name -like "*Command Update*" -or 
-                            $item.Name -like "*Vantage*" -or 
+                        if ($item.Name -like "*Command Update*" -or
+                            $item.Name -like "*Vantage*" -or
                             $item.Name -like "*UpdateService*" -or
                             $item.Name -like "*Service*") {
                             $protectedItems += $item.FullName
@@ -190,7 +190,7 @@ function Remove-DirectorySilently {
                         }
                     } else {
                         # It's a file, check if it's likely to be in use
-                        if ($item.Extension -eq ".dll" -or 
+                        if ($item.Extension -eq ".dll" -or
                             $item.Extension -eq ".exe" -or
                             $item.Extension -eq ".sys" -or
                             $item.Name -like "*lock*") {
@@ -201,12 +201,12 @@ function Remove-DirectorySilently {
                         }
                     }
                 }
-                
+
                 # Log information about protected items
                 if ($protectedItems.Count -gt 0) {
                     Write-Log "$LogPrefix INFO: Skipping $($protectedItems.Count) protected items in $Path" "INFO"
                 }
-                
+
                 # Try to delete non-protected items
                 foreach ($item in $deletableItems) {
                     try {
@@ -218,7 +218,7 @@ function Remove-DirectorySilently {
                         # Silently continue if individual items can't be removed
                     }
                 }
-                
+
                 Write-Log "$LogPrefix PARTIAL: Directory cleanup of $Path completed with some items skipped" "WARNING"
                 return $true
             }
@@ -254,11 +254,11 @@ function Uninstall-UWPApp {
         [Parameter(Mandatory = $true)]
         [string]$AppName
     )
-    
+
     try {
         # Use ErrorAction SilentlyContinue to prevent errors from appearing for non-existent apps
         $app = Get-AppxPackage -Name $AppName -AllUsers -ErrorAction SilentlyContinue
-        
+
         if ($null -ne $app) {
             # Check if it's a single app or multiple apps with the same name
             if ($app -is [System.Array]) {
@@ -314,23 +314,23 @@ function Uninstall-Win32App {
     param (
         [Parameter(Mandatory = $true)]
         [string]$DisplayName,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$ExactMatch = $false
     )
-    
+
     Write-Log "Searching for Win32 application: $DisplayName" "INFO"
-    
+
     $uninstallKeys = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
-    
+
     $found = $false
-    
+
     foreach ($key in $uninstallKeys) {
-        $apps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
-                Get-ItemProperty | 
+        $apps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
+                Get-ItemProperty |
                 Where-Object {
                     if ($ExactMatch) {
                         $_.DisplayName -eq $DisplayName
@@ -338,15 +338,15 @@ function Uninstall-Win32App {
                         $_.DisplayName -like "*$DisplayName*"
                     }
                 }
-        
+
         foreach ($app in $apps) {
             $found = $true
             $appName = $app.DisplayName
             $uninstallString = $app.UninstallString
             $productCode = $app.PSChildName
-            
+
             Write-Log "FOUND: Win32 application: $appName" "INFO"
-            
+
             try {
                 if ($PSCmdlet.ShouldProcess($appName, "Uninstall application")) {
                     Write-Log "REMOVING: Win32 application: $appName" "INFO"
@@ -365,7 +365,7 @@ function Uninstall-Win32App {
                         }
                         $process = Start-Process -FilePath $uninstallExe -ArgumentList $uninstallArgs -Wait -NoNewWindow -PassThru
                     }
-                    
+
                     if ($process.ExitCode -eq 0) {
                         Write-Log "REMOVED: Win32 application: $appName" "SUCCESS"
                     }
@@ -383,7 +383,7 @@ function Uninstall-Win32App {
             }
         }
     }
-    
+
     if (-not $found) {
         Write-Log "NOT FOUND: Win32 application: $DisplayName is not installed" "INFO"
     }
@@ -395,7 +395,7 @@ function Test-IsDellCommandUpdate {
         [Parameter(Mandatory = $true)]
         [string]$AppName
     )
-    
+
     return $AppName -like "*Dell Command*Update*"
 }
 
@@ -405,7 +405,7 @@ function Test-IsLenovoVantage {
         [Parameter(Mandatory = $true)]
         [string]$AppName
     )
-    
+
     return $AppName -like "*Lenovo Vantage*"
 }
 
@@ -413,40 +413,40 @@ function Test-IsLenovoVantage {
 function Remove-DellBloatware {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param()
-    
+
     Write-Log "Identifying Dell applications..." "INFO"
-    
+
     $uninstallKeys = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
       # Special case Dell applications that need custom handling
     $specialDellApps = @(
-        "Dell Pair", 
+        "Dell Pair",
         "Dell SupportAssist OS Recovery Plugin for Dell Update",
         "Dell Digital Delivery",
         "Partner Promo"
     )
-    
+
     $foundDellApps = $false
       foreach ($key in $uninstallKeys) {
         # Look for Dell apps and specific apps like Partner Promo that might not have "Dell" in the name
-        $dellApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
-                    Get-ItemProperty | 
-                    Where-Object { 
-                        $_.DisplayName -like "*Dell*" -or 
+        $dellApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
+                    Get-ItemProperty |
+                    Where-Object {
+                        $_.DisplayName -like "*Dell*" -or
                         $_.DisplayName -like "*Partner Promo*" -or
                         $_.DisplayName -like "*SupportAssist OS Recovery*" -or
                         $_.Publisher -like "*Dell*"
                     }
-        
+
         if ($dellApps) {
             $foundDellApps = $true
         }
-        
+
         foreach ($app in $dellApps) {
             $appName = $app.DisplayName
-            
+
             # Skip Dell Command Update
             if (Test-IsDellCommandUpdate -AppName $appName) {
                 Write-Log "KEEPING: Dell Command Update: $appName" "INFO"
@@ -456,10 +456,10 @@ function Remove-DellBloatware {
             try {
                 if ($PSCmdlet.ShouldProcess($appName, "Uninstall Dell application")) {
                     Write-Log "REMOVING: Dell application: $appName" "INFO"
-                    
+
                     $productCode = $app.PSChildName
                     $uninstallString = $app.UninstallString
-                    
+
                     # Special handling for Dell Pair
                     if ($appName -eq "Dell Pair") {
                         # Use our specialized Dell Pair uninstaller
@@ -499,28 +499,29 @@ function Remove-DellBloatware {
                     else {
                         # Handle specific MSI error codes
                         switch ($process.ExitCode) {
-                            1605 { 
-                                Write-Log "NOT FOUND: Dell application $appName (code 1605) - product not installed" "WARNING" 
+                            1605 {
+                                Write-Log "NOT FOUND: Dell application $appName (code 1605) - product not installed" "WARNING"
                             }
                             1619 {
                                 Write-Log "ERROR: Installation package could not be found (code 1619) for Dell application: $appName" "WARNING"
                             }1639 {
                                 Write-Log "Invalid command line parameters (code 1639) for $appName - attempting alternative method" "WARNING"
-                                
+
                                 # Special handling for Dell Pair
                                 if ($appName -eq "Dell Pair") {
                                     Write-Log "Using special uninstall method for Dell Pair" "INFO"
                                     # Try to find and use the specific uninstaller for Dell Pair
-                                    $dellPairPath = Get-ChildItem -Path "C:\Program Files\Dell\*\*\Uninstall.exe" -ErrorAction SilentlyContinue | 
+                                    $dellPairPath = Get-ChildItem -Path "C:\Program Files\Dell\*\*\Uninstall.exe" -ErrorAction SilentlyContinue |
                                                    Where-Object { $_.Directory.Name -like "*Pair*" }
-                                    
+
                                     if ($dellPairPath) {
                                         Write-Log "Found Dell Pair uninstaller at: $($dellPairPath.FullName)" "INFO"
                                         $altProcess = Start-Process -FilePath $dellPairPath.FullName -ArgumentList "/S" -Wait -NoNewWindow -PassThru                                        if ($altProcess.ExitCode -eq 0) {
                                             Write-Log "REMOVED: Dell Pair using direct uninstaller" "SUCCESS"
                                         }
                                         else {
-                                            Write-Log "ERROR: Direct uninstaller for Dell Pair failed. Exit code: $($altProcess.ExitCode). Will try alternative cleanup." "WARNING"                                            # Attempt registry cleanup for Dell Pair
+                                            # Attempt registry cleanup for Dell Pair
+                                                                                        Write-Log "ERROR: Direct uninstaller for Dell Pair failed. Exit code: $($altProcess.ExitCode). Will try alternative cleanup." "WARNING"
                                             try {
                                                 Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
                                                 Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
@@ -534,7 +535,8 @@ function Remove-DellBloatware {
                                         }
                                     }
                                     else {
-                                        Write-Log "NOT FOUND: Could not find Dell Pair uninstaller, trying alternative cleanup" "WARNING"                                        # Attempt registry cleanup for Dell Pair
+                                        # Attempt registry cleanup for Dell Pair
+                                                                                Write-Log "NOT FOUND: Could not find Dell Pair uninstaller, trying alternative cleanup" "WARNING"
                                         try {
                                             Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
                                             Remove-Item -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -Include "*Dell Pair*" -Force -Confirm:$false -ErrorAction SilentlyContinue
@@ -577,7 +579,7 @@ function Remove-DellBloatware {
             }
         }
     }
-    
+
     if (-not $foundDellApps) {
         Write-Log "NOT FOUND: No Dell applications installed" "INFO"
     }
@@ -587,28 +589,28 @@ function Remove-DellBloatware {
 function Remove-LenovoBloatware {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param()
-    
+
     Write-Log "Identifying Lenovo applications..." "INFO"
-    
+
     $uninstallKeys = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
-    
+
     $foundLenovoApps = $false
-    
+
     foreach ($key in $uninstallKeys) {
-        $lenovoApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
-                    Get-ItemProperty | 
+        $lenovoApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
+                    Get-ItemProperty |
                     Where-Object { $_.DisplayName -like "*Lenovo*" }
-        
+
         if ($lenovoApps -and $lenovoApps.Count -gt 0) {
             $foundLenovoApps = $true
         }
-        
+
         foreach ($app in $lenovoApps) {
             $appName = $app.DisplayName
-            
+
             # Skip Lenovo Vantage
             if (Test-IsLenovoVantage -AppName $appName) {
                 Write-Log "KEEPING: Lenovo Vantage: $appName" "INFO"
@@ -618,7 +620,7 @@ function Remove-LenovoBloatware {
             try {
                 if ($PSCmdlet.ShouldProcess($appName, "Uninstall Lenovo application")) {
                     Write-Log "REMOVING: Lenovo application: $appName" "INFO"
-                    
+
                     $productCode = $app.PSChildName
                     $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow -PassThru
                       if ($process.ExitCode -eq 0) {
@@ -637,7 +639,7 @@ function Remove-LenovoBloatware {
             }
         }
     }
-    
+
     if (-not $foundLenovoApps) {
         Write-Log "NOT FOUND: No Lenovo applications installed" "INFO"
     }
@@ -648,32 +650,32 @@ function Uninstall-DellPair {
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([System.Boolean])]
     param()
-    
+
     Write-Log "Starting Dell Pair special uninstallation procedure" "INFO"
-    
+
     # First try uninstalling using standard method with a variety of arguments
     $uninstallRegistryKeys = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
     )
-    
+
     $foundDellPair = $false
-    
+
     # First attempt: Find Dell Pair in registry and use its uninstall string
     foreach ($key in $uninstallRegistryKeys) {
-        $dellPairs = Get-ChildItem -Path $key -ErrorAction SilentlyContinue | 
+        $dellPairs = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
                     Get-ItemProperty -ErrorAction SilentlyContinue |
                     Where-Object { $_.DisplayName -like "*Dell Pair*" }
-        
+
         if ($null -ne $dellPairs) {
             foreach ($app in $dellPairs) {
                 $foundDellPair = $true
                 $appName = $app.DisplayName
                 $productCode = $app.PSChildName
                 $uninstallString = $app.UninstallString
-                
+
                 Write-Log "Found Dell Pair application: $appName with Product Code: $productCode" "INFO"
-                
+
                 # Try multiple uninstall methods to see what works
                 if ($PSCmdlet.ShouldProcess("Dell Pair", "Uninstall using multiple methods")) {
                     # Method 1: Standard MSI uninstall with logging
@@ -683,14 +685,14 @@ function Uninstall-DellPair {
                         Write-Log "REMOVED: Dell Pair using MSI with product code" "SUCCESS"
                         return
                     }
-                    
+
                     # Method 2: Try using the uninstall string directly if available
                     if ($uninstallString) {
                         Write-Log "Trying direct uninstall string for Dell Pair: $uninstallString" "INFO"
                         if ($uninstallString -match '"([^"]+)"(.*)') {
                             $uninstallExe = $matches[1]
                             $uninstallArgs = $matches[2] + " /S /SILENT /VERYSILENT /NORESTART"
-                            
+
                             if (Test-Path $uninstallExe) {
                                 $process = Start-Process -FilePath $uninstallExe -ArgumentList $uninstallArgs -Wait -NoNewWindow -PassThru -ErrorAction SilentlyContinue
                                   if ($process.ExitCode -eq 0) {
@@ -704,28 +706,29 @@ function Uninstall-DellPair {
             }
         }
     }
-    
+
     # Second attempt: Search for uninstaller in common Dell locations
-    if (-not $foundDellPair -or $foundDellPair) { # Still continue even if we found it but failed to uninstall
+    # Still continue even if we found it but failed to uninstall
+        if (-not $foundDellPair -or $foundDellPair) {
         Write-Log "Searching for Dell Pair uninstaller in common locations" "INFO"
-        
+
         $possiblePaths = @(
             "${env:ProgramFiles}\Dell\Dell Pair\uninstall.exe",
             "${env:ProgramFiles(x86)}\Dell\Dell Pair\uninstall.exe",
             "${env:ProgramFiles}\Dell\DellPair\uninstall.exe",
             "${env:ProgramFiles(x86)}\Dell\DellPair\uninstall.exe"
         )
-        
+
         # Also search for uninstallers in Dell subdirectories
         $dellDirs = Get-ChildItem -Path "${env:ProgramFiles}\Dell\", "${env:ProgramFiles(x86)}\Dell\" -Directory -ErrorAction SilentlyContinue
         foreach ($dir in $dellDirs) {
             $possiblePaths += Get-ChildItem -Path $dir.FullName -Recurse -Include "unins*.exe" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
         }
-        
+
         foreach ($path in $possiblePaths) {
             if (Test-Path $path) {
                 Write-Log "Found potential Dell Pair uninstaller: $path" "INFO"
-                
+
                 if ($PSCmdlet.ShouldProcess("Dell Pair", "Uninstall using $path")) {
                     $process = Start-Process -FilePath $path -ArgumentList "/S /SILENT /VERYSILENT /NORESTART" -Wait -NoNewWindow -PassThru -ErrorAction SilentlyContinue
                       if ($process.ExitCode -eq 0) {
@@ -739,10 +742,10 @@ function Uninstall-DellPair {
             }
         }
     }
-    
+
     # Final attempt: Brute force removal of files and registry keys
     Write-Log "Attempting manual removal of Dell Pair files and registry entries" "INFO"
-    
+
     if ($PSCmdlet.ShouldProcess("Dell Pair", "Manual cleanup")) {
         try {
             # Remove registry entries
@@ -750,11 +753,11 @@ function Uninstall-DellPair {
                 "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
                 "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
             )
-            
+
             foreach ($regPath in $regPaths) {
-                Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue | 
-                Get-ItemProperty -ErrorAction SilentlyContinue | 
-                Where-Object { $_.DisplayName -like "*Dell Pair*" } | 
+                Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue |
+                Get-ItemProperty -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -like "*Dell Pair*" } |
                 ForEach-Object {
                     $keyPath = $_.PSPath
                     Write-Log "Removing registry key: $keyPath" "INFO"
@@ -768,7 +771,7 @@ function Uninstall-DellPair {
                 "${env:ProgramFiles}\Dell\DellPair\",
                 "${env:ProgramFiles(x86)}\Dell\DellPair\"
             )
-            
+
             foreach ($filePath in $filePaths) {
                 # Use our silent removal helper function
                 Remove-DirectorySilently -Path $filePath -LogPrefix "Dell Pair cleanup:" -Force
@@ -791,35 +794,36 @@ function Stop-DisableBloatwareService {
     param (
         [Parameter(Mandatory = $true)]
         [string]$ServiceName,
-        
+
         [Parameter(Mandatory = $false)]
         [string]$DisplayName = "",
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$Force
     )
-    
+
     if ([string]::IsNullOrEmpty($DisplayName)) {
         $DisplayName = $ServiceName
     }
-    
+
     Write-Log "Checking for service: $DisplayName" "INFO"
-    
-    try {        # First try to find service by name
+
+    # First try to find service by name
+        try {
         $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-        
+
         # If not found by name, try to find by display name using a safer approach with WMI
         if ($null -eq $service -and -not [string]::IsNullOrEmpty($DisplayName)) {
             Write-Log "Service not found by name, searching by display name: $DisplayName" "INFO"
             try {
                 # Use WMI/CIM to query services instead of Get-Service which can have permission issues
                 $foundServices = Get-CimInstance -ClassName Win32_Service -Filter "DisplayName LIKE '%$DisplayName%'" -ErrorAction SilentlyContinue
-                
+
                 if ($null -ne $foundServices -and ($foundServices | Measure-Object).Count -gt 0) {
                     # Take the first matching service
                     $foundService = $foundServices | Select-Object -First 1
                     Write-Log "FOUND: Service with display name matching '$DisplayName' (Name: $($foundService.Name))" "INFO"
-                    
+
                     # Now get the service object using the name we found
                     $service = Get-Service -Name $foundService.Name -ErrorAction SilentlyContinue
                     if ($null -ne $service) {
@@ -833,21 +837,22 @@ function Stop-DisableBloatwareService {
                 Write-Log "ERROR: Failed to search for service by display name: $errorMsg" "WARNING"
             }
         }
-        
+
         if ($null -eq $service) {
             Write-Log "NOT FOUND: Service $DisplayName is not installed" "INFO"
             return
         }
-        
+
         Write-Log "FOUND: Service $ServiceName (DisplayName: $($service.DisplayName), Status: $($service.Status))" "INFO"
-        
-        if ($PSCmdlet.ShouldProcess($DisplayName, "Stop and disable service")) {            # First, try to stop the service if it's running
+
+        # First, try to stop the service if it's running
+                if ($PSCmdlet.ShouldProcess($DisplayName, "Stop and disable service")) {
             if ($service.Status -eq "Running") {
                 Write-Log "STOPPING: Service $ServiceName" "INFO"
                 try {
                     # Try multiple methods to stop the service
                     $stopSuccess = $false
-                    
+
                     # Method 1: Standard Stop-Service cmdlet
                     try {
                         if ($Force) {
@@ -861,12 +866,12 @@ function Stop-DisableBloatwareService {
                     catch {                        $errorMsg = $_.Exception.Message
                         Write-Log "WARNING: Standard stop failed for ${ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
                     }
-                    
+
                     # Method 2: Use WMI/CIM to stop the service if standard method failed
                     if (-not $stopSuccess) {
                         try {
                             $wmiService = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$ServiceName'" -ErrorAction SilentlyContinue
-                            
+
                             if ($null -ne $wmiService) {
                                 $result = $wmiService | Invoke-CimMethod -MethodName StopService
                                 if ($result.ReturnValue -eq 0) {
@@ -877,12 +882,12 @@ function Stop-DisableBloatwareService {
                                     Write-Log "WARNING: Failed to stop service via WMI. Return code: $($result.ReturnValue)" "WARNING"
                                 }
                             }
-                        } 
+                        }
                         catch {                            $errorMsg = $_.Exception.Message
                             Write-Log "WARNING: WMI stop failed for ${ServiceName}: $errorMsg" "WARNING"
                         }
                     }
-                    
+
                     # Method 3: Use SC.exe command if both other methods failed
                     if (-not $stopSuccess) {
                         try {
@@ -899,7 +904,7 @@ function Stop-DisableBloatwareService {
                             Write-Log "WARNING: SC.exe stop failed for ${ServiceName}: $errorMsg" "WARNING"
                         }
                     }
-                    
+
                     if (-not $stopSuccess) {
                         Write-Log "ERROR: Could not stop service $ServiceName after trying multiple methods" "ERROR"
                     }
@@ -910,10 +915,10 @@ function Stop-DisableBloatwareService {
             }
               # Then, set the service to disabled
             Write-Log "DISABLING: Service $ServiceName" "INFO"
-            
+
             # Try multiple methods to disable the service
             $disableSuccess = $false
-            
+
             try {
                 # Method 1: Standard Set-Service cmdlet
                 try {
@@ -924,7 +929,7 @@ function Stop-DisableBloatwareService {
                 catch {                    $errorMsg = $_.Exception.Message
                     Write-Log "WARNING: Standard disable failed for ${ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
                 }
-                
+
                 # Method 2: Use the registry directly if method 1 failed
                 if (-not $disableSuccess) {
                     try {
@@ -942,7 +947,7 @@ function Stop-DisableBloatwareService {
                         Write-Log "WARNING: Registry disable failed for ${ServiceName}: $errorMsg" "WARNING"
                     }
                 }
-                
+
                 # Method 3: Use SC.exe command if both other methods failed
                 if (-not $disableSuccess) {
                     try {
@@ -959,7 +964,7 @@ function Stop-DisableBloatwareService {
                         Write-Log "WARNING: SC.exe disable failed for ${ServiceName}: $errorMsg" "WARNING"
                     }
                 }
-                
+
                 if (-not $disableSuccess) {
                     Write-Log "ERROR: Could not disable service $ServiceName after trying multiple methods" "ERROR"
                 }
@@ -994,7 +999,7 @@ try {
         "Microsoft.Microsoft3DViewer",
         "Microsoft.MicrosoftSolitaireCollection",
         "Microsoft.MixedReality.Portal",
-        "Microsoft.OneConnect", 
+        "Microsoft.OneConnect",
         "Microsoft.People",
         "Microsoft.Print3D",
         "Microsoft.SkypeApp",
@@ -1028,7 +1033,7 @@ try {
             Write-Log "Caught exception while processing $app, continuing with next app" "WARNING"
         }
     }
-    
+
     # List of common Win32 bloatware apps
     $win32Bloatware = @(
         "McAfee",
@@ -1045,23 +1050,24 @@ try {
         "HP Sure"
         # Lenovo apps are now handled by the Remove-LenovoBloatware function
     )
-           
+
     # Remove Win32 bloatware
     Write-Log "Removing Win32 bloatware applications..." "INFO"
     foreach ($app in $win32Bloatware) {
         Uninstall-Win32App -DisplayName $app
     }
-    
+
     # Remove Dell bloatware except Command Update
     Write-Log "Removing Dell bloatware (except Command Update)..." "INFO"
     Remove-DellBloatware
-    
+
     # Remove Lenovo bloatware except Vantage
     Write-Log "Removing Lenovo bloatware (except Vantage)..." "INFO"
     Remove-LenovoBloatware
-    
+
     # Remove problematic and unnecessary services
-    Write-Log "Stopping and disabling bloatware services..." "INFO"    # List of services to stop and disable
+    # List of services to stop and disable
+        Write-Log "Stopping and disabling bloatware services..." "INFO"
     $bloatwareServices = @(
         # Service name, Display name (for logs)
         # Using common service names but also listing full display names for better matching
@@ -1070,11 +1076,11 @@ try {
         @{ Name = "ICSS"; DisplayName = "Intel Context Sensing Service" },
         @{ Name = "IntelCSS"; DisplayName = "Intel Context Sensing Service" }
     )
-    
+
     foreach ($service in $bloatwareServices) {
         Stop-DisableBloatwareService -ServiceName $service.Name -DisplayName $service.DisplayName -Force:$Force
     }
-    
+
     # Clean up any leftover files
     $bloatwareFolders = @(
         "${env:ProgramFiles}\McAfee",
@@ -1084,7 +1090,7 @@ try {
         "${env:ProgramFiles(x86)}\Norton",
         "${env:ProgramFiles(x86)}\Wild Tangent Games"
     )
-      
+
     # Manufacturer folders require special handling
     $manufacturerFolders = @(
         "${env:ProgramFiles}\Dell",
@@ -1094,9 +1100,9 @@ try {
         "${env:ProgramFiles}\HP",
         "${env:ProgramFiles(x86)}\HP"
     )
-    
+
     Write-Log "Cleaning up leftover bloatware directories..." "INFO"
-    
+
     # First handle non-manufacturer folders (full removal)
     foreach ($folder in $bloatwareFolders) {
         if (Test-Path $folder) {
@@ -1107,7 +1113,7 @@ try {
             }
         }
     }
-    
+
     # Then handle manufacturer folders (selective removal)
     foreach ($folder in $manufacturerFolders) {
         if (Test-Path $folder) {
@@ -1116,13 +1122,13 @@ try {
                 Write-Log "Skipping Dell Command Update folder: $folder\Command Update" "INFO"
                 continue
             }
-            
+
             # Skip Lenovo Vantage folders
             if (($folder -like "*Lenovo*") -and (Test-Path "$folder\Lenovo Vantage")) {
                 Write-Log "Skipping Lenovo Vantage folder: $folder\Lenovo Vantage" "INFO"
                 continue
             }
-            
+
             # Use our enhanced helper function that handles locked files
             if ($WhatIfPreference) {
                 Write-Log "WhatIf: Would selectively clean directory: $folder" "INFO"            } else {
@@ -1130,7 +1136,7 @@ try {
             }
         }
     }
-    
+
     Write-Log "Windows bloatware removal completed successfully" "SUCCESS"
 }
 catch {

@@ -88,19 +88,19 @@ function Write-Log {
         [string]$Message,
         [switch]$NoConsole
     )
-    
+
     # Create log file if it doesn't exist
     if (-not $global:logFileCreated) {
-        "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" | 
+        "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" |
             Out-File -FilePath $global:logFile -Force
         $global:logFileCreated = $true
     }
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
-    
+
     Add-Content -Path $global:logFile -Value $logMessage
-    
+
     if (-not $NoConsole) {
         Write-Host $Message
     }
@@ -122,14 +122,16 @@ $redistributables = @(
         URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe";
         Filename = "vcredist_2008_x86.exe";
         ProductCode = "{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
-        Args = "/q"; # Add specific arguments for 2008 SP1 x86
+        # Add specific arguments for 2008 SP1 x86
+                Args = "/q";
     },
     @{
         Name = "Microsoft Visual C++ 2008 SP1 Redistributable (x64)";
         URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe";
         Filename = "vcredist_2008_x64.exe";
         ProductCode = "{350AA351-21FA-3270-8B7A-835434E766AD}";
-        Args = "/q"; # Add specific arguments for 2008 SP1 x64
+        # Add specific arguments for 2008 SP1 x64
+                Args = "/q";
     },
     # 2010 SP1
     @{
@@ -188,19 +190,19 @@ $redistributables = @(
 # Function to get installed programs
 function Get-InstalledPrograms {
     param()
-    
+
     $uninstallKeys = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
 
     $installedPrograms = @()
-    
+
     foreach ($key in $uninstallKeys) {
-        $installedPrograms += Get-ItemProperty -Path $key -ErrorAction SilentlyContinue | 
+        $installedPrograms += Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
             Where-Object { ($_.DisplayName -like "*Microsoft Visual C++*" -or $_.DisplayName -like "*C++ Runtime*") -and $null -eq $_.ParentDisplayName }
     }
-    
+
     return $installedPrograms | Sort-Object DisplayName
 }
 
@@ -212,18 +214,18 @@ function Format-ProgramList {
         [System.ConsoleColor]$TitleColor = "Cyan",
         [System.ConsoleColor]$ItemColor = "DarkGray"
     )
-    
+
     if ($Programs.Count -gt 0) {
         Write-Host "`n$Title ($($Programs.Count)):" -ForegroundColor $TitleColor
         Write-Log "$Title ($($Programs.Count))" -NoConsole
-        
+
         $formattedList = @()
-        
+
         foreach ($program in $Programs) {
             Write-Host "  - $($program.DisplayName)" -ForegroundColor $ItemColor
             $formattedList += "  - $($program.DisplayName)"
         }
-        
+
         # Log the full list to the log file
         foreach ($item in $formattedList) {
             Write-Log $item -NoConsole
@@ -243,11 +245,11 @@ function Invoke-SilentInstallation {
         [switch]$Uninstall,
         [string]$CustomArgs = ""
     )
-    
+
     $extension = [System.IO.Path]::GetExtension($FilePath).ToLower()
     $baseFileName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
     $action = if($Uninstall){'uninstall'}else{'install'}
-    
+
     # Determine arguments based on file type and action
     switch ($extension) {
         ".msi" {
@@ -277,22 +279,22 @@ function Invoke-SilentInstallation {
             return $false
         }
     }
-    
+
     try {
         # Log the command being executed
         Write-Log "Executing: $(if($extension -eq '.msi'){'msiexec.exe'}else{$FilePath}) with args: $arguments" -NoConsole
-        
+
         if ($extension -eq ".msi") {
             $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
         } else {
             $process = Start-Process -FilePath $FilePath -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
         }
-        
+
         # Check if reboot is recommended
         if ($process.ExitCode -eq 3010) {
             $global:rebootRecommended = $true
         }
-        
+
         return $process
     }
     catch {
@@ -311,10 +313,10 @@ function Invoke-DownloadWithRetry {
         [int]$MaxRetries = 3,
         [int]$RetryDelaySeconds = 5
     )
-    
+
     $retryCount = 0
     $success = $false
-    
+
     while (-not $success -and $retryCount -lt $MaxRetries) {
         try {
             if ($retryCount -gt 0) {
@@ -322,7 +324,7 @@ function Invoke-DownloadWithRetry {
                 Write-Log "Retry attempt $retryCount for download: $DisplayName"
                 Start-Sleep -Seconds $RetryDelaySeconds
             }
-            
+
             Invoke-WebRequest -Uri $Url -OutFile $OutFile -ErrorAction Stop -UseBasicParsing
             $success = $true
         }
@@ -335,7 +337,7 @@ function Invoke-DownloadWithRetry {
             }
         }
     }
-    
+
     return $true
 }
 
@@ -354,11 +356,11 @@ Format-ProgramList -Programs $installedVCRedists -Title "Found Microsoft Visual 
 if ($installedVCRedists.Count -gt 0) {
     # Uninstall existing Visual C++ Redistributables
     Write-Host "`nRemoving existing Microsoft Visual C++ Redistributables..." -ForegroundColor Cyan
-    
+
     foreach ($program in $installedVCRedists) {
         if ($program.UninstallString) {
             $uninstallString = $program.UninstallString
-            
+
             # Extract the executable path and any existing arguments
             if ($uninstallString -match '"([^"]+)"(.*)') {
                 $executable = $matches[1]
@@ -368,15 +370,15 @@ if ($installedVCRedists.Count -gt 0) {
                 $executable = $matches[1]
                 $existingArgs = $matches[2]
             }
-            
+
             if ($PSCmdlet.ShouldProcess("$($program.DisplayName)", "Uninstall")) {
                 Write-Host "  Uninstalling: $($program.DisplayName)" -ForegroundColor Yellow
                 Write-Log "Removing: $($program.DisplayName)"
-                
+
                 try {
                     # Add a short delay between uninstallations to prevent conflicts
                     Start-Sleep -Seconds 2
-                    
+
                     # Handle MSI uninstallations differently
                     if ($executable -like "*msiexec*" -or $program.UninstallString -like "*msiexec*") {
                         # Extract ProductCode if it's an MSI uninstallation
@@ -388,7 +390,7 @@ if ($installedVCRedists.Count -gt 0) {
                             # If we can't extract the product code, use the original uninstall string with quiet/passive parameters
                             $process = Start-Process -FilePath $executable -ArgumentList "$existingArgs /quiet /norestart" -Wait -PassThru -ErrorAction Stop
                         }
-                    } 
+                    }
                     else {
                         # For EXE uninstallers
                         if ($existingArgs -notlike "*/quiet*" -and $existingArgs -notlike "*/passive*") {
@@ -396,11 +398,11 @@ if ($installedVCRedists.Count -gt 0) {
                         }
                         $process = Start-Process -FilePath $executable -ArgumentList $existingArgs -Wait -PassThru -ErrorAction Stop
                     }
-                    
+
                     if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
                         Write-Host "    Successfully uninstalled $($program.DisplayName)" -ForegroundColor Green
                         Write-Log "Successfully uninstalled: $($program.DisplayName)"
-                        
+
                         # Check if reboot required
                         if ($process.ExitCode -eq 3010) {
                             $global:rebootRecommended = $true
@@ -417,7 +419,7 @@ if ($installedVCRedists.Count -gt 0) {
                         Write-Host "    Another installation is in progress. Waiting 10 seconds before retry..." -ForegroundColor Yellow
                         Write-Log "Another installation in progress for: $($program.DisplayName). Waiting before retry."
                         Start-Sleep -Seconds 10
-                        
+
                         # Try again after waiting
                         $retryProcess = Start-Process -FilePath $executable -ArgumentList $existingArgs -Wait -PassThru -ErrorAction Stop
                         if ($retryProcess.ExitCode -eq 0 -or $retryProcess.ExitCode -eq 3010) {
@@ -459,9 +461,9 @@ foreach ($redist in $redistributables) {
         try {
             Write-Host "  Downloading $($redist.Name)..." -ForegroundColor Cyan
             Write-Log "Downloading: $($redist.Name) from $($redist.URL)"
-            
+
             $downloadSuccess = Invoke-DownloadWithRetry -Url $redist.URL -OutFile "$downloadPath\$($redist.Filename)" -DisplayName $redist.Name
-            
+
             if ($downloadSuccess) {
                 Write-Host "    Download complete for $($redist.Name)" -ForegroundColor Green
                 Write-Log "Download complete: $($redist.Name)"
@@ -481,19 +483,19 @@ Write-Log "Installing Microsoft Visual C++ Redistributables..." -NoConsole
 foreach ($redist in $redistributables) {
     if ($PSCmdlet.ShouldProcess("$($redist.Name)", "Install")) {
         $filePath = "$downloadPath\$($redist.Filename)"
-        
+
         if (Test-Path -Path $filePath) {
             try {
                 Write-Host "  Installing $($redist.Name)..." -ForegroundColor Cyan
                 Write-Log "Installing: $($redist.Name)"
-                
+
                 $customArgs = if ($redist.Args) { $redist.Args } else { "" }
                 $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name -CustomArgs $customArgs
-                
+
                 if ($process -and ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010)) {
                     Write-Host "    Successfully installed $($redist.Name)" -ForegroundColor Green
                     Write-Log "Successfully installed: $($redist.Name)"
-                    
+
                     # Check if reboot required
                     if ($process.ExitCode -eq 3010) {
                         Write-Host "    Note: A system reboot is recommended after installation" -ForegroundColor Yellow
@@ -510,13 +512,13 @@ foreach ($redist in $redistributables) {
                     # For 2008 packages that fail with 4096, try alternate installation parameters
                     Write-Host "    First attempt failed for $($redist.Name), trying alternate parameters..." -ForegroundColor Yellow
                     Write-Log "First attempt failed for $($redist.Name), trying alternate parameters"
-                    
+
                     $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name -CustomArgs "/q /norestart"
-                    
+
                     if ($process -and ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010)) {
                         Write-Host "    Successfully installed $($redist.Name) with alternate parameters" -ForegroundColor Green
                         Write-Log "Successfully installed with alternate parameters: $($redist.Name)"
-                        
+
                         if ($process.ExitCode -eq 3010) {
                             $global:rebootRecommended = $true
                         }
@@ -551,10 +553,10 @@ Write-Log "Verifying installations..." -NoConsole
 
 if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify installation")) {
     $installedAfter = Get-InstalledPrograms
-    
+
     # Use Format-ProgramList to display installed redistributables
     Format-ProgramList -Programs $installedAfter -Title "Successfully installed Microsoft Visual C++ Redistributable(s)" -TitleColor Green
-    
+
     # Compare before and after installation
     if ($installedAfter.Count -eq 0) {
         Write-Host "No Microsoft Visual C++ Redistributables were found after installation. This may indicate an installation problem." -ForegroundColor Red
@@ -564,11 +566,11 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
         Write-Host "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)." -ForegroundColor Yellow
         Write-Log "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)."
     }
-    
+
     # Check if specific versions are missing
     $installedProducts = $installedAfter | ForEach-Object { $_.DisplayName }
     $missingVersions = @()
-    
+
     foreach ($redist in $redistributables) {
         $found = $false
         foreach ($installed in $installedProducts) {
@@ -577,12 +579,12 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
                 break
             }
         }
-        
+
         if (-not $found) {
             $missingVersions += $redist.Name
         }
     }
-    
+
     if ($missingVersions.Count -gt 0) {
         Write-Host "`nPotentially missing redistributables:" -ForegroundColor Yellow
         foreach ($missing in $missingVersions) {
@@ -597,7 +599,7 @@ if (-not $NoCleanup) {
     if ($PSCmdlet.ShouldProcess("Downloaded Installation Files", "Clean up")) {
         Write-Host "`nCleaning up downloaded files..." -ForegroundColor Cyan
         Write-Log "Cleaning up downloaded files..." -NoConsole
-        
+
         try {
             Remove-Item -Path $downloadPath -Recurse -Force -ErrorAction Stop
             Write-Host "  Successfully removed downloaded files" -ForegroundColor Green
@@ -618,11 +620,11 @@ else {
 if ($global:rebootRecommended) {
     Write-Host "`nA system reboot is recommended to complete the installation process." -ForegroundColor Yellow
     Write-Log "A system reboot is recommended to complete the installation process." -NoConsole
-    
+
     if ($Restart) {
         Write-Host "System will restart in 15 seconds. Press Ctrl+C to cancel." -ForegroundColor Yellow
         Write-Log "System will restart in 15 seconds." -NoConsole
-        
+
         if ($PSCmdlet.ShouldProcess("System", "Restart")) {
             Start-Sleep -Seconds 15
             Restart-Computer -Force

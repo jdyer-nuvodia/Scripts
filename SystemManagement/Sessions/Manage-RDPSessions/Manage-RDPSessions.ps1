@@ -31,7 +31,7 @@
     value will be candidates for termination. Default is 60 minutes.
 
 .PARAMETER TerminateInactiveSessions
-    Switch to enable termination of inactive or disconnected sessions. 
+    Switch to enable termination of inactive or disconnected sessions.
     When specified, the script will terminate eligible sessions based on other parameters.
 
 .PARAMETER Force
@@ -66,17 +66,17 @@
 param (
     [Parameter(Mandatory = $false)]
     [string]$ComputerName = $env:COMPUTERNAME,
-    
+
     [Parameter(Mandatory = $false)]
     [ValidateSet("Active", "Disconnected", "All")]
     [string]$State = "All",
-    
+
     [Parameter(Mandatory = $false)]
     [int]$IdleTimeThreshold = 60,
-    
+
     [Parameter(Mandatory = $false)]
     [switch]$TerminateInactiveSessions,
-    
+
     [Parameter(Mandatory = $false)]
     [switch]$Force
 )
@@ -94,18 +94,18 @@ function Write-Log {
     param (
         [Parameter(Mandatory = $true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory = $false)]
         [ValidateSet("INFO", "SUCCESS", "WARNING", "ERROR", "DEBUG")]
         [string]$Level = "INFO"
     )
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
-    
+
     # Write to log file
     Add-Content -Path $LogPath -Value $LogMessage
-    
+
     # Write to console with appropriate color
     $ConsoleColor = switch ($Level) {
         "INFO"    { "White" }
@@ -115,7 +115,7 @@ function Write-Log {
         "DEBUG"   { "Magenta" }
         default   { "White" }
     }
-    
+
     Write-Host $LogMessage -ForegroundColor $ConsoleColor
 }
 
@@ -124,23 +124,24 @@ function Get-RDPSessions {
         [Parameter(Mandatory = $true)]
         [string]$ComputerName
     )
-    
+
     Write-Log -Message "Retrieving RDP sessions from $ComputerName" -Level "INFO"
-    
+
     try {
         # Run qwinsta to get session information
         $Output = qwinsta /server:$ComputerName 2>&1
-        
+
         if ($LASTEXITCODE -ne 0) {
             throw "Error executing qwinsta: $Output"
-        }        # Parse the output into objects
+        # Parse the output into objects
+                }
         $Sessions = @()
         # Skip the header line (index 0) and start processing from line 1
-        
+
         for ($i = 1; $i -lt $Output.Count; $i++) {
             $Line = $Output[$i] -replace '\s+', ' ' -replace '^\s', ''
             $Values = $Line -split ' '
-            
+
             # Check if session ID is numeric (skip console session if needed)
             if ($Values[1] -match '^\d+$') {
                 $SessionId = $Values[1]
@@ -148,7 +149,7 @@ function Get-RDPSessions {
                 $SessionName = $Values[2]
                 $SessionState = $Values[3]
                 $IdleTime = $Values[4]
-                
+
                 # If username is numeric, there was likely a shift in the columns
                 if ($Username -match '^\d+$') {
                     $SessionId = $Username
@@ -157,7 +158,7 @@ function Get-RDPSessions {
                     $SessionState = $Values[2]
                     $IdleTime = $Values[3]
                 }
-                
+
                 # Convert idle time to minutes
                 $IdleMinutes = 0
                 if ($IdleTime -match '(\d+)\+(\d+):(\d+)') {
@@ -181,7 +182,7 @@ function Get-RDPSessions {
                     # Active session with no idle time
                     $IdleMinutes = 0
                 }
-                
+
                 $Session = [PSCustomObject]@{
                     ComputerName = $ComputerName
                     SessionId    = $SessionId
@@ -191,11 +192,11 @@ function Get-RDPSessions {
                     IdleTime     = $IdleTime
                     IdleMinutes  = $IdleMinutes
                 }
-                
+
                 $Sessions += $Session
             }
         }
-        
+
         return $Sessions
     }
     catch {
@@ -209,26 +210,26 @@ function Remove-RDPSession {
     param (
         [Parameter(Mandatory = $true)]
         [string]$ComputerName,
-        
+
         [Parameter(Mandatory = $true)]
         [string]$SessionId,
-        
+
         [Parameter(Mandatory = $false)]
         [switch]$WhatIf
     )
-    
+
     try {
         $SessionInfo = "Session ID $SessionId on $ComputerName"
-        
+
         if ($PSCmdlet.ShouldProcess($SessionInfo, "Terminate RDP session")) {
             if (-not $WhatIf) {
                 Write-Log -Message "Terminating $SessionInfo" -Level "INFO"
                 $Output = rwinsta $SessionId /server:$ComputerName 2>&1
-                
+
                 if ($LASTEXITCODE -ne 0) {
                     throw "Error executing rwinsta: $Output"
                 }
-                
+
                 Write-Log -Message "Successfully terminated $SessionInfo" -Level "SUCCESS"
                 return $true
             }
@@ -248,42 +249,42 @@ function Remove-RDPSession {
 # Main script execution
 try {
     Write-Log -Message "Script started. Target server: $ComputerName" -Level "INFO"
-    
+
     # Get all RDP sessions
     $AllSessions = Get-RDPSessions -ComputerName $ComputerName
-    
+
     # Filter sessions based on state
     $FilteredSessions = switch ($State) {
         "Active" { $AllSessions | Where-Object { $_.State -eq "Active" } }
         "Disconnected" { $AllSessions | Where-Object { $_.State -eq "Disc" } }
         "All" { $AllSessions }
     }
-    
+
     # Display all sessions
     Write-Log -Message "RDP Sessions on ${ComputerName}:" -Level "INFO"
     $FilteredSessions | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Log -Message $_ -Level "INFO" }
-    
+
     # Handle termination if requested
     if ($TerminateInactiveSessions) {
         # Identify sessions to terminate (disconnected or idle beyond threshold)
         $SessionsToTerminate = $FilteredSessions | Where-Object {
             ($_.State -eq "Disc") -or ($_.IdleMinutes -ge $IdleTimeThreshold)
         }
-        
+
         if ($SessionsToTerminate.Count -eq 0) {
             Write-Log -Message "No eligible sessions to terminate based on current criteria." -Level "WARNING"
         }
         else {
             Write-Log -Message "Sessions eligible for termination:" -Level "WARNING"
             $SessionsToTerminate | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Log -Message $_ -Level "WARNING" }
-            
+
             $ConfirmAll = $Force
-            
+
             foreach ($Session in $SessionsToTerminate) {
                 $SessionInfo = "Session ID: $($Session.SessionId), User: $($Session.Username), State: $($Session.State), Idle: $($Session.IdleTime)"
-                
+
                 $ShouldTerminate = $false
-                
+
                 if (-not $ConfirmAll) {
                     $Confirmation = Read-Host "Terminate $SessionInfo? (Y/N/A/Q) (Yes/No/All/Quit)"
                     switch ($Confirmation.ToUpper()) {
@@ -295,7 +296,7 @@ try {
                 else {
                     $ShouldTerminate = $true
                 }
-                
+
                 if ($ShouldTerminate) {
                     $Result = Remove-RDPSession -ComputerName $ComputerName -SessionId $Session.SessionId -WhatIf:$WhatIf
                     if ($Result) {
@@ -305,7 +306,7 @@ try {
             }
         }
     }
-    
+
     Write-Log -Message "Script completed successfully" -Level "SUCCESS"
 }
 catch {

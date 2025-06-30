@@ -90,7 +90,8 @@ process {
             }
 
             # Start the service if it is stopped
-            $service.Refresh() # Ensure we have the latest status after potential stop
+            # Ensure we have the latest status after potential stop
+                        $service.Refresh()
             if ($service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
                 if ($PSCmdlet.ShouldProcess("Service: $serviceName", "Start")) {
                     Write-Host "Starting Print Spooler service ($serviceName)..." -ForegroundColor Cyan

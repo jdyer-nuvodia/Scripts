@@ -36,7 +36,8 @@ function Stop-TranscriptSafely {
     if ($script:transcriptActive) {
         Write-Debug "Transcript was active, attempting to stop."
         try {
-            Stop-Transcript -ErrorAction Stop # Use Stop to ensure catch block executes on error
+            # Use Stop to ensure catch block executes on error
+                        Stop-Transcript -ErrorAction Stop
             Write-Debug "Stop-Transcript command executed."
             # Give the system a moment to release the file handle
             Start-Sleep -Milliseconds 500
@@ -63,12 +64,14 @@ function Stop-TranscriptSafely {
 
 # Function to format minutes into a readable string
 function Format-Minutes {
-    param([double]$TotalMinutes) # Use double for precision
+    # Use double for precision
+        param([double]$TotalMinutes)
 
     if ($TotalMinutes -eq 0) { return "Never" }
 
     # Handle large values (over 168 hours / 7 days)
-    if ($TotalMinutes -gt 10080) { # 168 hours * 60 minutes/hour
+    # 168 hours * 60 minutes/hour
+        if ($TotalMinutes -gt 10080) {
          return "Effectively Disabled" # Changed from "Effectively Never"
     }
 
@@ -77,7 +80,8 @@ function Format-Minutes {
 
     if ($minutesInt -lt 1) {
         # Handle cases less than 1 minute if needed, e.g., show seconds or round up
-        return "Less than 1 minute" # Or adjust as needed
+        # Or adjust as needed
+                return "Less than 1 minute"
     }
 
     $days = [math]::Floor($minutesInt / 1440)
@@ -139,17 +143,23 @@ function Get-PowerSettings {
     $sleepTimeoutDC_Seconds = 0
     $hibernateTimeoutAC_Seconds = 0
     $hibernateTimeoutDC_Seconds = 0
-    $screenSaverTimeout_Seconds = 0 # Added for screen saver
+    # Added for screen saver
+        $screenSaverTimeout_Seconds = 0
 
     # Split the output into lines for parsing
     $powerSettingsLines = $powerSettings -split [System.Environment]::NewLine
 
     # Define GUIDs for common settings (these might vary slightly by Windows version, but are generally stable)
-    $displaySubgroupGuid = "7516b95f-f776-4464-8c53-06167f40cc99" # SUB_VIDEO
-    $sleepSubgroupGuid = "238c9fa8-0aad-41ed-83f4-97be242c8f20"   # SUB_SLEEP
-    $displayTimeoutSettingGuid = "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e" # VIDEOIDLE (Corrected last digit)
-    $sleepTimeoutSettingGuid = "29f6c1db-86da-48c5-9fdb-f2b67b1f44da"   # STANDBYIDLE
-    $hibernateTimeoutSettingGuid = "9d7815a6-7ee4-497e-8888-515a05f02364" # HIBERNATEIDLE
+    # SUB_VIDEO
+        $displaySubgroupGuid = "7516b95f-f776-4464-8c53-06167f40cc99"
+    # SUB_SLEEP
+        $sleepSubgroupGuid = "238c9fa8-0aad-41ed-83f4-97be242c8f20"
+    # VIDEOIDLE (Corrected last digit)
+        $displayTimeoutSettingGuid = "3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e"
+    # STANDBYIDLE
+        $sleepTimeoutSettingGuid = "29f6c1db-86da-48c5-9fdb-f2b67b1f44da"
+    # HIBERNATEIDLE
+        $hibernateTimeoutSettingGuid = "9d7815a6-7ee4-497e-8888-515a05f02364"
 
     $currentSubgroupGuid = $null
     $currentSettingGuid = $null
@@ -158,7 +168,8 @@ function Get-PowerSettings {
         # Identify current Subgroup
         if ($line -match "Subgroup GUID: ([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})") {
             $currentSubgroupGuid = $matches[1]
-            $currentSettingGuid = $null # Reset setting when subgroup changes
+            # Reset setting when subgroup changes
+                        $currentSettingGuid = $null
             Write-Debug "Processing Subgroup: $currentSubgroupGuid"
             continue
         }
@@ -223,7 +234,8 @@ function Get-PowerSettings {
     }
 
     # Convert seconds to minutes for display (0 seconds means Never)
-    $monitorTimeoutAC_Minutes = if ($monitorTimeoutAC_Seconds -eq 0) { 0 } else { $monitorTimeoutAC_Seconds / 60.0 } # Use 60.0 for double division
+    # Use 60.0 for double division
+        $monitorTimeoutAC_Minutes = if ($monitorTimeoutAC_Seconds -eq 0) { 0 } else { $monitorTimeoutAC_Seconds / 60.0 }
     $monitorTimeoutDC_Minutes = if ($monitorTimeoutDC_Seconds -eq 0) { 0 } else { $monitorTimeoutDC_Seconds / 60.0 }
     $sleepTimeoutAC_Minutes = if ($sleepTimeoutAC_Seconds -eq 0) { 0 } else { $sleepTimeoutAC_Seconds / 60.0 }
     $sleepTimeoutDC_Minutes = if ($sleepTimeoutDC_Seconds -eq 0) { 0 } else { $sleepTimeoutDC_Seconds / 60.0 }
@@ -238,7 +250,8 @@ function Get-PowerSettings {
 
     # Return results as a hashtable
     return @{
-        PowerPlanName = $schemeName # Use extracted scheme name
+        # Use extracted scheme name
+                PowerPlanName = $schemeName
         PowerPlanGuid = $schemeGuid
         MonitorTimeoutAC = $monitorTimeoutAC_Minutes
         MonitorTimeoutDC = $monitorTimeoutDC_Minutes
@@ -258,14 +271,14 @@ function Get-LockPolicySettings {    Write-Host "Checking Group Policy and secur
         AutoLockEnabled = $false
         AutoLockTimeout = $null
     }
-    
+
     try {
         # Check screen saver policy settings
         $screenSaverPolicy = Get-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop" -ErrorAction SilentlyContinue
         if ($screenSaverPolicy -and $null -ne $screenSaverPolicy.ScreenSaverIsSecure) {
             $settings.ScreenSaverForced = $screenSaverPolicy.ScreenSaverIsSecure -eq 1
         }
-  
+
 
         # Check workstation lock settings
         $lockSettings = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\System" -ErrorAction SilentlyContinue
@@ -294,15 +307,15 @@ function Get-IntelContextSensing {
         Path = $null
         Status = "Not present"
     }
-    
+
     try {
         # Check for Intel Context Sensing service
-        $service = Get-Service -Name "IntelSenseS*" -ErrorAction SilentlyContinue | 
+        $service = Get-Service -Name "IntelSenseS*" -ErrorAction SilentlyContinue |
                    Where-Object { $_.DisplayName -like "*Context*" -or $_.DisplayName -like "*Sens*" }
         if ($service) {
             $contextSensingInfo.Installed = $true
             $contextSensingInfo.Status = $service.Status
-            
+
             # Try to get version info
             $path = (Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue).PathName
             if ($path) {
@@ -313,7 +326,7 @@ function Get-IntelContextSensing {
                 }
             }
         }
-        
+
         # Alternative check for Intel Context Sensing through registry
         if (-not $contextSensingInfo.Installed) {
             $regPaths = @(
@@ -321,7 +334,7 @@ function Get-IntelContextSensing {
                 "HKLM:\SOFTWARE\Intel\Sensing",
                 "HKLM:\SOFTWARE\Intel\HPSS"
             )
-            
+
             foreach ($regPath in $regPaths) {
                 if (Test-Path $regPath) {
                     $contextSensingInfo.Installed = $true
@@ -330,10 +343,10 @@ function Get-IntelContextSensing {
                 }
             }
         }
-        
+
         # Check for installed applications
         if (-not $contextSensingInfo.Installed) {
-            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
                     Where-Object { $_.DisplayName -like "*Intel*" -and ($_.DisplayName -like "*Context*" -or $_.DisplayName -like "*Sens*") }
             if ($apps) {
                 $contextSensingInfo.Installed = $true
@@ -345,7 +358,7 @@ function Get-IntelContextSensing {
     catch {
         Write-Debug "Error checking for Intel Context Sensing: $_"
     }
-    
+
     return $contextSensingInfo
 }
 
@@ -357,14 +370,14 @@ function Get-DellOptimizer {
         Features = @()
         Status = "Not present"
     }
-    
+
     try {
         # Check for Dell Optimizer application
         $appPaths = @(
             "${env:ProgramFiles}\Dell\DellOptimizer\DellOptimizer.exe",
             "${env:ProgramFiles(x86)}\Dell\DellOptimizer\DellOptimizer.exe"
         )
-        
+
         foreach ($path in $appPaths) {
             if (Test-Path $path) {
                 $dellOptimizerInfo.Installed = $true
@@ -374,7 +387,7 @@ function Get-DellOptimizer {
                 break
             }
         }
-        
+
         # Check for Dell Optimizer service
         if (-not $dellOptimizerInfo.Installed) {
             $service = Get-Service -Name "*DellOptimizer*" -ErrorAction SilentlyContinue
@@ -383,12 +396,12 @@ function Get-DellOptimizer {
                 $dellOptimizerInfo.Status = $service.Status
             }
         }
-        
+
         # Check registry for Dell Optimizer features
         $regPath = "HKLM:\SOFTWARE\Dell\DellOptimizer"
         if (Test-Path $regPath) {
             $dellOptimizerInfo.Installed = $true
-            
+
             # Check for specific features
             $featurePaths = @{
                 "Presence Detection" = "HKLM:\SOFTWARE\Dell\DellOptimizer\PresenceDetection"
@@ -396,33 +409,33 @@ function Get-DellOptimizer {
                 "Wake on Approach" = "HKLM:\SOFTWARE\Dell\DellOptimizer\WakeOnApproach"
                 "Intelligent Audio" = "HKLM:\SOFTWARE\Dell\DellOptimizer\IntelligentAudio"
             }
-            
+
             foreach ($feature in $featurePaths.Keys) {
                 if (Test-Path $featurePaths[$feature]) {
                     try {
                         $enabled = Get-ItemProperty -Path $featurePaths[$feature] -Name "Enabled" -ErrorAction SilentlyContinue
                         if ($null -ne $enabled -and $enabled.Enabled -eq 1) {
                             $dellOptimizerInfo.Features += "$feature (Enabled)"
-                        } 
+                        }
                         else {
                             $dellOptimizerInfo.Features += "$feature (Disabled)"
                         }
-                    } 
+                    }
                     catch {
                         $dellOptimizerInfo.Features += "$feature (Status Unknown)"
                     }
                 }
             }
-            
+
             # If features are empty but Dell Optimizer is installed
             if ($dellOptimizerInfo.Features.Count -eq 0) {
                 $dellOptimizerInfo.Features = @("No auto-lock features detected")
             }
         }
-        
+
         # Check installed applications as fallback
         if (-not $dellOptimizerInfo.Installed) {
-            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
                     Where-Object { $_.DisplayName -like "*Dell Optimizer*" }
             if ($apps) {
                 $dellOptimizerInfo.Installed = $true
@@ -434,7 +447,7 @@ function Get-DellOptimizer {
     catch {
         Write-Debug "Error checking for Dell Optimizer: $_"
     }
-    
+
     return $dellOptimizerInfo
 }
 
@@ -445,14 +458,14 @@ function Get-EllipticSensor {
         Version = "Not installed"
         Status = "Not present"
     }
-    
+
     try {
         # Check for Elliptic Sensor service
         $service = Get-Service -Name "*Elliptic*" -ErrorAction SilentlyContinue
         if ($service) {
             $ellipticInfo.Installed = $true
             $ellipticInfo.Status = $service.Status
-            
+
             # Try to get version info
             $path = (Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue).PathName
             if ($path) {
@@ -463,13 +476,13 @@ function Get-EllipticSensor {
                 }
             }
         }
-        
+
         # Check registry for Elliptic Sensor
         $regPaths = @(
             "HKLM:\SOFTWARE\Elliptic",
             "HKLM:\SOFTWARE\Elliptic Labs"
         )
-        
+
         foreach ($regPath in $regPaths) {
             if (Test-Path $regPath) {
                 $ellipticInfo.Installed = $true
@@ -479,18 +492,18 @@ function Get-EllipticSensor {
                 break
             }
         }
-        
+
         # Check for device presence in device manager
-        $deviceInfo = Get-WmiObject -Class Win32_PnPEntity -ErrorAction SilentlyContinue | 
+        $deviceInfo = Get-WmiObject -Class Win32_PnPEntity -ErrorAction SilentlyContinue |
                       Where-Object { $_.Name -like "*Elliptic*" -or $_.Name -like "*Sensor*" -and $_.Name -like "*Lock*" }
         if ($deviceInfo) {
             $ellipticInfo.Installed = $true
             $ellipticInfo.Status = "Device detected"
         }
-        
+
         # Check installed applications
         if (-not $ellipticInfo.Installed) {
-            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+            $apps = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
                     Where-Object { $_.DisplayName -like "*Elliptic*" }
             if ($apps) {
                 $ellipticInfo.Installed = $true
@@ -502,7 +515,7 @@ function Get-EllipticSensor {
     catch {
         Write-Debug "Error checking for Elliptic Virtual Lock Sensor: $_"
     }
-    
+
     return $ellipticInfo
 }
 
@@ -513,19 +526,19 @@ function Get-WindowsDynamicLock {
         Status = "Not enabled"
         RequiresBluetoothDevice = $true
     }
-    
+
     try {
         # Check registry for Dynamic Lock setting
         $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
         $settingPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
-        
+
         # Check if Dynamic Lock is enabled
         $enabledSetting = Get-ItemProperty -Path $regPath -Name "EnableDynamicLock" -ErrorAction SilentlyContinue
         if ($null -ne $enabledSetting -and $enabledSetting.EnableDynamicLock -eq 1) {
             $dynamicLockInfo.Enabled = $true
             $dynamicLockInfo.Status = "Enabled"
         }
-        
+
         # Check alternative path if not found in policies
         if (-not $dynamicLockInfo.Enabled) {
             $altSetting = Get-ItemProperty -Path $settingPath -Name "EnableDynamicLock" -ErrorAction SilentlyContinue
@@ -534,7 +547,7 @@ function Get-WindowsDynamicLock {
                 $dynamicLockInfo.Status = "Enabled"
             }
         }
-        
+
         # Check via Get-ItemProperty HKCU instead
         if (-not $dynamicLockInfo.Enabled) {
             $userSetting = Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableDynamicLock" -ErrorAction SilentlyContinue
@@ -543,7 +556,7 @@ function Get-WindowsDynamicLock {
                 $dynamicLockInfo.Status = "Enabled"
             }
         }
-        
+
         # Check if Dynamic Lock is available via SigninOptions
         if (-not $dynamicLockInfo.Enabled) {
             $signInOptions = Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\SignInOptions" -Name "DynamicLockEnabled" -ErrorAction SilentlyContinue
@@ -552,7 +565,7 @@ function Get-WindowsDynamicLock {
                 $dynamicLockInfo.Status = "Enabled via Sign-in Options"
             }
         }
-        
+
         # Check Bluetooth availability for Dynamic Lock
         $bluetoothAvailable = $false
         try {
@@ -566,7 +579,7 @@ function Get-WindowsDynamicLock {
                     }
                 }
             }
-            
+
             if (-not $bluetoothAvailable -and $dynamicLockInfo.Enabled) {
                 $dynamicLockInfo.Status += " (Warning: No Bluetooth devices detected)"
             }
@@ -579,18 +592,18 @@ function Get-WindowsDynamicLock {
     catch {
         Write-Debug "Error checking for Windows Dynamic Lock: $_"
     }
-    
+
     return $dynamicLockInfo
 }
 
 function Get-AutoLockCapabilities {
     Write-Host "Checking for auto-lock capable hardware and software..." -ForegroundColor Cyan
-    
+
     $intelContextSensing = Get-IntelContextSensing
     $dellOptimizer = Get-DellOptimizer
     $ellipticSensor = Get-EllipticSensor
     $dynamicLock = Get-WindowsDynamicLock
-    
+
     $autoLockCapabilities = [PSCustomObject]@{
         IntelContextSensing = $intelContextSensing
         DellOptimizer = $dellOptimizer
@@ -598,24 +611,24 @@ function Get-AutoLockCapabilities {
         WindowsDynamicLock = $dynamicLock
         SupportedAutoLockMethods = @()
     }
-    
+
     # Build list of supported methods
     if ($intelContextSensing.Installed) {
         $autoLockCapabilities.SupportedAutoLockMethods += "Intel Context Sensing"
     }
-    
+
     if ($dellOptimizer.Installed -and $dellOptimizer.Features -match "Walk Away Lock|Presence Detection") {
         $autoLockCapabilities.SupportedAutoLockMethods += "Dell Optimizer"
     }
-    
+
     if ($ellipticSensor.Installed) {
         $autoLockCapabilities.SupportedAutoLockMethods += "Elliptic Sensor"
     }
-    
+
     if ($dynamicLock.Enabled) {
         $autoLockCapabilities.SupportedAutoLockMethods += "Windows Dynamic Lock"
     }
-    
+
     return $autoLockCapabilities
 }
 
@@ -633,7 +646,7 @@ function Set-PowerTimeout {
         [Parameter()]
         [int]$ScreenSaverTimeout
     )
-    
+
     if ($PSCmdlet.ShouldProcess("Power Settings", "Update inactivity timeouts")) {
         try {
             # Get current power scheme GUID
@@ -651,7 +664,7 @@ function Set-PowerTimeout {
                 Write-Host "Setting DC monitor timeout..." -ForegroundColor Cyan
                 powercfg /change monitor-timeout-dc $MonitorTimeoutDC
             }
-            
+
             # Set sleep timeout (AC and DC)
             if ($PSBoundParameters.ContainsKey('SleepTimeoutAC')) {
                 Write-Host "Setting AC sleep timeout..." -ForegroundColor Cyan
@@ -661,14 +674,14 @@ function Set-PowerTimeout {
                 Write-Host "Setting DC sleep timeout..." -ForegroundColor Cyan
                 powercfg /change standby-timeout-dc $SleepTimeoutDC
             }
-            
+
             # Set screen saver timeout
             if ($PSBoundParameters.ContainsKey('ScreenSaverTimeout')) {
                 Write-Host "Setting screen saver timeout..." -ForegroundColor Cyan
                 $timeoutSeconds = $ScreenSaverTimeout * 60
                 Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "ScreenSaveTimeout" -Value $timeoutSeconds
             }
-            
+
             Write-Host "All inactivity timers have been updated successfully!" -ForegroundColor Green
         }
         catch {
@@ -689,7 +702,7 @@ function Set-LockPolicySettings {
         [Parameter()]
         [int]$AutoLockTimeout
     )
-    
+
     if ($PSCmdlet.ShouldProcess("Group Policy Settings", "Update lock policy settings")) {
         try {
             # Set screen saver security enforcement
@@ -778,7 +791,8 @@ try {
     Write-Host "---------------------" -ForegroundColor White
     # Check if Get-PowerSettings returned valid data
     if ($null -ne $currentSettings) {
-        Write-Host ("Active Power Plan: {0}" -f $currentSettings.PowerPlanName) # Ensure PowerPlanName exists
+        # Ensure PowerPlanName exists
+                Write-Host ("Active Power Plan: {0}" -f $currentSettings.PowerPlanName)
         Write-Host ("Plan GUID: {0}" -f $currentSettings.PowerPlanGuid)
 
         Write-Host "`nCurrent Inactivity Settings:" -ForegroundColor White
@@ -811,12 +825,12 @@ try {
     } else {
         Write-Warning "Could not display lock policy settings as they failed to load."
     }
-    
+
     # Display Auto-Lock Capabilities
     if ($null -ne $autoLockCapabilities) {
         Write-Host "`nAuto-Lock Capable Hardware and Software:" -ForegroundColor White
         Write-Host "-------------------------------------" -ForegroundColor White
-        
+
         # Intel Context Sensing
         Write-Host "`nIntel Context Sensing:" -ForegroundColor Cyan
         Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.IntelContextSensing.Installed) { "Yes" } else { "No" }))
@@ -824,7 +838,7 @@ try {
             Write-Host ("Status: {0}" -f $autoLockCapabilities.IntelContextSensing.Status)
             Write-Host ("Version: {0}" -f $autoLockCapabilities.IntelContextSensing.Version)
         }
-        
+
         # Dell Optimizer
         Write-Host "`nDell Optimizer:" -ForegroundColor Cyan
         Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.DellOptimizer.Installed) { "Yes" } else { "No" }))
@@ -836,7 +850,7 @@ try {
                 Write-Host ("  - {0}" -f $feature)
             }
         }
-        
+
         # Elliptic Sensor
         Write-Host "`nElliptic Virtual Lock Sensor:" -ForegroundColor Cyan
         Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.EllipticSensor.Installed) { "Yes" } else { "No" }))
@@ -844,14 +858,14 @@ try {
             Write-Host ("Status: {0}" -f $autoLockCapabilities.EllipticSensor.Status)
             Write-Host ("Version: {0}" -f $autoLockCapabilities.EllipticSensor.Version)
         }
-        
+
         # Windows Dynamic Lock
         Write-Host "`nWindows Dynamic Lock:" -ForegroundColor Cyan
         Write-Host ("Enabled: {0}" -f $(if ($autoLockCapabilities.WindowsDynamicLock.Enabled) { "Yes" } else { "No" }))
         if ($autoLockCapabilities.WindowsDynamicLock.Enabled) {
             Write-Host ("Status: {0}" -f $autoLockCapabilities.WindowsDynamicLock.Status)
         }
-        
+
         # Summary of supported methods
         Write-Host "`nSupported Auto-Lock Methods:" -ForegroundColor White
         if ($autoLockCapabilities.SupportedAutoLockMethods.Count -gt 0) {
@@ -943,11 +957,13 @@ try {
                 Write-Host "No changes were specified." -ForegroundColor Cyan
             }
         }
-    } # End of check if settings loaded
+    # End of check if settings loaded
+        }
 }
 catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
-    Write-Error "Script failed with error: $_" # Log error more formally
+    # Log error more formally
+        Write-Error "Script failed with error: $_"
 }
 finally {
     Write-Debug "Entering finally block."

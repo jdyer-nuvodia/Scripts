@@ -18,32 +18,32 @@
     - Detailed logging with UTC timestamps
     - Configurable thresholds and intervals
     - Resource consumption trending
-    
+
     Key features:
     - Performance counter integration
     - CIM-based resource monitoring
     - Threshold-based alerting
     - Continuous or scheduled monitoring
     - Detailed logging capabilities
-    
+
     Dependencies:
     - Windows PowerShell 5.1 or higher
     - Administrator rights for performance counter access
     - Write access to log directory
     - CIM/WMI access permissions
-    
+
     The script monitors critical system metrics:
     - CPU utilization percentage
     - Memory consumption and availability
     - Disk space and I/O statistics
     - Resource consumption trends
-    
+
     Performance impact:
     - Low CPU usage (< 1%)
     - Minimal memory footprint
     - Small log file size growth
 .PARAMETER IntervalSeconds
-    Time between measurements in seconds. 
+    Time between measurements in seconds.
     Range: 5-3600 seconds
     Default: 15 seconds
 .PARAMETER LogPath
@@ -86,7 +86,7 @@ param(
     [Parameter()]
     [ValidateRange(5, 3600)]
     [int]$IntervalSeconds = 15,
-    
+
     [Parameter()]
     [ValidateScript({
         if (-not (Test-Path $_)) {
@@ -95,15 +95,15 @@ param(
         return $true
     })]
     [string]$LogPath = $PSScriptRoot,
-    
+
     [Parameter()]
     [ValidateRange(50, 100)]
     [int]$ThresholdCPU = 80,
-    
+
     [Parameter()]
     [ValidateRange(50, 100)]
     [int]$ThresholdMemory = 85,
-    
+
     [Parameter()]
     [ValidateRange(5, 30)]
     [int]$ThresholdDisk = 15
@@ -125,21 +125,21 @@ function Write-LogMessage {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Message,
-        
+
         [Parameter()]
         [ValidateSet("Information", "Warning", "Error", "Success")]
         [string]$Level = "Information",
-        
+
         [Parameter()]
         [string]$ConsoleColor = "White"
     )
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
-    
+
     # Write to console with color
     Write-Host $Message -ForegroundColor $ConsoleColor
-    
+
     # Write to log file
     Add-Content -Path $logFile -Value $LogMessage
 }
@@ -147,7 +147,7 @@ function Write-LogMessage {
 function Get-SystemMetrics {
     [CmdletBinding()]
     param()
-    
+
     try {
         # Get CPU Usage
         $cpu = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
@@ -171,7 +171,7 @@ function Get-SystemMetrics {
                 Write-LogMessage "Drive $($_.DeviceID) reported zero size" -Level Warning -ConsoleColor Yellow
                 $freeSpacePercent = 0
             }
-            
+
             @{
                 Drive = $_.DeviceID
                 FreeSpace = $freeSpacePercent
@@ -202,10 +202,10 @@ try {
 
     while ($true) {
         $metrics = Get-SystemMetrics
-        
+
         # CPU Status
-        $cpuColor = if ($metrics.CPU -ge $ThresholdCPU) { "Red" } 
-                   elseif ($metrics.CPU -ge ($ThresholdCPU * 0.8)) { "Yellow" } 
+        $cpuColor = if ($metrics.CPU -ge $ThresholdCPU) { "Red" }
+                   elseif ($metrics.CPU -ge ($ThresholdCPU * 0.8)) { "Yellow" }
                    else { "Green" }
         Write-LogMessage "CPU Usage: $($metrics.CPU)%" -Level Information -ConsoleColor $cpuColor
 

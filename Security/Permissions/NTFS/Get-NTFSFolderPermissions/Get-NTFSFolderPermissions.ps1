@@ -80,7 +80,8 @@ $ErrorActionPreference = 'Stop'
 
 # Script-level variables - consolidated to avoid duplication
 $script:TranscriptStarted = $false
-$script:SidCache = @{}  # Single standardized cache
+# Single standardized cache
+$script:SidCache = @{}
 $script:FailedSids = [System.Collections.Generic.HashSet[string]]::new()
 $script:SuppressedSids = [System.Collections.Generic.List[string]]::new()
 $script:TotalFolders = 0
@@ -137,7 +138,7 @@ function Get-DomainControllers {
         catch {
             Write-Log -Message "Failed to get domain controllers using AD cmdlets: $_" -Level 'WARNING' -Color "Yellow"
         }
-        
+
         # If both methods fail, return computer domain info
         try {
             $computerDomain = (Get-WmiObject Win32_ComputerSystem).Domain
@@ -154,7 +155,7 @@ function Get-DomainControllers {
             Write-Log -Message "Failed to get computer domain info: $_" -Level 'WARNING' -Color "Yellow"
         }
     }
-    
+
     # Return empty array if all methods fail
     return @()
 }
@@ -165,11 +166,11 @@ function Get-TotalFolderCount {
         [Parameter(Mandatory=$true)]
         [string]$StartPath
     )
-    
+
     try {
         $folderCount = 0
         $processedPaths = @{}
-        
+
         $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
         foreach ($folder in $folders) {
             if (-not $processedPaths.ContainsKey($folder.FullName)) {
@@ -183,7 +184,7 @@ function Get-TotalFolderCount {
                 }
             }
         }
-        
+
         return $folderCount
     }
     catch {
@@ -198,67 +199,67 @@ function Compare-PermissionSets {
     param (
         [Parameter(Mandatory = $true)]
         [object]$Parent,
-        
+
         [Parameter(Mandatory = $true)]
         [object]$Child
     )
-    
+
     # First check if any parameters are null
     if ($null -eq $Parent -or $null -eq $Child) {
         Write-Log -Message "Compare-PermissionSets: Null object detected" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
-    
+
     # Compare owners first - handle both direct owner and object property
     $parentOwner = if ($Parent.Owner) { $Parent.Owner } elseif ($Parent.PSObject.Properties['Owner']) { $Parent.Owner } else { $null }
     $childOwner = if ($Child.Owner) { $Child.Owner } elseif ($Child.PSObject.Properties['Owner']) { $Child.Owner } else { $null }
-    
+
     if ([string]::IsNullOrEmpty($parentOwner) -or [string]::IsNullOrEmpty($childOwner) -or $parentOwner -ne $childOwner) {
         Write-Log -Message "Compare-PermissionSets: Owner mismatch or missing" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
-    
+
     # Get the access rules, handling different property names and types
-    $parentRules = if ($Parent.Access) { 
-        $Parent.Access 
-    } elseif ($Parent.AccessRules) { 
-        $Parent.AccessRules 
-    } elseif ($Parent.PSObject.Properties['Access']) { 
-        $Parent.Access 
-    } else { 
-        $null 
+    $parentRules = if ($Parent.Access) {
+        $Parent.Access
+    } elseif ($Parent.AccessRules) {
+        $Parent.AccessRules
+    } elseif ($Parent.PSObject.Properties['Access']) {
+        $Parent.Access
+    } else {
+        $null
     }
-    
-    $childRules = if ($Child.Access) { 
-        $Child.Access 
-    } elseif ($Child.AccessRules) { 
-        $Child.AccessRules 
-    } elseif ($Child.PSObject.Properties['Access']) { 
-        $Child.Access 
-    } else { 
-        $null 
+
+    $childRules = if ($Child.Access) {
+        $Child.Access
+    } elseif ($Child.AccessRules) {
+        $Child.AccessRules
+    } elseif ($Child.PSObject.Properties['Access']) {
+        $Child.Access
+    } else {
+        $null
     }
-    
+
     # Validate access rules
     if ($null -eq $parentRules -or $null -eq $childRules) {
         Write-Log -Message "Compare-PermissionSets: Missing access rules" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
-    
+
     # Ensure we're working with arrays
     $parentRules = @($parentRules)
     $childRules = @($childRules)
-    
+
     # Check if they have the same number of permissions
     if ($parentRules.Count -ne $childRules.Count) {
         Write-Log -Message "Compare-PermissionSets: Rule count mismatch Parent:$($parentRules.Count) Child:$($childRules.Count)" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
-    
+
     # Create normalized hashtables for comparison
     $parentHash = @{}
     $childHash = @{}
-    
+
     # Convert parent rules to comparable format
     foreach ($rule in $parentRules) {
         try {
@@ -275,7 +276,7 @@ function Compare-PermissionSets {
             return $false
         }
     }
-    
+
     # Compare child rules against parent
     foreach ($rule in $childRules) {
         try {
@@ -296,13 +297,13 @@ function Compare-PermissionSets {
             return $false
         }
     }
-    
+
     # Final validation that all rules were matched
     if ($parentHash.Count -ne $childHash.Count) {
         Write-Log -Message "Compare-PermissionSets: Hash count mismatch after comparison" -Level 'DEBUG' -Color "Yellow" -NoConsole
         return $false
     }
-    
+
     return $true
 }
 
@@ -311,14 +312,14 @@ function Invoke-FolderRecursively {
     param (
         [Parameter(Mandatory=$true)]
         [string]$StartPath,
-        
+
         [Parameter(Mandatory=$false)]
         [int]$CurrentDepth = 0,
 
         [Parameter(Mandatory=$false)]
         [bool]$IsLeafNode = $false
     )
-    
+
     try {
         # Check if we've already processed this path
         if ($script:ProcessedFolderPaths.ContainsKey($StartPath)) {
@@ -336,7 +337,7 @@ function Invoke-FolderRecursively {
         # Get subfolders
         $folders = @(Get-ChildItem -Path $StartPath -Directory -Force -ErrorAction Stop)
         $IsLeafNode = ($folders.Count -eq 0)
-        
+
         # Create folder permissions entry with MatchingSubfolders property
         $script:FolderPermissions[$StartPath] = @{
             Owner = $acl.Owner
@@ -345,7 +346,8 @@ function Invoke-FolderRecursively {
             UniqueHash = $permissionHash
             IsLeafNode = $IsLeafNode
             ChildCount = $folders.Count
-            MatchingSubfolders = [System.Collections.Generic.List[string]]::new()  # Initialize empty list
+            # Initialize empty list
+                        MatchingSubfolders = [System.Collections.Generic.List[string]]::new()
         }
 
         # Update progress
@@ -356,7 +358,7 @@ function Invoke-FolderRecursively {
             foreach ($folder in $folders) {
                 if (-not $script:ProcessedFolderPaths.ContainsKey($folder.FullName)) {
                     $subAcl = Get-Acl -Path $folder.FullName -ErrorAction Stop
-                    
+
                     # Compare permissions with parent
                     if (Compare-PermissionSets -Parent $script:FolderPermissions[$StartPath] -Child @{
                         Owner = $subAcl.Owner
@@ -441,14 +443,14 @@ Function Format-FolderHierarchy {
     param (
         [Parameter(Mandatory = $true)]
         [string]$FolderPath,
-        
+
         [Parameter(Mandatory = $false)]
         [int]$IndentLevel = 0
     )
-    
+
     $folderName = Split-Path -Leaf $FolderPath
     $indent = "  " * $IndentLevel
-    
+
     return "$indent$folderName"
 }
 
@@ -458,13 +460,13 @@ function Format-Hierarchy {
         [Parameter(Mandatory = $true)]
         [hashtable]$FolderPermissions
     )
-    
+
     $results = New-Object System.Collections.Generic.List[PSObject]
-    
+
     foreach ($path in ($FolderPermissions.Keys | Sort-Object)) {
         $permissions = $FolderPermissions[$path]
         $parentPath = Split-Path -Path $path -Parent
-        
+
         $item = [PSCustomObject]@{
             Path = $path
             ParentPath = $parentPath
@@ -478,10 +480,10 @@ function Format-Hierarchy {
                 }
             )
         }
-        
+
         $results.Add($item)
     }
-    
+
     return $results | Sort-Object Path
 }
 
@@ -490,20 +492,20 @@ function Write-HierarchicalOutput {
     param (
         [Parameter(Mandatory=$true)]
         [array]$Hierarchy,
-        
+
         [Parameter(Mandatory=$true)]
         [hashtable]$Permissions,
-        
+
         [Parameter(Mandatory=$false)]
         [int]$Level = 0,
-        
+
         [Parameter(Mandatory=$false)]
         [string]$ParentPath = "",
-        
+
         [Parameter(Mandatory=$false)]
         [System.Collections.Generic.HashSet[string]]$ProcessedPaths = $null
     )
-    
+
     # Initialize processed paths tracking on first call
     if ($null -eq $ProcessedPaths) {
         $ProcessedPaths = [System.Collections.Generic.HashSet[string]]::new()
@@ -513,24 +515,24 @@ function Write-HierarchicalOutput {
     $indent = "    " * $Level
 
     # Get items at current level that haven't been processed
-    $items = @($Hierarchy | Where-Object { 
-        $_.ParentPath -eq $ParentPath -and 
-        -not $ProcessedPaths.Contains($_.Path) 
+    $items = @($Hierarchy | Where-Object {
+        $_.ParentPath -eq $ParentPath -and
+        -not $ProcessedPaths.Contains($_.Path)
     } | Sort-Object Path)
-    
+
     foreach ($item in $items) {
         $path = $item.Path
-        
+
         # Skip if already processed
         if ($ProcessedPaths.Contains($path)) {
             continue
         }
-        
+
         # Mark path as processed
         $ProcessedPaths.Add($path) | Out-Null
-        
+
         $folderName = if ($Level -eq 0) { $path } else { Split-Path -Leaf $path }
-        
+
         # Output folder name with proper indentation
         if ($Level -eq 0) {
             Write-Log -Message "$folderName" -Color "Cyan" -Level "INFO"
@@ -539,35 +541,35 @@ function Write-HierarchicalOutput {
             $parentPerms = $Permissions[$ParentPath]
             $currentPerms = $Permissions[$path]
             $hasSamePermissions = $false
-            
+
             if ($parentPerms -and $currentPerms) {
                 $hasSamePermissions = Compare-PermissionSets -Parent $parentPerms -Child $currentPerms
             }
-            
+
             if ($hasSamePermissions) {
                 Write-Log -Message "$indent|---+ $folderName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
             } else {
                 Write-Log -Message "$indent|---+ $folderName" -Color "Cyan" -Level "INFO"
             }
         }
-        
+
         # Get permissions for current folder
         $currentPerms = $Permissions[$path]
         if ($currentPerms) {
             # Only display owner and permissions details if not same as parent or level 0
             $parentPerms = if ($ParentPath) { $Permissions[$ParentPath] } else { $null }
             $hasSamePermissions = $false
-            
+
             if ($parentPerms -and $currentPerms -and $Level -gt 0) {
                 $hasSamePermissions = Compare-PermissionSets -Parent $parentPerms -Child $currentPerms
             }
-            
+
             # Only show permissions if this is the root level or has different permissions from parent
             if ($Level -eq 0 -or -not $hasSamePermissions) {
                 # Output Owner with correct indentation
                 Write-Log -Message "$indent|   Owner: $($currentPerms.Owner)" -Color "White" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
-                
+
                 # Output Permissions with correct indentation
                 Write-Log -Message "$indent|   Permissions:" -Color "White" -Level "INFO"
                 foreach ($access in @($currentPerms.Access)) {
@@ -576,7 +578,7 @@ function Write-HierarchicalOutput {
                 }
                 Write-Log -Message "$indent|" -Level "INFO"
             }
-            
+
             # Handle matching subfolders
             if ($currentPerms.MatchingSubfolders -and $currentPerms.MatchingSubfolders.Count -gt 0) {
                 Write-Log -Message "$indent|   Subfolders with identical permissions ($($currentPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
@@ -588,50 +590,50 @@ function Write-HierarchicalOutput {
                 }
                 Write-Log -Message "$indent|" -Level "INFO"
             }
-            
+
             # Process different permission subfolders
-            $children = @($Hierarchy | Where-Object { 
-                $_.ParentPath -eq $path -and 
+            $children = @($Hierarchy | Where-Object {
+                $_.ParentPath -eq $path -and
                 -not $ProcessedPaths.Contains($_.Path) -and
                 $currentPerms.MatchingSubfolders -notcontains $_.Path
             } | Sort-Object Path)
-            
+
             if ($children.Count -gt 0) {
                 Write-Log -Message "$indent|   Subfolders with different permissions ($($children.Count)):" -Color "DarkGray" -Level "INFO"
                 Write-Log -Message "$indent|" -Level "INFO"
-                
+
                 # Process each child folder
                 foreach ($child in $children) {
                     $childPath = $child.Path
                     $childName = Split-Path -Leaf $childPath
-                    
+
                     # Check if child permissions are same as current folder
                     $childPerms = $Permissions[$childPath]
                     $childHasSamePermissions = $false
-                    
+
                     if ($childPerms) {
                         $childHasSamePermissions = Compare-PermissionSets -Parent $currentPerms -Child $childPerms
                     }
-                    
+
                     # Write the child folder name with correct indent
                     if ($childHasSamePermissions) {
                         Write-Log -Message "$indent|---+ $childName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
                     } else {
                         Write-Log -Message "$indent|---+ $childName" -Color "Cyan" -Level "INFO"
                     }
-                    
+
                     # Mark child path as processed
                     $ProcessedPaths.Add($childPath) | Out-Null
-                    
+
                     # Only display permissions if different from parent
                     if (-not $childHasSamePermissions) {
                         # Calculate the next level indent
                         $childIndent = "    " * ($Level + 1)
-                        
+
                         # Output Owner for child
                         Write-Log -Message "$childIndent|   Owner: $($childPerms.Owner)" -Color "White" -Level "INFO"
                         Write-Log -Message "$childIndent|" -Level "INFO"
-                        
+
                         # Output Permissions for child
                         Write-Log -Message "$childIndent|   Permissions:" -Color "White" -Level "INFO"
                         foreach ($access in @($childPerms.Access)) {
@@ -640,7 +642,7 @@ function Write-HierarchicalOutput {
                         }
                         Write-Log -Message "$childIndent|" -Level "INFO"
                     }
-                    
+
                     # Handle matching subfolders for child
                     if ($childPerms.MatchingSubfolders -and $childPerms.MatchingSubfolders.Count -gt 0) {
                         Write-Log -Message "$childIndent|   Subfolders with identical permissions ($($childPerms.MatchingSubfolders.Count)):" -Color "DarkGray" -Level "INFO"
@@ -652,50 +654,50 @@ function Write-HierarchicalOutput {
                         }
                         Write-Log -Message "$childIndent|" -Level "INFO"
                     }
-                    
+
                     # Find grand-children with different permissions
-                    $grandChildren = @($Hierarchy | Where-Object { 
-                        $_.ParentPath -eq $childPath -and 
+                    $grandChildren = @($Hierarchy | Where-Object {
+                        $_.ParentPath -eq $childPath -and
                         -not $ProcessedPaths.Contains($_.Path) -and
                         $childPerms.MatchingSubfolders -notcontains $_.Path
                     } | Sort-Object Path)
-                    
+
                     if ($grandChildren.Count -gt 0) {
                         Write-Log -Message "$childIndent|   Subfolders with different permissions ($($grandChildren.Count)):" -Color "DarkGray" -Level "INFO"
                         Write-Log -Message "$childIndent|" -Level "INFO"
-                        
+
                         # Process each grand-child directly instead of using recursion
                         foreach ($grandChild in $grandChildren) {
                             $grandChildPath = $grandChild.Path
                             $grandChildName = Split-Path -Leaf $grandChildPath
-                            
+
                             # Check if grand-child permissions are same as child folder
                             $grandChildPerms = $Permissions[$grandChildPath]
                             $grandChildHasSamePermissions = $false
-                            
+
                             if ($grandChildPerms) {
                                 $grandChildHasSamePermissions = Compare-PermissionSets -Parent $childPerms -Child $grandChildPerms
                             }
-                            
+
                             # Write grand-child with proper indentation
                             if ($grandChildHasSamePermissions) {
                                 Write-Log -Message "$childIndent|---+ $grandChildName (Same owner and permissions as parent)" -Color "DarkGray" -Level "INFO"
                             } else {
                                 Write-Log -Message "$childIndent|---+ $grandChildName" -Color "Cyan" -Level "INFO"
                             }
-                            
+
                             # Mark as processed
                             $ProcessedPaths.Add($grandChildPath) | Out-Null
-                            
+
                             # Only display permissions if different from parent
                             if (-not $grandChildHasSamePermissions) {
                                 # Get and display grand-child permissions
                                 $grandChildIndent = "    " * ($Level + 2)
-                                
+
                                 # Output Owner
                                 Write-Log -Message "$grandChildIndent|   Owner: $($grandChildPerms.Owner)" -Color "White" -Level "INFO"
                                 Write-Log -Message "$grandChildIndent|" -Level "INFO"
-                                
+
                                 # Output Permissions
                                 Write-Log -Message "$grandChildIndent|   Permissions:" -Color "White" -Level "INFO"
                                 foreach ($access in @($grandChildPerms.Access)) {
@@ -710,7 +712,7 @@ function Write-HierarchicalOutput {
             }
         }
     }
-    
+
     # Add spacing between root-level items
     if ($Level -eq 0) {
         Write-Log -Message "" -Level "INFO"
@@ -731,7 +733,7 @@ function New-LogHeader {
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]"Administrator")
     $os = Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object -ExpandProperty Caption
-    
+
     @"
 # =============================================================================
 # NTFS Permissions Debug Log
@@ -775,7 +777,7 @@ function Write-Log {
     $callingFunction = $callStack[1].FunctionName
     $lineNumber = $callStack[1].ScriptLineNumber
     if ($callingFunction -eq "<ScriptBlock>") { $callingFunction = "MainScript" }
-    
+
     # Calculate memory usage for metrics
     $memoryInfo = ""
     if ($Level -eq 'METRIC') {
@@ -783,13 +785,13 @@ function Write-Log {
         $memoryMB = [math]::Round($process.WorkingSet / 1MB, 2)
         $memoryInfo = "[Memory:${memoryMB}MB] "
     }
-    
+
     # Add category for better filtering
     $categoryInfo = if ($Category) { "[$Category] " } else { "" }
-    
+
     # Add indentation for hierarchical clarity
     $indentation = if ($Indent -gt 0) { " " * $Indent } else { "" }
-    
+
     # Standard PowerShell log format with enhancements
     $logEntry = "$timestamp [$Level] [Thread:$([Threading.Thread]::CurrentThread.ManagedThreadId)] [$callingFunction`:$lineNumber] ${memoryInfo}${categoryInfo}${indentation}$Message"
 
@@ -823,37 +825,39 @@ function Write-PerformanceMetric {
         [datetime]$StartTime,
         [int]$ItemCount = 0
     )
-    
+
     $endTime = Get-Date
     $duration = ($endTime - $StartTime).TotalMilliseconds
-    $itemsPerSec = if ($ItemCount -gt 0 -and $duration -gt 0) { 
-        [math]::Round(($ItemCount * 1000) / $duration, 2) 
-    } else { 
-        0 
+    $itemsPerSec = if ($ItemCount -gt 0 -and $duration -gt 0) {
+        [math]::Round(($ItemCount * 1000) / $duration, 2)
+    } else {
+        0
     }
-    
+
     $message = "$Operation completed in $([math]::Round($duration, 2))ms"
     if ($ItemCount -gt 0) {
         $message += " ($itemsPerSec items/sec)"
     }
-    
+
     Write-Log -Message $message -Level 'METRIC' -Category 'Performance' -NoConsole
 }
 
 # Initialize well-known SIDs
 function Initialize-WellKnownSIDs {
-    [array]$adminAccounts = @()  # Explicitly declare as array
-    [array]$domains = @(Get-DomainControllers)  # Force array
+    # Explicitly declare as array
+        [array]$adminAccounts = @()
+    # Force array
+        [array]$domains = @(Get-DomainControllers)
 
     if ($domains.Count -eq 0) {
         Write-Log -Message "No domains found. Only checking local Administrator accounts." -Level 'WARNING' -Color "Yellow"
-        
+
         # Get local Administrator account
         $wmiAdminAccounts = @(Get-WmiObject Win32_UserAccount -Filter "Name='Administrator' AND LocalAccount='True'" -ErrorAction SilentlyContinue)
     }
     else {
         Write-Log -Message "Checking Administrator accounts across $($domains.Count) domain(s)..." -Level 'INFO' -Color "Cyan"
-        
+
         # Get all Administrator accounts (both local and domain)
         $wmiAdminAccounts = @(Get-WmiObject Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue)
     }
@@ -901,14 +905,15 @@ function Initialize-WellKnownSIDs {
         "Everyone" = "S-1-1-0"
         "Local" = "S-1-2-0"
         "CreatorOwner" = "S-1-3-0"
-        "CreatorGroup" = "S-1-3-1" 
+        "CreatorGroup" = "S-1-3-1"
         "Network" = "S-1-5-2"
         "Interactive" = "S-1-5-4"
         "AuthenticatedUsers" = "S-1-5-11"
         "LocalSystem" = "S-1-5-18"
         "LocalService" = "S-1-5-19"
         "NetworkService" = "S-1-5-20"
-        "Administrator" = $script:AdminSID  # Use first SID for lookups
+        # Use first SID for lookups
+                "Administrator" = $script:AdminSID
         "Administrators" = "S-1-5-32-544"
         "Users" = "S-1-5-32-545"
         "Guests" = "S-1-5-32-546"
@@ -926,8 +931,8 @@ function Test-WellKnownSID {
     )
 
     if ($script:WellKnownSIDs.Values -contains $Sid) {
-        $name = $script:WellKnownSIDs.GetEnumerator() | 
-            Where-Object { $_.Value -eq $Sid } | 
+        $name = $script:WellKnownSIDs.GetEnumerator() |
+            Where-Object { $_.Value -eq $Sid } |
             Select-Object -First 1 -ExpandProperty Key
         return $name
     }
@@ -1042,19 +1047,19 @@ function Get-SIDTranslation {
         [Parameter(Mandatory=$true)]
         [string]$SID
     )
-    
+
     try {
         if ($script:SidCache.ContainsKey($SID)) {
             return $script:SidCache[$SID]
         }
-        
+
         # Get domain SID prefix
         $domainSid = $SID.Split('-')[0..4] -join '-'
         Write-Log "Attempting to translate SID: $SID (Domain prefix: $domainSid)" -Level 'DEBUG'
-        
+
         $objSID = New-Object System.Security.Principal.SecurityIdentifier($SID)
         $objUser = $objSID.Translate([System.Security.Principal.NTAccount])
-        
+
         $script:SidCache[$SID] = $objUser.Value
         Write-Log "Successfully translated $SID to $($objUser.Value)" -Level 'DEBUG'
         return $objUser.Value
@@ -1071,9 +1076,9 @@ function Get-SIDTranslation {
 # Add this helper function near the top with other functions
 function Test-AdministratorSID {
     param([string]$SID)
-    
+
     if ([string]::IsNullOrEmpty($SID)) { return $false }
-    
+
     # Check if it's a domain SID ending in -500 (Administrator)
     return $SID -match '^S-1-5-21-\d+-\d+-\d+-500$'
 }
@@ -1084,14 +1089,14 @@ function ConvertTo-NTAccountOrSID {
         [Parameter(Mandatory=$true)]
         [string]$SID
     )
-    
+
     try {
         # Check if it's an Administrator SID from any domain
         if (Test-AdministratorSID -SID $SID) {
             Write-Log -Message "Found Administrator SID from domain: $SID" -Level 'DEBUG'
             return "ADMINISTRATOR (Domain: $(($SID -split '-')[1..3] -join '-'))"
         }
-        
+
         # Try to convert SID to NT account name
         if (-not [string]::IsNullOrEmpty($SID)) {
             $objSID = New-Object System.Security.Principal.SecurityIdentifier($SID)
@@ -1121,13 +1126,13 @@ function Get-PermissionHash {
 
     $ownerPart = "OWNER:$Owner"
     if ($IncludeInheritance) {
-        return "$ownerPart;" + ($AccessRules | ForEach-Object { 
-            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)" 
+        return "$ownerPart;" + ($AccessRules | ForEach-Object {
+            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)|$($_.IsInherited)"
         }) -join ';'
     }
     else {
-        return "$ownerPart;" + ($AccessRules | ForEach-Object { 
-            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)" 
+        return "$ownerPart;" + ($AccessRules | ForEach-Object {
+            "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)"
         }) -join ';'
     }
 }
@@ -1142,9 +1147,9 @@ function Write-ProgressStatus {
     )
 
     # Use script-level variables to track last progress update
-    if (-not $script:lastProgressUpdate -or 
+    if (-not $script:lastProgressUpdate -or
         (Get-Date) - $script:lastProgressUpdate -gt [TimeSpan]::FromSeconds(1)) {
-        
+
         $percentComplete = if ($Total -gt 0) { [math]::Round(($Current / $Total) * 100, 2) } else { 0 }
         $currentFile = Split-Path $Status -Leaf
         Write-Progress -Activity "Analyzing Folder Permissions ($Current of $Total folders found)" -Status "Scanning: $currentFile" -PercentComplete $percentComplete
@@ -1188,7 +1193,7 @@ try {
         # Convert single item to array
         $adminAccounts = @($adminAccounts)
     }
-    
+
     # Display warning about multiple accounts if needed
     if ($adminAccounts.Count -gt 1) {
         Write-Log -Message "Multiple Administrator accounts found ($($adminAccounts.Count))" -Color "Yellow" -Level 'WARNING'
@@ -1212,34 +1217,35 @@ try {
     $script:TotalFolders = Get-TotalFolderCount -StartPath $StartPath
     Write-Log -Message "Found $script:TotalFolders folders to process" -Color "Cyan" -Level 'INFO'
     $script:ProcessedFolders = 0
-    $script:lastProgressUpdate = $null  # Initialize progress tracking
+    # Initialize progress tracking
+        $script:lastProgressUpdate = $null
 
         # Process folders with timeout tracking
         Write-Log -Message "Starting folder permission analysis..." -Color "Cyan" -Level 'INFO'
         Invoke-FolderRecursively -StartPath $StartPath
-    
+
         if ($script:cancellationTokenSource.Token.IsCancellationRequested) {
             Write-Log "`nProcessing terminated before completion" -Level 'WARNING' -Color "Yellow"
         }
-    
+
         # Calculate elapsed time
         $script:EndTime = Get-Date
         $script:ElapsedTime = $script:EndTime - $script:StartTime
-    
+
         # Display summary
         Write-Log -Message "`nAnalysis Complete" -Color "Green" -Level 'SUCCESS'
         Write-Log -Message "Total folders processed: $($script:ProcessedFolders)" -Color "Cyan" -Level 'INFO'
         Write-Log -Message "Unique permission sets: $($script:UniquePermissions.Count)" -Color "Cyan" -Level 'INFO'
         Write-Log -Message "Elapsed time: $($script:ElapsedTime.ToString())" -Color "Cyan" -Level 'INFO'
         Write-Log -Message "" -Level 'INFO'
-    
+
         # Create hierarchy structure
         $hierarchy = @()
         $hierarchy += [PSCustomObject]@{
             Path = $StartPath
             ParentPath = ""
         }
-    
+
         # Add all processed folders to hierarchy
         foreach ($path in $script:FolderPermissions.Keys | Where-Object { $_ -ne $StartPath }) {
             $hierarchy += [PSCustomObject]@{
@@ -1247,10 +1253,10 @@ try {
                 ParentPath = Split-Path -Parent $path
             }
         }
-    
+
         # Sort hierarchy by path for consistent output
         $hierarchy = $hierarchy | Sort-Object Path
-    
+
         # Write the hierarchical output
         if ($script:FolderPermissions.Count -gt 0) {
             Write-HierarchicalOutput -Hierarchy $hierarchy -Permissions $script:FolderPermissions
@@ -1293,32 +1299,32 @@ function Get-FolderPermissions {
     param (
         [Parameter(Mandatory = $true)]
         [string]$FolderPath,
-        
+
         [Parameter()]
         [int]$MaxDepth = [int]::MaxValue,
-        
+
         [Parameter()]
         [int]$CurrentDepth = 0,
-        
+
         [Parameter()]
         [string]$ParentPath = "",
 
         [Parameter()]
         [System.Collections.Generic.List[PSObject]]$Results = $null
     )
-    
+
     if ($null -eq $Results) {
         $Results = New-Object System.Collections.Generic.List[PSObject]
     }
-    
+
     if ($CurrentDepth -gt $MaxDepth) {
         return $Results
     }
-    
+
     try {
         $folder = Get-Item -Path $FolderPath -ErrorAction Stop
         $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
-        
+
         $folderInfo = [PSCustomObject]@{
             Path = $folder.FullName
             ParentPath = $ParentPath
@@ -1326,22 +1332,22 @@ function Get-FolderPermissions {
             AccessRules = @($acl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
             MatchingSubfolders = @()
         }
-        
+
         $Results.Add($folderInfo)
-        
+
         if ($CurrentDepth -lt $MaxDepth) {
             $subfolders = Get-ChildItem -Path $FolderPath -Directory -ErrorAction SilentlyContinue
-            
+
             foreach ($subfolder in $subfolders) {
                 try {
                     $subAcl = Get-Acl -Path $subfolder.FullName -ErrorAction Stop
-                    
+
                     $subfolderId = [PSCustomObject]@{
                         Path = $subfolder.FullName
                         Owner = $subAcl.Owner
                         AccessRules = @($subAcl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
                     }
-                    
+
                     # Check if this subfolder has identical permissions to its parent
                     if (Compare-PermissionSets -Parent $folderInfo -Child $subfolderId) {
                         # Add to matching subfolders list instead of processing independently
@@ -1359,7 +1365,7 @@ function Get-FolderPermissions {
     } catch {
         Write-Error "An error occurred: $_"
     }
-    
+
     return $Results
 }
 

@@ -18,14 +18,14 @@
     - System resource impact events
     - Application crash patterns
     - Log size and growth trends
-    
+
     Key features:
     - Pattern recognition for common issues
     - Security incident detection
     - Resource consumption tracking
     - Automated report generation
     - Historical trend analysis
-    
+
     Dependencies:
     - Windows PowerShell 5.1 or higher
     - Administrative privileges for log access
@@ -51,7 +51,7 @@ param(
     [Parameter()]
     [ValidateRange(1, 365)]
     [int]$DaysToAnalyze = 30,
-    
+
     [Parameter()]
     [ValidateScript({
         if (-not (Test-Path $_)) {
@@ -60,7 +60,7 @@ param(
         return $true
     })]
     [string]$ReportPath = $PSScriptRoot,
-    
+
     [Parameter()]
     [string[]]$LogNames = @('Application', 'System', 'Security')
 )
@@ -75,22 +75,22 @@ function Write-Log {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Message,
-        
+
         [Parameter()]
         [ValidateSet("Info", "Process", "Success", "Warning", "Error", "Debug")]
         [string]$Level = "Info",
-        
+
         [Parameter()]
         [ConsoleColor]$Color,
-        
+
         [Parameter()]
         [switch]$NoConsole
     )
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
-    
+
     if (-not $NoConsole) {
         $ColorToUse = switch ($Level) {
             "Info"      { "White" }
@@ -117,10 +117,10 @@ function Get-LogStatistics {
         [Parameter(Mandatory=$true)]
         [string]$LogName
     )
-    
+
     try {
         $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
-        
+
         # First verify the log exists and is accessible
         $LogExists = Get-WinEvent -ListLog $LogName -ErrorAction Stop
         if (-not $LogExists.IsEnabled) {
@@ -130,7 +130,7 @@ function Get-LogStatistics {
 
         # Try different methods to access the log
         $Events = $null
-        
+
         # Method 1: Direct access with minimal filtering
         try {
             Write-Log "Attempting direct access to $LogName log..." -Level Process
@@ -144,7 +144,7 @@ function Get-LogStatistics {
         }
         catch {
             Write-Log "Direct access failed, trying alternative method for $LogName..." -Level Process
-            
+
             # Method 2: Use System.Diagnostics.EventLog
             try {
                 Write-Log "Attempting System.Diagnostics.EventLog access..." -Level Process
@@ -175,9 +175,9 @@ function Get-LogStatistics {
             $TotalEntries = ($Events | Measure-Object).Count
             $ErrorEntries = ($Events | Where-Object { $_.Level -eq 2 } | Measure-Object).Count
             $WarningEntries = ($Events | Where-Object { $_.Level -eq 3 } | Measure-Object).Count
-            
+
             # Get top error sources with enhanced error handling
-            $TopErrors = $Events | 
+            $TopErrors = $Events |
                 Where-Object { $_.Level -eq 2 } |
                 Group-Object {
                     try {
@@ -190,14 +190,14 @@ function Get-LogStatistics {
                 } |
                 Sort-Object Count -Descending |
                 Select-Object -First 5
-            
+
             # Calculate daily entry rate
             $DailyRate = if ($DaysToAnalyze -gt 0) {
                 [math]::Round($TotalEntries / $DaysToAnalyze, 2)
             } else {
                 0
             }
-            
+
             return @{
                 Name = $LogName
                 TotalEntries = $TotalEntries
@@ -221,28 +221,28 @@ function Get-SecurityEvents {
         [Parameter(Mandatory=$true)]
         [datetime]$StartTime
     )
-    
+
     try {
         $FilterHash = @{
             LogName = 'Security'
             StartTime = $StartTime
         }
-        
+
         $SecurityEvents = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop
-        
+
         # Analyze login attempts
-        $FailedLogins = $SecurityEvents | 
+        $FailedLogins = $SecurityEvents |
             Where-Object { $_.Id -eq 4625 } |
             Group-Object { $_.Properties[5].Value } |
             Sort-Object Count -Descending |
             Select-Object -First 5
-        
+
         # Analyze account modifications
         $AccountChanges = $SecurityEvents |
             Where-Object { $_.Id -in @(4720, 4722, 4725, 4726) } |
             Group-Object Id |
             Sort-Object Count -Descending
-        
+
         return @{
             FailedLogins = $FailedLogins
             AccountChanges = $AccountChanges
@@ -272,12 +272,12 @@ function New-HTMLReport {
         [Parameter(Mandatory=$true)]
         [object]$SecurityStats
     )
-    
+
     # Validate input parameters
     if ($null -eq $LogStats -or $LogStats.Count -eq 0) {
         throw "No log statistics available for report generation"
     }
-    
+
     $HTMLHeader = @"
 <!DOCTYPE html>
 <html>
@@ -285,13 +285,19 @@ function New-HTMLReport {
     <title>Windows Log Analysis Report - $SystemName</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
-        h1, h2 { color: #2c3e50; }
+        # 2c3e50; }
+                h1, h2 { color:
         table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-        th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
-        th { background-color: #f5f5f5; }
-        .error { color: #e74c3c; }
-        .warning { color: #f39c12; }
-        .success { color: #27ae60; }
+        # ddd; }
+                th, td { padding: 8px; text-align: left; border: 1px solid
+        # f5f5f5; }
+                th { background-color:
+        # e74c3c; }
+                .error { color:
+        # f39c12; }
+                .warning { color:
+        # 27ae60; }
+                .success { color:
     </style>
 </head>
 <body>
@@ -304,7 +310,7 @@ function New-HTMLReport {
     $HTMLBody = @()
     foreach ($stat in $LogStats) {
         if ($null -eq $stat) { continue }
-        
+
         $HTMLBody += @"
     <h2>$($stat.Name) Log Analysis</h2>
     <table>
@@ -320,11 +326,11 @@ function New-HTMLReport {
     <table>
         <tr><th>Source</th><th>Count</th></tr>
 "@
-        
+
         foreach ($errorSource in $stat.TopErrorSources) {
             $HTMLBody += "<tr><td>$($errorSource.Name)</td><td>$($errorSource.Count)</td></tr>"
         }
-        
+
         $HTMLBody += "</table>"
     }
 
@@ -335,30 +341,30 @@ function New-HTMLReport {
     <table>
         <tr><th>Account</th><th>Attempts</th></tr>
 "@
-        
+
         foreach ($login in $SecurityStats.FailedLogins) {
             $HTMLBody += "<tr><td>$($login.Name)</td><td>$($login.Count)</td></tr>"
         }
-        
+
         $HTMLBody += @"
     </table>
     <h3>Account Modifications</h3>
     <table>
         <tr><th>Event ID</th><th>Count</th><th>Description</th></tr>
 "@
-        
+
         $EventDescriptions = @{
             4720 = "Account Created"
             4722 = "Account Enabled"
             4725 = "Account Disabled"
             4726 = "Account Deleted"
         }
-        
+
         foreach ($change in $SecurityStats.AccountChanges) {
             $desc = $EventDescriptions[$change.Name]
             $HTMLBody += "<tr><td>$($change.Name)</td><td>$($change.Count)</td><td>$desc</td></tr>"
         }
-        
+
         $HTMLBody += "</table>"
     }
 
@@ -374,20 +380,20 @@ function New-HTMLReport {
 # Main execution
 try {
     Write-Log "Starting Windows log analysis..." -Level Process
-    
+
     # Check for admin privileges
     if (-not (Test-AdminPrivileges)) {
         Write-Log "This script requires administrator privileges. Please run as administrator." -Level Error
         exit 1
     }
-    
+
     Write-Log "System: $SystemName" -Level Info
     Write-Log "Analysis period: $DaysToAnalyze days" -Level Info
-    
+
     $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
     $LogStatistics = @()
     $hasValidData = $false
-    
+
     foreach ($LogName in $LogNames) {
         Write-Log "Analyzing $LogName log..." -Level Process
         $Stats = Get-LogStatistics -LogName $LogName
@@ -397,18 +403,18 @@ try {
             Write-Log "Completed analysis of $LogName log" -Level Success
         }
     }
-    
+
     Write-Log "Analyzing security events..." -Level Process
     $SecurityStats = Get-SecurityEvents -StartTime $StartTime
-    
+
     if (-not $hasValidData) {
         Write-Log "No valid log data could be collected. Please check permissions and try again." -Level Error
         exit 1
     }
-    
+
     Write-Log "Generating HTML report..." -Level Process
     New-HTMLReport -LogStats $LogStatistics -SecurityStats $SecurityStats
-    
+
     Write-Log "Analysis completed successfully" -Level Success
     Write-Log "Report saved to: $ReportFile" -Level Success
     Write-Log "Log file saved to: $LogFile" -Level Success

@@ -18,7 +18,7 @@
     - Removes files older than threshold
     - Provides progress feedback and logging
     - Handles errors gracefully
-    
+
     Supports -WhatIf parameter to preview deletions without making them.
 .PARAMETER FolderPath
     The path to the screenshots folder
@@ -71,7 +71,7 @@ try {
 
     # Calculate cutoff date
     $cutoffDate = (Get-Date).AddDays(-$DaysOld)
-    
+
     # Get old files
     $oldFiles = Get-ChildItem -Path $FolderPath -File | Where-Object { $_.LastWriteTime -lt $cutoffDate }
     $totalFiles = $oldFiles.Count
@@ -89,7 +89,7 @@ try {
     foreach ($file in $oldFiles) {
         $percent = [math]::Round(($deleted + $failed) / $totalFiles * 100)
         Write-Progress -Activity "Deleting old screenshots" -Status "$percent% Complete" -PercentComplete $percent
-        
+
         try {
             if ($PSCmdlet.ShouldProcess($file.FullName, "Delete screenshot")) {
                 Remove-Item $file.FullName -Force

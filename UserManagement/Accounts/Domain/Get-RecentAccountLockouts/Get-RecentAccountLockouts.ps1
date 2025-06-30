@@ -45,10 +45,12 @@ Uses Get-WinEvent for event log retrieval.
 Creates a transcript log file in the same directory as the script.
 #>
 
-[CmdletBinding()] # CmdletBinding and param must be after comment-based help
+# CmdletBinding and param must be after comment-based help
+[CmdletBinding()]
 param(
     [Parameter(Mandatory=$false, HelpMessage="Specify the number of hours back to search for lockout events. Default is 24.")]
-    [ValidateRange(1, 720)] # Limit search range for performance
+    # Limit search range for performance
+        [ValidateRange(1, 720)]
     [int]$HoursAgo = 24,
 
     [Parameter(Mandatory=$false, HelpMessage="Filter lockouts for a specific username.")]
@@ -59,7 +61,7 @@ begin {
     # Script scope variable to track transcript status
     $script:transcriptActive = $false
     $script:logFile = $null
-    
+
     # Add script termination handler to ensure transcript is always stopped
     $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
         if ($script:transcriptActive) {
@@ -75,12 +77,12 @@ begin {
             }
         }
     }
-    
+
     # Function to safely stop transcript, improved based on Get-SetInactivityTimers.ps1
     function Stop-TranscriptSafely {
         [CmdletBinding()]
         param()
-        
+
         Write-Debug "Entering Stop-TranscriptSafely function."
         # Check the script-scoped flag to see if transcript was started by this script
         if ($script:transcriptActive) {
@@ -89,21 +91,21 @@ begin {
                 # First try - standard Stop-Transcript
                 Stop-Transcript -ErrorAction Stop
                 Write-Debug "Stop-Transcript command executed."
-                
+
                 # Give the system a moment to release the file handle
                 Start-Sleep -Milliseconds 500
                 Write-Debug "Slept for 500ms after Stop-Transcript."
-                
+
                 # Force garbage collection to release file handles
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
                 Write-Debug "Garbage collection triggered after Stop-Transcript."
-                
+
                 # Try a second round of garbage collection for stubborn handles
                 Start-Sleep -Milliseconds 200
                 [System.GC]::Collect()
                 [System.GC]::WaitForPendingFinalizers()
-                
+
                 # Set the flag to inactive *after* successful stop
                 $script:transcriptActive = $false
                 Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray
@@ -137,7 +139,8 @@ process {
     $script:logFile = Join-Path -Path $scriptPath -ChildPath "Get-RecentAccountLockouts_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     try {
         Start-Transcript -Path $script:logFile -Append -ErrorAction Stop
-        $script:transcriptActive = $true # Mark transcript as active
+        # Mark transcript as active
+                $script:transcriptActive = $true
         Write-Debug "Transcript started: $($script:logFile)"
     } catch {
         Write-Warning "Failed to start transcript logging to '$($script:logFile)'. Error: $($_.Exception.Message)"
@@ -154,7 +157,8 @@ process {
             Write-Error "Could not retrieve list of Domain Controllers. Ensure the Active Directory module is available and you have permissions."
             # Stop transcript before exiting (using the safe function)
             Stop-TranscriptSafely
-            exit 1 # Exit if DCs cannot be retrieved
+            # Exit if DCs cannot be retrieved
+                        exit 1
         }
 
         Write-Host "Searching on Domain Controllers: $($dcs -join ', ')" -ForegroundColor DarkGray
@@ -173,20 +177,23 @@ process {
                 }
 
                 # Removed -ErrorAction Stop to prevent terminating error when no events are found
-                $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction SilentlyContinue # Continue if specific DC fails, but log warning below
+                # Continue if specific DC fails, but log warning below
+                                $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction SilentlyContinue
 
                 # Check if the command succeeded before processing results
                 if ($LASTEXITCODE -ne 0 -or $Error.Count -gt 0) {
                     # Log a warning if Get-WinEvent failed for reasons other than 'no events found'
                     Write-Warning "Failed to query $dc. Error details might be available above or in transcript."
-                    $Error.Clear() # Clear error record after handling
+                    # Clear error record after handling
+                                        $Error.Clear()
                 }
 
                 # Check if $events is null or empty *after* the call
                 if ($null -ne $events -and $events.Count -gt 0) {
                     Write-Host "Found $($events.Count) potential lockout events on $dc since $startTime." -ForegroundColor White
 
-                    foreach ($lockoutEvent in $events) { # Renamed $event to $lockoutEvent
+                    # Renamed $event to $lockoutEvent
+                                        foreach ($lockoutEvent in $events) {
                         # Extract details from the event message or properties
                         # Property indices based on typical Event ID 4740 structure:
                         # Index 0: Target User Name
@@ -199,24 +206,29 @@ process {
 
                         $eventTime = $lockoutEvent.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
                         $lockedOutUser = $lockoutEvent.Properties[0].Value
-                        $callerComputerRaw = $lockoutEvent.Properties[3].Value                        # Refined check for LOCAL SYSTEM SID - Ensure not null/empty before comparing
+                        # Refined check for LOCAL SYSTEM SID - Ensure not null/empty before comparing
+                                                $callerComputerRaw = $lockoutEvent.Properties[3].Value
                         $callerComputerDisplay = if (-not [string]::IsNullOrEmpty($callerComputerRaw) -and $callerComputerRaw.Trim() -ieq 'S-1-5-18') {
-                            'Local System' # Display more descriptive text without parentheses
+                            # Display more descriptive text without parentheses
+                                                        'Local System'
                         } else {
-                            $callerComputerRaw # Otherwise, use the raw value (could be name or other SID)
+                            # Otherwise, use the raw value (could be name or other SID)
+                                                        $callerComputerRaw
                         }
 
                         # Apply username filter if provided
                         if (-not [string]::IsNullOrEmpty($UserName)) {
                             if ($lockedOutUser -notlike "*$UserName*") {
-                                continue # Skip if username doesn't match
+                                # Skip if username doesn't match
+                                                                continue
                             }
                         }
 
                         $lockoutDetail = [PSCustomObject]@{
                             TimeLockedUTC  = $eventTime
                             UserName       = $lockedOutUser
-                            CallerComputer = $callerComputerDisplay # Use the processed display name
+                            # Use the processed display name
+                                                        CallerComputer = $callerComputerDisplay
                             DomainController = $dc
                         }
                         $allLockoutEvents += $lockoutDetail
@@ -265,11 +277,11 @@ end {
         Write-Verbose "Stopping transcript in end block to ensure proper cleanup"
         Stop-TranscriptSafely
     }
-    
+
     # Unregister event handler to prevent memory leaks
-    Get-EventSubscriber -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -ErrorAction SilentlyContinue | 
+    Get-EventSubscriber -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -ErrorAction SilentlyContinue |
     Unregister-Event -ErrorAction SilentlyContinue
-    
+
     # Final garbage collection
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()

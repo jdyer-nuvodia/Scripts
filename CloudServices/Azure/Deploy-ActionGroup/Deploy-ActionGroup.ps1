@@ -18,12 +18,12 @@
     - Validates ARM template files exist
     - Connects to Azure (if not connected)
     - Deploys the Action Group using specified templates
-    
+
     Dependencies:
     - Az PowerShell module (Install-Module -Name Az)
     - Valid Azure subscription
     - Appropriate Azure RBAC permissions
-    
+
     Required files:
     - template.json: ARM template file
     - parameters.json: ARM template parameters file
@@ -91,11 +91,11 @@ $ErrorActionPreference = "Stop"
 
 function Write-Log {
     param($Message, $Level = "Information")
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "$TimeStamp [$Level] $Message"
     Add-Content -Path $LogPath -Value $LogMessage
-    
+
     switch ($Level) {
         "Information" { Write-Host $Message -ForegroundColor White }
         "Success"     { Write-Host $Message -ForegroundColor Green }
@@ -107,13 +107,13 @@ function Write-Log {
 
 try {
     Write-Log "Starting Action Group deployment process" "Process"
-    
+
     # Verify Az module is installed
     if (-not (Get-Module -ListAvailable -Name Az)) {
         Write-Log "Az PowerShell module not found. Please install using: Install-Module -Name Az" "Error"
         throw "Required Az module not installed"
     }
-    
+
     # Connect to Azure if needed
     try {
         $null = Get-AzContext -ErrorAction Stop
@@ -123,34 +123,34 @@ try {
         Write-Log "Not connected to Azure. Initiating sign-in..." "Process"
         Connect-AzAccount
     }
-    
+
     # Set subscription context if provided
     if ($SubscriptionId) {
         Write-Log "Setting context to subscription: $SubscriptionId" "Process"
         Set-AzContext -SubscriptionId $SubscriptionId
     }
-    
+
     # Verify resource group exists
     if (-not (Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue)) {
         throw "Resource group '$ResourceGroupName' not found"
     }
-    
+
     # Prepare template paths
     $TemplateFile = Join-Path $TemplateFolder "template.json"
     $ParameterFile = Join-Path $TemplateFolder "parameters.json"
-    
+
     Write-Log "Deploying Action Group..." "Process"
     Write-Log "Resource Group: $ResourceGroupName" "Information"
     Write-Log "Template File: $TemplateFile" "Information"
     Write-Log "Parameter File: $ParameterFile" "Information"
-    
+
     # Deploy ARM template
     $deployment = New-AzResourceGroupDeployment `
         -Name $DeploymentName `
         -ResourceGroupName $ResourceGroupName `
         -TemplateFile $TemplateFile `
         -TemplateParameterFile $ParameterFile
-    
+
     if ($deployment.ProvisioningState -eq "Succeeded") {
         Write-Log "Action Group deployment completed successfully" "Success"
     }

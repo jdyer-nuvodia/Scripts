@@ -41,7 +41,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 function Get-InstalledDotNetVersions {
     Write-Verbose "Detecting installed .NET Framework versions..."
     $versions = @()
-    
+
     # Check .NET Framework 4.x
     $net4 = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full' -ErrorAction SilentlyContinue
     if ($net4) {
@@ -74,19 +74,19 @@ function Get-InstalledDotNetVersions {
 function Update-DotNetFramework {
     $tempPath = Join-Path $env:TEMP "DotNetUpdates"
     New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
-    
+
     try {
         # Update .NET Framework 4.x
         Write-Host "Updating .NET Framework 4.x..."
         $url = "https://go.microsoft.com/fwlink/?LinkId=2085155"
         $installer = Join-Path $tempPath "ndp48-x86-x64-allos-enu.exe"
-        
+
         Write-Verbose "Downloading .NET Framework 4.8 update..."
         Invoke-WebRequest -Uri $url -OutFile $installer
-        
+
         Write-Verbose "Installing .NET Framework 4.8 update..."
         $process = Start-Process -FilePath $installer -ArgumentList "/quiet /norestart" -Wait -PassThru
-        
+
         if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
             Write-Host ".NET Framework 4.x update completed successfully"
         } else {
@@ -119,7 +119,7 @@ function Update-DotNetFramework {
 function Test-DotNetUpdates {
     Write-Verbose "Verifying .NET Framework updates..."
     $versions = Get-InstalledDotNetVersions
-    
+
     foreach ($version in $versions) {
         Write-Host "Detected .NET Framework $($version.Family) - Version: $($version.Version)"
     }

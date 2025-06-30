@@ -20,7 +20,7 @@
     - Shows drive space comparison before and after deletion
     - Recursive deletion by default
     - Silent operation with error suppression
-    
+
     Supports -WhatIf parameter to preview changes without making them.
 .PARAMETER StartPath
     The path to the folder containing files to be cleaned up
@@ -40,7 +40,7 @@
 param(
     [Parameter(Mandatory=$false)]
     [string]$StartPath = "C:\windows\System32\winevt\logs",
-    
+
     [Parameter(Mandatory=$false)]
     [int]$daysOld = 30,
 
@@ -53,7 +53,7 @@ function Show-DriveInfo {
         [Parameter(Mandatory=$true)]
         [object]$Volume
     )
-    
+
     Write-Host "`nDrive Volume Details:" -ForegroundColor Green
     Write-Host "------------------------" -ForegroundColor Green
     Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
@@ -75,7 +75,7 @@ try {
 
     # Get the drive letter from the folder path
     $driveLetter = $StartPath.Substring(0, 1)
-    
+
     # Get volume information before deletion
     Write-Host "Getting drive information before deletion..." -ForegroundColor Cyan
     $volumeBefore = Get-Volume -DriveLetter $driveLetter -ErrorAction Stop
@@ -104,12 +104,12 @@ try {
     foreach ($file in $oldFiles) {
         $currentFile++
         $percentComplete = [math]::Round(($currentFile / $totalFiles) * 100, 2)
-        
+
         Write-Progress -Activity "Deleting Old Files" `
                       -Status "Processing $currentFile of $totalFiles files ($percentComplete%)" `
                       -PercentComplete $percentComplete `
                       -CurrentOperation $file.Name
-        
+
         try {
             if ($PSCmdlet.ShouldProcess($file.FullName, "Delete file")) {
                 Remove-Item $file.FullName -Force -ErrorAction Stop
@@ -125,7 +125,7 @@ try {
 
     # Only process directories if -NoRecurse is not specified
     if (!$NoRecurse) {
-        $oldDirs = Get-ChildItem -Path $StartPath -Directory -Recurse | 
+        $oldDirs = Get-ChildItem -Path $StartPath -Directory -Recurse |
                    Where-Object { $_.LastWriteTime -lt $cutoffDate } |
                    Sort-Object FullName -Descending
 
@@ -135,7 +135,7 @@ try {
         foreach ($dir in $oldDirs) {
             $currentDir++
             $percentComplete = [math]::Round(($currentDir / $totalDirs) * 100, 2)
-            
+
             Write-Progress -Activity "Processing Empty Directories" `
                           -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
                           -PercentComplete $percentComplete `
@@ -162,7 +162,7 @@ try {
     $volumeAfter = Get-Volume -DriveLetter $driveLetter -ErrorAction Stop
     Write-Host "Drive information after file deletion:" -ForegroundColor Yellow
     Show-DriveInfo -Volume $volumeAfter
-    
+
     # Show space reclaimed
     $spaceReclaimed = $volumeAfter.SizeRemaining - $volumeBefore.SizeRemaining
     if ($spaceReclaimed -gt 0) {

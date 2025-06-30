@@ -16,20 +16,20 @@
     their parent folder name and case exactly. It can process a single folder or recursively
     process all subfolders. If multiple .ps1 files exist in a folder,
     it will prompt for confirmation.
-    
+
     Key actions:
     - Preserves exact case of folder names
     - Handles single or multiple .ps1 files
     - Supports recursive folder processing
-    
+
     Dependencies:
     - PowerShell 5.1 or higher
     - Write/Modify permissions on target folders
-    
+
     Security considerations:
     - Requires appropriate file system permissions
     - No elevated privileges required
-    
+
     Performance impact:
     - Minimal CPU and memory usage
     - File system operations are sequential
@@ -68,47 +68,48 @@ function Rename-ScriptFile {
     param(
         [string]$StartPath
     )
-    
+
     try {
         # Get folder info to preserve exact case
         $folderInfo = Get-Item -Path $StartPath
-        $folderName = $folderInfo.Name  # This preserves the exact case
-        
+        # This preserves the exact case
+                $folderName = $folderInfo.Name
+
         Write-Host "`nProcessing folder: $StartPath" -ForegroundColor Cyan
         Write-Host "Folder name (exact case): $folderName" -ForegroundColor Gray
-        
+
         # Get all .ps1 files in the folder
         $psFiles = Get-ChildItem -Path $StartPath -Filter "*.ps1" -File
-        
+
         if ($psFiles.Count -eq 0) {
             Write-Host "  No PowerShell scripts found in this folder" -ForegroundColor Yellow
             return
         }
-        
+
         Write-Host "  Found $($psFiles.Count) PowerShell script(s)" -ForegroundColor Gray
-        
+
         if ($psFiles.Count -eq 1) {
             $psFile = $psFiles[0]
             $newName = "$folderName.ps1"
-            
+
             # Skip if name already matches exactly (including case)
             if ($psFile.Name -ceq $newName) {
                 Write-Host "  Script '$($psFile.Name)' already matches folder name and case" -ForegroundColor Yellow
                 return
             }
-            
+
             # Show case difference if only case is different
             if ($psFile.Name -eq $newName) {
                 Write-Host "  Case difference detected:" -ForegroundColor Yellow
                 Write-Host "    Current: $($psFile.Name)" -ForegroundColor Gray
                 Write-Host "    New:     $newName" -ForegroundColor Gray
             }
-            
+
             # Rename the file
             $newPath = Join-Path -Path $StartPath -ChildPath $newName
             if ($PSCmdlet.ShouldProcess($psFile.FullName, "Rename to '$newName'")) {
                 Write-Host "  Renaming '$($psFile.Name)' to '$newName'" -ForegroundColor Gray
-                
+
                 # Handle case-only changes
                 if ($psFile.Name -eq $newName) {
                     $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8) + ".ps1"
@@ -118,7 +119,7 @@ function Rename-ScriptFile {
                 else {
                     Rename-Item -Path $psFile.FullName -NewName $newName -Force
                 }
-                
+
                 Write-Host "  Successfully renamed to '$newName'" -ForegroundColor Green
             }
         }
@@ -128,17 +129,17 @@ function Rename-ScriptFile {
             for ($i = 0; $i -lt $psFiles.Count; $i++) {
                 Write-Host "    [$i] $($psFiles[$i].Name)"
             }
-            
+
             $choice = Read-Host "`n  Do you want to rename one of these files to '$folderName.ps1'? (y/n)"
             if ($choice -eq 'y') {
                 $fileChoice = Read-Host "  Enter the number of the file to rename"
                 if ($fileChoice -match '^\d+$' -and [int]$fileChoice -lt $psFiles.Count) {
                     $selectedFile = $psFiles[[int]$fileChoice]
                     $newName = "$folderName.ps1"
-                    
+
                     if ($PSCmdlet.ShouldProcess($selectedFile.FullName, "Rename to '$newName'")) {
                         Write-Host "  Renaming '$($selectedFile.Name)' to '$newName'" -ForegroundColor Gray
-                        
+
                         # Handle case-only changes
                         if ($selectedFile.Name -eq $newName) {
                             $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8) + ".ps1"
@@ -148,7 +149,7 @@ function Rename-ScriptFile {
                         else {
                             Rename-Item -Path $selectedFile.FullName -NewName $newName -Force
                         }
-                        
+
                         Write-Host "  Successfully renamed to '$newName'" -ForegroundColor Green
                     }
                 }
@@ -170,19 +171,19 @@ try {
     if (!(Test-Path -Path $StartPath)) {
         throw "Path '$StartPath' does not exist."
     }
-    
+
     Write-Host "Starting script rename process..." -ForegroundColor Cyan
     Write-Host "Processing path: $StartPath" -ForegroundColor Gray
     Write-Host "Recursive mode: $Recursive" -ForegroundColor Gray
-    
+
     # Initialize folders collection
     $folders = @()
-    
+
     # Get the root folder
     if ((Get-Item -Path $StartPath).PSIsContainer) {
         $folders += Get-Item -Path $StartPath
     }
-    
+
     # Add subfolders if recursive
     if ($Recursive) {
         Write-Host "Getting all subfolders recursively..." -ForegroundColor Gray
@@ -190,15 +191,15 @@ try {
         $folders += $subFolders
         Write-Host "Found $($subFolders.Count) subfolder(s)" -ForegroundColor Gray
     }
-    
+
     # Sort folders by depth (deepest first) to handle nested folders properly
     $folders = $folders | Sort-Object { ($_.FullName -split '\\').Count } -Descending
-    
+
     # Process each folder
     foreach ($folder in $folders) {
         Rename-ScriptFile -StartPath $folder.FullName
     }
-    
+
     Write-Host "`nScript rename process completed successfully." -ForegroundColor Green
 }
 catch {

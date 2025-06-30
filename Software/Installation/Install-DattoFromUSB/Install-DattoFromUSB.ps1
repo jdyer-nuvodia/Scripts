@@ -15,7 +15,7 @@
 .DESCRIPTION
     This script automatically detects a connected USB drive, locates the Datto Agent
     installation files in a predefined folder structure, and performs a silent installation.
-    
+
     The script handles:
     - USB drive detection
     - Verification of installation files
@@ -41,7 +41,8 @@ function Find-USBDrive {
             }
         }
     }
-    return $null # Return null if no USB drive is found
+    # Return null if no USB drive is found
+        return $null
 }
 
 # Define the path to the DattoAgent folder (relative to the USB drive's root)

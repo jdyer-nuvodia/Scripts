@@ -20,14 +20,14 @@
     - Security templates
     - Security database settings
     - Advanced registry security settings
-    
+
     Dependencies:
     - Administrative privileges
     - GroupPolicy PowerShell module (optional)
     - secedit.exe
     - auditpol.exe
     - Access to system registry
-    
+
     The script generates both console output and a detailed log file
     with color-coded status indicators for different types of information.
 .PARAMETER OutputFormat
@@ -84,12 +84,12 @@ function Write-StatusMessage {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Message,
-        
+
         [Parameter(Mandatory=$false)]
         [ValidateSet("Info", "Process", "Success", "Warning", "Error", "Debug", "Detail")]
         [string]$Type = "Info"
     )
-    
+
     switch ($Type) {
         "Info"    { Write-Host $Message -ForegroundColor White }
         "Process" { Write-Host $Message -ForegroundColor Cyan }
@@ -118,7 +118,7 @@ function Test-IsDomainController {
     [CmdletBinding()]
     [OutputType([bool])]
     param()
-    
+
     return (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
 }
 
@@ -142,12 +142,12 @@ function Get-GPStatusWithGpresult {
         [Parameter(Mandatory=$false)]
         [ValidateSet("User", "Computer", "Both")]
         [string]$ReportType = "Both",
-        
+
         [Parameter(Mandatory=$false)]
         [ValidateSet("HTML", "Text")]
         [string]$OutputFormat = $script:OutputFormat
     )
-    
+
     $tempFolder = Join-Path $env:TEMP "GPReport"
     if (-not (Test-Path $tempFolder)) {
         New-Item -ItemType Directory -Path $tempFolder | Out-Null
@@ -156,10 +156,10 @@ function Get-GPStatusWithGpresult {
     if ($OutputFormat -eq 'HTML') {
         $reportFile = Join-Path $tempFolder "GPReport_$(Get-Date -Format 'yyyyMMdd_HHmmss').html"
         Write-StatusMessage "Generating HTML GPResult report..." -Type "Process"
-        
+
         try {
             $process = Start-Process -FilePath "gpresult.exe" -ArgumentList "/H `"$reportFile`"", "/F" -Wait -NoNewWindow -PassThru
-            
+
             if ($process.ExitCode -eq 0 -and (Test-Path $reportFile)) {
                 Write-StatusMessage "Report generated successfully at: $reportFile" -Type "Success"
                 Start-Process $reportFile
@@ -194,17 +194,17 @@ function Get-GPStatusWithGpresult {
 # Function to get detailed security and password policy settings
 function Get-SecurityPolicySettings {
     Write-StatusMessage "Analyzing Security Policy Settings..." -Type "Process"
-    
+
     try {
         # Create a unique temporary file for secedit export
         $secpolPath = Join-Path $env:TEMP "secpol_$(Get-Random).cfg"
-        
+
         # Export security policy settings
         $null = secedit /export /cfg $secpolPath
-        
+
         if (Test-Path $secpolPath) {
-            $securitySettings = Get-Content $secpolPath | Where-Object { 
-                $_ -match "Password|MinimumPasswordAge|MaximumPasswordAge|PasswordComplexity|LockoutBadCount|ResetLockoutCount" 
+            $securitySettings = Get-Content $secpolPath | Where-Object {
+                $_ -match "Password|MinimumPasswordAge|MaximumPasswordAge|PasswordComplexity|LockoutBadCount|ResetLockoutCount"
             }
             Remove-Item $secpolPath -Force
 
@@ -217,7 +217,7 @@ function Get-SecurityPolicySettings {
 
             # Get additional security settings using PowerShell
             Write-StatusMessage "`nAdditional Security Settings:" -Type "Info"
-            
+
             # Account Policies
             $accountPolicies = net accounts
             Write-StatusMessage "Account Policies:" -Type "Success"
@@ -230,10 +230,10 @@ function Get-SecurityPolicySettings {
                 Write-StatusMessage "`nUser Rights Assignment:" -Type "Success"
                 $userRightsPath = Join-Path $env:TEMP "userrights_$(Get-Random).cfg"
                 $null = secedit /export /areas USER_RIGHTS /cfg $userRightsPath
-                
+
                 if (Test-Path $userRightsPath) {
-                    $rightsSettings = Get-Content $userRightsPath | Where-Object { 
-                        $_ -match "SeSecurityPrivilege|SeBackupPrivilege|SeRestorePrivilege" 
+                    $rightsSettings = Get-Content $userRightsPath | Where-Object {
+                        $_ -match "SeSecurityPrivilege|SeBackupPrivilege|SeRestorePrivilege"
                     }
                     Remove-Item $userRightsPath -Force
                     foreach ($right in $rightsSettings) {
@@ -253,10 +253,10 @@ function Get-SecurityPolicySettings {
 # Function to get audit policy settings
 function Get-AuditPolicySettings {
     Write-StatusMessage "Analyzing Audit Policy Settings..." -Type "Process"
-    
+
     try {
         $auditPol = auditpol /get /category:* /r | ConvertFrom-Csv
-        
+
         Write-StatusMessage "`nAudit Policy Settings:" -Type "Info"
         foreach ($policy in $auditPol) {
             Write-StatusMessage "Category: $($policy.'Subcategory')" -Type "Success"
@@ -271,14 +271,14 @@ function Get-AuditPolicySettings {
 # Function to get system access control settings
 function Get-SystemAccessControl {
     Write-StatusMessage "Analyzing System Access Control Settings..." -Type "Process"
-    
+
     try {
         $sysctrlPath = Join-Path $env:TEMP "sysctrl_$(Get-Random).cfg"
         $null = secedit /export /cfg $sysctrlPath
-        
+
         if (Test-Path $sysctrlPath) {
-            $systemSettings = Get-Content $sysctrlPath | Where-Object { 
-                $_ -match "EnableAdminAccount|EnableGuestAccount|LSAAnonymousNameLookup|RestrictAnonymousSAM" 
+            $systemSettings = Get-Content $sysctrlPath | Where-Object {
+                $_ -match "EnableAdminAccount|EnableGuestAccount|LSAAnonymousNameLookup|RestrictAnonymousSAM"
             }
             Remove-Item $sysctrlPath -Force
 
@@ -299,7 +299,7 @@ function Get-SystemAccessControl {
             foreach ($StartPath in $registryPaths) {
                 if (Test-Path $StartPath) {
                     Write-StatusMessage "Registry Path: $StartPath" -Type "Success"
-                    Get-ItemProperty -Path $StartPath | 
+                    Get-ItemProperty -Path $StartPath |
                         Select-Object -Property * -ExcludeProperty PS* |
                         ForEach-Object {
                             $_.PSObject.Properties | ForEach-Object {
@@ -318,17 +318,17 @@ function Get-SystemAccessControl {
 # Function to get security template settings
 function Get-SecurityTemplateSettings {
     Write-StatusMessage "Analyzing Security Template Settings..." -Type "Process"
-    
+
     try {
         # Create temporary security template
         $templatePath = Join-Path $env:TEMP "security_template.inf"
         secedit /export /cfg $templatePath | Out-Null
-        
+
         if (Test-Path $templatePath) {
             $templateContent = Get-Content $templatePath
-            
+
             Write-StatusMessage "`nSecurity Template Settings:" -Type "Info"
-            
+
             # Analyze different sections
             $currentSection = ""
             foreach ($line in $templateContent) {
@@ -342,7 +342,7 @@ function Get-SecurityTemplateSettings {
                     Write-StatusMessage "  $setting = $value" -Type "Detail"
                 }
             }
-            
+
             Remove-Item $templatePath -Force
         }
     }
@@ -354,26 +354,26 @@ function Get-SecurityTemplateSettings {
 # Function to get security database settings
 function Get-SecurityDatabaseSettings {
     Write-StatusMessage "Analyzing Security Database Settings..." -Type "Process"
-    
+
     try {
         # Check Security Configuration and Analysis settings
         $scaPath = Join-Path $env:TEMP "sca_analysis"
-        
+
         # Create new security database
         secedit /export /cfg "$scaPath.inf" | Out-Null
         secedit /configure /db "$scaPath.sdb" /cfg "$scaPath.inf" /quiet
-        
+
         if (Test-Path "$scaPath.inf") {
             Write-StatusMessage "`nSecurity Database Analysis:" -Type "Info"
-            
+
             # Get security areas
-            $areas = @("Account Policies", "Local Policies", "Event Log", "Restricted Groups", 
+            $areas = @("Account Policies", "Local Policies", "Event Log", "Restricted Groups",
                       "System Services", "Registry", "File System")
-            
+
             foreach ($area in $areas) {
                 Write-StatusMessage "`nAnalyzing $area..." -Type "Success"
                 secedit /areas $area /export /cfg "$scaPath`_$($area -replace '\s', '_').inf" /quiet
-                
+
                 if (Test-Path "$scaPath`_$($area -replace '\s', '_').inf") {
                     $content = Get-Content "$scaPath`_$($area -replace '\s', '_').inf"
                     $content | Where-Object { $_ -match '=' } | ForEach-Object {
@@ -382,7 +382,7 @@ function Get-SecurityDatabaseSettings {
                     Remove-Item "$scaPath`_$($area -replace '\s', '_').inf" -Force
                 }
             }
-            
+
             # Cleanup
             Remove-Item "$scaPath.inf" -Force -ErrorAction SilentlyContinue
             Remove-Item "$scaPath.sdb" -Force -ErrorAction SilentlyContinue
@@ -397,7 +397,7 @@ function Get-SecurityDatabaseSettings {
 # Function to get advanced registry settings
 function Get-AdvancedRegistrySettings {
     Write-StatusMessage "Analyzing Advanced Registry Security Settings..." -Type "Process"
-    
+
     try {
         $registryPaths = @(
             "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System",
@@ -410,14 +410,14 @@ function Get-AdvancedRegistrySettings {
         )
 
         Write-StatusMessage "`nAdvanced Registry Security Settings:" -Type "Info"
-        
+
         foreach ($StartPath in $registryPaths) {
             if (Test-Path $StartPath) {
                 Write-StatusMessage "`nRegistry Path: $StartPath" -Type "Success"
                 try {
                     $properties = Get-ItemProperty -Path $StartPath -ErrorAction Stop
-                    $properties.PSObject.Properties | 
-                        Where-Object { $_.Name -notlike 'PS*' } | 
+                    $properties.PSObject.Properties |
+                        Where-Object { $_.Name -notlike 'PS*' } |
                         ForEach-Object {
                             $value = if ($_.Value -is [byte[]]) {
                                 [System.BitConverter]::ToString($_.Value)
@@ -452,7 +452,7 @@ try {
     Write-StatusMessage "System Name: $computerName" -Type "Info"
     Write-StatusMessage "Domain: $domainName" -Type "Info"
     Write-StatusMessage "----------------------------------------" -Type "Info"
-    
+
     # Get all security-related settings
     Get-SecurityPolicySettings
     Get-AuditPolicySettings
@@ -468,13 +468,13 @@ try {
     elseif (Test-IsDomainController) {
         if (Get-Module -ListAvailable -Name GroupPolicy) {
             Import-Module GroupPolicy
-        
+
             # Get Computer Policy Settings
             Write-StatusMessage "Analyzing Computer Policy Settings..." -Type "Process"
             try {
                 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
                 $userPolicies = Get-GPResultantSetOfPolicy -ReportType User -User $currentUser
-                
+
                 if ($userPolicies.UserResults -and $userPolicies.UserResults.ExtensionData) {
                     $userPolicies.UserResults.ExtensionData | ForEach-Object {
                         $extension = $_

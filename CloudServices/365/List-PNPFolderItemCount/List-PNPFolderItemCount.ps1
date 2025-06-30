@@ -35,10 +35,10 @@ Lists all items in the specified SharePoint folder and outputs results to the co
 param(
     [Parameter()]
     [string]$SiteUrl = "SITEURL",
-    
+
     [Parameter()]
     [string]$ClientId = "CLIENTID",
-    
+
     [Parameter()]
     [string]$ParentFolder = "Shared Documents/LIT/NUVO Backup"
 )
@@ -59,12 +59,13 @@ try {
     # Connect to SharePoint site with PnP
     Write-Information -MessageData "Connecting to SharePoint site: $SiteUrl" -InformationAction Continue
     Connect-PnPOnline -Url $SiteUrl -ClientId $ClientId
-    Write-Information -MessageData "Successfully connected to SharePoint" -InformationAction Continue    # Function to recursively get folder contents and item counts
+    # Function to recursively get folder contents and item counts
+        Write-Information -MessageData "Successfully connected to SharePoint" -InformationAction Continue
     function Get-FolderContentsRecursive {
         param (
             [Parameter(Mandatory = $true)]
             [string]$FolderPath,
-            
+
             [Parameter()]
             [int]$Level = 0
         )
@@ -75,29 +76,31 @@ try {
         # Get items in the current folder - using more specific PnP commands for better reliability
         try {
             # First, add the folder itself to the results
-            if ($Level -gt 0) {  # Don't add the parent folder
+            # Don't add the parent folder
+                        if ($Level -gt 0) {
                 $folderObj = Get-PnPFolder -Url $FolderPath -ErrorAction Stop
                 $folderInfo = [PSCustomObject]@{
                     Path = $FolderPath
                     Name = Split-Path -Path $FolderPath -Leaf
                     Type = "Folder"
-                    ItemCount = 0  # Will be updated later
+                    # Will be updated later
+                                        ItemCount = 0
                     Size = 0
                     LastModified = $folderObj.TimeLastModified
                     Level = $Level
                 }
                 [void]$results.Add($folderInfo)
             }
-            
+
             # Get files in this folder
             $files = Get-PnPFolderItem -FolderSiteRelativeUrl $FolderPath -ItemType File -ErrorAction Stop
-            
+
             if ($null -ne $files) {
                 Write-Information -MessageData "Found $($files.Count) files in $FolderPath" -InformationAction Continue
-                
+
                 foreach ($file in $files) {
                     $itemPath = "$FolderPath/$($file.Name)"
-                    
+
                     # Add the file to results
                     $fileInfo = [PSCustomObject]@{
                         Path = $itemPath
@@ -108,31 +111,33 @@ try {
                         LastModified = $file.TimeLastModified
                         Level = $Level
                     }
-                    
+
                     [void]$results.Add($fileInfo)
                 }
             }
-            
+
             # Get subfolders and process them recursively
             $subfolders = Get-PnPFolderItem -FolderSiteRelativeUrl $FolderPath -ItemType Folder -ErrorAction Stop
-            
+
             if ($null -ne $subfolders) {
                 Write-Information -MessageData "Found $($subfolders.Count) subfolders in $FolderPath" -InformationAction Continue
-                
+
                 foreach ($subfolder in $subfolders) {
                     $subfolderPath = "$FolderPath/$($subfolder.Name)"
-                    
+
                     # Process this subfolder recursively
                     Get-FolderContentsRecursive -FolderPath $subfolderPath -Level ($Level + 1)
                 }
             }
-            
+
             # Now update the folder item count
-            if ($Level -gt 0) {  # Don't update the parent folder here
-                $folderItems = $results | Where-Object { 
-                    $_.Path -like "$FolderPath*" -and 
+            # Don't update the parent folder here
+                        if ($Level -gt 0) {
+                $folderItems = $results | Where-Object {
+                    $_.Path -like "$FolderPath*" -and
                     $_.Path -ne $FolderPath -and
-                    $_.Type -eq "File"  # Count only files, not subfolders
+                    # Count only files, not subfolders
+                                        $_.Type -eq "File"
                 }
                 $itemCount = ($folderItems | Measure-Object).Count
                 ($results | Where-Object { $_.Path -eq $FolderPath }).ItemCount = $itemCount
@@ -141,40 +146,41 @@ try {
         catch {
             Write-Warning -Message "Error processing folder $FolderPath : $_"
         }
-    }    # Start the recursive scan from the parent folder
+    # Start the recursive scan from the parent folder
+        }
     Write-Information -MessageData "Starting scan of $ParentFolder" -InformationAction Continue
-    
+
     # First, check if the parent folder exists
     try {
         $parentFolderObj = Get-PnPFolder -Url $ParentFolder -ErrorAction Stop
         if ($null -eq $parentFolderObj) {
             throw "Parent folder not found"
         }
-        
+
         Write-Information -MessageData "Parent folder found, beginning recursive scan" -InformationAction Continue
-        
+
         # Start the recursive processing
         Get-FolderContentsRecursive -FolderPath $ParentFolder
         Write-Information -MessageData "Scan completed. Found $($results.Count) items" -InformationAction Continue
 
         # Process and display results
         Write-Information -MessageData "Processing results..." -InformationAction Continue
-        
+
         # Get direct children of the parent folder for the summary
-        $topLevelItems = $results | Where-Object { 
-            ($_.Path -like "$ParentFolder/*" -and 
+        $topLevelItems = $results | Where-Object {
+            ($_.Path -like "$ParentFolder/*" -and
             ($_.Path -notlike "$ParentFolder/*/*" -or
             ($_.Path -split "/" | Measure-Object).Count -eq ($ParentFolder -split "/" | Measure-Object).Count + 1))
         }
-        
+
         Write-Information -MessageData "`nTop-level folders and their item counts:" -InformationAction Continue
-        $topLevelItems | Sort-Object -Property ItemCount -Descending | 
-            Select-Object Name, Type, ItemCount, @{Name="SizeKB"; Expression={[math]::Round($_.Size/1KB, 2)}} | 
+        $topLevelItems | Sort-Object -Property ItemCount -Descending |
+            Select-Object Name, Type, ItemCount, @{Name="SizeKB"; Expression={[math]::Round($_.Size/1KB, 2)}} |
             Format-Table -AutoSize
-        
+
         # Detailed results - show as a tree structure with indentation based on level
         Write-Information -MessageData "`nDetailed structure:" -InformationAction Continue
-        
+
         $sortedResults = $results | Sort-Object Path
         foreach ($item in $sortedResults) {
             $indent = "    " * $item.Level
@@ -182,18 +188,18 @@ try {
             $itemCountDisplay = if ($item.Type -eq "Folder") { " [{0} items]" -f $item.ItemCount } else { "" }
             Write-Information -MessageData ("{0}{1} - {2}{3}{4}" -f $indent, $item.Name, $item.Type, $itemCountDisplay, $displaySize) -InformationAction Continue
         }
-        
+
         # Folder summary for quick reference
         Write-Information -MessageData "`nFolder Summary (sorted by item count):" -InformationAction Continue
-        $folderSummary = $results | Where-Object { $_.Type -eq "Folder" } | 
-            Sort-Object -Property ItemCount -Descending | 
+        $folderSummary = $results | Where-Object { $_.Type -eq "Folder" } |
+            Sort-Object -Property ItemCount -Descending |
             Select-Object Path, ItemCount
         $folderSummary | Format-Table -AutoSize
     }
     catch {
         Write-Error -Message "Error accessing parent folder $ParentFolder : $_"
     }
-    
+
     # Export results to CSV
     $results | Export-Csv -Path $csvOutputFile -NoTypeInformation
     Write-Information -MessageData "Results exported to $csvOutputFile" -InformationAction Continue
@@ -211,7 +217,7 @@ finally {
     catch {
         Write-Warning -Message "Error disconnecting from SharePoint: $_"
     }
-    
+
     # Stop logging
     Stop-Transcript
 }

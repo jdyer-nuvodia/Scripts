@@ -38,14 +38,14 @@ function Write-Log {
         [string]$Color = 'White',
         [switch]$NoConsole
     )
-    
+
     $timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')
     $logMessage = "[$timestamp] $Message"
-    
+
     # Write to log file
     $script:logStream.WriteLine($logMessage)
     $script:logStream.Flush()
-    
+
     # Write to console if not suppressed
     if (-not $NoConsole) {
         Write-Host $Message -ForegroundColor $Color
@@ -57,7 +57,7 @@ function Show-DriveInfo {
         [Parameter(Mandatory=$true)]
         [object]$Volume
     )
-    
+
     Write-Host "`nDrive Volume Details:" -ForegroundColor Green
     Write-Host "------------------------" -ForegroundColor Green
     Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
@@ -85,18 +85,18 @@ function Write-StatusMessage {
 try {
     Write-StatusMessage "Getting drive space information..." -Color Cyan
     $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter
-    
+
     if ($volumes.Count -eq 0) {
         Write-Log "No drives with letters found on the system." -Color Red
         exit 1
     }
-    
+
     Write-StatusMessage "Found $($volumes.Count) drive volumes." -Color Green
     foreach ($volume in $volumes) {
         Write-StatusMessage "Drive space for $($volume.DriveLetter):" -Color Yellow
         Show-DriveInfo -Volume $volume
     }
-    
+
     Write-Log "Drive information collection completed successfully. See log file for details: $logFile" -Color Green
 }
 catch {

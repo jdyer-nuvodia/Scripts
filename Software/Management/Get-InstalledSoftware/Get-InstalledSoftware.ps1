@@ -26,7 +26,7 @@
     - Filters results by keyword if specified
     - Exports the results to a CSV file named with the computer's FQDN and timestamp
     - Displays the results in the console
-      
+
     Dependencies:
     - PowerShell 5.1 or higher
     - Write access to script directory
@@ -60,10 +60,10 @@
 param (
     [Parameter(Mandatory=$false)]
     [string]$Keyword,
-    
+
     [Parameter(Mandatory=$false)]
     [switch]$IncludeModernApps,
-    
+
     [Parameter(Mandatory=$false)]
     [switch]$IncludeShortcuts
 )
@@ -73,11 +73,11 @@ function Get-NormalizedName {
     param (
         [string]$Name
     )
-    
+
     if ([string]::IsNullOrWhiteSpace($Name)) {
         return ""
     }
-    
+
     # Remove special characters, multiple spaces, and convert to lowercase
     $normalized = $Name -replace '[^\w\s]', ' ' -replace '\s+', ' '
     return $normalized.ToLower().Trim()
@@ -89,10 +89,10 @@ function Test-NameSimilarity {
         [string]$Name1,
         [string]$Name2
     )
-    
+
     $normalized1 = Get-NormalizedName -Name $Name1
     $normalized2 = Get-NormalizedName -Name $Name2
-    
+
     # Return true if names are similar enough (name1 contains name2 or vice versa)
     return ($normalized1 -and $normalized2) -and ($normalized1.Contains($normalized2) -or $normalized2.Contains($normalized1))
 }
@@ -114,17 +114,17 @@ $StartPaths = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-    
+
     # Microsoft Store applications
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel\StateRepository\Cache\Package",
-    
+
     # Modern app specific locations
     "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
-    
+
     # Click-to-Run applications
     "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration",
-    
+
     # UWP/Modern applications
     "HKLM:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\PackageRepository\Packages"
 )
@@ -135,11 +135,11 @@ foreach ($StartPath in $StartPaths) {
     if (Test-Path -Path $StartPath) {
         try {
             $installedSoftware = Get-ItemProperty -Path "$StartPath\*" -ErrorAction SilentlyContinue
-            
+
             foreach ($obj in $installedSoftware) {
                 if ($obj.DisplayName) {
                     $normalizedName = Get-NormalizedName -Name $obj.DisplayName
-                    
+
                     # Skip if we've already added this software (by normalized name)
                     if (-not $uniqueSoftware.ContainsKey($normalizedName)) {
                         # Create a custom object for each software
@@ -148,7 +148,7 @@ foreach ($StartPath in $StartPaths) {
                             DisplayVersion = $obj.DisplayVersion
                             Source = "Registry"
                         }
-                        
+
                         # Add to our tracking dictionary and software list
                         $uniqueSoftware[$normalizedName] = $true
                         $softwareList += $software
@@ -169,11 +169,11 @@ foreach ($StartPath in $StartPaths) {
 Write-Host "Scanning WMI/CIM product information..." -ForegroundColor DarkGray
 try {
     $cimProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue
-    
+
     foreach ($product in $cimProducts) {
         if ($product.Name) {
             $normalizedName = Get-NormalizedName -Name $product.Name
-            
+
             # Skip if already added, otherwise add to our list
             if (-not $uniqueSoftware.ContainsKey($normalizedName)) {
                 $software = [PSCustomObject]@{
@@ -181,7 +181,7 @@ try {
                     DisplayVersion = $product.Version
                     Source = "WMI"
                 }
-                
+
                 $uniqueSoftware[$normalizedName] = $true
                 $softwareList += $software
             }
@@ -199,14 +199,14 @@ if ($IncludeModernApps.IsPresent) {
     try {
         # Get all AppX packages for the current user
         $appxPackages = Get-AppxPackage
-        
+
         foreach ($package in $appxPackages) {
             $displayName = $package.Name
             if ($package.DisplayName) { $displayName = $package.DisplayName }
-            
+
             if ($displayName) {
                 $normalizedName = Get-NormalizedName -Name $displayName
-                
+
                 # Add each non-duplicate app to our list
                 $isDuplicate = $false
                 foreach ($key in $uniqueSoftware.Keys) {
@@ -215,14 +215,14 @@ if ($IncludeModernApps.IsPresent) {
                         break
                     }
                 }
-                
+
                 if (-not $isDuplicate) {
                     $software = [PSCustomObject]@{
                         DisplayName = $displayName
                         DisplayVersion = $package.Version
                         Source = "AppX"
                     }
-                    
+
                     $uniqueSoftware[$normalizedName] = $true
                     $softwareList += $software
                 }
@@ -240,29 +240,29 @@ Write-Host "Scanning running processes for software..." -ForegroundColor DarkGra
 
 try {
     # Get all running processes with file paths
-    $processes = Get-Process -ErrorAction SilentlyContinue | 
-                 Where-Object { $_.Path -ne $null -and $_.Path -ne "" } | 
+    $processes = Get-Process -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Path -ne $null -and $_.Path -ne "" } |
                  Select-Object Name, Path -Unique
-    
+
     foreach ($process in $processes) {
         try {
             # Skip system processes and known utilities
             if ($process.Name -match "^(svchost|conhost|cmd|powershell|explorer|notepad|calculator)$") {
                 continue
             }
-            
+
             if (Test-Path -Path $process.Path) {
                 $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($process.Path)
-                
+
                 # Use the product name if available, otherwise use process name
                 $appName = $fileInfo.ProductName
                 if ([string]::IsNullOrWhiteSpace($appName)) {
                     $appName = $process.Name
                 }
-                
+
                 if (-not [string]::IsNullOrWhiteSpace($appName)) {
                     $normalizedName = Get-NormalizedName -Name $appName
-                    
+
                     # Check for duplicates
                     $isDuplicate = $false
                     foreach ($key in $uniqueSoftware.Keys) {
@@ -271,14 +271,14 @@ try {
                             break
                         }
                     }
-                    
+
                     if (-not $isDuplicate) {
                         $software = [PSCustomObject]@{
                             DisplayName = $appName
                             DisplayVersion = $fileInfo.ProductVersion
                             Source = "Process"
                         }
-                        
+
                         $uniqueSoftware[$normalizedName] = $true
                         $softwareList += $software
                     }
@@ -315,31 +315,31 @@ foreach ($directory in $appDirectories) {
         try {
             # Look for executable files (.exe) in first-level subdirectories
             $subdirectories = Get-ChildItem -Path $directory -Directory -ErrorAction SilentlyContinue
-            
+
             foreach ($subdir in $subdirectories) {
                 # Skip Windows and system directories
                 if ($subdir.Name -match "^(Windows|Microsoft|Common|Internet Explorer|MSBuild|Reference|dotnet|WindowsPowerShell)$") {
                     continue
                 }
-                
+
                 # Look for executable files
-                $exeFiles = Get-ChildItem -Path $subdir.FullName -Filter "*.exe" -File -Recurse -Depth 2 -ErrorAction SilentlyContinue | 
+                $exeFiles = Get-ChildItem -Path $subdir.FullName -Filter "*.exe" -File -Recurse -Depth 2 -ErrorAction SilentlyContinue |
                             Where-Object { $_.Name -notlike "*uninstall*" -and $_.Name -notlike "*setup*" -and $_.Name -notlike "*installer*" } |
                             Select-Object -First 1
-                
+
                 foreach ($exeFile in $exeFiles) {
                     try {
                         $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exeFile.FullName)
-                        
+
                         # Use product name if available, or directory name as fallback
                         $appName = $fileInfo.ProductName
                         if ([string]::IsNullOrWhiteSpace($appName)) {
                             $appName = $subdir.Name
                         }
-                        
+
                         if (-not [string]::IsNullOrWhiteSpace($appName)) {
                             $normalizedName = Get-NormalizedName -Name $appName
-                            
+
                             # Check for duplicates
                             $isDuplicate = $false
                             foreach ($key in $uniqueSoftware.Keys) {
@@ -348,14 +348,14 @@ foreach ($directory in $appDirectories) {
                                     break
                                 }
                             }
-                            
+
                             if (-not $isDuplicate) {
                                 $software = [PSCustomObject]@{
                                     DisplayName = $appName
                                     DisplayVersion = $fileInfo.ProductVersion
                                     Source = "Installation Directory"
                                 }
-                                
+
                                 $uniqueSoftware[$normalizedName] = $true
                                 $softwareList += $software
                             }
@@ -384,25 +384,25 @@ if ($IncludeShortcuts.IsPresent) {
         "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
         "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
     )
-    
+
     foreach ($startMenuPath in $startMenuPaths) {
         try {
             if (Test-Path $startMenuPath) {
                 $shortcuts = Get-ChildItem -Path $startMenuPath -Filter "*.lnk" -Recurse -ErrorAction SilentlyContinue
-                
+
                 foreach ($shortcut in $shortcuts) {
                     try {
                         # Skip desktop.ini files
                         if ($shortcut.Name -like "desktop.ini") { continue }
-                        
+
                         # Get shortcut name without extension
                         $appName = [System.IO.Path]::GetFileNameWithoutExtension($shortcut.Name)
-                        
+
                         # Skip if this appears to be an installer/uninstaller
                         if ($appName -match "uninstall|setup|install|remove|update|readme|help|support") {
                             continue
                         }
-                        
+
                         $normalizedName = Get-NormalizedName -Name $appName
                         $isDuplicate = $false
                         foreach ($key in $uniqueSoftware.Keys) {
@@ -411,13 +411,13 @@ if ($IncludeShortcuts.IsPresent) {
                                 break
                             }
                         }
-                        
+
                         if (-not $isDuplicate) {
                             # Try to get version from target file if possible
                             $version = "Unknown"
                             $shell = New-Object -ComObject WScript.Shell
                             $targetPath = $shell.CreateShortcut($shortcut.FullName).TargetPath
-                            
+
                             if (Test-Path $targetPath) {
                                 try {
                                     $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($targetPath)
@@ -429,13 +429,13 @@ if ($IncludeShortcuts.IsPresent) {
                                     # Continue if we can't get version information
                                 }
                             }
-                            
+
                             $software = [PSCustomObject]@{
                                 DisplayName = $appName
                                 DisplayVersion = $version
                                 Source = "Shortcut"
                             }
-                            
+
                             $uniqueSoftware[$normalizedName] = $true
                             $softwareList += $software
                         }
@@ -461,13 +461,13 @@ $sortedSoftwareList = $softwareList | Sort-Object -Property DisplayName
 if ($Keyword) {
     Write-Host "Filtering results for software containing: $Keyword" -ForegroundColor Cyan
     $filteredSoftwareList = $sortedSoftwareList | Where-Object { $_.DisplayName -like "*$Keyword*" }
-    
+
     # Check if any results were found
     if ($filteredSoftwareList.Count -eq 0) {
         Write-Host "No software found containing the keyword: $Keyword" -ForegroundColor Yellow
         exit
     }
-    
+
     # Use filtered list for output and export
     $outputList = $filteredSoftwareList
 } else {

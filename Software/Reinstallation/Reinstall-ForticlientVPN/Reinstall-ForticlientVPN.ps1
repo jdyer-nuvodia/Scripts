@@ -61,7 +61,7 @@ function Stop-ForticlientServices {
         Write-Verbose "Attempting to stop process: $($_.Name)"
         $_ | Stop-Process -Force -ErrorAction SilentlyContinue
     }
-    
+
     Write-Verbose "Searching for Forticlient services..."
     $services = Get-Service -Name "Forticlient*" -ErrorAction SilentlyContinue
     foreach ($service in $services) {
@@ -99,27 +99,28 @@ function Uninstall-ExistingForticlient {
 function Test-Installation {
     Write-Verbose "Verifying FortiClient installation..."
     $maxAttempts = 3
-    $retryDelay = 10 # seconds
-    
+    # seconds
+        $retryDelay = 10
+
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         Write-Verbose "Verification attempt $attempt of $maxAttempts"
-        
+
         # Check registry
-        $installed = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+        $installed = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
                     Where-Object { $_.DisplayName -like "*FortiClient*" }
-        
+
         if (-not $installed) {
-            $installed = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* | 
+            $installed = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* |
                         Where-Object { $_.DisplayName -like "*FortiClient*" }
         }
-        
+
         # Check file system
         $programFiles = @(
             "${env:ProgramFiles}\Fortinet\FortiClient",
             "${env:ProgramFiles(x86)}\Fortinet\FortiClient"
         )
         $filesExist = $programFiles | Where-Object { Test-Path $_ } | Select-Object -First 1
-        
+
         # Check services
         $serviceExists = Get-Service -Name "FortiClient*" -ErrorAction SilentlyContinue
 
@@ -127,13 +128,13 @@ function Test-Installation {
             Write-Host "FortiClient installation verified successfully"
             return $true
         }
-        
+
         if ($attempt -lt $maxAttempts) {
             Write-Verbose "Waiting $retryDelay seconds before next verification attempt..."
             Start-Sleep -Seconds $retryDelay
         }
     }
-    
+
     Write-Warning "FortiClient installation verification failed after $maxAttempts attempts"
     Write-Verbose "Registry check: $($null -ne $installed)"
     Write-Verbose "Files check: $($null -ne $filesExist)"
@@ -150,14 +151,14 @@ function Install-ForticlientVPN {
     try {
         Write-Host "Downloading Forticlient VPN installer..."
         $downloadUrl = "https://links.fortinet.com/forticlient/win/vpnagent"
-        
+
         Write-Verbose "Downloading from: $downloadUrl"
         Write-Verbose "Saving to: $exePath"
-        
+
         # Download with retry logic
         $downloadAttempts = 3
         $success = $false
-        
+
         for ($i = 1; $i -le $downloadAttempts; $i++) {
             try {
                 Invoke-WebRequest -Uri $downloadUrl -OutFile $exePath -TimeoutSec 60
@@ -171,13 +172,13 @@ function Install-ForticlientVPN {
                 }
             }
         }
-        
+
         if (-not $success) {
             throw "Failed to download installer after $downloadAttempts attempts"
         }
 
         Write-Host "Installing Forticlient VPN..."
-        
+
         # Install directly using EXE with proper switches
         $installArgs = if ($Interactive) {
             "/passive"
@@ -193,9 +194,9 @@ function Install-ForticlientVPN {
 
         Write-Verbose "Install arguments: $installArgs"
         Write-Verbose "Window style: $windowStyle"
-        
+
         $installProcess = Start-Process -FilePath $exePath -ArgumentList $installArgs -PassThru -WindowStyle $windowStyle -Wait
-        
+
         if ($installProcess.ExitCode -ne 0) {
             $errorMessage = Get-InstallerError $installProcess.ExitCode
             throw "Installation failed with exit code: $($installProcess.ExitCode) - $errorMessage"
@@ -209,7 +210,7 @@ function Install-ForticlientVPN {
         $verified = $false
         $verificationAttempts = 6
         $verificationDelay = 30
-        
+
         for ($i = 1; $i -le $verificationAttempts; $i++) {
             Write-Verbose "Verification attempt $i of $verificationAttempts"
             if (Test-Installation) {
@@ -217,13 +218,13 @@ function Install-ForticlientVPN {
                 Write-Host "FortiClient VPN installation verified successfully"
                 break
             }
-            
+
             if ($i -lt $verificationAttempts) {
                 Write-Verbose "Waiting $verificationDelay seconds before next verification..."
                 Start-Sleep -Seconds $verificationDelay
             }
         }
-        
+
         if (-not $verified) {
             throw "Installation verification failed after $verificationAttempts attempts"
         }
@@ -246,21 +247,21 @@ function Write-LogEntry {
         [string]$Message,
         [string]$Type = "Info"
     )
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] [$Type] $Message"
-    
+
     # Write to both verbose stream and log file
     Write-Verbose $logMessage
-    
+
     # Ensure log directory exists
     $scriptDir = Get-ScriptDirectory
     $logPath = Join-Path $scriptDir "FortiClientVPN_Install.log"
-    
+
     # Write to log file with retry logic and file locking prevention
     $maxAttempts = 3
     $retryDelay = 2
-    
+
     for ($i = 1; $i -le $maxAttempts; $i++) {
         try {
             $fs = [System.IO.FileStream]::new($logPath, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
@@ -289,7 +290,7 @@ function Get-InstallerError {
     param(
         [int]$ExitCode
     )
-    
+
     $errorCodes = @{
         1602 = "User cancel installation"
         1603 = "Fatal error during installation"
@@ -300,7 +301,7 @@ function Get-InstallerError {
         1623 = "Language not supported"
         1625 = "This installation is forbidden by system policy"
     }
-    
+
     if ($errorCodes.ContainsKey($ExitCode)) {
         return $errorCodes[$ExitCode]
     }

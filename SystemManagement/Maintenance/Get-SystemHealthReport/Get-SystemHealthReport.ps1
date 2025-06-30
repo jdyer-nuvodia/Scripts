@@ -20,7 +20,7 @@
     - Network connectivity
     - Backup status
     - Security features status
-    
+
     Results are both displayed in color-coded console output and saved to a log file.
 .PARAMETER ReportPath
     Optional path where the HTML report will be saved. Defaults to script directory.
@@ -46,22 +46,31 @@ param(
         return $true
     })]
     [string]$ReportPath = $PSScriptRoot,
-    
+
     [Parameter()]
     [ValidateRange(1, 30)]
     [int]$DaysToAnalyze = 7,
-    
+
     [Parameter()]
     [string[]]$CriticalServices = @(
-        'wuauserv',      # Windows Update
-        'WinDefend',     # Windows Defender
-        'wscsvc',        # Security Center
-        'Schedule',      # Task Scheduler
-        'EventLog',      # Windows Event Log
-        'mpssvc',        # Windows Firewall
-        'LanmanServer',  # Server
-        'Dnscache',      # DNS Client
-        'Datto RMM'      # Datto RMM Agent
+        # Windows Update
+                'wuauserv',
+        # Windows Defender
+                'WinDefend',
+        # Security Center
+                'wscsvc',
+        # Task Scheduler
+                'Schedule',
+        # Windows Event Log
+                'EventLog',
+        # Windows Firewall
+                'mpssvc',
+        # Server
+                'LanmanServer',
+        # DNS Client
+                'Dnscache',
+        # Datto RMM Agent
+                'Datto RMM'
     )
 )
 
@@ -79,16 +88,16 @@ function Write-LogMessage {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Message,
-        
+
         [Parameter()]
         [ValidateSet("Info", "Process", "Success", "Warning", "Error", "Debug")]
         [string]$Level = "Info"
     )
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
-    
+
     switch ($Level) {
         "Info"      { Write-Host $LogMessage -ForegroundColor White }
         "Process"   { Write-Host $LogMessage -ForegroundColor Cyan }
@@ -103,15 +112,15 @@ function Write-LogMessage {
 function Get-SystemResourceStatus {
     [CmdletBinding()]
     param()
-    
+
     Write-LogMessage "Checking system resources..." -Level "Process"
-    
+
     try {
         # CPU Usage
         $CpuUsage = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
         $CpuStatus = if ($CpuUsage -ge 90) { "Error" } elseif ($CpuUsage -ge 80) { "Warning" } else { "Success" }
         Write-LogMessage "CPU Usage: $([math]::Round($CpuUsage, 2))%" -Level $CpuStatus
-        
+
         # Memory Usage
         $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
         if ($OS.TotalVisibleMemorySize -gt 0) {
@@ -122,7 +131,7 @@ function Get-SystemResourceStatus {
         else {
             Write-LogMessage "Invalid memory size reported by system" -Level "Error"
         }
-        
+
         # Disk Space
         $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
         foreach ($Disk in $Disks) {
@@ -145,9 +154,9 @@ function Get-SystemResourceStatus {
 function Get-CriticalServicesStatus {
     [CmdletBinding()]
     param()
-    
+
     Write-LogMessage "Checking critical services..." -Level "Process"
-    
+
     foreach ($Service in $CriticalServices) {
         try {
             $ServiceStatus = Get-Service -Name $Service -ErrorAction Stop
@@ -167,16 +176,16 @@ function Get-CriticalServicesStatus {
 function Get-EventLogAnalysis {
     [CmdletBinding()]
     param()
-    
+
     Write-LogMessage "Analyzing event logs..." -Level "Process"
-    
+
     $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
     $CriticalEvents = @(
         @{Log='System'; Level=2; Name='System Errors'},
         @{Log='Application'; Level=2; Name='Application Errors'},
         @{Log='Security'; Level=2; Name='Security Errors'}
     )
-    
+
     foreach ($EventType in $CriticalEvents) {
         try {
             $Events = @(Get-WinEvent -FilterHashtable @{
@@ -184,14 +193,14 @@ function Get-EventLogAnalysis {
                 Level = $EventType.Level
                 StartTime = $StartTime
             } -ErrorAction SilentlyContinue)
-            
+
             $Count = $Events.Count
             $Status = if ($Count -ge 50) { "Error" } elseif ($Count -ge 20) { "Warning" } else { "Success" }
             Write-LogMessage "$($EventType.Name) in last $DaysToAnalyze days: $Count" -Level $Status
-            
+
             if ($Count -gt 0) {
-                $TopErrors = $Events | Group-Object -Property Id | 
-                            Sort-Object -Property Count -Descending | 
+                $TopErrors = $Events | Group-Object -Property Id |
+                            Sort-Object -Property Count -Descending |
                             Select-Object -First 3
                 foreach ($ErrorItem in $TopErrors) {
                     $Sample = $Events | Where-Object Id -eq $ErrorItem.Name | Select-Object -First 1
@@ -210,18 +219,18 @@ function Get-EventLogAnalysis {
 function Get-WindowsUpdateStatus {
     [CmdletBinding()]
     param()
-    
+
     Write-LogMessage "Checking Windows Update status..." -Level "Process"
-    
+
     try {
         $UpdateSession = New-Object -ComObject Microsoft.Update.Session
         $UpdateSearcher = $UpdateSession.CreateUpdateSearcher()
         $SearchResult = $UpdateSearcher.Search("IsInstalled=0")
-        
+
         $Count = $SearchResult.Updates.Count
         $Status = if ($Count -ge 10) { "Error" } elseif ($Count -ge 5) { "Warning" } else { "Success" }
         Write-LogMessage "Pending Windows Updates: $Count" -Level $Status
-        
+
         if ($Count -gt 0) {
             $CriticalUpdates = @($SearchResult.Updates | Where-Object { $_.MsrcSeverity -eq "Critical" })
             if ($CriticalUpdates.Count -gt 0) {
@@ -240,15 +249,15 @@ function Get-WindowsUpdateStatus {
 function Get-NetworkStatus {
     [CmdletBinding()]
     param()
-    
+
     Write-LogMessage "Checking network connectivity..." -Level "Process"
-    
+
     $Targets = @(
         @{Host="8.8.8.8"; Name="Google DNS"},
         @{Host="1.1.1.1"; Name="Cloudflare DNS"},
         @{Host="www.microsoft.com"; Name="Microsoft"}
     )
-    
+
     foreach ($Target in $Targets) {
         try {
             $Result = Test-Connection -TargetName $Target.Host -Count 1 -ErrorAction Stop
@@ -269,19 +278,19 @@ function Get-NetworkStatus {
 function Get-SecurityStatus {
     [CmdletBinding()]
     param()
-    
+
     Write-LogMessage "Checking security features..." -Level "Process"
-    
+
     try {
         # Windows Defender Status
         $DefenderStatus = Get-MpComputerStatus -ErrorAction Stop
         $Status = if ($DefenderStatus.AntivirusEnabled) { "Success" } else { "Error" }
         Write-LogMessage "Windows Defender Status: $($DefenderStatus.AntivirusEnabled)" -Level $Status
-        
+
         if ($DefenderStatus.AntivirusEnabled) {
             Write-LogMessage "  Last Scan: $($DefenderStatus.LastFullScanTime)" -Level "Info"
             Write-LogMessage "  Definitions: $($DefenderStatus.AntivirusSignatureLastUpdated)" -Level "Info"
-            
+
             if ($DefenderStatus.LastFullScanTime -lt (Get-Date).AddDays(-7)) {
                 Write-LogMessage "  Warning: Last full scan was more than 7 days ago" -Level "Warning"
             }
@@ -298,14 +307,14 @@ function Get-SecurityStatus {
         } else {
             Write-LogMessage "DattoEDR not installed" -Level "Error"
         }
-        
+
         # Firewall Status
         $FirewallProfiles = Get-NetFirewallProfile -ErrorAction Stop
         foreach ($FwProfile in $FirewallProfiles) {
             $Status = if ($FwProfile.Enabled) { "Success" } else { "Error" }
             Write-LogMessage "Firewall Profile $($FwProfile.Name): $($FwProfile.Enabled)" -Level $Status
         }
-        
+
         # BitLocker Status
         $BitLockerVolumes = Get-BitLockerVolume -ErrorAction SilentlyContinue
         if ($BitLockerVolumes) {
