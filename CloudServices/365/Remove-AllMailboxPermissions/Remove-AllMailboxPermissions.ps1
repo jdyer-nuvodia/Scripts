@@ -2,10 +2,10 @@
 # Script: Remove-AllMailboxPermissions.ps1
 # Created: 2024-02-21 12:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:21:00 UTC
+# Last Updated: 2025-06-30 20:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added SupportsShouldProcess for safer permission removal
+# Version: 1.3.1
+# Additional Info: Implemented Write-Output for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -19,22 +19,22 @@
     - Removes Calendar permissions (except Default and Anonymous)
     - Validates changes after removal
     - Creates detailed operation logs
-    
+
     Supports -WhatIf parameter to preview changes without making them.
-    
+
     Key Features:
     - Batch or single mailbox processing
     - Progress tracking with status indicators
     - Comprehensive error handling
     - Detailed logging of all operations
     - Validation of permission removal
-    
+
     Dependencies:
     - Exchange Online PowerShell Module (ExchangeOnlineManagement)
     - Active Exchange Online connection
     - Exchange Administrator role
     - Write access to log directory
-    
+
     The script removes all types of permissions while:
     - Preserving system-required permissions
     - Maintaining audit trail of removals
@@ -68,7 +68,7 @@
     - Verify ExchangeOnlineManagement module is installed
 #>
 
-[CmdletBinding(DefaultParameterSetName='File', 
+[CmdletBinding(DefaultParameterSetName='File',
                SupportsShouldProcess=$true,
                ConfirmImpact='High')]
 param(
@@ -77,11 +77,11 @@ param(
                HelpMessage="Email address of mailbox to process")]
     [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
     [string]$MailboxIdentity,
-    
+
     [Parameter(ParameterSetName='File')]
     [ValidateScript({Test-Path $_})]
     [string]$InputPath = (Join-Path $PSScriptRoot "mailboxes.txt"),
-    
+
     [Parameter()]
     [ValidateScript({
         if (-not (Test-Path $_)) {
@@ -96,130 +96,140 @@ param(
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $LogFile = Join-Path $LogPath "PermissionRemovals_${TimeStamp}.log"
 
-function Write-Log {
+function Write-LogMessage {
+    [CmdletBinding()]
+    [OutputType([void])]
     param($Message, $Level = "Information")
-    
+
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "$TimeStamp [$Level] $Message"
     Add-Content -Path $LogFile -Value $LogMessage
-    
+
     switch ($Level) {
-        "Information" { Write-Host $Message -ForegroundColor White }
-        "Success" { Write-Host $Message -ForegroundColor Green }
-        "Warning" { Write-Host $Message -ForegroundColor Yellow }
-        "Error" { Write-Host $Message -ForegroundColor Red }
-        "Process" { Write-Host $Message -ForegroundColor Cyan }
+        "Information" { Write-Output $Message }
+        "Success" { Write-Output $Message }
+        "Warning" { Write-Warning $Message }
+        "Error" { Write-Error $Message }
+        "Process" { Write-Output $Message }
     }
 }
 
 function Test-ExchangeConnection {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
     try {
         $null = Get-OrganizationConfig -ErrorAction Stop
-        Write-Log "Successfully connected to Exchange Online" "Success"
+        Write-LogMessage "Successfully connected to Exchange Online" "Success"
         return $true
     }
     catch {
-        Write-Log "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." "Error"
+        Write-LogMessage "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." "Error"
         return $false
     }
 }
 
-function Remove-MailboxDelegates {
+function Remove-MailboxDelegate {
     [CmdletBinding(SupportsShouldProcess=$true)]
+    [OutputType([bool])]
     param([string]$Identity)
-    
+
     try {
         $delegates = Get-MailboxPermission -Identity $Identity | Where-Object {
-            $_.IsInherited -eq $false -and 
-            $_.User -ne "NT AUTHORITY\SELF" -and 
+            $_.IsInherited -eq $false -and
+            $_.User -ne "NT AUTHORITY\SELF" -and
             $_.AccessRights -like "*FullAccess*"
         }
-        
+
         foreach ($delegate in $delegates) {
             if ($PSCmdlet.ShouldProcess($Identity, "Remove FullAccess permission for $($delegate.User)")) {
                 Remove-MailboxPermission -Identity $Identity -User $delegate.User -AccessRights FullAccess -Confirm:$false -ErrorAction Stop
-                Write-Log "Removed FullAccess permission for $($delegate.User) on $Identity" "Success"
+                Write-LogMessage "Removed FullAccess permission for $($delegate.User) on $Identity" "Success"
             }
         }
         return $true
     }
     catch {
-        Write-Log "Error removing FullAccess permissions for $Identity`: $_" "Error"
+        Write-LogMessage "Error removing FullAccess permissions for $Identity`: $_" "Error"
         return $false
     }
 }
 
-function Remove-SendAsPermissions {
+function Remove-SendAsPermission {
     [CmdletBinding(SupportsShouldProcess=$true)]
+    [OutputType([bool])]
     param([string]$Identity)
-    
+
     try {
-        $sendAsPermissions = Get-RecipientPermission -Identity $Identity | 
+        $sendAsPermissions = Get-RecipientPermission -Identity $Identity |
             Where-Object { $_.IsInherited -eq $false -and $_.Trustee -ne "NT AUTHORITY\SELF" }
-        
+
         foreach ($permission in $sendAsPermissions) {
             if ($PSCmdlet.ShouldProcess($Identity, "Remove SendAs permission for $($permission.Trustee)")) {
                 Remove-RecipientPermission -Identity $Identity -Trustee $permission.Trustee -AccessRights SendAs -Confirm:$false -ErrorAction Stop
-                Write-Log "Removed SendAs permission for $($permission.Trustee) on $Identity" "Success"
+                Write-LogMessage "Removed SendAs permission for $($permission.Trustee) on $Identity" "Success"
             }
         }
         return $true
     }
     catch {
-        Write-Log "Error removing SendAs permissions for $Identity`: $_" "Error"
+        Write-LogMessage "Error removing SendAs permissions for $Identity`: $_" "Error"
         return $false
     }
 }
 
-function Remove-SendOnBehalfPermissions {
+function Remove-SendOnBehalfPermission {
     [CmdletBinding(SupportsShouldProcess=$true)]
+    [OutputType([bool])]
     param([string]$Identity)
-    
+
     try {
         if ($PSCmdlet.ShouldProcess($Identity, "Remove all Send on Behalf permissions")) {
             Set-Mailbox -Identity $Identity -GrantSendOnBehalfTo $null -ErrorAction Stop
-            Write-Log "Removed all Send on Behalf permissions for $Identity" "Success"
+            Write-LogMessage "Removed all Send on Behalf permissions for $Identity" "Success"
         }
         return $true
     }
     catch {
-        Write-Log "Error removing Send on Behalf permissions for $Identity`: $_" "Error"
+        Write-LogMessage "Error removing Send on Behalf permissions for $Identity`: $_" "Error"
         return $false
     }
 }
 
-function Remove-CalendarPermissions {
+function Remove-CalendarPermission {
     [CmdletBinding(SupportsShouldProcess=$true)]
+    [OutputType([bool])]
     param([string]$Identity)
-    
+
     try {
         $calendarPath = $Identity + ":\Calendar"
         $calendarPermissions = Get-MailboxFolderPermission -Identity $calendarPath -ErrorAction Stop
-        
+
         foreach ($permission in $calendarPermissions) {
             if ($permission.User.DisplayName -notin @("Default", "Anonymous")) {
                 if ($PSCmdlet.ShouldProcess($calendarPath, "Remove calendar permission for $($permission.User.DisplayName)")) {
                     Remove-MailboxFolderPermission -Identity $calendarPath -User $permission.User.DisplayName -Confirm:$false -ErrorAction Stop
-                    Write-Log "Removed calendar permission for $($permission.User.DisplayName) on $Identity" "Success"
+                    Write-LogMessage "Removed calendar permission for $($permission.User.DisplayName) on $Identity" "Success"
                 }
             }
         }
         return $true
     }
     catch {
-        Write-Log "Error removing calendar permissions for $Identity`: $_" "Error"
+        Write-LogMessage "Error removing calendar permissions for $Identity`: $_" "Error"
         return $false
     }
 }
 
 try {
-    Write-Log "Starting permission removal process..." "Process"
-    
+    Write-LogMessage "Starting permission removal process..." "Process"
+
     # Verify Exchange Online connection
     if (-not (Test-ExchangeConnection)) {
         throw "Exchange Online connection required"
     }
-    
+
     # Get mailbox list
     $mailboxes = if ($PSCmdlet.ParameterSetName -eq 'Single') {
         @($MailboxIdentity)
@@ -227,48 +237,48 @@ try {
     else {
         Get-Content $InputPath
     }
-    
+
     $totalMailboxes = $mailboxes.Count
-    Write-Log "Processing $totalMailboxes mailbox(es)" "Process"
+    Write-LogMessage "Processing $totalMailboxes mailbox(es)" "Process"
     $processed = 0
-    
+
     foreach ($mailbox in $mailboxes) {
         $processed++
         $percent = [math]::Round(($processed / $totalMailboxes) * 100)
         Write-Progress -Activity "Removing Permissions" -Status "$mailbox ($processed of $totalMailboxes)" -PercentComplete $percent
-        
-        Write-Log "Processing mailbox: $mailbox" "Process"
-        
+
+        Write-LogMessage "Processing mailbox: $mailbox" "Process"
+
         # Verify mailbox exists
         try {
             $null = Get-Mailbox -Identity $mailbox -ErrorAction Stop
         }
         catch {
-            Write-Log "Mailbox not found: $mailbox. Skipping." "Warning"
+            Write-LogMessage "Mailbox not found: $mailbox. Skipping." "Warning"
             continue
         }
-        
+
         # Remove each permission type
         $results = @(
-            @{ Type = "FullAccess"; Success = Remove-MailboxDelegates $mailbox },
-            @{ Type = "SendAs"; Success = Remove-SendAsPermissions $mailbox },
-            @{ Type = "SendOnBehalf"; Success = Remove-SendOnBehalfPermissions $mailbox },
-            @{ Type = "Calendar"; Success = Remove-CalendarPermissions $mailbox }
+            @{ Type = "FullAccess"; Success = Remove-MailboxDelegate $mailbox },
+            @{ Type = "SendAs"; Success = Remove-SendAsPermission $mailbox },
+            @{ Type = "SendOnBehalf"; Success = Remove-SendOnBehalfPermission $mailbox },
+            @{ Type = "Calendar"; Success = Remove-CalendarPermission $mailbox }
         )
-        
+
         # Log summary for this mailbox
         $successCount = ($results | Where-Object { $_.Success }).Count
         $status = if ($successCount -eq $results.Count) { "Success" } else { "Warning" }
-        Write-Log "Completed processing $mailbox`: $successCount of $($results.Count) operations successful" $status
+        Write-LogMessage "Completed processing $mailbox`: $successCount of $($results.Count) operations successful" $status
     }
 }
 catch {
-    Write-Log "Script execution failed: $_" "Error"
-    Write-Log "Stack Trace: $($_.ScriptStackTrace)" "Error"
+    Write-LogMessage "Script execution failed: $_" "Error"
+    Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" "Error"
     exit 1
 }
 finally {
     Write-Progress -Activity "Removing Permissions" -Completed
-    Write-Log "Script execution completed. See log file for details: $LogFile" "Process"
+    Write-LogMessage "Script execution completed. See log file for details: $LogFile" "Process"
 }
 
