@@ -2,10 +2,10 @@
 # Script: Convert-MarkdownToText.ps1
 # Created: 2025-04-28 23:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-28 23:45:00 UTC
+# Last Updated: 2025-06-30 22:11:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial script creation
+# Version: 1.1.0
+# Additional Info: Implemented appropriate PowerShell cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -67,27 +67,37 @@ param(
     [switch]$Force
 )
 
-# Function to convert a single Markdown file to text
-function ConvertFrom-Markdown {
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    param(
-        [Parameter(Mandatory=$true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$MarkdownFile,
+begin {
+    # Keep track of statistics
+    $fileCount = 0
+    $successCount = 0
+    $errorCount = 0
 
-        [Parameter(Mandatory=$false)]
-        [string]$OutputDirectory,
+    # Define the file extension filter for markdown files
+    $mdExtensions = @("*.md", "*.markdown")
 
-        [Parameter(Mandatory=$false)]
-        [switch]$Force
-    )
+    # Function to convert a single Markdown file to text
+    function Convert-MarkdownToText {
+        [CmdletBinding(SupportsShouldProcess=$true)]
+        [OutputType([System.Boolean])]
+        param(
+            [Parameter(Mandatory=$true)]
+            [ValidateNotNullOrEmpty()]
+            [string]$MarkdownFile,
+
+            [Parameter(Mandatory=$false)]
+            [string]$OutputDirectory,
+
+            [Parameter(Mandatory=$false)]
+            [switch]$Force
+        )
 
     try {
-        Write-Host "Processing $MarkdownFile..." -ForegroundColor Cyan
+        Write-Verbose -Message "Processing $MarkdownFile..."
 
         # Validate the input file
         if (-not (Test-Path -Path $MarkdownFile -PathType Leaf)) {
-            Write-Host "Error: File not found - $MarkdownFile" -ForegroundColor Red
+            Write-Error -Message "File not found - $MarkdownFile"
             return $false
         }
 
@@ -103,7 +113,7 @@ function ConvertFrom-Markdown {
         if ((Test-Path -Path $outputPath) -and -not $Force) {
             $response = Read-Host "Output file $outputPath already exists. Overwrite? (Y/N)"
             if ($response -ne 'Y') {
-                Write-Host "Skipping file: $MarkdownFile" -ForegroundColor Yellow
+                Write-Warning -Message "Skipping file: $MarkdownFile"
                 return $false
             }
         }
@@ -153,7 +163,7 @@ function ConvertFrom-Markdown {
             if (-not (Test-Path -Path $OutputDirectory)) {
                 if ($PSCmdlet.ShouldProcess($OutputDirectory, "Create Directory")) {
                     New-Item -Path $OutputDirectory -ItemType Directory -Force | Out-Null
-                    Write-Host "Created output directory: $OutputDirectory" -ForegroundColor Green
+                    Write-Verbose -Message "Created output directory: $OutputDirectory"
                 }
             }
         }
@@ -161,93 +171,89 @@ function ConvertFrom-Markdown {
         # Write the plain text to the output file
         if ($PSCmdlet.ShouldProcess($outputPath, "Create Text File")) {
             Set-Content -Path $outputPath -Value $plainText
-            Write-Host "Converted to text file: $outputPath" -ForegroundColor Green
+            Write-Output "Converted to text file: $outputPath"
             return $true
         }
 
         return $true
     }
     catch {
-        Write-Host "Error processing file $MarkdownFile : $_" -ForegroundColor Red
+        Write-Error -Message "Error processing file $MarkdownFile : $_"
         return $false
     }
 }
+}
 
-# Main script execution
-try {
-    # Keep track of statistics
-    $fileCount = 0
-    $successCount = 0
-    $errorCount = 0
-
-    # Define the file extension filter for markdown files
-    $mdExtensions = @("*.md", "*.markdown")
-
+process {
     # Process single file or directory
     if (Test-Path -Path $Path -PathType Container) {
         # It's a directory, process all Markdown files
-        Write-Host "Processing directory: $Path" -ForegroundColor Cyan
+        Write-Verbose -Message "Processing directory: $Path"
 
         foreach ($extension in $mdExtensions) {
             $mdFiles = Get-ChildItem -Path $Path -Filter $extension -Recurse:$Recurse
             foreach ($file in $mdFiles) {
-                $fileCount++
+                $script:fileCount++
 
-                if (ConvertFrom-Markdown -MarkdownFile $file.FullName -OutputDirectory $Destination -Force:$Force) {
-                    $successCount++
+                if (Convert-MarkdownToText -MarkdownFile $file.FullName -OutputDirectory $Destination -Force:$Force) {
+                    $script:successCount++
                 } else {
-                    $errorCount++
+                    $script:errorCount++
                 }
             }
         }
     }
     elseif (Test-Path -Path $Path -PathType Leaf) {
         # It's a file, process it directly
-        $fileCount++
+        $script:fileCount++
 
         # Make sure it's a markdown file
         $extension = [System.IO.Path]::GetExtension($Path).ToLower()
         if ($extension -eq ".md" -or $extension -eq ".markdown") {
-            if (ConvertFrom-Markdown -MarkdownFile $Path -OutputDirectory $Destination -Force:$Force) {
-                $successCount++
+            if (Convert-MarkdownToText -MarkdownFile $Path -OutputDirectory $Destination -Force:$Force) {
+                $script:successCount++
             } else {
-                $errorCount++
+                $script:errorCount++
             }
         } else {
-            Write-Host "Error: File is not a Markdown file (.md or .markdown extension required): $Path" -ForegroundColor Red
-            $errorCount++
+            Write-Error -Message "File is not a Markdown file (.md or .markdown extension required): $Path"
+            $script:errorCount++
         }
     }
     else {
-        Write-Host "Error: Path not found - $Path" -ForegroundColor Red
-        $errorCount++
-    }
-
-    # Output summary
-    Write-Host "`nConversion Summary:" -ForegroundColor Cyan
-    Write-Host "-------------------" -ForegroundColor DarkGray
-    Write-Host "Total files processed: $fileCount" -ForegroundColor White
-    Write-Host "Successfully converted: $successCount" -ForegroundColor Green
-
-    if ($errorCount -gt 0) {
-        Write-Host "Errors encountered: $errorCount" -ForegroundColor Red
-    } else {
-        Write-Host "Errors encountered: 0" -ForegroundColor Green
-    }
-
-    # Return exit code based on success
-    if ($errorCount -eq 0 -and $successCount -gt 0) {
-        # Success
-                exit 0
-    } elseif ($errorCount -gt 0) {
-        # Error
-                exit 1
-    } else {
-        # No files processed
-                exit 2
+        Write-Error -Message "Path not found - $Path"
+        $script:errorCount++
     }
 }
-catch {
-    Write-Host "Error: $_" -ForegroundColor Red
-    exit 1
+
+end {
+    try {
+        # Output summary
+        Write-Output "`nConversion Summary:"
+        Write-Output "-------------------"
+        Write-Output "Total files processed: $fileCount"
+        Write-Output "Successfully converted: $successCount"
+
+        if ($errorCount -gt 0) {
+            Write-Output "Errors encountered: $errorCount"
+        } else {
+            Write-Output "Errors encountered: 0"
+        }
+
+        # Return exit code based on success
+        if ($errorCount -eq 0 -and $successCount -gt 0) {
+            # Success
+            exit 0
+        } elseif ($errorCount -gt 0) {
+            # Error
+            exit 1
+        } else {
+            # No files processed
+            exit 2
+        }
+    }
+    catch {
+        Write-Error -Message "Error: $_"
+        exit 1
+    }
 }
