@@ -47,19 +47,20 @@ The current month is June, the current year is 2025.
    - Use Verb-Noun format for functions and scripts.  
    - Avoid aliases; use full cmdlet and parameter names.  
    - Include clear comments and documentation headers.
+   - Do **NOT** use non-ascii characters in script names or content.
 
 8. **Modularity and Reusability**  
    - Break logic into small, reusable functions or modules.  
    - Prefer PowerShell modules over external executables.
 
 9. **PSScriptAnalyzer Compliance**  
-   - Do not use `Write-Host`.  
-   - Always use named parameters in command invocations.
-   - Always run **PSScriptAnalyzer** on the code before finalizing. Address all issues before proceeding.
+   - Do **NOT** use `Write-Host`.  
+   - ****Always** use named parameters in command invocations.
+   - **Always** run **PSScriptAnalyzer** on the code before finalizing. Address all issues before proceeding.
    - **Always** use named parameters instead of positional parameters when calling commands. If you see a positional parameter warning in PSScriptAnalyzer, it may be due to a missing newline.
-   - Do **not** ignore any PSScriptAnalyzer warnings, information, or errors. All scripts must pass PSScriptAnalyzer without issues, including `Write-Host` warnings. Scripts must be able to run unattended.
+   - Do **NOT** ignore any PSScriptAnalyzer warnings, information, or errors. All scripts must pass PSScriptAnalyzer without issues, including `Write-Host` warnings. Scripts must be able to run unattended.
    - Never assume any PSScriptAnalyzer warnings, info, or errors are acceptable; fix them all.
-   - Do **not** use simple validations or explicit calls that are unneccessary just to satisfy PSScriptAnalyzer. Use the appropriate cmdlets and parameters to ensure the code is functional and adheres to best practices.
+   - Do **NOT** use simple validations or explicit calls that are unneccessary just to satisfy PSScriptAnalyzer. Use the appropriate cmdlets and parameters to ensure the code is functional and adheres to best practices.
    - To fix whitespace issues and identify missing newlines, run this script from the target script's directory: & "c:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Development\CodeQuality\Invoke-PowerShellCodeCleanup.ps1"
 
 10. **Whitespace and Formatting**  
