@@ -1,11 +1,11 @@
 # =============================================================================
-# Script: Create-LocalAccount.ps1
+# Script: Create-LocalUserAccount.ps1
 # Created: 2025-01-23 15:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-26 23:30:00 UTC
+# Last Updated: 2025-06-30 20:42:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Added parameterization to script
+# Version: 1.2.0
+# Additional Info: Fixed PSScriptAnalyzer issues - changed password parameter to SecureString, replaced Write-Host with Write-Output, replaced net user with PowerShell cmdlets
 # =============================================================================
 
 <#
@@ -17,13 +17,14 @@
 .PARAMETER Username
     The username for the new local account
 .PARAMETER Password
-    The password for the new local account
+    The password for the new local account (SecureString)
 .PARAMETER FullName
     The full name of the user
 .PARAMETER Description
     Description for the user account
 .EXAMPLE
-    .\Create-LocalAccount.ps1 -Username "jsmith" -Password "Password123!" -FullName "John Smith" -Description "Local account for John Smith - #12345"
+    $SecurePass = ConvertTo-SecureString "Password123!" -AsPlainText -Force
+    .\Create-LocalUserAccount.ps1 -Username "jsmith" -Password $SecurePass -FullName "John Smith" -Description "Local account for John Smith - #12345"
 .NOTES
     Security Level: Medium
     Required Permissions: Administrative rights
@@ -35,7 +36,7 @@ param(
     [string]$Username,
 
     [Parameter(Mandatory=$true)]
-    [string]$Password,
+    [SecureString]$Password,
 
     [Parameter(Mandatory=$false)]
     [string]$FullName,
@@ -44,23 +45,20 @@ param(
     [string]$Description
 )
 
-# Convert password to secure string
-$SecurePassword = ConvertTo-SecureString $Password -AsPlainText -Force
-
 # Create user Account
-Write-Host "Creating new local user account..." -ForegroundColor Cyan
-New-LocalUser -Name $Username -Password $SecurePassword -FullName $FullName -Description $Description
+Write-Output "Creating new local user account..."
+New-LocalUser -Name $Username -Password $Password -FullName $FullName -Description $Description
 
 # Force Password Change
-Write-Host "Configuring password change requirement..." -ForegroundColor Cyan
-net user $Username /logonpasswordchg:yes
+Write-Output "Configuring password change requirement..."
+Set-LocalUser -Name $Username -PasswordNeverExpires $false -UserMayChangePassword $true
 
 # Ensure the account is active
-Write-Host "Enabling user account..." -ForegroundColor Cyan
+Write-Output "Enabling user account..."
 Enable-LocalUser -Name $Username
 
 # Add user to Users group
-Write-Host "Adding user to Users group..." -ForegroundColor Cyan
-Add-LocalGroupMember -Group Users -Member $Username
+Write-Output "Adding user to Users group..."
+Add-LocalGroupMember -Group "Users" -Member $Username
 
-Write-Host "Local user account creation completed successfully." -ForegroundColor Green
+Write-Output "Local user account creation completed successfully."
