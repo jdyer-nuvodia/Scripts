@@ -2,10 +2,10 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-28 15:11:00 UTC
+# Last Updated: 2025-07-02 12:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.5
-# Additional Info: ensure permissions flag is returned in error handling
+# Version: 1.8.6
+# Additional Info: Fixed PSScriptAnalyzer compliance issues
 # =============================================================================
 
 <#
@@ -39,13 +39,13 @@
 #>
 
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$User,
 
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$StartPath,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$SIDFile
 )
 
@@ -57,7 +57,7 @@ $systemName = $env:COMPUTERNAME
 $userString = if ($User) {
     $userParts = $User.Split('\')
     # Take the last part after splitting on backslash
-        $userParts[-1]
+    $userParts[-1]
 } elseif ($SIDFile) {
     "multiple_users"
 } else {
@@ -87,8 +87,7 @@ try {
                 Write-Warning $Message
             }
             $logEntry | Out-File -FilePath $debugLogFile -Append -ErrorAction Stop
-        }
-        catch {
+        } catch {
             Write-Warning "Failed to write to debug log: $_"
         }
     }
@@ -112,19 +111,17 @@ try {
                 $objSID = New-Object System.Security.Principal.SecurityIdentifier($ownerSid)
                 $objOwner = $objSID.Translate([System.Security.Principal.NTAccount])
                 return $objOwner.Value
-            }
-            catch {
+            } catch {
                 Write-DebugLog "Could not resolve owner SID: $ownerSid - $_" -IsError
                 return $ownerSid
             }
-        }
-        catch {
+        } catch {
             Write-DebugLog "Error getting owner for $FolderPath : $_" -IsError
             return "Unknown"
         }
     }
 
-    Write-Host "Initializing permission scan..." -ForegroundColor Cyan
+    Write-Output "Initializing permission scan..."
 
     # Get list of identities to check
     $identities = @()
@@ -134,9 +131,8 @@ try {
     if ($SIDFile -and (Test-Path $SIDFile)) {
         # Load and clean up identities from file
         $identities += Get-Content $SIDFile | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() }
-        Write-Host "Loaded $(($identities | Measure-Object).Count) identities from $SIDFile" -ForegroundColor Cyan
-    }
-    elseif ($SIDFile) {
+        Write-Output "Loaded $(($identities | Measure-Object).Count) identities from $SIDFile"
+    } elseif ($SIDFile) {
         Write-Warning "SID file not found: $SIDFile"
     }
 
@@ -147,18 +143,18 @@ try {
     }
 
     # Display identities being checked
-    Write-Host "`nChecking permissions for the following identities:" -ForegroundColor White
+    Write-Output "`nChecking permissions for the following identities:"
     foreach ($identity in $identities) {
-        Write-Host "  - $identity" -ForegroundColor Cyan
+        Write-Output "  - $identity"
     }
-    Write-Host "`nStarting path: $StartPath" -ForegroundColor White
-    Write-Host "Processing... Please wait...`n" -ForegroundColor DarkGray
+    Write-Output "`nStarting path: $StartPath"
+    Write-Output "Processing... Please wait...`n"
 
     # Get total folder count for progress bar
     $totalFolders = (Get-ChildItem -Directory -Path $StartPath -Recurse -Force | Measure-Object).Count
 
     # Function to check and report folder permissions
-    function Test-FolderPermissions {
+    function Test-FolderPermission {
         param(
             [string]$FolderPath,
             [array]$IdentityList,
@@ -195,22 +191,22 @@ try {
 
                 if ($isOwner) {
                     $foundPermissions = $true
-                    Write-Host "`n[Found owner match!]" -ForegroundColor Yellow
+                    Write-Output "`n[Found owner match!]"
                     Write-PermissionInfo -Identity $cleanIdentity `
-                                        -Path $FolderPath `
-                                        -Access "FullControl" `
-                                        -AccessType ([System.Security.AccessControl.AccessControlType]::Allow) `
-                                        -OwnerStatus "Owner"
+                        -Path $FolderPath `
+                        -Access "FullControl" `
+                        -AccessType ([System.Security.AccessControl.AccessControlType]::Allow) `
+                        -OwnerStatus "Owner"
                 }
 
                 if ($accessRules) {
                     $foundPermissions = $true
                     foreach ($rule in $accessRules) {
                         Write-PermissionInfo -Identity $cleanIdentity `
-                                           -Path $FolderPath `
-                                           -Access $rule.FileSystemRights `
-                                           -AccessType $rule.AccessControlType `
-                                           -OwnerStatus $(if ($isOwner) { "Owner" } else { "Not Owner" })
+                            -Path $FolderPath `
+                            -Access $rule.FileSystemRights `
+                            -AccessType $rule.AccessControlType `
+                            -OwnerStatus $(if ($isOwner) { "Owner" } else { "Not Owner" })
                     }
                 }
             }
@@ -226,9 +222,8 @@ try {
             Write-Progress -Activity "Scanning folders for permissions and ownership" -Status "Processing: $FolderPath" -PercentComplete $percentComplete
 
             # Return the flag indicating if permissions were found
-                        return $foundPermissions
-        }
-        catch {
+            return $foundPermissions
+        } catch {
             Write-DebugLog "Error checking permissions/ownership for $FolderPath : $_" -IsError
             return $false
         }
@@ -243,20 +238,18 @@ try {
         )
         try {
             Write-DebugLog "Scanning folder: $FolderPath"
-            Test-FolderPermissions -FolderPath $FolderPath -IdentityList $IdentityList -ProcessedCount $ProcessedCount
+            Test-FolderPermission -FolderPath $FolderPath -IdentityList $IdentityList -ProcessedCount $ProcessedCount
 
             Get-ChildItem -Path $FolderPath -Directory -ErrorAction Stop | ForEach-Object {
                 try {
                     Find-Folder -FolderPath $_.FullName -IdentityList $IdentityList -ProcessedCount $ProcessedCount
-                }
-                catch {
-                    Write-Host "Error scanning subfolder $($_.FullName)" -ForegroundColor Red
+                } catch {
+                    Write-Error "Error scanning subfolder $($_.FullName)"
                     Write-DebugLog "Error scanning subfolder $($_.FullName): $_" -IsError
                 }
             }
-        }
-        catch {
-            Write-Host "Error accessing folder $FolderPath" -ForegroundColor Red
+        } catch {
+            Write-Error "Error accessing folder $FolderPath"
             Write-DebugLog "Error accessing folder $FolderPath : $_" -IsError
         }
     }
@@ -272,14 +265,17 @@ try {
         )
 
         $owner = Get-FolderOwner -FolderPath $Path
-        $permissionInfo = "`nFolder: $Path`n" +
-                         "Owner: $owner`n" +
-                         "Identity: $Identity`n" +
-                         "Access: $Access`n" +
-                         "Type: $AccessType`n" +
-                         "Owner Status: $OwnerStatus"
+        $permissionInfo = @"
 
-        Write-Host $permissionInfo -ForegroundColor Cyan
+Folder: $Path
+Owner: $owner
+Identity: $Identity
+Access: $Access
+Type: $AccessType
+Owner Status: $OwnerStatus
+"@
+
+        Write-Output $permissionInfo
         Write-DebugLog $permissionInfo
     }
 
@@ -294,9 +290,9 @@ try {
             $Acl = Get-Acl -Path $Path -ErrorAction Stop
             $Owner = $Acl.Owner
 
-            foreach($Identity in $Identities) {
+            foreach ($Identity in $Identities) {
                 # Convert username to SID if it's not already a SID
-                $Sid = if($Identity -match '^S-1-') {
+                $Sid = if ($Identity -match '^S-1-') {
                     $Identity
                 } else {
                     try {
@@ -316,7 +312,7 @@ try {
                     $Owner
                 }
 
-                if($OwnerSid -eq $Sid -or $Owner -eq $Identity) {
+                if ($OwnerSid -eq $Sid -or $Owner -eq $Identity) {
                     Write-Output "Owner Status: Owner"
                     Write-Output "Path: $Path"
                     Write-Output "Identity: $Identity"
@@ -329,9 +325,9 @@ try {
     }
 
     # Function to get folder permissions and owner information
-    function Get-FolderPermissions {
+    function Get-FolderPermission {
         param (
-            [Parameter(Mandatory=$true)]
+            [Parameter(Mandatory = $true)]
             [string]$Folder,
             [string[]]$TargetIdentities
         )
@@ -354,18 +350,18 @@ try {
 
             # Check if owner is in target identities
             if ($TargetIdentities -contains $ownerSID) {
-                Write-Host "`n$Folder"
-                Write-Host "Owner: O:$ownerSID" -ForegroundColor Cyan
+                Write-Output "`n$Folder"
+                Write-Output "Owner: O:$ownerSID"
             }
 
             $permissions = @()
             foreach ($ace in $acl.Access) {
                 if ($ace.IdentityReference.Value -in $TargetIdentities) {
                     $permissions += [PSCustomObject]@{
-                        Path = $Folder
-                        Identity = $ace.IdentityReference.Value
-                        Type = $ace.AccessControlType
-                        Rights = $ace.FileSystemRights
+                        Path        = $Folder
+                        Identity    = $ace.IdentityReference.Value
+                        Type        = $ace.AccessControlType
+                        Rights      = $ace.FileSystemRights
                         IsInherited = $ace.IsInherited
                     }
                 }
@@ -373,13 +369,12 @@ try {
 
             if ($permissions.Count -gt 0) {
                 foreach ($perm in $permissions) {
-                    Write-Host "$($perm.Identity) has $($perm.Type) $($perm.Rights) $(if($perm.IsInherited){'(Inherited)'})"
+                    Write-Output "$($perm.Identity) has $($perm.Type) $($perm.Rights) $(if($perm.IsInherited){'(Inherited)'})"
                 }
             }
 
             return $permissions
-        }
-        catch {
+        } catch {
             Write-Log "Error getting permissions for ${Folder}: $_" -Level 'ERROR' -Color "Red"
             return $null
         }
@@ -389,27 +384,25 @@ try {
     $processedFolders = [ref]0
 
     # Start the scan with progress tracking
-    Write-Host "Beginning folder scan from $StartPath" -ForegroundColor Cyan
+    Write-Output "Beginning folder scan from $StartPath"
     Find-Folder -FolderPath $StartPath -IdentityList $identities -ProcessedCount $processedFolders
 
     # Output final statistics
     Write-Progress -Activity "Scanning folders for permissions" -Completed
-    Write-Host "`nScan Complete" -ForegroundColor Green
-    Write-Host "Scan Statistics:" -ForegroundColor White
-    Write-Host "Folders processed: $($processedFolders.Value)/$totalFolders" -ForegroundColor Cyan
-    Write-Host "Debug log: $debugLogFile" -ForegroundColor DarkGray
-    Write-Host "Transcript: $transcriptFile" -ForegroundColor DarkGray
-}
-catch {
-    Write-Host "An error occurred during script execution: $_" -ForegroundColor Red
+    Write-Output "`nScan Complete"
+    Write-Output "Scan Statistics:"
+    Write-Output "Folders processed: $($processedFolders.Value)/$totalFolders"
+    Write-Output "Debug log: $debugLogFile"
+    Write-Output "Transcript: $transcriptFile"
+} catch {
+    Write-Error "An error occurred during script execution: $_"
     Write-DebugLog "Script execution error: $_" -IsError
-}
-finally {
+} finally {
     # Clean up all progress bars
     Write-Progress -Activity "Analyzing and Updating Folder Permissions" -Id 0 -Completed
     Write-Progress -Activity "Current Folder Analysis" -Id 1 -Completed
 
     # Stop transcript
     Stop-Transcript
-    Write-Host "`nScript execution completed" -ForegroundColor Green
+    Write-Output "`nScript execution completed"
 }
