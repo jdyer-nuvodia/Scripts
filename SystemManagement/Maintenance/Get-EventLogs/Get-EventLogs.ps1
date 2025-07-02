@@ -2,10 +2,10 @@
 # Script: Get-EventLogs.ps1
 # Created: 2025-02-12 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-21 01:00:00 UTC
+# Last Updated: 2025-07-02 16:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.2
-# Additional Info: Improved date parameter validation and error messages
+# Version: 1.2.0
+# Additional Info: Added system name to EVTX file naming convention
 # =============================================================================
 
 <#
@@ -14,6 +14,7 @@
 .DESCRIPTION
     This script retrieves Windows Event Logs from specified log names for a defined
     time period (either by hours or specific dates) and exports them to a file in C:\Temp as .evtx format.
+    The exported files include the system name and UTC timestamp in the filename.
 .PARAMETER LogNames
     Array of event log names to collect. Defaults to Application and System.
 .PARAMETER Hours
@@ -77,6 +78,9 @@ function Get-TimeStamp {
 
 # Main script execution
 try {
+    # Get system name
+    $systemName = $env:COMPUTERNAME
+
     # Initialize variables
     if ($StartDate) {
         try {
@@ -102,7 +106,7 @@ try {
 
     foreach ($logName in $LogNames) {
         Write-Verbose "Exporting events from $logName"
-        $outputFile = "C:\Temp\${logName}_$(Get-TimeStamp).evtx"
+        $outputFile = "C:\Temp\${systemName}_${logName}_$(Get-TimeStamp).evtx"
 
         # Create query string for time filter
         $timeQuery = "*[System[TimeCreated[@SystemTime>=`'$startTimeFormatted`'] and TimeCreated[@SystemTime<=`'$endTimeFormatted`']]]"
@@ -114,7 +118,7 @@ try {
             $result = wevtutil.exe export-log $logName $outputFile "/q:$timeQuery" 2>&1
 
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "Events from $logName exported to: $outputFile"
+                Write-Output "Events from $logName exported to: $outputFile"
             } else {
                 Write-Warning "Failed to export events from $logName. Error: $result"
             }
