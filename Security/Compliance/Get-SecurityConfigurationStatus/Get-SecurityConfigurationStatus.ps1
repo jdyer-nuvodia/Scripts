@@ -2,10 +2,10 @@
 # Script: Get-SecurityConfigurationStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 20:49:00 UTC
+# Last Updated: 2025-07-02 19:08:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.0
-# Additional Info: Enhanced documentation and added function-level help
+# Version: 1.8.0
+# Additional Info: Replaced Write-Host usage with appropriate PowerShell cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -60,24 +60,24 @@ param(
 
 <#
 .SYNOPSIS
-    Writes a formatted status message with color coding.
+    Writes a formatted status message using appropriate PowerShell streams.
 .DESCRIPTION
-    Outputs messages with consistent color coding based on message type:
-    - Info: White (standard information)
-    - Process: Cyan (processing updates)
-    - Success: Green (successful operations)
-    - Warning: Yellow (warning messages)
-    - Error: Red (error messages)
-    - Debug: Magenta (debug information)
-    - Detail: DarkGray (detailed/verbose information)
+    Outputs messages using the appropriate PowerShell output streams based on message type:
+    - Info: Write-Output (standard information)
+    - Process: Write-Verbose (processing updates)
+    - Success: Write-Output (successful operations)
+    - Warning: Write-Warning (warning messages)
+    - Error: Write-Error (error messages)
+    - Debug: Write-Debug (debug information)
+    - Detail: Write-Verbose (detailed/verbose information)
 .PARAMETER Message
     The message text to display
 .PARAMETER Type
-    The type of message determining color coding
+    The type of message determining the output stream
     Valid values: Info, Process, Success, Warning, Error, Debug, Detail
 .EXAMPLE
     Write-StatusMessage "Operation completed" "Success"
-    Displays "Operation completed" in green
+    Outputs "Operation completed" using Write-Output
 #>
 function Write-StatusMessage {
     [CmdletBinding()]
@@ -91,13 +91,13 @@ function Write-StatusMessage {
     )
 
     switch ($Type) {
-        "Info"    { Write-Host $Message -ForegroundColor White }
-        "Process" { Write-Host $Message -ForegroundColor Cyan }
-        "Success" { Write-Host $Message -ForegroundColor Green }
-        "Warning" { Write-Host $Message -ForegroundColor Yellow }
-        "Error"   { Write-Host $Message -ForegroundColor Red }
-        "Debug"   { Write-Host $Message -ForegroundColor Magenta }
-        "Detail"  { Write-Host $Message -ForegroundColor DarkGray }
+        "Info"    { Write-Output $Message }
+        "Process" { Write-Verbose $Message }
+        "Success" { Write-Output $Message }
+        "Warning" { Write-Warning $Message }
+        "Error"   { Write-Error $Message }
+        "Debug"   { Write-Debug $Message }
+        "Detail"  { Write-Verbose $Message }
     }
 }
 
@@ -109,7 +109,7 @@ function Write-StatusMessage {
     the system's domain role value. Domain Controllers have a role
     value of 4 or 5.
 .EXAMPLE
-    if (Test-IsDomainController) { Write-Host "Running on DC" }
+    if (Test-IsDomainController) { Write-Output "Running on DC" }
 .OUTPUTS
     System.Boolean
     Returns True if running on a Domain Controller, False otherwise
@@ -128,21 +128,15 @@ function Test-IsDomainController {
 .DESCRIPTION
     Generates a detailed Group Policy report using gpresult.
     Can output in either HTML or text format.
-.PARAMETER ReportType
-    Type of report to generate (User, Computer, or Both)
 .PARAMETER OutputFormat
     Format of the report (HTML or Text)
 .EXAMPLE
-    Get-GPStatusWithGpresult -ReportType Both -OutputFormat HTML
-    Generates an HTML report for both user and computer policies
+    Get-GPStatusWithGpresult -OutputFormat HTML
+    Generates an HTML report for group policies
 #>
 function Get-GPStatusWithGpresult {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$false)]
-        [ValidateSet("User", "Computer", "Both")]
-        [string]$ReportType = "Both",
-
         [Parameter(Mandatory=$false)]
         [ValidateSet("HTML", "Text")]
         [string]$OutputFormat = $script:OutputFormat
