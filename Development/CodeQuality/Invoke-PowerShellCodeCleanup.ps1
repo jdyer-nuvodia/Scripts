@@ -95,8 +95,7 @@ function Clear-TrailingWhitespace {
         (Get-Content -Path $ScriptPath) | ForEach-Object { $_.TrimEnd() } | Set-Content -Path $ScriptPath
 
         Write-Information -MessageData "Successfully cleared trailing whitespace from: $ScriptPath" -InformationAction Continue
-    }
-    catch {
+    } catch {
         Write-Error -Message "Failed to clear trailing whitespace: $($_.Exception.Message)"
     }
 }
@@ -125,7 +124,7 @@ function Find-NewlineError {
     Analyzes the first .ps1 file in the current directory for formatting issues
     #>
     [CmdletBinding()]
-        param(
+    param(
         [Parameter(Mandatory = $false)]
         [string]$ScriptPath
     )
@@ -162,14 +161,12 @@ function Find-NewlineError {
 
         if ($results) {
             Write-Information -MessageData "Found potential newline/formatting issues:" -InformationAction Continue
-        }
-        else {
+        } else {
             Write-Information -MessageData "No newline errors detected in: $ScriptPath" -InformationAction Continue
         }
 
         return $results
-    }
-    catch {
+    } catch {
         Write-Error -Message "Failed to find newline errors: $($_.Exception.Message)"
     }
 }
@@ -228,14 +225,12 @@ function Find-PotentialMissingCode {
 
         if ($results) {
             Write-Information -MessageData "Found potential missing code indicators (ellipses):" -InformationAction Continue
-        }
-        else {
+        } else {
             Write-Information -MessageData "No potential missing code patterns detected in: $ScriptPath" -InformationAction Continue
         }
 
         return $results
-    }
-    catch {
+    } catch {
         Write-Error -Message "Failed to find potential missing code patterns: $($_.Exception.Message)"
     }
 }
@@ -314,8 +309,7 @@ function Repair-InlineComment {
                 $fixCount++
 
                 Write-Information -MessageData "Fixed inline comment: $line" -InformationAction Continue
-            }
-            else {
+            } else {
                 # Keep the line as-is
                 $fixedContent += $line
             }
@@ -329,14 +323,12 @@ function Repair-InlineComment {
             # Clean up trailing whitespace after the fixes
             Write-Information -MessageData "Cleaning up trailing whitespace after fixes..." -InformationAction Continue
             Clear-TrailingWhitespace -ScriptPath $ScriptPath
-        }
-        else {
+        } else {
             Write-Information -MessageData "No inline comments found to fix in: $ScriptPath" -InformationAction Continue
         }
 
         return $fixCount
-    }
-    catch {
+    } catch {
         Write-Error -Message "Failed to fix inline comments: $($_.Exception.Message)"
     }
 }
@@ -362,8 +354,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             Find-NewlineError -ScriptPath $scriptPath
         }
         Repair-InlineComment -ScriptPath $scriptPath
-    }
-    else {
+    } else {
         Write-Warning -Message "No PowerShell script files (.ps1) found in the current directory."
     }
 }
