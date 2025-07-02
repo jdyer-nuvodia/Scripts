@@ -1,0 +1,61 @@
+---
+name: Security Issue
+about: Report a security vulnerability or concern in a PowerShell script
+title: '[SECURITY] '
+labels: ['security', 'high-priority']
+assignees: ['jdyer-nuvodia']
+
+---
+
+## ⚠️ Security Issue Report
+
+**IMPORTANT:** If this is a critical security vulnerability that could compromise systems, please consider reporting it privately first.
+
+## Affected Script(s)
+- **Script Name(s):**
+- **Script Location(s):**
+- **Script Version(s):**
+
+## Security Concern Type
+- [ ] Credential/secret exposure
+- [ ] Privilege escalation
+- [ ] Code injection vulnerability
+- [ ] Unsafe file operations
+- [ ] Network security issue
+- [ ] Data exposure
+- [ ] Insufficient input validation
+- [ ] Other (specify):
+
+## Issue Description
+Provide a clear description of the security concern:
+
+## Risk Assessment
+- **Potential Impact:** (e.g., data breach, system compromise, privilege escalation)
+- **Affected Systems:** (e.g., domain controllers, client workstations, servers)
+- **Likelihood:** (e.g., low, medium, high)
+
+## Steps to Reproduce (if applicable)
+1.
+2.
+3.
+
+## Evidence
+```powershell
+# Include relevant code snippets or examples that demonstrate the issue
+# Remove any sensitive information
+```
+
+## Recommended Mitigation
+If you have suggestions for fixing the security issue:
+
+## Affected Environments
+- [ ] Development
+- [ ] Testing
+- [ ] Production
+- [ ] All environments
+
+## Additional Context
+Any additional information that might be relevant to understanding or addressing this security concern.
+
+---
+**Note:** This issue will be treated with high priority and investigated promptly.

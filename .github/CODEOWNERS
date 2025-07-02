@@ -1,0 +1,32 @@
+# Global ownership - all files require review from repository owner
+* @jdyer-nuvodia
+
+# Security scripts require additional scrutiny
+/Security/ @jdyer-nuvodia
+/Security/**/*.ps1 @jdyer-nuvodia
+
+# Cloud services scripts
+/CloudServices/ @jdyer-nuvodia
+/CloudServices/**/*.ps1 @jdyer-nuvodia
+
+# System management scripts
+/SystemManagement/ @jdyer-nuvodia
+/SystemManagement/**/*.ps1 @jdyer-nuvodia
+
+# Development and code quality tools
+/Development/ @jdyer-nuvodia
+/Development/**/*.ps1 @jdyer-nuvodia
+
+# GitHub configuration and workflows
+/.github/ @jdyer-nuvodia
+/.github/**/*.yml @jdyer-nuvodia
+/.github/**/*.yaml @jdyer-nuvodia
+
+# VS Code configuration
+/.vscode/ @jdyer-nuvodia
+/.vscode/**/*.json @jdyer-nuvodia
+/.vscode/**/*.psd1 @jdyer-nuvodia
+
+# Documentation and instructions
+/*.md @jdyer-nuvodia
+/**/*.md @jdyer-nuvodia

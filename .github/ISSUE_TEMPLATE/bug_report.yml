@@ -1,0 +1,55 @@
+---
+name: Bug Report
+about: Create a report to help us improve a PowerShell script
+title: '[BUG] '
+labels: ['bug', 'needs-investigation']
+assignees: ['jdyer-nuvodia']
+
+---
+
+## Bug Description
+A clear and concise description of what the bug is.
+
+## Script Information
+- **Script Name:**
+- **Script Location:**
+- **Script Version:**
+
+## Environment
+- **PowerShell Version:** (Run `$PSVersionTable.PSVersion`)
+- **Operating System:** (e.g., Windows 11, Windows Server 2022)
+- **Execution Policy:** (Run `Get-ExecutionPolicy`)
+
+## Steps to Reproduce
+1.
+2.
+3.
+
+## Expected Behavior
+A clear and concise description of what you expected to happen.
+
+## Actual Behavior
+A clear and concise description of what actually happened.
+
+## Error Messages
+```powershell
+# Paste any error messages here
+```
+
+## Script Output/Logs
+```
+# Paste relevant script output or log entries here
+```
+
+## Additional Context
+Add any other context about the problem here, such as:
+- Network environment details
+- Domain/workgroup configuration
+- Specific user permissions
+- Related scripts or dependencies
+
+## Possible Solution
+If you have ideas on how to fix the issue, please describe them here.
+
+## Screenshots
+If applicable, add screenshots to help explain your problem.

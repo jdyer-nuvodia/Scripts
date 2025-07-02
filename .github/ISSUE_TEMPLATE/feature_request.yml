@@ -1,0 +1,77 @@
+---
+name: Feature Request
+about: Suggest a new PowerShell script or enhancement to an existing script
+title: '[FEATURE] '
+labels: ['enhancement', 'needs-review']
+assignees: ['jdyer-nuvodia']
+
+---
+
+## Feature Description
+A clear and concise description of the feature you'd like to see implemented.
+
+## Problem Statement
+Describe the problem this feature would solve. Is your feature request related to a current limitation or missing functionality?
+
+## Proposed Solution
+Describe the solution you'd like to see:
+- What should the script do?
+- What parameters should it accept?
+- What should the output look like?
+
+## Use Case Examples
+Provide specific examples of how this feature would be used:
+
+### Example 1
+```powershell
+# Example command usage
+```
+**Expected outcome:**
+
+### Example 2
+```powershell
+# Another example if applicable
+```
+**Expected outcome:**
+
+## Alternative Solutions
+Describe any alternative solutions or features you've considered.
+
+## Script Category
+Where should this script be located in the repository structure?
+- [ ] CloudServices/365/
+- [ ] CloudServices/Azure/
+- [ ] Development/
+- [ ] Network/
+- [ ] PersonalUtilities/
+- [ ] Security/
+- [ ] Software/
+- [ ] SystemManagement/
+- [ ] UserManagement/
+- [ ] Other (specify):
+
+## Requirements and Dependencies
+- **Required PowerShell modules:**
+- **Minimum PowerShell version:**
+- **Operating system requirements:**
+- **Special permissions needed:**
+- **External dependencies:**
+
+## Acceptance Criteria
+Define what success looks like for this feature:
+- [ ] Script follows organizational coding standards
+- [ ] Includes proper error handling
+- [ ] Has comprehensive logging
+- [ ] Supports -WhatIf parameter where applicable
+- [ ] Includes comment-based help
+- [ ] Passes PSScriptAnalyzer validation
+
+## Additional Context
+Add any other context, screenshots, or examples about the feature request here.
+
+## Priority
+How important is this feature to you?
+- [ ] Low - Nice to have
+- [ ] Medium - Would be helpful
+- [ ] High - Important for daily operations
+- [ ] Critical - Blocking current work
