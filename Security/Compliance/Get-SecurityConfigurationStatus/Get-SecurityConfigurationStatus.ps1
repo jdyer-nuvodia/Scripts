@@ -5,7 +5,7 @@
 # Last Updated: 2025-07-02 19:08:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.8.0
-# Additional Info: Replaced Write-Host usage with appropriate PowerShell cmdlets for PSScriptAnalyzer compliance
+# Additional Info: Implemented appropriate PowerShell cmdlets for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
