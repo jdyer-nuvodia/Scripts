@@ -5,10 +5,10 @@
 > | File           | copilot-instructions.md              |
 > | Created        | 2025-02-07 21:21:53 UTC              |
 > | Author         | jdyer-nuvodia                        |
-> | Last Updated   | 2025-06-24 20:42:00 UTC              |
+> | Last Updated   | 2025-07-02 12:00:00 UTC              |
 > | Updated By     | jdyer-nuvodia                          |
-> | Version        | 5.1.0                                |
-> | Additional Info| Added PowerShell script automation best practices section |
+> | Version        | 5.2.0                                |
+> | Additional Info| Updated to align with VS Code custom instructions best practices |
 
 You are my coding partner focused on creating secure, functional scripts that follow Microsoft PowerShell and best practices. Your role is to assist in writing, reviewing, and improving PowerShell scripts while adhering to the guidelines below.
 
@@ -56,15 +56,15 @@ The current month is June, the current year is 2025.
 9. **PSScriptAnalyzer Compliance**  
    - Do **NOT** use `Write-Host`.  
    - ****Always** use named parameters in command invocations.
-   - **Always** run **PSScriptAnalyzer** on the code before finalizing. Address all issues before proceeding.
+   - **Always** ensure PSScriptAnalyzer compliance before finalizing code. Use `/review-psscriptanalyzer-compliance` prompt for comprehensive analysis.
    - **Always** use named parameters instead of positional parameters when calling commands. If you see a positional parameter warning in PSScriptAnalyzer, it may be due to a missing newline.
    - Do **NOT** ignore any PSScriptAnalyzer warnings, information, or errors. All scripts must pass PSScriptAnalyzer without issues, including `Write-Host` warnings. Scripts must be able to run unattended.
-   - Never assume any PSScriptAnalyzer warnings, info, or errors are acceptable; fix them all.
+   - **Never** assume any PSScriptAnalyzer warnings, info, or errors are acceptable; fix them all.
    - Do **NOT** use simple validations or explicit calls that are unneccessary just to satisfy PSScriptAnalyzer. Use the appropriate cmdlets and parameters to ensure the code is functional and adheres to best practices.
-   - To fix whitespace issues and identify missing newlines, run this script from the target script's directory: & "c:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Development\CodeQuality\Invoke-PowerShellCodeCleanup.ps1"
+   - For whitespace and formatting issues, use `/run-powershell-code-cleanup` prompt to execute the cleanup process safely.
 
 10. **Whitespace and Formatting**  
-    - Regularly run `Invoke-PowerShellCodeCleanup.ps1` to fix whitespace and newline issues.  
+    - Use `/run-powershell-code-cleanup` prompt to fix whitespace and newline issues safely with proper validation.  
     - Ensure code is cleanly formatted and readable.
 
 11. **Automation and Scheduling**  
@@ -147,6 +147,18 @@ Additional Info: <Additional contextual data>
 [Example usage and outcomes]
 #>
 
+
+---
+
+## Prompt Files for PowerShell Development
+
+Use the following standardized prompts for common development tasks:
+
+1. **Create New PowerShell Script**: Use `/create-powershell-script` prompt for generating new scripts with complete organizational standards compliance
+2. **PSScriptAnalyzer Review**: Use `/review-psscriptanalyzer-compliance` prompt for comprehensive code review and compliance checking  
+3. **Code Cleanup**: Use `/run-powershell-code-cleanup` prompt for safe whitespace and formatting fixes
+
+These prompts ensure consistent adherence to all organizational standards and automate the development workflow.
 
 ---
 
