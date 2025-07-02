@@ -2,10 +2,10 @@
 # Script: Delete-OldScreenshots.ps1
 # Created: 2024-02-07 13:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 21:25:00 UTC
+# Last Updated: 2025-07-02 18:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added SupportsShouldProcess for safer file deletion
+# Version: 1.3.0
+# Additional Info: Implemented new output methods for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -51,23 +51,23 @@ param(
 $LogPath = Join-Path $PSScriptRoot "DeleteScreenshots.log"
 $ErrorActionPreference = "Stop"
 
-function Write-Log {
+function Write-LogMessage {
     param($Message, $Level = "Information")
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $LogMessage = "$TimeStamp [$Level] $Message"
     Add-Content -Path $LogPath -Value $LogMessage
     switch ($Level) {
         "Information" { Write-Output $Message }
-        "Success" { Write-Host $Message -ForegroundColor Green }
-        "Warning" { Write-Host $Message -ForegroundColor Yellow }
-        "Error" { Write-Host $Message -ForegroundColor Red }
+        "Success" { Write-Output "[SUCCESS] $Message" }
+        "Warning" { Write-Warning $Message }
+        "Error" { Write-Error $Message -ErrorAction Continue }
     }
 }
 
 try {
-    Write-Log "Starting screenshot cleanup process" "Information"
-    Write-Log "Target folder: $FolderPath" "Information"
-    Write-Log "Deleting files older than $DaysOld days" "Information"
+    Write-LogMessage "Starting screenshot cleanup process" "Information"
+    Write-LogMessage "Target folder: $FolderPath" "Information"
+    Write-LogMessage "Deleting files older than $DaysOld days" "Information"
 
     # Calculate cutoff date
     $cutoffDate = (Get-Date).AddDays(-$DaysOld)
@@ -77,11 +77,11 @@ try {
     $totalFiles = $oldFiles.Count
 
     if ($totalFiles -eq 0) {
-        Write-Log "No files found older than $DaysOld days" "Information"
+        Write-LogMessage "No files found older than $DaysOld days" "Information"
         exit 0
     }
 
-    Write-Log "Found $totalFiles files to delete" "Information"
+    Write-LogMessage "Found $totalFiles files to delete" "Information"
     $deleted = 0
     $failed = 0
 
@@ -94,25 +94,25 @@ try {
             if ($PSCmdlet.ShouldProcess($file.FullName, "Delete screenshot")) {
                 Remove-Item $file.FullName -Force
                 $deleted++
-                Write-Log "Deleted: $($file.Name)" "Success"
+                Write-LogMessage "Deleted: $($file.Name)" "Success"
             }
         }
         catch {
             $failed++
-            Write-Log "Failed to delete: $($file.Name). Error: $($_.Exception.Message)" "Error"
+            Write-LogMessage "Failed to delete: $($file.Name). Error: $($_.Exception.Message)" "Error"
         }
     }
 
     Write-Progress -Activity "Deleting old screenshots" -Completed
-    Write-Log "Operation complete. Successfully deleted: $deleted files. Failed: $failed files" "Information"
+    Write-LogMessage "Operation complete. Successfully deleted: $deleted files. Failed: $failed files" "Information"
 }
 catch {
-    Write-Log "Script execution failed: $($_.Exception.Message)" "Error"
+    Write-LogMessage "Script execution failed: $($_.Exception.Message)" "Error"
     exit 1
 }
 finally {
     Write-Progress -Activity "Deleting old screenshots" -Completed
-    Write-Log "Script execution finished. Cleaning up resources." "Information"
+    Write-LogMessage "Script execution finished. Cleaning up resources." "Information"
     # Remove any temporary variables that might contain sensitive data
     Remove-Variable -Name oldFiles, file -ErrorAction SilentlyContinue
 }
