@@ -94,7 +94,7 @@ The current month is June, the current year is 2025.
     - Examples: `$script:VM`, `$script:ReportPath`, `$script:DaysToAnalyze`, `$script:CriticalServices`
 
 11. **Whitespace and Formatting**
-    - Use `/run-powershell-code-cleanup` prompt to fix whitespace and newline issues safely with proper validation.
+    - **ALWAYS** use `/run-powershell-code-cleanup` prompt on every script after making edits to fix whitespace and identify newline issues safely with proper validation.
     - Ensure code is cleanly formatted and readable.
 
 12. **Automation and Scheduling**
@@ -220,7 +220,7 @@ function Write-ColorOutput {
         [Parameter(Mandatory = $false)]
         [string]$Color = "White"
     )
-    
+
     if ($Script:UseAnsiColors) {
         # PowerShell 7+ with ANSI escape codes
         $colorCode = $Script:Colors[$Color]
