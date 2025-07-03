@@ -2,10 +2,10 @@
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 18:33:00 UTC
+# Last Updated: 2025-07-03 00:09:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Fixed DattoEDR and Datto RMM service names
+# Version: 1.4.2
+# Additional Info: Fixed PSScriptAnalyzer compliance by properly passing parameters to functions instead of using script scope
 # =============================================================================
 
 <#
@@ -28,23 +28,28 @@
     Number of days of event logs to analyze. Default is 7.
 .PARAMETER CriticalServices
     Array of critical services to check. If not specified, checks common critical services.
+.PARAMETER VM
+    Switch parameter to indicate the system is a virtual machine. When specified, skips or adjusts certain checks like BitLocker and reduces thresholds for VM-specific scenarios.
 .EXAMPLE
     .\Get-SystemHealthReport.ps1
     Runs health check with default parameters
 .EXAMPLE
     .\Get-SystemHealthReport.ps1 -DaysToAnalyze 14 -ReportPath "C:\Reports"
     Runs health check analyzing 14 days of logs and saves report to specified path
+.EXAMPLE
+    .\Get-SystemHealthReport.ps1 -VM
+    Runs health check optimized for virtual machine environments
 #>
 
 [CmdletBinding()]
 param(
     [Parameter()]
     [ValidateScript({
-        if (-not (Test-Path $_)) {
-            New-Item -ItemType Directory -Path $_ -Force | Out-Null
-        }
-        return $true
-    })]
+            if (-not (Test-Path $_)) {
+                New-Item -ItemType Directory -Path $_ -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$ReportPath = $PSScriptRoot,
 
     [Parameter()]
@@ -54,24 +59,27 @@ param(
     [Parameter()]
     [string[]]$CriticalServices = @(
         # Windows Update
-                'wuauserv',
+        'wuauserv',
         # Windows Defender
-                'WinDefend',
+        'WinDefend',
         # Security Center
-                'wscsvc',
+        'wscsvc',
         # Task Scheduler
-                'Schedule',
+        'Schedule',
         # Windows Event Log
-                'EventLog',
+        'EventLog',
         # Windows Firewall
-                'mpssvc',
+        'mpssvc',
         # Server
-                'LanmanServer',
+        'LanmanServer',
         # DNS Client
-                'Dnscache',
+        'Dnscache',
         # Datto RMM Agent
-                'Datto RMM'
-    )
+        'Datto RMM'
+    ),
+
+    [Parameter()]
+    [switch]$VM
 )
 
 # Initialize error handling
@@ -86,7 +94,7 @@ $LogFile = Join-Path $ReportPath "SystemHealth_${SystemName}_${Timestamp}.log"
 function Write-LogMessage {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
         [Parameter()]
@@ -99,36 +107,48 @@ function Write-LogMessage {
     Add-Content -Path $LogFile -Value $LogMessage
 
     switch ($Level) {
-        "Info"      { Write-Host $LogMessage -ForegroundColor White }
-        "Process"   { Write-Host $LogMessage -ForegroundColor Cyan }
-        "Success"   { Write-Host $LogMessage -ForegroundColor Green }
-        "Warning"   { Write-Host $LogMessage -ForegroundColor Yellow }
-        "Error"     { Write-Host $LogMessage -ForegroundColor Red }
-        "Debug"     { Write-Host $LogMessage -ForegroundColor Magenta }
-        Default     { Write-Host $LogMessage -ForegroundColor DarkGray }
+        "Info" { Write-Information $LogMessage -InformationAction Continue }
+        "Process" { Write-Information $LogMessage -InformationAction Continue }
+        "Success" { Write-Information $LogMessage -InformationAction Continue }
+        "Warning" { Write-Warning $LogMessage }
+        "Error" { Write-Error $LogMessage -ErrorAction Continue }
+        "Debug" { Write-Debug $LogMessage }
+        default { Write-Information $LogMessage -InformationAction Continue }
     }
 }
 
 function Get-SystemResourceStatus {
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$IsVM
+    )
 
     Write-LogMessage "Checking system resources..." -Level "Process"
 
     try {
-        # CPU Usage
+        # CPU Usage - Adjusted thresholds for VMs
         $CpuUsage = (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue
-        $CpuStatus = if ($CpuUsage -ge 90) { "Error" } elseif ($CpuUsage -ge 80) { "Warning" } else { "Success" }
+        if ($IsVM) {
+            # More lenient thresholds for VMs
+            $CpuStatus = if ($CpuUsage -ge 95) { "Error" } elseif ($CpuUsage -ge 90) { "Warning" } else { "Success" }
+        } else {
+            $CpuStatus = if ($CpuUsage -ge 90) { "Error" } elseif ($CpuUsage -ge 80) { "Warning" } else { "Success" }
+        }
         Write-LogMessage "CPU Usage: $([math]::Round($CpuUsage, 2))%" -Level $CpuStatus
 
-        # Memory Usage
+        # Memory Usage - Adjusted thresholds for VMs
         $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
         if ($OS.TotalVisibleMemorySize -gt 0) {
             $MemoryUsage = [math]::Round(($OS.TotalVisibleMemorySize - $OS.FreePhysicalMemory) / $OS.TotalVisibleMemorySize * 100, 2)
-            $MemoryStatus = if ($MemoryUsage -ge 90) { "Error" } elseif ($MemoryUsage -ge 80) { "Warning" } else { "Success" }
+            if ($IsVM) {
+                # More lenient thresholds for VMs
+                $MemoryStatus = if ($MemoryUsage -ge 95) { "Error" } elseif ($MemoryUsage -ge 85) { "Warning" } else { "Success" }
+            } else {
+                $MemoryStatus = if ($MemoryUsage -ge 90) { "Error" } elseif ($MemoryUsage -ge 80) { "Warning" } else { "Success" }
+            }
             Write-LogMessage "Memory Usage: ${MemoryUsage}%" -Level $MemoryStatus
-        }
-        else {
+        } else {
             Write-LogMessage "Invalid memory size reported by system" -Level "Error"
         }
 
@@ -139,13 +159,11 @@ function Get-SystemResourceStatus {
                 $FreeSpace = [math]::Round(($Disk.FreeSpace / $Disk.Size) * 100, 2)
                 $Status = if ($FreeSpace -le 10) { "Error" } elseif ($FreeSpace -le 20) { "Warning" } else { "Success" }
                 Write-LogMessage "Drive $($Disk.DeviceID) - Free Space: ${FreeSpace}% ($(([math]::Round($Disk.FreeSpace / 1GB, 2)))GB free)" -Level $Status
-            }
-            else {
+            } else {
                 Write-LogMessage "Invalid disk size reported for drive $($Disk.DeviceID)" -Level "Error"
             }
         }
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error checking system resources: $($_.Exception.Message)" -Level "Error"
         Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level "Debug"
     }
@@ -153,21 +171,23 @@ function Get-SystemResourceStatus {
 
 function Get-CriticalServicesStatus {
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Services
+    )
 
     Write-LogMessage "Checking critical services..." -Level "Process"
 
-    foreach ($Service in $CriticalServices) {
+    foreach ($Service in $Services) {
         try {
             $ServiceStatus = Get-Service -Name $Service -ErrorAction Stop
             $Status = switch ($ServiceStatus.Status) {
                 'Running' { "Success" }
                 'Stopped' { "Error" }
-                Default { "Warning" }
+                default { "Warning" }
             }
             Write-LogMessage "Service $($ServiceStatus.DisplayName): $($ServiceStatus.Status)" -Level $Status
-        }
-        catch {
+        } catch {
             Write-LogMessage "Error checking service ${Service}: $($_.Exception.Message)" -Level "Error"
         }
     }
@@ -175,40 +195,42 @@ function Get-CriticalServicesStatus {
 
 function Get-EventLogAnalysis {
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$Days
+    )
 
     Write-LogMessage "Analyzing event logs..." -Level "Process"
 
-    $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
+    $StartTime = (Get-Date).AddDays(-$Days)
     $CriticalEvents = @(
-        @{Log='System'; Level=2; Name='System Errors'},
-        @{Log='Application'; Level=2; Name='Application Errors'},
-        @{Log='Security'; Level=2; Name='Security Errors'}
+        @{ Log = 'System'; Level = 2; Name = 'System Errors' },
+        @{ Log = 'Application'; Level = 2; Name = 'Application Errors' },
+        @{ Log = 'Security'; Level = 2; Name = 'Security Errors' }
     )
 
     foreach ($EventType in $CriticalEvents) {
         try {
             $Events = @(Get-WinEvent -FilterHashtable @{
-                LogName = $EventType.Log
-                Level = $EventType.Level
-                StartTime = $StartTime
-            } -ErrorAction SilentlyContinue)
+                    LogName   = $EventType.Log
+                    Level     = $EventType.Level
+                    StartTime = $StartTime
+                } -ErrorAction SilentlyContinue)
 
             $Count = $Events.Count
             $Status = if ($Count -ge 50) { "Error" } elseif ($Count -ge 20) { "Warning" } else { "Success" }
-            Write-LogMessage "$($EventType.Name) in last $DaysToAnalyze days: $Count" -Level $Status
+            Write-LogMessage "$($EventType.Name) in last $Days days: $Count" -Level $Status
 
             if ($Count -gt 0) {
                 $TopErrors = $Events | Group-Object -Property Id |
-                            Sort-Object -Property Count -Descending |
-                            Select-Object -First 3
+                Sort-Object -Property Count -Descending |
+                Select-Object -First 3
                 foreach ($ErrorItem in $TopErrors) {
                     $Sample = $Events | Where-Object Id -eq $ErrorItem.Name | Select-Object -First 1
                     Write-LogMessage "  Top Error (ID $($ErrorItem.Name)): $($Sample.Message.Split([Environment]::NewLine)[0]) - Count: $($ErrorItem.Count)" -Level "Info"
                 }
             }
-        }
-        catch {
+        } catch {
             if ($_.Exception.Message -notlike "*No events were found*") {
                 Write-LogMessage "Error checking $($EventType.Name): $($_.Exception.Message)" -Level "Error"
             }
@@ -240,8 +262,7 @@ function Get-WindowsUpdateStatus {
                 }
             }
         }
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error checking Windows Updates: $($_.Exception.Message)" -Level "Error"
     }
 }
@@ -253,9 +274,9 @@ function Get-NetworkStatus {
     Write-LogMessage "Checking network connectivity..." -Level "Process"
 
     $Targets = @(
-        @{Host="8.8.8.8"; Name="Google DNS"},
-        @{Host="1.1.1.1"; Name="Cloudflare DNS"},
-        @{Host="www.microsoft.com"; Name="Microsoft"}
+        @{ Host = "8.8.8.8"; Name = "Google DNS" },
+        @{ Host = "1.1.1.1"; Name = "Cloudflare DNS" },
+        @{ Host = "www.microsoft.com"; Name = "Microsoft" }
     )
 
     foreach ($Target in $Targets) {
@@ -263,13 +284,12 @@ function Get-NetworkStatus {
             $Result = Test-Connection -TargetName $Target.Host -Count 1 -ErrorAction Stop
             $LatencyMs = $Result.Latency
             $Status = switch ($LatencyMs) {
-                {$_ -ge 200} { "Warning" }
-                {$_ -ge 500} { "Error" }
-                Default { "Success" }
+                { $_ -ge 200 } { "Warning" }
+                { $_ -ge 500 } { "Error" }
+                default { "Success" }
             }
             Write-LogMessage "Network latency to $($Target.Name) ($($Target.Host)): ${LatencyMs}ms" -Level $Status
-        }
-        catch {
+        } catch {
             Write-LogMessage "Failed to reach $($Target.Name) ($($Target.Host)): $($_.Exception.Message)" -Level "Error"
         }
     }
@@ -277,7 +297,10 @@ function Get-NetworkStatus {
 
 function Get-SecurityStatus {
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$IsVM
+    )
 
     Write-LogMessage "Checking security features..." -Level "Process"
 
@@ -315,26 +338,28 @@ function Get-SecurityStatus {
             Write-LogMessage "Firewall Profile $($FwProfile.Name): $($FwProfile.Enabled)" -Level $Status
         }
 
-        # BitLocker Status
-        $BitLockerVolumes = Get-BitLockerVolume -ErrorAction SilentlyContinue
-        if ($BitLockerVolumes) {
-            foreach ($Volume in $BitLockerVolumes) {
-                $Status = switch ($Volume.ProtectionStatus) {
-                    'On' { "Success" }
-                    'Off' { "Error" }
-                    Default { "Warning" }
+        # BitLocker Status - Skip for VMs
+        if (-not $IsVM) {
+            $BitLockerVolumes = Get-BitLockerVolume -ErrorAction SilentlyContinue
+            if ($BitLockerVolumes) {
+                foreach ($Volume in $BitLockerVolumes) {
+                    $Status = switch ($Volume.ProtectionStatus) {
+                        'On' { "Success" }
+                        'Off' { "Error" }
+                        default { "Warning" }
+                    }
+                    Write-LogMessage "BitLocker on $($Volume.MountPoint): $($Volume.ProtectionStatus)" -Level $Status
+                    if ($Volume.ProtectionStatus -eq 'On') {
+                        Write-LogMessage "  Encryption Method: $($Volume.EncryptionMethod)" -Level "Info"
+                    }
                 }
-                Write-LogMessage "BitLocker on $($Volume.MountPoint): $($Volume.ProtectionStatus)" -Level $Status
-                if ($Volume.ProtectionStatus -eq 'On') {
-                    Write-LogMessage "  Encryption Method: $($Volume.EncryptionMethod)" -Level "Info"
-                }
+            } else {
+                Write-LogMessage "BitLocker not configured on any volumes" -Level "Warning"
             }
+        } else {
+            Write-LogMessage "BitLocker check skipped (VM environment)" -Level "Info"
         }
-        else {
-            Write-LogMessage "BitLocker not configured on any volumes" -Level "Warning"
-        }
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error checking security status: $($_.Exception.Message)" -Level "Error"
         Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level "Debug"
     }
@@ -345,18 +370,20 @@ try {
     Write-LogMessage "=== System Health Check Started ===" -Level "Process"
     Write-LogMessage "System: $SystemName" -Level "Info"
     Write-LogMessage "Timestamp: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))" -Level "Info"
+    if ($VM) {
+        Write-LogMessage "VM Mode: Enabled - Adjusted thresholds and skipped VM-incompatible checks" -Level "Info"
+    }
 
-    Get-SystemResourceStatus
-    Get-CriticalServicesStatus
-    Get-EventLogAnalysis
+    Get-SystemResourceStatus -IsVM $VM
+    Get-CriticalServicesStatus -Services $CriticalServices
+    Get-EventLogAnalysis -Days $DaysToAnalyze
     Get-WindowsUpdateStatus
     Get-NetworkStatus
-    Get-SecurityStatus
+    Get-SecurityStatus -IsVM $VM
 
     Write-LogMessage "=== System Health Check Completed ===" -Level "Process"
     Write-LogMessage "Log file saved to: $LogFile" -Level "Success"
-}
-catch {
+} catch {
     Write-LogMessage "Script execution failed: $($_.Exception.Message)" -Level "Error"
     Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level "Error"
     throw
