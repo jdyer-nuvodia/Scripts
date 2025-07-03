@@ -75,25 +75,25 @@ $ReportFile = Join-Path $ReportPath "LogAnalysis_${SystemName}_${TimeStamp}.html
 $Script:UseAnsiColors = ($PSVersionTable.PSVersion.Major -ge 7)
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        White = "`e[37m"
-        Cyan = "`e[36m"
-        Green = "`e[32m"
-        Yellow = "`e[33m"
-        Red = "`e[31m"
-        Magenta = "`e[35m"
+        White    = "`e[37m"
+        Cyan     = "`e[36m"
+        Green    = "`e[32m"
+        Yellow   = "`e[33m"
+        Red      = "`e[31m"
+        Magenta  = "`e[35m"
         DarkGray = "`e[90m"
-        Reset = "`e[0m"
+        Reset    = "`e[0m"
     }
 } else {
     @{
-        White = "White"
-        Cyan = "Cyan"
-        Green = "Green"
-        Yellow = "Yellow"
-        Red = "Red"
-        Magenta = "Magenta"
+        White    = "White"
+        Cyan     = "Cyan"
+        Green    = "Green"
+        Yellow   = "Yellow"
+        Red      = "Red"
+        Magenta  = "Magenta"
         DarkGray = "DarkGray"
-        Reset = ""
+        Reset    = ""
     }
 }
 
@@ -187,7 +187,7 @@ function Get-LogStatistic {
             $Events = Get-WinEvent -LogName $LogName -MaxEvents 1 -ErrorAction Stop
             # If successful, proceed with full query
             $FilterHash = @{
-                LogName = $LogName
+                LogName   = $LogName
                 StartTime = $StartTime
             }
             $Events = Get-WinEvent -FilterHashtable $FilterHash -ErrorAction Stop
@@ -202,8 +202,8 @@ function Get-LogStatistic {
                 $Events = $Events | ForEach-Object {
                     # Convert to equivalent WinEvent structure
                     [PSCustomObject]@{
-                        TimeCreated = $_.TimeGenerated
-                        Level = switch ($_.EntryType) {
+                        TimeCreated  = $_.TimeGenerated
+                        Level        = switch ($_.EntryType) {
                             'Error' { 2 }
                             'Warning' { 3 }
                             default { 4 }
@@ -226,17 +226,17 @@ function Get-LogStatistic {
 
             # Get top error sources with enhanced error handling
             $TopErrors = $Events |
-                Where-Object { $_.Level -eq 2 } |
-                Group-Object {
-                    try {
-                        if ($_.ProviderName) { $_.ProviderName }
-                        else { "Unknown Provider" }
-                    } catch {
-                        "Unknown Provider"
-                    }
-                } |
-                Sort-Object Count -Descending |
-                Select-Object -First 5
+            Where-Object { $_.Level -eq 2 } |
+            Group-Object {
+                try {
+                    if ($_.ProviderName) { $_.ProviderName }
+                    else { "Unknown Provider" }
+                } catch {
+                    "Unknown Provider"
+                }
+            } |
+            Sort-Object Count -Descending |
+            Select-Object -First 5
 
             # Calculate daily entry rate
             $DailyRate = if ($script:DaysToAnalyze -gt 0) {
@@ -246,12 +246,12 @@ function Get-LogStatistic {
             }
 
             return @{
-                Name = $LogName
-                TotalEntries = $TotalEntries
-                RecentEntries = $TotalEntries
-                ErrorCount = $ErrorEntries
-                WarningCount = $WarningEntries
-                DailyRate = $DailyRate
+                Name            = $LogName
+                TotalEntries    = $TotalEntries
+                RecentEntries   = $TotalEntries
+                ErrorCount      = $ErrorEntries
+                WarningCount    = $WarningEntries
+                DailyRate       = $DailyRate
                 TopErrorSources = $TopErrors
             }
         }
@@ -270,7 +270,7 @@ function Get-SecurityEvent {
 
     try {
         $FilterHash = @{
-            LogName = 'Security'
+            LogName   = 'Security'
             StartTime = $StartTime
         }
 
@@ -278,19 +278,19 @@ function Get-SecurityEvent {
 
         # Analyze login attempts
         $FailedLogins = $SecurityEvents |
-            Where-Object { $_.Id -eq 4625 } |
-            Group-Object { $_.Properties[5].Value } |
-            Sort-Object Count -Descending |
-            Select-Object -First 5
+        Where-Object { $_.Id -eq 4625 } |
+        Group-Object { $_.Properties[5].Value } |
+        Sort-Object Count -Descending |
+        Select-Object -First 5
 
         # Analyze account modifications
         $AccountChanges = $SecurityEvents |
-            Where-Object { $_.Id -in @(4720, 4722, 4725, 4726) } |
-            Group-Object Id |
-            Sort-Object Count -Descending
+        Where-Object { $_.Id -in @(4720, 4722, 4725, 4726) } |
+        Group-Object Id |
+        Sort-Object Count -Descending
 
         return @{
-            FailedLogins = $FailedLogins
+            FailedLogins   = $FailedLogins
             AccountChanges = $AccountChanges
         }
     } catch [System.UnauthorizedAccessException] {
@@ -299,7 +299,7 @@ function Get-SecurityEvent {
     } catch [System.InvalidOperationException] {
         Write-LogMessage "No security events found in specified time range" -Level Warning
         return @{
-            FailedLogins = @()
+            FailedLogins   = @()
             AccountChanges = @()
         }
     } catch {
