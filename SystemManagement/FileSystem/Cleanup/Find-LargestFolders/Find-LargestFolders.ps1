@@ -92,29 +92,29 @@ begin {
     # Color codes for different PowerShell versions
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         $Script:Colors = @{
-            Reset = "`e[0m"
-            White = "`e[37m"
-            Cyan = "`e[36m"
-            Green = "`e[32m"
-            Yellow = "`e[33m"
-            Red = "`e[31m"
-            Magenta = "`e[35m"
+            Reset    = "`e[0m"
+            White    = "`e[37m"
+            Cyan     = "`e[36m"
+            Green    = "`e[32m"
+            Yellow   = "`e[33m"
+            Red      = "`e[31m"
+            Magenta  = "`e[35m"
             DarkGray = "`e[90m"
-            Bold = "`e[1m"
+            Bold     = "`e[1m"
         }
         $Script:UseAnsiColors = $true
     } else {
         # PowerShell 5.1 - Use console color mapping
         $Script:Colors = @{
-            Reset = ""
-            White = "White"
-            Cyan = "Cyan"
-            Green = "Green"
-            Yellow = "Yellow"
-            Red = "Red"
-            Magenta = "Magenta"
+            Reset    = ""
+            White    = "White"
+            Cyan     = "Cyan"
+            Green    = "Green"
+            Yellow   = "Yellow"
+            Red      = "Red"
+            Magenta  = "Magenta"
             DarkGray = "DarkGray"
-            Bold = ""
+            Bold     = ""
         }
         $Script:UseAnsiColors = $false
     }
@@ -179,19 +179,19 @@ begin {
             }
 
             return [PSCustomObject]@{
-                Path = $Path
-                SizeBytes = $totalSize
-                FileCount = $files.Count
+                Path         = $Path
+                SizeBytes    = $totalSize
+                FileCount    = $files.Count
                 IsAccessible = $true
-                Error = $null
+                Error        = $null
             }
         } catch {
             return [PSCustomObject]@{
-                Path = $Path
-                SizeBytes = 0
-                FileCount = 0
+                Path         = $Path
+                SizeBytes    = 0
+                FileCount    = 0
                 IsAccessible = $false
-                Error = $_.Exception.Message
+                Error        = $_.Exception.Message
             }
         }
     }
@@ -240,12 +240,12 @@ begin {
 
                 if ($totalSize -ge $minSizeBytes) {
                     $results += [PSCustomObject]@{
-                        Type = "Folder"
-                        Name = $subdir.Name
-                        Path = $subdir.FullName
-                        SizeBytes = $totalSize
-                        SizeFormatted = Format-FileSize -SizeInBytes $totalSize
-                        lastwriteTime = $subdir.lastwriteTime
+                        Type               = "Folder"
+                        Name               = $subdir.Name
+                        Path               = $subdir.FullName
+                        SizeBytes          = $totalSize
+                        SizeFormatted      = Format-FileSize -SizeInBytes $totalSize
+                        lastwriteTime      = $subdir.lastwriteTime
                         lastwriteFormatted = Format-writeTime -DateTime $subdir.lastwriteTime
                     }
                 }
@@ -256,12 +256,12 @@ begin {
             foreach ($file in $files) {
                 if ($file.Length -ge $minSizeBytes) {
                     $fileItem = [PSCustomObject]@{
-                        Type = "File"
-                        Name = $file.Name
-                        Path = $file.FullName
-                        SizeBytes = $file.Length
-                        SizeFormatted = Format-FileSize -SizeInBytes $file.Length
-                        lastwriteTime = $file.lastwriteTime
+                        Type               = "File"
+                        Name               = $file.Name
+                        Path               = $file.FullName
+                        SizeBytes          = $file.Length
+                        SizeFormatted      = Format-FileSize -SizeInBytes $file.Length
+                        lastwriteTime      = $file.lastwriteTime
                         lastwriteFormatted = Format-writeTime -DateTime $file.lastwriteTime
                     }
                     $results += $fileItem
@@ -480,14 +480,14 @@ Process ID: $PID
         )
         try {
             $overhead = [PSCustomObject]@{
-                MFTSize = 0
-                TotalReservedClusters = 0
+                MFTSize                 = 0
+                TotalReservedClusters   = 0
                 StorageReservedClusters = 0
-                MFTZoneSize = 0
-                BytesPerCluster = 0
-                TotalOverhead = 0
-                EstimationMethod = "Unknown"
-                RawNTFSInfo = @{
+                MFTZoneSize             = 0
+                BytesPerCluster         = 0
+                TotalOverhead           = 0
+                EstimationMethod        = "Unknown"
+                RawNTFSInfo             = @{
                 }
             }
             # Execute fsutil fsinfo ntfsinfo to get comprehensive NTFS information
@@ -558,14 +558,14 @@ Process ID: $PID
             return $overhead
         } catch {
             return [PSCustomObject]@{
-                MFTSize = 0
-                TotalReservedClusters = 0
+                MFTSize                 = 0
+                TotalReservedClusters   = 0
                 StorageReservedClusters = 0
-                MFTZoneSize = 0
-                BytesPerCluster = 0
-                TotalOverhead = 0
-                EstimationMethod = "Error: $($_.Exception.Message)"
-                RawNTFSInfo = @{
+                MFTZoneSize             = 0
+                BytesPerCluster         = 0
+                TotalOverhead           = 0
+                EstimationMethod        = "Error: $($_.Exception.Message)"
+                RawNTFSInfo             = @{
                 }
             }
         }
@@ -591,13 +591,13 @@ Process ID: $PID
         )
         try {
             $vssInfo = [PSCustomObject]@{
-                AllocatedSpace = 0
-                UsedSpace = 0
-                MaxSpace = 0
-                ShadowCopyCount = 0
-                TotalOverhead = 0
+                AllocatedSpace   = 0
+                UsedSpace        = 0
+                MaxSpace         = 0
+                ShadowCopyCount  = 0
+                TotalOverhead    = 0
                 EstimationMethod = "Unknown"
-                RawVSSInfo = @{
+                RawVSSInfo       = @{
                 }
             }
             # Execute vssadmin list shadowstorage to get VSS storage information
@@ -663,13 +663,13 @@ Process ID: $PID
             return $vssInfo
         } catch {
             return [PSCustomObject]@{
-                AllocatedSpace = 0
-                UsedSpace = 0
-                MaxSpace = 0
-                ShadowCopyCount = 0
-                TotalOverhead = 0
+                AllocatedSpace   = 0
+                UsedSpace        = 0
+                MaxSpace         = 0
+                ShadowCopyCount  = 0
+                TotalOverhead    = 0
                 EstimationMethod = "Error: $($_.Exception.Message)"
-                RawVSSInfo = @{
+                RawVSSInfo       = @{
                 }
             }
         }
@@ -694,14 +694,14 @@ Process ID: $PID
         )
         try {
             $systemInfo = [PSCustomObject]@{
-                PageFileSize = 0
-                HibernationFileSize = 0
+                PageFileSize         = 0
+                HibernationFileSize  = 0
                 SystemVolumeInfoSize = 0
-                TempFilesSize = 0
-                RecycleBinSize = 0
-                TotalSystemSize = 0
-                EstimationMethod = "Get-ChildItem with -Force"
-                Details = @{
+                TempFilesSize        = 0
+                RecycleBinSize       = 0
+                TotalSystemSize      = 0
+                EstimationMethod     = "Get-ChildItem with -Force"
+                Details              = @{
                 }
             }
 
@@ -781,14 +781,14 @@ Process ID: $PID
             return $systemInfo
         } catch {
             return [PSCustomObject]@{
-                PageFileSize = 0
-                HibernationFileSize = 0
+                PageFileSize         = 0
+                HibernationFileSize  = 0
                 SystemVolumeInfoSize = 0
-                TempFilesSize = 0
-                RecycleBinSize = 0
-                TotalSystemSize = 0
-                EstimationMethod = "Error: $($_.Exception.Message)"
-                Details = @{
+                TempFilesSize        = 0
+                RecycleBinSize       = 0
+                TotalSystemSize      = 0
+                EstimationMethod     = "Error: $($_.Exception.Message)"
+                Details              = @{
                 }
             }
         }
