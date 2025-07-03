@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-03 21:47:00 UTC
+# Last Updated: 2025-07-03 21:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Fixed PSScriptAnalyzer compliance issues and replaced Write-Host
+# Version: 1.1.1
+# Additional Info: Fixed PSScriptAnalyzer indentation and operator spacing issues
 # =============================================================================
 
 <#
@@ -246,12 +246,12 @@ function Get-LogStatistic {
             }
 
             return @{
-                Name            = $LogName
-                TotalEntries    = $TotalEntries
-                RecentEntries   = $TotalEntries
-                ErrorCount      = $ErrorEntries
-                WarningCount    = $WarningEntries
-                DailyRate       = $DailyRate
+                Name = $LogName
+                TotalEntries = $TotalEntries
+                RecentEntries = $TotalEntries
+                ErrorCount = $ErrorEntries
+                WarningCount = $WarningEntries
+                DailyRate = $DailyRate
                 TopErrorSources = $TopErrors
             }
         }
@@ -290,7 +290,7 @@ function Get-SecurityEvent {
         Sort-Object Count -Descending
 
         return @{
-            FailedLogins   = $FailedLogins
+            FailedLogins = $FailedLogins
             AccountChanges = $AccountChanges
         }
     } catch [System.UnauthorizedAccessException] {
@@ -299,7 +299,7 @@ function Get-SecurityEvent {
     } catch [System.InvalidOperationException] {
         Write-LogMessage "No security events found in specified time range" -Level Warning
         return @{
-            FailedLogins   = @()
+            FailedLogins = @()
             AccountChanges = @()
         }
     } catch {
@@ -330,19 +330,13 @@ function New-HTMLReport {
     <title>Windows Log Analysis Report - $script:SystemName</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
-        # 2c3e50; }
-                h1, h2 { color:
+        h1, h2 { color: #2c3e50; }
         table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-        # ddd; }
-                th, td { padding: 8px; text-align: left; border: 1px solid
-        # f5f5f5; }
-                th { background-color:
-        # e74c3c; }
-                .error { color:
-        # f39c12; }
-                .warning { color:
-        # 27ae60; }
-                .success { color:
+        th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
+        th { background-color: #f5f5f5; }
+        .error { color: #e74c3c; }
+        .warning { color: #f39c12; }
+        .success { color: #27ae60; }
     </style>
 </head>
 <body>
