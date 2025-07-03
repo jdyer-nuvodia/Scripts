@@ -2,10 +2,10 @@
 # Script: Test-NetworkConnectivity.ps1
 # Created: 2025-02-06 21:24:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-26 23:37:00 UTC
+# Last Updated: 2025-07-03 18:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.16.0
-# Additional Info: Added -DetailedOutput parameter for detailed ping response information
+# Version: 2.16.4
+# Additional Info: Filter out disconnected network adapters from configuration display
 # =============================================================================
 
 <#
@@ -55,10 +55,10 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Position=0)]
+    [Parameter(Position = 0)]
     [string]$Target = "8.8.8.8",
 
-    [Parameter(Position=1)]
+    [Parameter(Position = 1)]
     [int]$Count = 0,
     # 0 means continuous
     [Parameter()]
@@ -118,8 +118,7 @@ Size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
 
             # Ensure file is flushed
             [System.IO.File]::WriteAllText($script:logFile, (Get-Content $script:logFile -Raw))
-        }
-        catch {
+        } catch {
             Write-Error "Error writing final statistics: $_"
         }
     }
@@ -222,8 +221,7 @@ function Get-DetailedPingResult {
         if (-not $result.ResponseMessage -and $pingOutput) {
             $result.ResponseMessage = "Request timed out."
         }
-    }
-    catch {
+    } catch {
         $result.Success = $false
         $result.ResponseMessage = "Error executing ping: $_"
     }
@@ -269,8 +267,56 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
     Write-LogMessage -Message "`nNETWORK CONFIGURATION:" -FilePath $script:logFile
     Write-LogMessage -Message "----------------------------------------" -FilePath $script:logFile
 
-    $ipConfig = ipconfig /all
-    Add-Content -Path $script:logFile -Value $ipConfig
+    try {
+        $ipConfig = & ipconfig /all
+        if ($ipConfig) {
+            $filteredConfig = @()
+            $currentAdapter = @()
+            $skipAdapter = $false
+
+            foreach ($line in $ipConfig) {
+                # Check if we're starting a new adapter section
+                if ($line -match "^[A-Za-z].*adapter.*:$") {
+                    # Process previous adapter if we have one
+                    if ($currentAdapter.Count -gt 0) {
+                        if (-not $skipAdapter) {
+                            $filteredConfig += $currentAdapter
+                        }
+                    }
+                    # Start new adapter
+                    $currentAdapter = @($line)
+                    $skipAdapter = $false
+                } elseif ($line -match "Media State.*Media disconnected") {
+                    # Mark this adapter to be skipped
+                    $skipAdapter = $true
+                    $currentAdapter += $line
+                } else {
+                    # Add line to current adapter
+                    $currentAdapter += $line
+                }
+            }
+
+            # Process the last adapter
+            if ($currentAdapter.Count -gt 0 -and -not $skipAdapter) {
+                $filteredConfig += $currentAdapter
+            }
+
+            # Output filtered configuration
+            foreach ($line in $filteredConfig) {
+                Add-Content -Path $script:logFile -Value $line
+                Write-Information -MessageData $line -InformationAction Continue
+            }
+
+            $skippedCount = ($ipConfig.Count - $filteredConfig.Count)
+            Write-Information -MessageData "Network configuration captured successfully ($($filteredConfig.Count) lines, $skippedCount disconnected adapter lines filtered)" -InformationAction Continue
+        } else {
+            Write-LogMessage -Message "No network configuration data returned" -FilePath $script:logFile
+            Write-Information -MessageData "Warning: No network configuration data returned" -InformationAction Continue
+        }
+    } catch {
+        Write-LogMessage -Message "Error getting network configuration: $_" -FilePath $script:logFile
+        Write-Information -MessageData "Error getting network configuration: $_" -InformationAction Continue
+    }
     Write-LogMessage -Message "----------------------------------------`n" -FilePath $script:logFile
 
     # Start ping test
@@ -303,8 +349,7 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
                     Write-Information -MessageData "Detailed ping output:" -InformationAction Continue
                     Write-Information -MessageData $pingResult.DetailedOutput -InformationAction Continue
                 }
-            }
-            else {
+            } else {
                 $result = $pingResult.ResponseMessage
                 Write-LogMessage -Message $result -FilePath $script:logFile -NoConsole
                 Write-Information -MessageData "[$currentTime] $result" -InformationAction Continue
@@ -341,8 +386,7 @@ Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue){"0"}else{$scri
 
             # Small delay between pings
             Start-Sleep -Milliseconds 1000
-        }
-        catch {
+        } catch {
             if ($_.Exception.Message -match "cancelled by the user") {
                 $script:interrupted = $true
                 break
@@ -350,20 +394,17 @@ Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue){"0"}else{$scri
             throw
         }
     }
-}
-catch {
+} catch {
     Write-Error "Error during ping test: $_"
     Write-Information -MessageData "Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
     if ($script:logFile) {
         Write-LogMessage -Message "ERROR: $_" -FilePath $script:logFile
         Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $script:logFile
     }
-}
-finally {
+} finally {
     if ($script:interrupted) {
         Write-FinalStatistic -Interrupted
-    }
-    else {
+    } else {
         Write-FinalStatistic
     }
 }
