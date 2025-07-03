@@ -192,14 +192,57 @@ These prompts ensure consistent adherence to all organizational standards and au
 
 ---
 
-## Output Colors
+## Output Colors and Formatting
 
-| Color     | Usage                  |
-| --------- | ---------------------- |
-| White     | Standard info          |
-| Cyan      | Process updates        |
-| Green     | Success                |
-| Yellow    | Warnings               |
-| Red       | Errors                 |
-| Magenta   | Debug info             |
-| DarkGray  | Less important details |
+| Color     | Usage                  | Implementation Notes               |
+| --------- | ---------------------- | --------------------------------- |
+| White     | Standard info          | Default informational content     |
+| Cyan      | Process updates        | Background operations, scanning   |
+| Green     | Success                | Completed operations, good status |
+| Yellow    | Warnings               | Issues requiring attention        |
+| Red       | Errors                 | Critical issues, failures         |
+| Magenta   | Debug info             | Detailed troubleshooting info     |
+| DarkGray  | Less important details | Secondary information            |
+
+### Color Implementation Requirements:
+- **Always use `Write-ColorOutput` function** instead of `Write-Host` for colored output
+- **Support both PowerShell 5.1 and 7+** using ANSI codes for 7+ and console colors for 5.1
+- **Include proper color reset** to avoid color bleeding
+- **Use consistent color mapping** across all scripts
+- **Log all colored output** to transcript files without color codes
+
+### Color Function Template:
+```powershell
+function Write-ColorOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+    
+    if ($Script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($Script:Colors[$Color] -and $Script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $Script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
+}
+```
+
+### Error Formatting Requirements:
+- **Distinguish system errors from script errors** using clear prefixes like `[SYSTEM ERROR DETECTED]`
+- **Include Event IDs and occurrence counts** for Windows Event Log errors
+- **Use consistent error formatting** across all health reporting scripts
+- **Color-code error severity** (Red for critical, Yellow for warnings)
