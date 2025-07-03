@@ -2,15 +2,15 @@
 # Script: Invoke-PowerShellCodeCleanup.ps1
 # Created: 2025-06-23 15:30
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-27 21:30:00 UTC
+# Last Updated: 2025-07-03 21:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Enhanced regex patterns to exclude false positives from quoted strings containing multiple spaces or ellipses
+# Version: 1.4.0
+# Additional Info: Added script-level ScriptPath parameter to target specific files or use CWD fallback
 # =============================================================================
 
 <#
 .SYNOPSIS
-Performs code quality cleanup and analysis on PowerShell scripts in the current working directory.
+Performs code quality cleanup and analysis on PowerShell scripts.
 
 .DESCRIPTION
 This script provides four main functions for PowerShell code quality management:
@@ -19,16 +19,20 @@ This script provides four main functions for PowerShell code quality management:
 3. Find-PotentialMissingCode: Detects ellipses patterns that may indicate incomplete code blocks
 4. Repair-InlineComment: Automatically fixes inline comment issues by separating them into proper comment lines
 
-The script automatically targets the first .ps1 file found in the current working directory.
+The script can target a specific file via the ScriptPath parameter or automatically target the first .ps1 file found in the current working directory.
 Both functions help maintain consistent code formatting and identify potential parsing issues.
 
 .PARAMETER ScriptPath
-The path to the PowerShell script file to process. If not specified, the script will automatically
+The full path to the PowerShell script file to process. If not specified, the script will automatically
 find the first .ps1 file in the current working directory.
 
 .EXAMPLE
 .\Invoke-PowerShellCodeCleanup.ps1
 Processes the first .ps1 file found in the current directory for whitespace cleanup and newline error detection.
+
+.EXAMPLE
+.\Invoke-PowerShellCodeCleanup.ps1 -ScriptPath "C:\Scripts\MyScript.ps1"
+Processes the specified script file for code quality cleanup and analysis.
 
 .EXAMPLE
 Clear-TrailingWhitespace -ScriptPath "C:\Scripts\MyScript.ps1"
@@ -40,7 +44,10 @@ Automatically fixes inline comment issues by separating them into proper comment
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$ScriptPath
+)
 
 function Clear-TrailingWhitespace {
     <#
@@ -258,6 +265,7 @@ function Repair-InlineComment {
     Fixes inline comments in the first .ps1 file in the current directory
     #>
     [CmdletBinding()]
+    [OutputType([int])]
     param(
         [Parameter(Mandatory = $false)]
         [string]$ScriptPath
@@ -335,26 +343,44 @@ function Repair-InlineComment {
 
 # Main execution block
 if ($MyInvocation.InvocationName -ne '.') {
-    # Get the first .ps1 file in the current working directory
-    $scriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
-
-    if ($scriptPath) {
-        Write-Information -MessageData "Found PowerShell script: $scriptPath" -InformationAction Continue
-
-        # Execute all functions
-        Clear-TrailingWhitespace -ScriptPath $scriptPath
-        $inlineCommentResults = Find-NewlineError -ScriptPath $scriptPath
-        Find-PotentialMissingCode -ScriptPath $scriptPath
-
-        # Automatically fix inline comments if found
-        if ($inlineCommentResults) {
-            Write-Information -MessageData "Inline comments detected. Automatically fixing..." -InformationAction Continue
-            Repair-InlineComment -ScriptPath $scriptPath
-            Write-Information -MessageData "Re-running analysis after fixes..." -InformationAction Continue
-            Find-NewlineError -ScriptPath $scriptPath
+    # Determine the target script path
+    if ($ScriptPath) {
+        # Use the provided script path
+        if (-not (Test-Path -Path $ScriptPath)) {
+            Write-Error -Message "Specified script file not found: $ScriptPath"
+            exit 1
         }
-        Repair-InlineComment -ScriptPath $scriptPath
+
+        if (-not ($ScriptPath -like "*.ps1")) {
+            Write-Error -Message "Specified file is not a PowerShell script (.ps1): $ScriptPath"
+            exit 1
+        }
+
+        $targetScriptPath = $ScriptPath
+        Write-Information -MessageData "Using specified PowerShell script: $targetScriptPath" -InformationAction Continue
     } else {
-        Write-Warning -Message "No PowerShell script files (.ps1) found in the current directory."
+        # Get the first .ps1 file in the current working directory
+        $targetScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+
+        if (-not $targetScriptPath) {
+            Write-Warning -Message "No PowerShell script files (.ps1) found in the current directory."
+            exit 1
+        }
+
+        Write-Information -MessageData "Found PowerShell script in current directory: $targetScriptPath" -InformationAction Continue
     }
+
+    # Execute all functions on the target script
+    Clear-TrailingWhitespace -ScriptPath $targetScriptPath
+    $inlineCommentResults = Find-NewlineError -ScriptPath $targetScriptPath
+    Find-PotentialMissingCode -ScriptPath $targetScriptPath
+
+    # Automatically fix inline comments if found
+    if ($inlineCommentResults) {
+        Write-Information -MessageData "Inline comments detected. Automatically fixing..." -InformationAction Continue
+        Repair-InlineComment -ScriptPath $targetScriptPath
+        Write-Information -MessageData "Re-running analysis after fixes..." -InformationAction Continue
+        Find-NewlineError -ScriptPath $targetScriptPath
+    }
+    Repair-InlineComment -ScriptPath $targetScriptPath
 }
