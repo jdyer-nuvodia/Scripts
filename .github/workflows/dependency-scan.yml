@@ -51,7 +51,7 @@ jobs:
             Write-Output "Successfully installed: $module"
           }
           catch {
-            Write-Error "Failed to install $module: $_"
+            Write-Error "Failed to install ${module}: $_"
             exit 1
           }
         }
