@@ -2,10 +2,10 @@
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-03 00:09:00 UTC
+# Last Updated: 2025-07-02 21:36:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.2
-# Additional Info: Fixed PSScriptAnalyzer compliance by properly passing parameters to functions instead of using script scope
+# Version: 1.5.0
+# Additional Info: Enhanced VM parameter with automatic platform detection, VM-specific performance metrics, and platform-optimized service checks
 # =============================================================================
 
 <#
@@ -114,6 +114,210 @@ function Write-LogMessage {
         "Error" { Write-Error $LogMessage -ErrorAction Continue }
         "Debug" { Write-Debug $LogMessage }
         default { Write-Information $LogMessage -InformationAction Continue }
+    }
+}
+
+function Get-VMPlatform {
+    [CmdletBinding()]
+    param()
+
+    try {
+        $ComputerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        $BIOS = Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop
+
+        # Check if this is a virtual machine
+        $IsVirtual = $false
+        $Platform = "Physical"
+
+        # Check model first
+        if ($ComputerSystem.Model -match "VMware|VirtualBox|Virtual Machine|Xen|KVM") {
+            $IsVirtual = $true
+            $Platform = switch -Regex ($ComputerSystem.Model) {
+                "VMware" { "VMware" }
+                "VirtualBox" { "VirtualBox" }
+                "Virtual Machine" {
+                    if ($ComputerSystem.Manufacturer -match "Microsoft") { "Hyper-V" }
+                    else { "Generic" }
+                }
+                "Xen" { "Xen" }
+                "KVM" { "KVM" }
+                default { "Generic" }
+            }
+        }
+
+        # Check BIOS/manufacturer for additional VM indicators
+        if (-not $IsVirtual) {
+            if ($BIOS.SerialNumber -match "VMware|VirtualBox|Xen" -or
+                $ComputerSystem.Manufacturer -match "VMware|Oracle Corporation|Microsoft Corporation" -and
+                $ComputerSystem.Model -match "Virtual") {
+                $IsVirtual = $true
+                $Platform = "Detected"
+            }
+        }
+
+        return @{
+            IsVirtual    = $IsVirtual
+            Platform     = $Platform
+            Manufacturer = $ComputerSystem.Manufacturer
+            Model        = $ComputerSystem.Model
+        }
+    } catch {
+        return @{
+            IsVirtual    = $false
+            Platform     = "Physical"
+            Manufacturer = $null
+            Model        = $null
+        }
+    }
+}
+
+function Get-VMOptimizedService {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VMPlatform,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$BaseServices
+    )
+
+    $VMServices = $BaseServices.Clone()
+
+    switch ($VMPlatform) {
+        "VMware" {
+            $VMServices += @('VMTools', 'VGAuthService')
+        }
+        "Hyper-V" {
+            $VMServices += @('vmicheartbeat', 'vmickvpexchange', 'vmictimesync')
+        }
+        "VirtualBox" {
+            $VMServices += @('VBoxService')
+        }
+    }
+
+    # Remove services that are less critical in VMs
+    $VMServices = $VMServices | Where-Object { $_ -notin @('wuauserv') }
+
+    return $VMServices
+}
+
+function Get-VMConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VMPlatform
+    )
+
+    Write-LogMessage "Gathering VM configuration details..." -Level "Process"
+
+    try {
+        $ComputerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        $Processor = Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop
+
+        Write-LogMessage "VM Platform: $VMPlatform" -Level "Info"
+        Write-LogMessage "Virtual CPUs: $($ComputerSystem.NumberOfProcessors)" -Level "Info"
+        Write-LogMessage "Virtual CPU Cores: $($Processor.NumberOfCores)" -Level "Info"
+        Write-LogMessage "Virtual Memory: $([math]::Round($ComputerSystem.TotalPhysicalMemory / 1GB, 2))GB" -Level "Info"
+
+        # Check for VM-specific features
+        if ($ComputerSystem.HypervisorPresent) {
+            Write-LogMessage "Nested virtualization detected" -Level "Info"
+        }
+
+    } catch {
+        Write-LogMessage "Error gathering VM configuration: $($_.Exception.Message)" -Level "Error"
+    }
+}
+
+function Get-VMPerformanceMetric {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VMPlatform
+    )
+
+    Write-LogMessage "Checking VM-specific performance metrics..." -Level "Process"
+
+    try {
+        # Check for VM memory ballooning
+        $MemoryCounters = Get-Counter -Counter "\Memory\*" -ErrorAction SilentlyContinue
+        if ($MemoryCounters) {
+            $BalloonedMemory = $MemoryCounters.CounterSamples |
+            Where-Object { $_.Path -like "*Balloon*" }
+            if ($BalloonedMemory) {
+                Write-LogMessage "Memory ballooning detected: $($BalloonedMemory.CookedValue)" -Level "Warning"
+            }
+        }
+
+        # Check for VM-specific disk performance
+        if ($VMPlatform -eq "VMware") {
+            $VMwareTools = Get-Service -Name "VMTools" -ErrorAction SilentlyContinue
+            if ($VMwareTools -and $VMwareTools.Status -eq 'Running') {
+                Write-LogMessage "VMware Tools running - optimized disk performance available" -Level "Success"
+            }
+        }
+
+        # Check for CPU steal time (if available)
+        $ProcessorCounters = Get-Counter -Counter "\Processor Information(_Total)\% Processor Time" -ErrorAction SilentlyContinue
+        if ($ProcessorCounters) {
+            Write-LogMessage "CPU performance counters available for monitoring" -Level "Info"
+        }
+
+    } catch {
+        Write-LogMessage "Error checking VM performance metrics: $($_.Exception.Message)" -Level "Error"
+    }
+}
+
+function Get-VMStorageStatus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VMPlatform,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$IsVM
+    )
+
+    if (-not $IsVM) { return }
+
+    Write-LogMessage "Checking VM storage configuration..." -Level "Process"
+
+    try {
+        # Check for thin provisioning
+        $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+        foreach ($Disk in $Disks) {
+            # VM-specific disk checks
+            $PhysicalDisk = Get-CimInstance -ClassName Win32_DiskDrive |
+            Where-Object { $_.DeviceID -eq $Disk.DeviceID }
+
+            if ($PhysicalDisk -and $PhysicalDisk.Model -match "VMware|Virtual") {
+                Write-LogMessage "Virtual disk detected: $($Disk.DeviceID) - $($PhysicalDisk.Model)" -Level "Info"
+
+                # Check for potential thin provisioning issues
+                if ($Disk.Size -gt 100GB -and ($Disk.FreeSpace / $Disk.Size) -lt 0.15) {
+                    Write-LogMessage "Large virtual disk with low free space - monitor for thin provisioning issues" -Level "Warning"
+                }
+            }
+        }
+
+        # Platform-specific storage checks
+        switch ($VMPlatform) {
+            "VMware" {
+                # Check for VMware snapshot warnings in event logs
+                $SnapshotEvents = Get-WinEvent -FilterHashtable @{
+                    LogName      = 'System'
+                    ProviderName = 'VMware*'
+                    Level        = 3
+                    StartTime    = (Get-Date).AddDays(-7)
+                } -ErrorAction SilentlyContinue
+
+                if ($SnapshotEvents) {
+                    Write-LogMessage "VMware snapshot-related warnings found in last 7 days: $($SnapshotEvents.Count)" -Level "Warning"
+                }
+            }
+        }
+    } catch {
+        Write-LogMessage "Error checking VM storage status: $($_.Exception.Message)" -Level "Error"
     }
 }
 
@@ -226,7 +430,7 @@ function Get-EventLogAnalysis {
                 Sort-Object -Property Count -Descending |
                 Select-Object -First 3
                 foreach ($ErrorItem in $TopErrors) {
-                    $Sample = $Events | Where-Object Id -eq $ErrorItem.Name | Select-Object -First 1
+                    $Sample = $Events | Where-Object Id -EQ $ErrorItem.Name | Select-Object -First 1
                     Write-LogMessage "  Top Error (ID $($ErrorItem.Name)): $($Sample.Message.Split([Environment]::NewLine)[0]) - Count: $($ErrorItem.Count)" -Level "Info"
                 }
             }
@@ -281,8 +485,8 @@ function Get-NetworkStatus {
 
     foreach ($Target in $Targets) {
         try {
-            $Result = Test-Connection -TargetName $Target.Host -Count 1 -ErrorAction Stop
-            $LatencyMs = $Result.Latency
+            $Result = Test-Connection -ComputerName $Target.Host -Count 1 -ErrorAction Stop
+            $LatencyMs = $Result.ResponseTime
             $Status = switch ($LatencyMs) {
                 { $_ -ge 200 } { "Warning" }
                 { $_ -ge 500 } { "Error" }
@@ -291,6 +495,40 @@ function Get-NetworkStatus {
             Write-LogMessage "Network latency to $($Target.Name) ($($Target.Host)): ${LatencyMs}ms" -Level $Status
         } catch {
             Write-LogMessage "Failed to reach $($Target.Name) ($($Target.Host)): $($_.Exception.Message)" -Level "Error"
+        }
+    }
+}
+
+function Get-VMNetworkStatus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$VMPlatform
+    )
+
+    Write-LogMessage "Checking VM network connectivity for $VMPlatform..." -Level "Process"
+
+    # More lenient latency thresholds for VMs
+    $Targets = @(
+        @{ Host = "8.8.8.8"; Name = "Google DNS"; VMThreshold = 300; PhysicalThreshold = 200 },
+        @{ Host = "1.1.1.1"; Name = "Cloudflare DNS"; VMThreshold = 300; PhysicalThreshold = 200 },
+        @{ Host = "www.microsoft.com"; Name = "Microsoft"; VMThreshold = 500; PhysicalThreshold = 300 }
+    )
+
+    foreach ($Target in $Targets) {
+        try {
+            $Result = Test-Connection -ComputerName $Target.Host -Count 3 -ErrorAction Stop
+            $AvgLatency = ($Result | Measure-Object -Property ResponseTime -Average).Average
+
+            $Threshold = $Target.VMThreshold
+            $Status = switch ($AvgLatency) {
+                { $_ -ge ($Threshold * 2) } { "Error" }
+                { $_ -ge $Threshold } { "Warning" }
+                default { "Success" }
+            }
+            Write-LogMessage "Network latency to $($Target.Name): $([math]::Round($AvgLatency, 2))ms (VM threshold: ${Threshold}ms)" -Level $Status
+        } catch {
+            Write-LogMessage "Failed to reach $($Target.Name): $($_.Exception.Message)" -Level "Error"
         }
     }
 }
@@ -370,16 +608,36 @@ try {
     Write-LogMessage "=== System Health Check Started ===" -Level "Process"
     Write-LogMessage "System: $SystemName" -Level "Info"
     Write-LogMessage "Timestamp: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))" -Level "Info"
-    if ($VM) {
-        Write-LogMessage "VM Mode: Enabled - Adjusted thresholds and skipped VM-incompatible checks" -Level "Info"
+
+    # Enhanced VM detection and configuration
+    $VMInfo = Get-VMPlatform
+    $IsVirtualMachine = $VMInfo.IsVirtual -or $VM.IsPresent
+    $VMPlatform = $VMInfo.Platform
+
+    if ($IsVirtualMachine) {
+        Write-LogMessage "Virtual machine detected: $VMPlatform ($($VMInfo.Manufacturer) $($VMInfo.Model))" -Level "Info"
+        Write-LogMessage "VM Mode: Enabled - Platform: $VMPlatform" -Level "Info"
+        Get-VMConfiguration -VMPlatform $VMPlatform
+        $OptimizedServices = Get-VMOptimizedService -VMPlatform $VMPlatform -BaseServices $CriticalServices
+    } else {
+        Write-LogMessage "Physical machine detected" -Level "Info"
+        $OptimizedServices = $CriticalServices
     }
 
-    Get-SystemResourceStatus -IsVM $VM
-    Get-CriticalServicesStatus -Services $CriticalServices
+    Get-SystemResourceStatus -IsVM $IsVirtualMachine
+    Get-CriticalServicesStatus -Services $OptimizedServices
     Get-EventLogAnalysis -Days $DaysToAnalyze
     Get-WindowsUpdateStatus
-    Get-NetworkStatus
-    Get-SecurityStatus -IsVM $VM
+
+    if ($IsVirtualMachine) {
+        Get-VMPerformanceMetric -VMPlatform $VMPlatform
+        Get-VMNetworkStatus -VMPlatform $VMPlatform
+        Get-VMStorageStatus -VMPlatform $VMPlatform -IsVM $IsVirtualMachine
+    } else {
+        Get-NetworkStatus
+    }
+
+    Get-SecurityStatus -IsVM $IsVirtualMachine
 
     Write-LogMessage "=== System Health Check Completed ===" -Level "Process"
     Write-LogMessage "Log file saved to: $LogFile" -Level "Success"
