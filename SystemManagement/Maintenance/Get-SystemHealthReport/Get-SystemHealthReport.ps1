@@ -2,10 +2,10 @@
 # Script: Get-SystemHealthReport.ps1
 # Created: 2025-04-02 20:23:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-02 21:36:00 UTC
+# Last Updated: 2025-07-03 16:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.0
-# Additional Info: Enhanced VM parameter with automatic platform detection, VM-specific performance metrics, and platform-optimized service checks
+# Version: 1.5.1
+# Additional Info: Fixed Write-LogMessage error handling and Test-Connection property compatibility for newer PowerShell versions
 # =============================================================================
 
 <#
@@ -45,12 +45,12 @@
 param(
     [Parameter()]
     [ValidateScript({
-            if (-not (Test-Path $_)) {
+            if (-not [string]::IsNullOrWhiteSpace($_) -and -not (Test-Path -Path $_)) {
                 New-Item -ItemType Directory -Path $_ -Force | Out-Null
             }
             return $true
         })]
-    [string]$ReportPath = $PSScriptRoot,
+    [string]$ReportPath,
 
     [Parameter()]
     [ValidateRange(1, 30)]
@@ -86,6 +86,11 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# Set default ReportPath if not provided
+if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+    $ReportPath = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
+}
+
 # Initialize logging
 $SystemName = $env:COMPUTERNAME
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -104,14 +109,14 @@ function Write-LogMessage {
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
-    Add-Content -Path $LogFile -Value $LogMessage
+    Add-Content -Path $script:LogFile -Value $LogMessage
 
     switch ($Level) {
         "Info" { Write-Information $LogMessage -InformationAction Continue }
         "Process" { Write-Information $LogMessage -InformationAction Continue }
         "Success" { Write-Information $LogMessage -InformationAction Continue }
         "Warning" { Write-Warning $LogMessage }
-        "Error" { Write-Error $LogMessage -ErrorAction Continue }
+        "Error" { Write-Output $LogMessage }
         "Debug" { Write-Debug $LogMessage }
         default { Write-Information $LogMessage -InformationAction Continue }
     }
