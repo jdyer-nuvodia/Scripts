@@ -46,7 +46,7 @@ This repository contains a collection of PowerShell scripts for various system a
 
 - **Security/** - Security and compliance tools
   - **Auditing/** - Security audit scripts
-  - **Compliance/** 
+  - **Compliance/**
     - Get-SecurityConfigurationStatus
   - **Permissions/**
     - NTFS permission management
