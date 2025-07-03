@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 17:27:00 UTC
+# Last Updated: 2025-07-03 21:47:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.9
-# Additional Info: Fixed NoConsole parameter issue and enhanced error handling
+# Version: 1.1.0
+# Additional Info: Fixed PSScriptAnalyzer compliance issues and replaced Write-Host
 # =============================================================================
 
 <#
@@ -54,11 +54,11 @@ param(
 
     [Parameter()]
     [ValidateScript({
-        if (-not (Test-Path $_)) {
-            New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        }
-        return $true
-    })]
+            if (-not (Test-Path $_)) {
+                New-Item -Path $_ -ItemType Directory -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$ReportPath = $PSScriptRoot,
 
     [Parameter()]
@@ -71,9 +71,62 @@ $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $LogFile = Join-Path $ReportPath "LogAnalysis_${SystemName}_${TimeStamp}.log"
 $ReportFile = Join-Path $ReportPath "LogAnalysis_${SystemName}_${TimeStamp}.html"
 
-function Write-Log {
+# Initialize color support
+$Script:UseAnsiColors = ($PSVersionTable.PSVersion.Major -ge 7)
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        White = "`e[37m"
+        Cyan = "`e[36m"
+        Green = "`e[32m"
+        Yellow = "`e[33m"
+        Red = "`e[31m"
+        Magenta = "`e[35m"
+        DarkGray = "`e[90m"
+        Reset = "`e[0m"
+    }
+} else {
+    @{
+        White = "White"
+        Cyan = "Cyan"
+        Green = "Green"
+        Yellow = "Yellow"
+        Red = "Red"
+        Magenta = "Magenta"
+        DarkGray = "DarkGray"
+        Reset = ""
+    }
+}
+
+function Write-ColorOutput {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    if ($Script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($Script:Colors[$Color] -and $Script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $Script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
+}
+
+function Write-LogMessage {
+    param(
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
         [Parameter()]
@@ -81,50 +134,47 @@ function Write-Log {
         [string]$Level = "Info",
 
         [Parameter()]
-        [ConsoleColor]$Color,
-
-        [Parameter()]
         [switch]$NoConsole
     )
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
-    Add-Content -Path $LogFile -Value $LogMessage
+    Add-Content -Path $script:LogFile -Value $LogMessage
 
     if (-not $NoConsole) {
         $ColorToUse = switch ($Level) {
-            "Info"      { "White" }
-            "Process"   { "Cyan" }
-            "Success"   { "Green" }
-            "Warning"   { "Yellow" }
-            "Error"     { "Red" }
-            "Debug"     { "Magenta" }
-            Default     { "DarkGray" }
+            "Info" { "White" }
+            "Process" { "Cyan" }
+            "Success" { "Green" }
+            "Warning" { "Yellow" }
+            "Error" { "Red" }
+            "Debug" { "Magenta" }
+            default { "DarkGray" }
         }
-        Write-Host $Message -ForegroundColor $ColorToUse
+        Write-ColorOutput -Message $Message -Color $ColorToUse
     }
 }
 
 # Check for admin privileges
-function Test-AdminPrivileges {
+function Test-AdminPrivilege {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Get-LogStatistics {
+function Get-LogStatistic {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$LogName
     )
 
     try {
-        $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
+        $StartTime = (Get-Date).AddDays(-$script:DaysToAnalyze)
 
         # First verify the log exists and is accessible
         $LogExists = Get-WinEvent -ListLog $LogName -ErrorAction Stop
         if (-not $LogExists.IsEnabled) {
-            Write-Log "Log '$LogName' exists but is not enabled" -Level Warning
+            Write-LogMessage "Log '$LogName' exists but is not enabled" -Level Warning
             return $null
         }
 
@@ -133,7 +183,7 @@ function Get-LogStatistics {
 
         # Method 1: Direct access with minimal filtering
         try {
-            Write-Log "Attempting direct access to $LogName log..." -Level Process
+            Write-LogMessage "Attempting direct access to $LogName log..." -Level Process
             $Events = Get-WinEvent -LogName $LogName -MaxEvents 1 -ErrorAction Stop
             # If successful, proceed with full query
             $FilterHash = @{
@@ -141,20 +191,19 @@ function Get-LogStatistics {
                 StartTime = $StartTime
             }
             $Events = Get-WinEvent -FilterHashtable $FilterHash -ErrorAction Stop
-        }
-        catch {
-            Write-Log "Direct access failed, trying alternative method for $LogName..." -Level Process
+        } catch {
+            Write-LogMessage "Direct access failed, trying alternative method for $LogName..." -Level Process
 
             # Method 2: Use System.Diagnostics.EventLog
             try {
-                Write-Log "Attempting System.Diagnostics.EventLog access..." -Level Process
+                Write-LogMessage "Attempting System.Diagnostics.EventLog access..." -Level Process
                 $EventLog = New-Object System.Diagnostics.EventLog($LogName)
                 $Events = $EventLog.Entries | Where-Object { $_.TimeGenerated -ge $StartTime }
                 $Events = $Events | ForEach-Object {
                     # Convert to equivalent WinEvent structure
                     [PSCustomObject]@{
                         TimeCreated = $_.TimeGenerated
-                        Level = switch($_.EntryType) {
+                        Level = switch ($_.EntryType) {
                             'Error' { 2 }
                             'Warning' { 3 }
                             default { 4 }
@@ -162,9 +211,8 @@ function Get-LogStatistics {
                         ProviderName = $_.Source
                     }
                 }
-            }
-            catch {
-                Write-Log "Alternative method also failed for $LogName. Error: $_" -Level Warning
+            } catch {
+                Write-LogMessage "Alternative method also failed for $LogName. Error: $_" -Level Warning
                 return $null
             }
         }
@@ -183,8 +231,7 @@ function Get-LogStatistics {
                     try {
                         if ($_.ProviderName) { $_.ProviderName }
                         else { "Unknown Provider" }
-                    }
-                    catch {
+                    } catch {
                         "Unknown Provider"
                     }
                 } |
@@ -192,8 +239,8 @@ function Get-LogStatistics {
                 Select-Object -First 5
 
             # Calculate daily entry rate
-            $DailyRate = if ($DaysToAnalyze -gt 0) {
-                [math]::Round($TotalEntries / $DaysToAnalyze, 2)
+            $DailyRate = if ($script:DaysToAnalyze -gt 0) {
+                [math]::Round($TotalEntries / $script:DaysToAnalyze, 2)
             } else {
                 0
             }
@@ -208,17 +255,16 @@ function Get-LogStatistics {
                 TopErrorSources = $TopErrors
             }
         }
-    }
-    catch {
+    } catch {
         $ErrorMessage = $_.Exception.Message
-        Write-Log "Error processing ${LogName}: ${ErrorMessage}" -Level Error
+        Write-LogMessage "Error processing ${LogName}: ${ErrorMessage}" -Level Error
         return $null
     }
 }
 
-function Get-SecurityEvents {
+function Get-SecurityEvent {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [datetime]$StartTime
     )
 
@@ -228,7 +274,7 @@ function Get-SecurityEvents {
             StartTime = $StartTime
         }
 
-        $SecurityEvents = Get-WinEvent -FilterHashTable $FilterHash -ErrorAction Stop
+        $SecurityEvents = Get-WinEvent -FilterHashtable $FilterHash -ErrorAction Stop
 
         # Analyze login attempts
         $FailedLogins = $SecurityEvents |
@@ -247,29 +293,27 @@ function Get-SecurityEvents {
             FailedLogins = $FailedLogins
             AccountChanges = $AccountChanges
         }
-    }
-    catch [System.UnauthorizedAccessException] {
-        Write-Log "Access denied while analyzing security events. Please run as administrator." -Level Error
+    } catch [System.UnauthorizedAccessException] {
+        Write-LogMessage "Access denied while analyzing security events. Please run as administrator." -Level Error
         return $null
-    }
-    catch [System.InvalidOperationException] {
-        Write-Log "No security events found in specified time range" -Level Warning
+    } catch [System.InvalidOperationException] {
+        Write-LogMessage "No security events found in specified time range" -Level Warning
         return @{
             FailedLogins = @()
             AccountChanges = @()
         }
-    }
-    catch {
-        Write-Log "Error analyzing security events: $_" -Level Error
+    } catch {
+        Write-LogMessage "Error analyzing security events: $_" -Level Error
         return $null
     }
 }
 
 function New-HTMLReport {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [array]$LogStats,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [object]$SecurityStats
     )
 
@@ -278,11 +322,12 @@ function New-HTMLReport {
         throw "No log statistics available for report generation"
     }
 
-    $HTMLHeader = @"
+    if ($PSCmdlet.ShouldProcess($script:ReportFile, "Create HTML Report")) {
+        $HTMLHeader = @"
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Windows Log Analysis Report - $SystemName</title>
+    <title>Windows Log Analysis Report - $script:SystemName</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         # 2c3e50; }
@@ -302,21 +347,21 @@ function New-HTMLReport {
 </head>
 <body>
     <h1>Windows Log Analysis Report</h1>
-    <p>System: $SystemName</p>
+    <p>System: $script:SystemName</p>
     <p>Date: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))</p>
-    <p>Analysis Period: $DaysToAnalyze days</p>
+    <p>Analysis Period: $script:DaysToAnalyze days</p>
 "@
 
-    $HTMLBody = @()
-    foreach ($stat in $LogStats) {
-        if ($null -eq $stat) { continue }
+        $HTMLBody = @()
+        foreach ($stat in $LogStats) {
+            if ($null -eq $stat) { continue }
 
-        $HTMLBody += @"
+            $HTMLBody += @"
     <h2>$($stat.Name) Log Analysis</h2>
     <table>
         <tr><th>Metric</th><th>Value</th></tr>
         <tr><td>Total Entries</td><td>$($stat.TotalEntries)</td></tr>
-        <tr><td>Recent Entries (${DaysToAnalyze}d)</td><td>$($stat.RecentEntries)</td></tr>
+        <tr><td>Recent Entries (${script:DaysToAnalyze}d)</td><td>$($stat.RecentEntries)</td></tr>
         <tr><td>Error Count</td><td>$($stat.ErrorCount)</td></tr>
         <tr><td>Warning Count</td><td>$($stat.WarningCount)</td></tr>
         <tr><td>Daily Entry Rate</td><td>$($stat.DailyRate)</td></tr>
@@ -327,100 +372,100 @@ function New-HTMLReport {
         <tr><th>Source</th><th>Count</th></tr>
 "@
 
-        foreach ($errorSource in $stat.TopErrorSources) {
-            $HTMLBody += "<tr><td>$($errorSource.Name)</td><td>$($errorSource.Count)</td></tr>"
+            foreach ($errorSource in $stat.TopErrorSources) {
+                $HTMLBody += "<tr><td>$($errorSource.Name)</td><td>$($errorSource.Count)</td></tr>"
+            }
+
+            $HTMLBody += "</table>"
         }
 
-        $HTMLBody += "</table>"
-    }
-
-    if ($null -ne $SecurityStats) {
-        $HTMLBody += @"
+        if ($null -ne $SecurityStats) {
+            $HTMLBody += @"
     <h2>Security Analysis</h2>
     <h3>Failed Login Attempts</h3>
     <table>
         <tr><th>Account</th><th>Attempts</th></tr>
 "@
 
-        foreach ($login in $SecurityStats.FailedLogins) {
-            $HTMLBody += "<tr><td>$($login.Name)</td><td>$($login.Count)</td></tr>"
-        }
+            foreach ($login in $SecurityStats.FailedLogins) {
+                $HTMLBody += "<tr><td>$($login.Name)</td><td>$($login.Count)</td></tr>"
+            }
 
-        $HTMLBody += @"
+            $HTMLBody += @"
     </table>
     <h3>Account Modifications</h3>
     <table>
         <tr><th>Event ID</th><th>Count</th><th>Description</th></tr>
 "@
 
-        $EventDescriptions = @{
-            4720 = "Account Created"
-            4722 = "Account Enabled"
-            4725 = "Account Disabled"
-            4726 = "Account Deleted"
+            $EventDescriptions = @{
+                4720 = "Account Created"
+                4722 = "Account Enabled"
+                4725 = "Account Disabled"
+                4726 = "Account Deleted"
+            }
+
+            foreach ($change in $SecurityStats.AccountChanges) {
+                $desc = $EventDescriptions[$change.Name]
+                $HTMLBody += "<tr><td>$($change.Name)</td><td>$($change.Count)</td><td>$desc</td></tr>"
+            }
+
+            $HTMLBody += "</table>"
         }
 
-        foreach ($change in $SecurityStats.AccountChanges) {
-            $desc = $EventDescriptions[$change.Name]
-            $HTMLBody += "<tr><td>$($change.Name)</td><td>$($change.Count)</td><td>$desc</td></tr>"
-        }
-
-        $HTMLBody += "</table>"
-    }
-
-    $HTMLFooter = @"
+        $HTMLFooter = @"
 </body>
 </html>
 "@
 
-    $Report = $HTMLHeader + ($HTMLBody -join "`n") + $HTMLFooter
-    $Report | Out-File -FilePath $ReportFile -Encoding UTF8
+        $Report = $HTMLHeader + ($HTMLBody -join "`n") + $HTMLFooter
+        $Report | Out-File -FilePath $script:ReportFile -Encoding UTF8
+    }
 }
 
 # Main execution
 try {
-    Write-Log "Starting Windows log analysis..." -Level Process
+    Write-LogMessage "Starting Windows log analysis..." -Level Process
 
     # Check for admin privileges
-    if (-not (Test-AdminPrivileges)) {
-        Write-Log "This script requires administrator privileges. Please run as administrator." -Level Error
+    if (-not (Test-AdminPrivilege)) {
+        Write-LogMessage "This script requires administrator privileges. Please run as administrator." -Level Error
         exit 1
     }
 
-    Write-Log "System: $SystemName" -Level Info
-    Write-Log "Analysis period: $DaysToAnalyze days" -Level Info
+    Write-LogMessage "System: $SystemName" -Level Info
+    Write-LogMessage "Analysis period: $DaysToAnalyze days" -Level Info
 
     $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
     $LogStatistics = @()
     $hasValidData = $false
 
     foreach ($LogName in $LogNames) {
-        Write-Log "Analyzing $LogName log..." -Level Process
-        $Stats = Get-LogStatistics -LogName $LogName
+        Write-LogMessage "Analyzing $LogName log..." -Level Process
+        $Stats = Get-LogStatistic -LogName $LogName
         if ($null -ne $Stats) {
             $LogStatistics += $Stats
             $hasValidData = $true
-            Write-Log "Completed analysis of $LogName log" -Level Success
+            Write-LogMessage "Completed analysis of $LogName log" -Level Success
         }
     }
 
-    Write-Log "Analyzing security events..." -Level Process
-    $SecurityStats = Get-SecurityEvents -StartTime $StartTime
+    Write-LogMessage "Analyzing security events..." -Level Process
+    $SecurityStats = Get-SecurityEvent -StartTime $StartTime
 
     if (-not $hasValidData) {
-        Write-Log "No valid log data could be collected. Please check permissions and try again." -Level Error
+        Write-LogMessage "No valid log data could be collected. Please check permissions and try again." -Level Error
         exit 1
     }
 
-    Write-Log "Generating HTML report..." -Level Process
+    Write-LogMessage "Generating HTML report..." -Level Process
     New-HTMLReport -LogStats $LogStatistics -SecurityStats $SecurityStats
 
-    Write-Log "Analysis completed successfully" -Level Success
-    Write-Log "Report saved to: $ReportFile" -Level Success
-    Write-Log "Log file saved to: $LogFile" -Level Success
-}
-catch {
-    Write-Log "Script execution failed: $($_.Exception.Message)" -Level Error
-    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level Debug
+    Write-LogMessage "Analysis completed successfully" -Level Success
+    Write-LogMessage "Report saved to: $ReportFile" -Level Success
+    Write-LogMessage "Log file saved to: $LogFile" -Level Success
+} catch {
+    Write-LogMessage "Script execution failed: $($_.Exception.Message)" -Level Error
+    Write-LogMessage "Stack trace: $($_.ScriptStackTrace)" -Level Debug
     exit 1
 }
