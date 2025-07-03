@@ -13,6 +13,8 @@
 [Tt]emp/
 [Oo]utput/
 .vscode/
+# Exception for PSScriptAnalyzer settings (needed for GitHub Actions)
+!.vscode/PSScriptAnalyzerSettings.psd1
 .vs/
 
 # PowerShell-specific files
@@ -36,9 +38,6 @@
 
 # .env files
 *.env
-
-# Exception for PSScriptAnalyzer settings (needed for GitHub Actions)
-!.vscode/PSScriptAnalyzerSettings.psd1
 
 # Ignore everything in Development\Git\Generate-GitHistory directory
 Development/Git/Generate-GitHistory
