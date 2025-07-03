@@ -91,10 +91,81 @@ if ([string]::IsNullOrWhiteSpace($ReportPath)) {
     $ReportPath = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
 }
 
+# Color system for both PowerShell 5.1 and 7+
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $Script:Colors = @{
+        Reset = "`e[0m"
+        White = "`e[37m"
+        Cyan = "`e[36m"
+        Green = "`e[32m"
+        Yellow = "`e[33m"
+        Red = "`e[31m"
+        Magenta = "`e[35m"
+        DarkGray = "`e[90m"
+        Bold = "`e[1m"
+    }
+    $Script:UseAnsiColors = $true
+} else {
+    # PowerShell 5.1 - Use console color mapping
+    $Script:Colors = @{
+        Reset = ""
+        White = "White"
+        Cyan = "Cyan"
+        Green = "Green"
+        Yellow = "Yellow"
+        Red = "Red"
+        Magenta = "Magenta"
+        DarkGray = "DarkGray"
+        Bold = ""
+    }
+    $Script:UseAnsiColors = $false
+}
+
 # Initialize logging
 $SystemName = $env:COMPUTERNAME
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $LogFile = Join-Path $ReportPath "SystemHealth_${SystemName}_${Timestamp}.log"
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Writes colored output that works in both PowerShell 5.1 and 7+ without using Write-Host.
+    .DESCRIPTION
+    Uses ANSI escape codes for PowerShell 7+ and console color changes for PowerShell 5.1.
+    This function complies with copilot-instructions.md by using Write-Output instead of Write-Host.
+    .PARAMETER Message
+    The message to write with color.
+    .PARAMETER Color
+    The color to use (White, Cyan, Green, Yellow, Red, Magenta, DarkGray).
+    .EXAMPLE
+    Write-ColorOutput -Message "Success!" -Color "Green"
+    Writes "Success!" in green color.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    if ($Script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($Script:Colors[$Color] -and $Script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $Script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
+}
 
 function Write-LogMessage {
     [CmdletBinding()]
@@ -111,19 +182,60 @@ function Write-LogMessage {
     $LogMessage = "[$TimeStamp] [$Level] $Message"
     Add-Content -Path $script:LogFile -Value $LogMessage
 
-    switch ($Level) {
-        "Info" { Write-Information $LogMessage -InformationAction Continue }
-        "Process" { Write-Information $LogMessage -InformationAction Continue }
-        "Success" { Write-Information $LogMessage -InformationAction Continue }
-        "Warning" { Write-Warning $LogMessage }
-        "Error" { Write-Output $LogMessage }
-        "Debug" { Write-Debug $LogMessage }
-        default { Write-Information $LogMessage -InformationAction Continue }
+    # Color mapping for different message levels
+    $colorMap = @{
+        "Info" = "White"
+        "Process" = "Cyan"
+        "Success" = "Green"
+        "Warning" = "Yellow"
+        "Error" = "Red"
+        "Debug" = "Magenta"
     }
+
+    $color = if ($colorMap.ContainsKey($Level)) { $colorMap[$Level] } else { "White" }
+    Write-ColorOutput -Message $LogMessage -Color $color
+}
+
+function Write-SystemError {
+    <#
+    .SYNOPSIS
+    Writes system errors in a clearly formatted way that distinguishes them from script errors.
+    .PARAMETER EventID
+    The Windows Event ID.
+    .PARAMETER Message
+    The error message.
+    .PARAMETER Count
+    The number of occurrences.
+    .PARAMETER Type
+    The type of error (System, Application, Security).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$EventID,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [Parameter(Mandatory = $true)]
+        [int]$Count,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Type
+    )
+
+    $errorPrefix = "SYSTEM ERROR DETECTED"
+    $formattedMessage = "[$errorPrefix] Event ID $EventID ($Type): $Message - Occurrences: $Count"
+    Write-ColorOutput -Message $formattedMessage -Color "Red"
+
+    # Also log to file
+    $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
+    $LogMessage = "[$TimeStamp] [SYSTEM_ERROR] Event ID $EventID ($Type): $Message - Count: $Count"
+    Add-Content -Path $script:LogFile -Value $LogMessage
 }
 
 function Get-VMPlatform {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param()
 
     try {
@@ -161,17 +273,17 @@ function Get-VMPlatform {
         }
 
         return @{
-            IsVirtual    = $IsVirtual
-            Platform     = $Platform
+            IsVirtual = $IsVirtual
+            Platform = $Platform
             Manufacturer = $ComputerSystem.Manufacturer
-            Model        = $ComputerSystem.Model
+            Model = $ComputerSystem.Model
         }
     } catch {
         return @{
-            IsVirtual    = $false
-            Platform     = "Physical"
+            IsVirtual = $false
+            Platform = "Physical"
             Manufacturer = $null
-            Model        = $null
+            Model = $null
         }
     }
 }
@@ -248,7 +360,7 @@ function Get-VMPerformanceMetric {
         $MemoryCounters = Get-Counter -Counter "\Memory\*" -ErrorAction SilentlyContinue
         if ($MemoryCounters) {
             $BalloonedMemory = $MemoryCounters.CounterSamples |
-            Where-Object { $_.Path -like "*Balloon*" }
+                Where-Object { $_.Path -like "*Balloon*" }
             if ($BalloonedMemory) {
                 Write-LogMessage "Memory ballooning detected: $($BalloonedMemory.CookedValue)" -Level "Warning"
             }
@@ -291,8 +403,7 @@ function Get-VMStorageStatus {
         # Check for thin provisioning
         $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
         foreach ($Disk in $Disks) {
-            # VM-specific disk checks
-            $PhysicalDisk = Get-CimInstance -ClassName Win32_DiskDrive |
+            # VM-specific disk checks            $PhysicalDisk = Get-CimInstance -ClassName Win32_DiskDrive |
             Where-Object { $_.DeviceID -eq $Disk.DeviceID }
 
             if ($PhysicalDisk -and $PhysicalDisk.Model -match "VMware|Virtual") {
@@ -310,10 +421,10 @@ function Get-VMStorageStatus {
             "VMware" {
                 # Check for VMware snapshot warnings in event logs
                 $SnapshotEvents = Get-WinEvent -FilterHashtable @{
-                    LogName      = 'System'
+                    LogName = 'System'
                     ProviderName = 'VMware*'
-                    Level        = 3
-                    StartTime    = (Get-Date).AddDays(-7)
+                    Level = 3
+                    StartTime = (Get-Date).AddDays(-7)
                 } -ErrorAction SilentlyContinue
 
                 if ($SnapshotEvents) {
@@ -421,8 +532,8 @@ function Get-EventLogAnalysis {
     foreach ($EventType in $CriticalEvents) {
         try {
             $Events = @(Get-WinEvent -FilterHashtable @{
-                    LogName   = $EventType.Log
-                    Level     = $EventType.Level
+                    LogName = $EventType.Log
+                    Level = $EventType.Level
                     StartTime = $StartTime
                 } -ErrorAction SilentlyContinue)
 
@@ -432,11 +543,11 @@ function Get-EventLogAnalysis {
 
             if ($Count -gt 0) {
                 $TopErrors = $Events | Group-Object -Property Id |
-                Sort-Object -Property Count -Descending |
-                Select-Object -First 3
+                    Sort-Object -Property Count -Descending |
+                    Select-Object -First 3
                 foreach ($ErrorItem in $TopErrors) {
-                    $Sample = $Events | Where-Object Id -EQ $ErrorItem.Name | Select-Object -First 1
-                    Write-LogMessage "  Top Error (ID $($ErrorItem.Name)): $($Sample.Message.Split([Environment]::NewLine)[0]) - Count: $($ErrorItem.Count)" -Level "Info"
+                    $Sample = $Events | Where-Object { $_.Id -eq $ErrorItem.Name } | Select-Object -First 1
+                    Write-SystemError -EventID $ErrorItem.Name -Message $Sample.Message.Split([Environment]::NewLine)[0] -Count $ErrorItem.Count -Type $EventType.Name
                 }
             }
         } catch {
@@ -491,7 +602,8 @@ function Get-NetworkStatus {
     foreach ($Target in $Targets) {
         try {
             $Result = Test-Connection -ComputerName $Target.Host -Count 1 -ErrorAction Stop
-            $LatencyMs = $Result.ResponseTime
+            # Handle different PowerShell versions - newer versions use Latency property
+            $LatencyMs = if ($Result.Latency) { $Result.Latency } else { $Result.ResponseTime }
             $Status = switch ($LatencyMs) {
                 { $_ -ge 200 } { "Warning" }
                 { $_ -ge 500 } { "Error" }
@@ -523,7 +635,12 @@ function Get-VMNetworkStatus {
     foreach ($Target in $Targets) {
         try {
             $Result = Test-Connection -ComputerName $Target.Host -Count 3 -ErrorAction Stop
-            $AvgLatency = ($Result | Measure-Object -Property ResponseTime -Average).Average
+            # Handle different PowerShell versions - newer versions use Latency property
+            $AvgLatency = if ($Result[0].Latency) {
+                ($Result | Measure-Object -Property Latency -Average).Average
+            } else {
+                ($Result | Measure-Object -Property ResponseTime -Average).Average
+            }
 
             $Threshold = $Target.VMThreshold
             $Status = switch ($AvgLatency) {
@@ -549,19 +666,32 @@ function Get-SecurityStatus {
 
     try {
         # Windows Defender Status
-        $DefenderStatus = Get-MpComputerStatus -ErrorAction Stop
-        $Status = if ($DefenderStatus.AntivirusEnabled) { "Success" } else { "Error" }
-        Write-LogMessage "Windows Defender Status: $($DefenderStatus.AntivirusEnabled)" -Level $Status
+        try {
+            $DefenderStatus = Get-MpComputerStatus -ErrorAction Stop
+            $Status = if ($DefenderStatus.AntivirusEnabled) { "Success" } else { "Error" }
+            Write-LogMessage "Windows Defender Status: $($DefenderStatus.AntivirusEnabled)" -Level $Status
 
-        if ($DefenderStatus.AntivirusEnabled) {
-            Write-LogMessage "  Last Scan: $($DefenderStatus.LastFullScanTime)" -Level "Info"
-            Write-LogMessage "  Definitions: $($DefenderStatus.AntivirusSignatureLastUpdated)" -Level "Info"
+            if ($DefenderStatus.AntivirusEnabled) {
+                Write-LogMessage "  Last Scan: $($DefenderStatus.LastFullScanTime)" -Level "Info"
+                Write-LogMessage "  Definitions: $($DefenderStatus.AntivirusSignatureLastUpdated)" -Level "Info"
 
-            if ($DefenderStatus.LastFullScanTime -lt (Get-Date).AddDays(-7)) {
-                Write-LogMessage "  Warning: Last full scan was more than 7 days ago" -Level "Warning"
+                if ($DefenderStatus.LastFullScanTime -lt (Get-Date).AddDays(-7)) {
+                    Write-LogMessage "  Warning: Last full scan was more than 7 days ago" -Level "Warning"
+                }
+                if ($DefenderStatus.AntivirusSignatureLastUpdated -lt (Get-Date).AddDays(-3)) {
+                    Write-LogMessage "  Warning: Virus definitions are more than 3 days old" -Level "Warning"
+                }
             }
-            if ($DefenderStatus.AntivirusSignatureLastUpdated -lt (Get-Date).AddDays(-3)) {
-                Write-LogMessage "  Warning: Virus definitions are more than 3 days old" -Level "Warning"
+        } catch {
+            Write-LogMessage "Windows Defender module not available or accessible: $($_.Exception.Message)" -Level "Warning"
+
+            # Alternative check using service status
+            $DefenderService = Get-Service -Name "WinDefend" -ErrorAction SilentlyContinue
+            if ($DefenderService) {
+                $Status = if ($DefenderService.Status -eq 'Running') { "Success" } else { "Error" }
+                Write-LogMessage "Windows Defender Service Status: $($DefenderService.Status)" -Level $Status
+            } else {
+                Write-LogMessage "Windows Defender service not found" -Level "Error"
             }
         }
 
@@ -610,6 +740,8 @@ function Get-SecurityStatus {
 
 # Main execution
 try {
+    Write-ColorOutput -Message "System Health Check v1.5.1" -Color "Green"
+    Write-ColorOutput -Message "==============================" -Color "Green"
     Write-LogMessage "=== System Health Check Started ===" -Level "Process"
     Write-LogMessage "System: $SystemName" -Level "Info"
     Write-LogMessage "Timestamp: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC'))" -Level "Info"
