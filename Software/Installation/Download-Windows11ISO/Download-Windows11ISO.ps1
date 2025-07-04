@@ -2,10 +2,10 @@
 # Script: Download-Windows11ISO.ps1
 # Created: 2025-05-14 18:31:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-14 20:15:00 UTC
+# Last Updated: 2025-07-04 07:51:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.3
-# Additional Info: Downloads Windows 11 24H2 ISO from Microsoft's official site with optimized download performance (fixed PSScriptAnalyzer issues)
+# Version: 1.2.0
+# Additional Info: Implemented Write-ColorOutput function for PSScriptAnalyzer compliance and enhanced color output support
 # =============================================================================
 
 <#
@@ -61,9 +61,68 @@ $bufferSize = 16MB
 # Set to $true to skip verification of existing files (improves speed but reduces security)
 $skipHashVerificationIfExists = $false
 
+# Color output configuration
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+
+# Color mappings for different PowerShell versions
+if ($Script:UseAnsiColors) {
+    # PowerShell 7+ ANSI escape codes
+    $Script:Colors = @{
+        White    = "`e[37m"
+        Cyan     = "`e[36m"
+        Green    = "`e[32m"
+        Yellow   = "`e[33m"
+        Red      = "`e[31m"
+        Magenta  = "`e[35m"
+        DarkGray = "`e[90m"
+        Reset    = "`e[0m"
+    }
+} else {
+    # PowerShell 5.1 console colors
+    $Script:Colors = @{
+        White    = "White"
+        Cyan     = "Cyan"
+        Green    = "Green"
+        Yellow   = "Yellow"
+        Red      = "Red"
+        Magenta  = "Magenta"
+        DarkGray = "DarkGray"
+        Reset    = ""
+    }
+}
+
+# Function to write colored output that works across PowerShell versions
+function Write-ColorOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    if ($Script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($Script:Colors[$Color] -and $Script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $Script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
+}
+
 # Function to log messages
-function Write-Log {
-    param (        [Parameter(Mandatory = $true)]
+function Write-LogMessage {
+    param (
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
         [Parameter(Mandatory = $false)]
@@ -76,13 +135,13 @@ function Write-Log {
 
     # Output to console with appropriate color
     switch ($Level) {
-        "INFO"    { Write-Host $logMessage -ForegroundColor White }
-        "WARNING" { Write-Host $logMessage -ForegroundColor Yellow }
-        "ERROR"   { Write-Host $logMessage -ForegroundColor Red }
-        "SUCCESS" { Write-Host $logMessage -ForegroundColor Green }
-        "DEBUG"   { Write-Host $logMessage -ForegroundColor Magenta }
-        "PROCESS" { Write-Host $logMessage -ForegroundColor Cyan }
-        default   { Write-Host $logMessage }
+        "INFO" { Write-ColorOutput -Message $logMessage -Color "White" }
+        "WARNING" { Write-ColorOutput -Message $logMessage -Color "Yellow" }
+        "ERROR" { Write-ColorOutput -Message $logMessage -Color "Red" }
+        "SUCCESS" { Write-ColorOutput -Message $logMessage -Color "Green" }
+        "DEBUG" { Write-ColorOutput -Message $logMessage -Color "Magenta" }
+        "PROCESS" { Write-ColorOutput -Message $logMessage -Color "Cyan" }
+        default { Write-ColorOutput -Message $logMessage -Color "White" }
     }
 
     # Write to log file
@@ -99,17 +158,16 @@ function Test-FileHash {
         [string]$ExpectedHash
     )
 
-    Write-Log -Message "Verifying file integrity..." -Level "PROCESS"
+    Write-LogMessage -Message "Verifying file integrity..." -Level "PROCESS"
     $fileHash = Get-FileHash -Path $FilePath -Algorithm SHA256
 
     if ($fileHash.Hash -eq $ExpectedHash) {
-        Write-Log -Message "File verification successful. Hash matches expected value." -Level "SUCCESS"
+        Write-LogMessage -Message "File verification successful. Hash matches expected value." -Level "SUCCESS"
         return $true
-    }
-    else {
-        Write-Log -Message "File verification failed! Hash does not match expected value." -Level "ERROR"
-        Write-Log -Message "Expected: $ExpectedHash" -Level "DEBUG"
-        Write-Log -Message "Actual: $($fileHash.Hash)" -Level "DEBUG"
+    } else {
+        Write-LogMessage -Message "File verification failed! Hash does not match expected value." -Level "ERROR"
+        Write-LogMessage -Message "Expected: $ExpectedHash" -Level "DEBUG"
+        Write-LogMessage -Message "Actual: $($fileHash.Hash)" -Level "DEBUG"
         return $false
     }
 }
@@ -118,35 +176,34 @@ function Test-FileHash {
 try {
     # Create destination folder if it doesn't exist
     if (-not (Test-Path -Path $destinationFolder)) {
-        Write-Log -Message "Creating destination folder: $destinationFolder" -Level "PROCESS"
+        Write-LogMessage -Message "Creating destination folder: $destinationFolder" -Level "PROCESS"
         New-Item -Path $destinationFolder -ItemType Directory -Force | Out-Null
     }
 
     # Check if file already exists
     if (Test-Path -Path $destinationPath) {
-        Write-Log -Message "ISO file already exists at: $destinationPath" -Level "WARNING"
+        Write-LogMessage -Message "ISO file already exists at: $destinationPath" -Level "WARNING"
 
         # Skip hash verification if configured (faster but less secure)
         if ($skipHashVerificationIfExists) {
-            Write-Log -Message "Skipping verification of existing file due to configuration." -Level "WARNING"
-            Write-Log -Message "Using existing ISO file." -Level "SUCCESS"
+            Write-LogMessage -Message "Skipping verification of existing file due to configuration." -Level "WARNING"
+            Write-LogMessage -Message "Using existing ISO file." -Level "SUCCESS"
             exit 0
-        }
-        else {
-            Write-Log -Message "Verifying existing file..." -Level "PROCESS"
+        } else {
+            Write-LogMessage -Message "Verifying existing file..." -Level "PROCESS"
 
             if (Test-FileHash -FilePath $destinationPath -ExpectedHash $expectedHash) {
-                Write-Log -Message "Existing file is valid. No need to download again." -Level "SUCCESS"
+                Write-LogMessage -Message "Existing file is valid. No need to download again." -Level "SUCCESS"
                 exit 0
-            }
-            else {
-                Write-Log -Message "Existing file is invalid. Will download a fresh copy." -Level "WARNING"
+            } else {
+                Write-LogMessage -Message "Existing file is invalid. Will download a fresh copy." -Level "WARNING"
                 Remove-Item -Path $destinationPath -Force
             }
         }
     }
-      # Configure optimal download settings
-    Write-Log -Message "Initializing optimized secure download..." -Level "PROCESS"
+
+    # Configure optimal download settings
+    Write-LogMessage -Message "Initializing optimized secure download..." -Level "PROCESS"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
     # Configure ServicePoint for optimized connections
@@ -154,14 +211,14 @@ try {
     $servicePoint.ConnectionLimit = 10 * $maxConcurrentThreads
     $servicePoint.Expect100Continue = $false
 
-    Write-Log -Message "Optimized connection settings: ConnectionLimit=$($servicePoint.ConnectionLimit), Threads=$maxConcurrentThreads" -Level "DEBUG"
+    Write-LogMessage -Message "Optimized connection settings: ConnectionLimit=$($servicePoint.ConnectionLimit), Threads=$maxConcurrentThreads" -Level "DEBUG"
 
     # Use HttpClient instead of WebClient for better performance (available in PowerShell 5.1)
     $handler = New-Object System.Net.Http.HttpClientHandler
     $handler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
     $client = New-Object System.Net.Http.HttpClient($handler)
     # 2-hour timeout
-        $client.Timeout = [System.TimeSpan]::FromMinutes(120)
+    $client.Timeout = [System.TimeSpan]::FromMinutes(120)
     $client.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate")
     $client.DefaultRequestHeaders.Add("Keep-Alive", "true")
 
@@ -172,14 +229,14 @@ try {
     $fileStream = New-Object System.IO.FileStream($destinationPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None, $bufferSize, [System.IO.FileOptions]::SequentialScan)
 
     # Start download
-    Write-Log -Message "Beginning optimized download of Windows 11 24H2 ISO from Microsoft's official site..." -Level "PROCESS"
-    Write-Log -Message "Destination: $destinationPath" -Level "INFO"
-    Write-Log -Message "Using buffer size: $($bufferSize / 1MB) MB, Max threads: $maxConcurrentThreads" -Level "DEBUG"
+    Write-LogMessage -Message "Beginning optimized download of Windows 11 24H2 ISO from Microsoft's official site..." -Level "PROCESS"
+    Write-LogMessage -Message "Destination: $destinationPath" -Level "INFO"
+    Write-LogMessage -Message "Using buffer size: $($bufferSize / 1MB) MB, Max threads: $maxConcurrentThreads" -Level "DEBUG"
 
     # Prepare progress tracking
     $lastProgressUpdate = Get-Date
     # Update progress at most once per second
-        $updateFrequency = [TimeSpan]::FromSeconds(1)
+    $updateFrequency = [TimeSpan]::FromSeconds(1)
 
     try {
         # Begin async download
@@ -187,7 +244,7 @@ try {
         $response.Wait()
 
         if (!$response.Result.IsSuccessStatusCode) {
-            Write-Log -Message "Download failed with status: $($response.Result.StatusCode)" -Level "ERROR"
+            Write-LogMessage -Message "Download failed with status: $($response.Result.StatusCode)" -Level "ERROR"
             throw "Failed to download file: HTTP status $($response.Result.StatusCode)"
         }
 
@@ -229,17 +286,15 @@ try {
         } while ($bytesRead -gt 0)
 
         Write-Progress -Activity "Downloading Windows 11 24H2 ISO" -Completed
-          $downloadTime = $downloadStopwatch.Elapsed
+        $downloadTime = $downloadStopwatch.Elapsed
         $averageSpeed = [Math]::Round($totalBytesRead / $downloadStopwatch.Elapsed.TotalSeconds / 1MB, 2)
 
-        Write-Log -Message "Download completed successfully in $($downloadTime.ToString())" -Level "SUCCESS"
-        Write-Log -Message "Downloaded $([Math]::Round($totalBytesRead / 1MB, 2)) MB at $averageSpeed MB/s" -Level "SUCCESS"
-    }
-    catch {
-        Write-Log -Message "Download failed: $($_.Exception.Message)" -Level "ERROR"
+        Write-LogMessage -Message "Download completed successfully in $($downloadTime.ToString())" -Level "SUCCESS"
+        Write-LogMessage -Message "Downloaded $([Math]::Round($totalBytesRead / 1MB, 2)) MB at $averageSpeed MB/s" -Level "SUCCESS"
+    } catch {
+        Write-LogMessage -Message "Download failed: $($_.Exception.Message)" -Level "ERROR"
         throw
-    }
-    finally {
+    } finally {
         # Clean up resources
         if ($contentStream) { $contentStream.Dispose() }
         if ($fileStream) { $fileStream.Dispose() }
@@ -252,26 +307,22 @@ try {
     # Verify downloaded file
     if (Test-Path -Path $destinationPath) {
         $fileSize = (Get-Item -Path $destinationPath).Length / 1GB
-        Write-Log -Message "Download completed. File size: $([Math]::Round($fileSize, 2)) GB" -Level "SUCCESS"
+        Write-LogMessage -Message "Download completed. File size: $([Math]::Round($fileSize, 2)) GB" -Level "SUCCESS"
 
         if (Test-FileHash -FilePath $destinationPath -ExpectedHash $expectedHash) {
-            Write-Log -Message "Windows 11 24H2 ISO has been successfully downloaded and verified." -Level "SUCCESS"
-            Write-Log -Message "ISO is available at: $destinationPath" -Level "SUCCESS"
+            Write-LogMessage -Message "Windows 11 24H2 ISO has been successfully downloaded and verified." -Level "SUCCESS"
+            Write-LogMessage -Message "ISO is available at: $destinationPath" -Level "SUCCESS"
+        } else {
+            Write-LogMessage -Message "The downloaded file failed verification and may be corrupted." -Level "ERROR"
         }
-        else {
-            Write-Log -Message "The downloaded file failed verification and may be corrupted." -Level "ERROR"
-        }
+    } else {
+        Write-LogMessage -Message "Failed to download the Windows 11 24H2 ISO." -Level "ERROR"
     }
-    else {
-        Write-Log -Message "Failed to download the Windows 11 24H2 ISO." -Level "ERROR"
-    }
-}
-catch {
-    Write-Log -Message "An error occurred: $($_.Exception.Message)" -Level "ERROR"
-    Write-Log -Message "Stack trace: $($_.ScriptStackTrace)" -Level "DEBUG"
+} catch {
+    Write-LogMessage -Message "An error occurred: $($_.Exception.Message)" -Level "ERROR"
+    Write-LogMessage -Message "Stack trace: $($_.ScriptStackTrace)" -Level "DEBUG"
     exit 1
-}
-finally {
+} finally {
     # Clean up resources was handled in the download section
-    Write-Log -Message "Script execution completed." -Level "INFO"
+    Write-LogMessage -Message "Script execution completed." -Level "INFO"
 }
