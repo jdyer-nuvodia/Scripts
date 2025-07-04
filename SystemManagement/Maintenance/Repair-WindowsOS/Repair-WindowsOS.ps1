@@ -2,10 +2,10 @@
 # Script: Repair-WindowsOS.ps1
 # Created: 2025-02-06 00:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-11 23:57:00 UTC
+# Last Updated: 2025-07-04 07:13:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.3
-# Additional Info: Fixed global variable scoping and removed redundant declarations
+# Version: 1.1.4
+# Additional Info: Fixed DISM exit code logic and process monitoring to correctly detect successful operations
 # =============================================================================
 
 <#
@@ -50,16 +50,78 @@ $logFile = Join-Path $scriptPath "$env:COMPUTERNAME`_WindowsRepair_$(Get-Date -F
 $script:repairsMade = $false
 $script:restartNeeded = $false
 
+# Color configuration for cross-platform compatibility
+$script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$script:Colors = if ($script:UseAnsiColors) {
+    @{
+        White  = "`e[97m"
+        Cyan   = "`e[96m"
+        Green  = "`e[92m"
+        Yellow = "`e[93m"
+        Red    = "`e[91m"
+        Gray   = "`e[90m"
+        Reset  = "`e[0m"
+    }
+} else {
+    @{
+        White  = "White"
+        Cyan   = "Cyan"
+        Green  = "Green"
+        Yellow = "Yellow"
+        Red    = "Red"
+        Gray   = "DarkGray"
+        Reset  = ""
+    }
+}
+
+# Function to write colored output compatible with both PowerShell 5.1 and 7+
+function Write-ColorOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White",
+        [Parameter(Mandatory = $false)]
+        [switch]$NoNewLine
+    )
+
+    if ($script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $script:Colors[$Color]
+        $resetCode = $script:Colors.Reset
+        if ($NoNewLine) {
+            Write-Output "${colorCode}${Message}${resetCode}" -NoNewline
+        } else {
+            Write-Output "${colorCode}${Message}${resetCode}"
+        }
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($script:Colors[$Color] -and $script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $script:Colors[$Color]
+            }
+            if ($NoNewLine) {
+                Write-Output $Message -NoNewline
+            } else {
+                Write-Output $Message
+            }
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
+}
+
 # Function to write formatted log entries
 function Write-RepairLog {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [string]$Color = "White",
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [switch]$NoNewLine
     )
 
@@ -68,9 +130,9 @@ function Write-RepairLog {
 
     # Write to console with color
     if ($NoNewLine) {
-        Write-Host $logEntry -ForegroundColor $Color -NoNewline
+        Write-ColorOutput -Message $logEntry -Color $Color -NoNewLine
     } else {
-        Write-Host $logEntry -ForegroundColor $Color
+        Write-ColorOutput -Message $logEntry -Color $Color
     }
 
     # Write to log file
@@ -132,12 +194,10 @@ Shell.ShellExecute "cmd.exe", "/c " & cmd, "", "runas", 1
         } else {
             Write-RepairLog "No significant disk issues detected." -Color Green
         }
-    }
-    catch {
+    } catch {
         Write-RepairLog "Error during disk check: $_" -Color Red
         throw
-    }
-    finally {
+    } finally {
         Remove-Item "$env:TEMP\fsutil.txt" -Force -ErrorAction SilentlyContinue
     }
 }
@@ -147,11 +207,11 @@ function Repair-WindowsImage {
     Write-RepairLog "Scanning Windows image for corruption..." -Color Cyan
 
     # Function to run DISM with timeout
-    function Start-DISMWithTimeout {
+    function Invoke-DISMWithTimeout {
         param (
             [string]$Arguments,
             # Increased from 30 to 60 minutes
-                        [int]$TimeoutMinutes = 60
+            [int]$TimeoutMinutes = 60
         )
 
         try {
@@ -166,7 +226,7 @@ function Repair-WindowsImage {
             $elapsed = 0
             while (-not $process.HasExited -and $elapsed -lt $timeoutSeconds) {
                 Write-RepairLog "DISM operation in progress... ($elapsed seconds elapsed)" -Color Cyan -NoNewLine
-                Write-Host "`r" -NoNewLine
+                Write-ColorOutput -Message "`r" -NoNewLine
                 Start-Sleep -Seconds 10
                 $elapsed += 10
             }
@@ -181,9 +241,12 @@ function Repair-WindowsImage {
                 return $false
             }
 
-            return ($process.ExitCode -eq 0)
-        }
-        catch {
+            # Process has completed, wait for it to fully exit and get the exit code
+            $process.WaitForExit()
+            $exitCode = $process.ExitCode
+            Write-RepairLog "`nDISM operation completed with exit code: $exitCode" -Color Cyan
+            return ($exitCode -eq 0)
+        } catch {
             Write-RepairLog "Error running DISM: $_" -Color Red
             return $false
         }
@@ -191,42 +254,63 @@ function Repair-WindowsImage {
 
     # Clear any potential pending operations
     Write-RepairLog "Cleaning up any pending DISM operations..." -Color Cyan
-    Start-DISMWithTimeout "/Online /Cleanup-Image /RevertPendingActions" | Out-Null
+    Invoke-DISMWithTimeout "/Online /Cleanup-Image /RevertPendingActions" | Out-Null
 
     # Try cleanup first
     Write-RepairLog "Starting component store cleanup..." -Color Cyan
-    Start-DISMWithTimeout "/Online /Cleanup-Image /StartComponentCleanup" | Out-Null
+    Invoke-DISMWithTimeout "/Online /Cleanup-Image /StartComponentCleanup" | Out-Null
 
     # Perform the scan
     Write-RepairLog "Starting DISM scan..." -Color Cyan
-    $scanSuccess = Start-DISMWithTimeout "/Online /Cleanup-Image /ScanHealth"
+    $scanSuccess = Invoke-DISMWithTimeout "/Online /Cleanup-Image /ScanHealth"
 
-    if (-not $scanSuccess) {
-        Write-RepairLog "DISM scan failed. Attempting repair without scan..." -Color Yellow
-    }
+    if ($scanSuccess) {
+        # If scan was successful, attempt a restore health operation
+        Write-RepairLog "DISM scan completed successfully." -Color Green
+        Write-RepairLog "Attempting Windows image repair..." -Color Cyan
+        $repairSuccess = Invoke-DISMWithTimeout "/Online /Cleanup-Image /RestoreHealth"
 
-    # Attempt repair with increasing aggressiveness
-    $repairMethods = @(
-        @{Args="/Online /Cleanup-Image /RestoreHealth /LimitAccess"; Desc="limited access"},
-        @{Args="/Online /Cleanup-Image /RestoreHealth"; Desc="online sources"},
-        @{Args="/Online /Cleanup-Image /RestoreHealth /Source:WIM:D:\sources\install.wim:1 /LimitAccess"; Desc="WIM source"}
-    )
+        if ($repairSuccess) {
+            Write-RepairLog "Windows image repair completed successfully." -Color Green
+        } else {
+            Write-RepairLog "Initial repair failed. Attempting with limited access..." -Color Yellow
+            $repairSuccess = Invoke-DISMWithTimeout "/Online /Cleanup-Image /RestoreHealth /LimitAccess"
 
-    $repairSuccess = $false
-    foreach ($method in $repairMethods) {
-        if (-not $repairSuccess) {
-            Write-RepairLog "Attempting repair with $($method.Desc)..." -Color Cyan
-            $repairSuccess = Start-DISMWithTimeout $method.Args
-            if ($repairSuccess) { break }
+            if ($repairSuccess) {
+                Write-RepairLog "Windows image repair completed successfully with limited access." -Color Green
+            } else {
+                Write-RepairLog "Windows image repair encountered issues. System may require offline repair." -Color Red
+                $script:repairsMade = $true
+                $script:restartNeeded = $true
+            }
         }
-    }
-
-    if ($repairSuccess) {
-        Write-RepairLog "Windows image repair completed successfully." -Color Green
     } else {
-        Write-RepairLog "Windows image repair encountered issues. System may require offline repair." -Color Red
-        $script:repairsMade = $true
-        $script:restartNeeded = $true
+        Write-RepairLog "DISM scan failed. Attempting repair without scan..." -Color Yellow
+
+        # Attempt repair with increasing aggressiveness
+        $repairMethods = @(
+            @{ Args = "/Online /Cleanup-Image /RestoreHealth /LimitAccess"; Desc = "limited access" },
+            @{ Args = "/Online /Cleanup-Image /RestoreHealth"; Desc = "online sources" },
+            @{ Args = "/Online /Cleanup-Image /RestoreHealth /Source:WIM:D:\sources\install.wim:1 /LimitAccess"; Desc = "WIM source" }
+        )
+
+        $repairSuccess = $false
+        foreach ($method in $repairMethods) {
+            if (-not $repairSuccess) {
+                Write-RepairLog "Attempting repair with $($method.Desc)..." -Color Cyan
+                $repairSuccess = Start-DISMWithTimeout $method.Args
+                if ($repairSuccess) {
+                    Write-RepairLog "Windows image repair completed successfully with $($method.Desc)." -Color Green
+                    break
+                }
+            }
+        }
+
+        if (-not $repairSuccess) {
+            Write-RepairLog "Windows image repair encountered issues. System may require offline repair." -Color Red
+            $script:repairsMade = $true
+            $script:restartNeeded = $true
+        }
     }
 }
 
@@ -304,11 +388,11 @@ try {
 
     # Execute repair functions in correct order
     # Run disk check first
-        Test-DiskHealth
+    Test-DiskHealth
     # Run DISM second to repair component store
-        Repair-WindowsImage
+    Repair-WindowsImage
     # Run SFC last to repair system files
-        Test-SystemFileIntegrity
+    Test-SystemFileIntegrity
     Clear-WindowsUpdateCache
 
     # Report results
