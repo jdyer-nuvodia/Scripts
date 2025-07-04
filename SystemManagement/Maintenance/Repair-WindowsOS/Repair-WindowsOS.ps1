@@ -54,23 +54,23 @@ $script:restartNeeded = $false
 $script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $script:Colors = if ($script:UseAnsiColors) {
     @{
-        White  = "`e[97m"
-        Cyan   = "`e[96m"
-        Green  = "`e[92m"
+        White = "`e[97m"
+        Cyan = "`e[96m"
+        Green = "`e[92m"
         Yellow = "`e[93m"
-        Red    = "`e[91m"
-        Gray   = "`e[90m"
-        Reset  = "`e[0m"
+        Red = "`e[91m"
+        Gray = "`e[90m"
+        Reset = "`e[0m"
     }
 } else {
     @{
-        White  = "White"
-        Cyan   = "Cyan"
-        Green  = "Green"
+        White = "White"
+        Cyan = "Cyan"
+        Green = "Green"
         Yellow = "Yellow"
-        Red    = "Red"
-        Gray   = "DarkGray"
-        Reset  = ""
+        Red = "Red"
+        Gray = "DarkGray"
+        Reset = ""
     }
 }
 
