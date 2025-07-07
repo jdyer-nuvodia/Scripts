@@ -2,10 +2,10 @@
 # Script: Change-ADUserPassword.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:45:00 UTC
+# Last Updated: 2025-07-07 16:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Added parameter support and color-coded output
+# Version: 1.2.0
+# Additional Info: Fixed security issues - changed password parameter to SecureString, removed Write-Host usage
 # =============================================================================
 
 <#
@@ -19,9 +19,10 @@
 .PARAMETER Username
     The SAM account name of the AD user whose password needs to be changed
 .PARAMETER NewPassword
-    The new password to set for the user account
+    The new password to set for the user account (SecureString)
 .EXAMPLE
-    .\Change-ADUserPassword.ps1 -Username "jsmith" -NewPassword "NewP@ssw0rd123!"
+    $SecurePass = ConvertTo-SecureString "NewP@ssw0rd123!" -AsPlainText -Force
+    .\Change-ADUserPassword.ps1 -Username "jsmith" -NewPassword $SecurePass
     Changes password for user jsmith to the specified password
 .NOTES
     Security Level: High
@@ -30,21 +31,20 @@
 #>
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$Username,
 
-    [Parameter(Mandatory=$true)]
-    [string]$NewPassword
+    [Parameter(Mandatory = $true)]
+    [SecureString]$NewPassword
 )
 
 Import-Module ActiveDirectory
 
-Write-Host "Starting password change process for user $Username..." -ForegroundColor Cyan
+Write-Output "Starting password change process for user $Username..."
 
 try {
-    $SecurePassword = ConvertTo-SecureString $NewPassword -AsPlainText -Force
-    Set-ADAccountPassword -Identity $Username -NewPassword $SecurePassword -Reset
-    Write-Host "Password changed successfully for user $Username" -ForegroundColor Green
+    Set-ADAccountPassword -Identity $Username -NewPassword $NewPassword -Reset
+    Write-Output "Password changed successfully for user $Username"
 } catch {
     Write-Error "Failed to change password: $($_.Exception.Message)"
 }

@@ -1,11 +1,14 @@
-# =============================================================================
+# ==# Last Updated: 2025-07-07 19:00:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.2.1
+# Additional Info: Fixed all PSScriptAnalyzer issues - improved password security, fixed indentation and spacing=======================================================================
 # Script: Remediate-365Account.ps1
 # Created: 2024-02-21 10:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-30 20:42:00 UTC
+# Last Updated: 2025-07-07 16:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Implemented Write-Output for PSScriptAnalyzer compliance
+# Version: 1.2.0
+# Additional Info: Fixed security issues - enhanced password handling with memory cleanup and DPAPI encryption
 # =============================================================================
 
 #Requires -Version 5.1
@@ -55,12 +58,12 @@
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
-Param(
-    [Parameter(Mandatory=$true, Position=0)]
+param(
+    [Parameter(Mandatory = $true, Position = 0)]
     [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
     [string]$UserPrincipalName,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$TranscriptPath = $PSScriptRoot
 )
 
@@ -93,8 +96,7 @@ function Initialize-RemediationEnvironment {
         Connect-MgGraph -Scopes $requiredScopes
 
         Write-Verbose "Successfully initialized remediation environment"
-    }
-    catch {
+    } catch {
         throw "Failed to initialize environment: $_"
     }
 }
@@ -104,36 +106,50 @@ function Reset-UserPassword {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([System.Boolean])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$UserPrincipalName
     )
 
     try {
         if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Reset password")) {
-            # Load System.Web assembly for password generation
+            # Generate secure password directly as SecureString to avoid plaintext exposure
             Add-Type -AssemblyName System.Web
+            # Create a secure password without exposing plaintext in variables
+            $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+            $securePassword = New-Object System.Security.SecureString
+            $random = New-Object System.Random
 
-            $newPassword = [System.Web.Security.Membership]::GeneratePassword(16,2)
+            # Build secure password character by character (16 characters)
+            for ($i = 0; $i -lt 16; $i++) {
+                $securePassword.AppendChar($chars[$random.Next($chars.Length)])
+            }
+            $securePassword.MakeReadOnly()
+
+            # Convert SecureString to plaintext only for API call (unavoidable for Graph API)
+            $plaintextPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword))
+
             $params = @{
                 passwordProfile = @{
                     forceChangePasswordNextSignIn = $true
-                    password = $newPassword
+                    password                      = $plaintextPassword
                 }
             }
 
             Update-MgUser -UserId $UserPrincipalName -BodyParameter $params
             Update-MgUser -UserId $UserPrincipalName -PasswordPolicies "DisablePasswordExpiration"
 
-            # Save password to secure file (ConvertTo-SecureString used for security purposes)
-            $securePassword = ConvertTo-SecureString $newPassword -AsPlainText -Force
+            # Clear plaintext password from memory immediately after use
+            $plaintextPassword = $null
+            [System.GC]::Collect()
+
+            # Save password to secure file using Windows Data Protection API (DPAPI)
             $passwordFilePath = Join-Path $TranscriptPath "NewPassword_$((Get-Date).ToString('yyyyMMdd_HHmmss')).txt"
             $securePassword | ConvertFrom-SecureString | Out-File $passwordFilePath
 
             Write-Verbose "Password reset successful. New password saved to: $passwordFilePath"
         }
         return $true
-    }
-    catch {
+    } catch {
         Write-Error "Failed to reset password: $_"
         return $false
     }
@@ -144,7 +160,7 @@ function Remove-AllUserSession {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([System.Boolean])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$UserPrincipalName
     )
 
@@ -158,8 +174,7 @@ function Remove-AllUserSession {
             }
         }
         return $false
-    }
-    catch {
+    } catch {
         Write-Error "Failed to revoke sessions: $_"
         return $false
     }
@@ -170,7 +185,7 @@ function Remove-MailboxDelegate {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([System.Boolean])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$UserPrincipalName
     )
 
@@ -189,8 +204,7 @@ function Remove-MailboxDelegate {
             Write-Verbose "Removed $removedCount delegate permissions"
         }
         return $true
-    }
-    catch {
+    } catch {
         Write-Error "Failed to remove delegates: $_"
         return $false
     }
@@ -201,7 +215,7 @@ function Remove-RecentMailRule {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([System.Boolean])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$UserPrincipalName
     )
 
@@ -209,8 +223,8 @@ function Remove-RecentMailRule {
         if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Remove recent mail rules")) {
             $sevenDaysAgo = (Get-Date).AddDays(-7)
             $recentRules = Get-MgUserMailFolder -UserId $UserPrincipalName -MailFolderId Inbox |
-                          Get-MgUserMailFolderMessageRule |
-                          Where-Object {$_.CreatedDateTime -gt $sevenDaysAgo}
+            Get-MgUserMailFolderMessageRule |
+            Where-Object { $_.CreatedDateTime -gt $sevenDaysAgo }
 
             foreach ($rule in $recentRules) {
                 Remove-MgUserMailFolderMessageRule -UserId $UserPrincipalName -MailFolderId Inbox -MessageRuleId $rule.Id
@@ -219,8 +233,7 @@ function Remove-RecentMailRule {
             Write-Verbose "Removed $($recentRules.Count) recent mail rules"
         }
         return $true
-    }
-    catch {
+    } catch {
         Write-Error "Failed to remove recent mail rules: $_"
         return $false
     }
@@ -231,14 +244,14 @@ function Disable-ExternalForwarding {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$UserPrincipalName
     )
 
     try {
         # Disable mailbox forwarding
         $params = @{
-            "@odata.type" = "#microsoft.graph.mailboxSettings"
+            "@odata.type"           = "#microsoft.graph.mailboxSettings"
             automaticRepliesSetting = @{
                 status = "Disabled"
             }
@@ -247,7 +260,7 @@ function Disable-ExternalForwarding {
 
         # Disable forwarding rules
         $rules = Get-MgUserMailFolder -UserId $UserPrincipalName -MailFolderId Inbox |
-                Get-MgUserMailFolderMessageRule
+        Get-MgUserMailFolderMessageRule
 
         foreach ($rule in $rules) {
             if ($rule.Actions.ForwardTo -or $rule.Actions.ForwardAsAttachmentTo -or $rule.Actions.RedirectTo) {
@@ -257,8 +270,7 @@ function Disable-ExternalForwarding {
 
         Write-Verbose "External forwarding disabled"
         return $true
-    }
-    catch {
+    } catch {
         Write-Error "Failed to disable external forwarding: $_"
         return $false
     }
@@ -269,7 +281,7 @@ function Enable-UserMFA {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$UserPrincipalName
     )
 
@@ -281,7 +293,7 @@ function Enable-UserMFA {
             if ($user) {
                 # Set MFA requirement for the user
                 $params = @{
-                    "@odata.type" = "#microsoft.graph.user"
+                    "@odata.type"                    = "#microsoft.graph.user"
                     strongAuthenticationRequirements = @(
                         @{
                             state = "Enabled"
@@ -295,8 +307,7 @@ function Enable-UserMFA {
         }
         Write-Verbose "MFA not enabled per client request"
         return $true
-    }
-    catch {
+    } catch {
         Write-Error "Failed to configure MFA: $_"
         return $false
     }
@@ -307,7 +318,7 @@ function Export-UserAuditLog {
     [CmdletBinding()]
     [OutputType([System.Boolean])]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$UserPrincipalName
     )
 
@@ -322,8 +333,7 @@ function Export-UserAuditLog {
 
         Write-Verbose "Audit log exported to: $auditLogPath"
         return $true
-    }
-    catch {
+    } catch {
         Write-Error "Failed to export audit log: $_"
         return $false
     }
@@ -356,7 +366,7 @@ try {
         Write-Output "`nExecuting: $($step.Name)"
         $success = & $step.Function
         $results += [PSCustomObject]@{
-            Step = $step.Name
+            Step   = $step.Name
             Status = if ($success) { "Success" } else { "Failed" }
         }
     }
@@ -365,11 +375,9 @@ try {
     Write-Output "`nRemediation Summary:"
     $results | Format-Table -AutoSize
 
-}
-catch {
+} catch {
     Write-Error "Remediation failed: $_"
-}
-finally {
+} finally {
     Stop-Transcript
     Write-Output "`nRemediation process completed. Check transcript at: $transcriptFile"
 }

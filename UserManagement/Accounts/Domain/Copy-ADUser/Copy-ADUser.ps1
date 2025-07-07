@@ -2,10 +2,10 @@
 # Script: Copy-ADUser.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2024-02-20 17:30:00 UTC
+# Last Updated: 2025-07-07 16:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Updated to use parameters instead of hard-coded values
+# Version: 1.2.0
+# Additional Info: Fixed security issues - changed password parameter to SecureString, removed unsafe ConvertTo-SecureString usage
 # =============================================================================
 
 <#
@@ -29,11 +29,12 @@
 .PARAMETER NewUserSurname
     The surname for the new user
 .PARAMETER NewUserPassword
-    The initial password for the new user
+    The initial password for the new user (SecureString)
 .PARAMETER NewUserDescription
     The description for the new user account
 .EXAMPLE
-    .\Copy-ADUser.ps1 -SourceUser "john.doe" -NewUserName "jane.doe" -NewUserGivenName "Jane" -NewUserSurname "Doe" -NewUserPassword "P@ssw0rd123!" -NewUserDescription "Sales Department"
+    $SecurePass = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
+    .\Copy-ADUser.ps1 -SourceUser "john.doe" -NewUserName "jane.doe" -NewUserGivenName "Jane" -NewUserSurname "Doe" -NewUserPassword $SecurePass -NewUserDescription "Sales Department"
 .NOTES
     Security Level: High
     Required Permissions: Domain Admin or delegated AD user creation rights
@@ -54,7 +55,7 @@ param(
     [string]$NewUserSurname,
 
     [Parameter(Mandatory = $true)]
-    [string]$NewUserPassword,
+    [SecureString]$NewUserPassword,
 
     [Parameter(Mandatory = $true)]
     [string]$NewUserDescription
@@ -89,7 +90,7 @@ New-ADUser `
     -UserPrincipalName "$NewUserName@$(($sourceUserDetails.UserPrincipalName).Split('@')[1])" `
     -Path $sourceUserDetails.DistinguishedName `
     -Enabled $true `
-    -AccountPassword (ConvertTo-SecureString $NewUserPassword -AsPlainText -Force) `
+    -AccountPassword $NewUserPassword `
     -Description $NewUserDescription
 
 # Add the new user to the same groups as the source user
@@ -97,7 +98,7 @@ $sourceUserGroups = Get-ADUser -Identity $SourceUser -Properties MemberOf | Sele
 foreach ($group in $sourceUserGroups) {
     try {
         Add-ADGroupMember -Identity $group -Members $NewUserName
-        Write-Host "Added $NewUserName to group $group" -ForegroundColor Cyan
+        Write-Output "Added $NewUserName to group $group"
     } catch {
         Write-Warning "Failed to add user to group $group"
     }

@@ -2,10 +2,10 @@
 # Script: Change-LocalUserPassword.ps1
 # Created: 2025-01-09 16:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-26 23:29:00 UTC
+# Last Updated: 2025-07-07 16:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Added parameter support and documentation
+# Version: 1.2.0
+# Additional Info: Fixed security issues - changed password parameter to SecureString, removed unsafe ConvertTo-SecureString usage
 # =============================================================================
 
 <#
@@ -17,18 +17,18 @@
 .PARAMETER Username
     The username of the local account to modify
 .PARAMETER NewPassword
-    The new password to set for the account
+    The new password to set for the account (SecureString)
 .EXAMPLE
-    .\Change-LocalUserPassword.ps1 -Username "localuser" -NewPassword "NewPass123!"
+    $SecurePass = ConvertTo-SecureString "NewPass123!" -AsPlainText -Force
+    .\Change-LocalUserPassword.ps1 -Username "localuser" -NewPassword $SecurePass
 #>
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$Username,
 
-    [Parameter(Mandatory=$true)]
-    [string]$NewPassword
+    [Parameter(Mandatory = $true)]
+    [SecureString]$NewPassword
 )
 
-$SecurePassword = ConvertTo-SecureString $NewPassword -AsPlainText -Force
-Set-LocalUser -Name $Username -Password $SecurePassword
+Set-LocalUser -Name $Username -Password $NewPassword

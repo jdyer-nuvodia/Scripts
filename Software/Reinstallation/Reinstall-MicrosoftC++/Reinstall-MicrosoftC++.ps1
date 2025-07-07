@@ -2,10 +2,10 @@
 # Script: Reinstall-MicrosoftC++.ps1
 # Created: 2025-02-27 18:51:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-14 17:30:00 UTC
+# Last Updated: 2025-07-07 16:19:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5.0
-# Additional Info: Added cleanup functionality, restart parameter, and fixed duplicate log messages
+# Version: 2.6.0
+# Additional Info: Fixed security issues - replaced global variables with script scope variables
 # =============================================================================
 
 <#
@@ -56,7 +56,7 @@
     Validation Requirements: Verify successful installation in Programs and Features
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [switch]$NoCleanup,
     [switch]$Restart
@@ -74,13 +74,13 @@ $scriptDirectory = $PSScriptRoot
 $downloadPath = "$scriptDirectory\Redistributables"
 # Get computer name for log files
 $computerName = $env:COMPUTERNAME
-# Add a global variable to track if reboot is recommended
-$global:rebootRecommended = $false
+# Add a script variable to track if reboot is recommended
+$script:rebootRecommended = $false
 
 # Create a single log file name with timestamp and computer name
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$global:logFile = "$scriptDirectory\reinstall_vcredist_${computerName}_${timestamp}.log"
-$global:logFileCreated = $false
+$script:logFile = "$scriptDirectory\reinstall_vcredist_${computerName}_${timestamp}.log"
+$script:logFileCreated = $false
 
 # Function to create a log file
 function Write-Log {
@@ -90,16 +90,16 @@ function Write-Log {
     )
 
     # Create log file if it doesn't exist
-    if (-not $global:logFileCreated) {
+    if (-not $script:logFileCreated) {
         "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" |
-            Out-File -FilePath $global:logFile -Force
-        $global:logFileCreated = $true
+        Out-File -FilePath $script:logFile -Force
+        $script:logFileCreated = $true
     }
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "[$timestamp] $Message"
 
-    Add-Content -Path $global:logFile -Value $logMessage
+    Add-Content -Path $script:logFile -Value $logMessage
 
     if (-not $NoConsole) {
         Write-Host $Message
@@ -118,71 +118,71 @@ if (!(Test-Path -Path $downloadPath)) {
 $redistributables = @(
     # 2008 SP1
     @{
-        Name = "Microsoft Visual C++ 2008 SP1 Redistributable (x86)";
-        URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe";
-        Filename = "vcredist_2008_x86.exe";
+        Name        = "Microsoft Visual C++ 2008 SP1 Redistributable (x86)";
+        URL         = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe";
+        Filename    = "vcredist_2008_x86.exe";
         ProductCode = "{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
         # Add specific arguments for 2008 SP1 x86
-                Args = "/q";
+        Args        = "/q";
     },
     @{
-        Name = "Microsoft Visual C++ 2008 SP1 Redistributable (x64)";
-        URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe";
-        Filename = "vcredist_2008_x64.exe";
+        Name        = "Microsoft Visual C++ 2008 SP1 Redistributable (x64)";
+        URL         = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe";
+        Filename    = "vcredist_2008_x64.exe";
         ProductCode = "{350AA351-21FA-3270-8B7A-835434E766AD}";
         # Add specific arguments for 2008 SP1 x64
-                Args = "/q";
+        Args        = "/q";
     },
     # 2010 SP1
     @{
-        Name = "Microsoft Visual C++ 2010 SP1 Redistributable (x86)";
-        URL = "https://download.microsoft.com/download/C/6/D/C6D0FD4E-9E53-4897-9B91-836EBA2AACD3/vcredist_x86.exe";
-        Filename = "vcredist_2010_x86.exe";
+        Name        = "Microsoft Visual C++ 2010 SP1 Redistributable (x86)";
+        URL         = "https://download.microsoft.com/download/C/6/D/C6D0FD4E-9E53-4897-9B91-836EBA2AACD3/vcredist_x86.exe";
+        Filename    = "vcredist_2010_x86.exe";
         ProductCode = "{F0C3E5D1-1ADE-321E-8167-68EF0DE699A5}";
     },
     @{
-        Name = "Microsoft Visual C++ 2010 SP1 Redistributable (x64)";
-        URL = "https://download.microsoft.com/download/A/8/0/A80747C3-41BD-45DF-B505-E9710D2744E0/vcredist_x64.exe";
-        Filename = "vcredist_2010_x64.exe";
+        Name        = "Microsoft Visual C++ 2010 SP1 Redistributable (x64)";
+        URL         = "https://download.microsoft.com/download/A/8/0/A80747C3-41BD-45DF-B505-E9710D2744E0/vcredist_x64.exe";
+        Filename    = "vcredist_2010_x64.exe";
         ProductCode = "{1D8E6291-B0D5-35EC-8441-6616F567A0F7}";
     },
     # 2012 Update 4
     @{
-        Name = "Microsoft Visual C++ 2012 Redistributable (x86)";
-        URL = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe";
-        Filename = "vcredist_2012_x86.exe";
+        Name        = "Microsoft Visual C++ 2012 Redistributable (x86)";
+        URL         = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe";
+        Filename    = "vcredist_2012_x86.exe";
         ProductCode = "{33D1FD90-4274-48A1-9BC1-97E33D9C2D6F}";
     },
     @{
-        Name = "Microsoft Visual C++ 2012 Redistributable (x64)";
-        URL = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe";
-        Filename = "vcredist_2012_x64.exe";
+        Name        = "Microsoft Visual C++ 2012 Redistributable (x64)";
+        URL         = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe";
+        Filename    = "vcredist_2012_x64.exe";
         ProductCode = "{CA67548A-5EBE-413A-B50C-4B9CEB6D66C6}";
     },
     # 2013
     @{
-        Name = "Microsoft Visual C++ 2013 Redistributable (x86)";
-        URL = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x86.exe";
-        Filename = "vcredist_2013_x86.exe";
+        Name        = "Microsoft Visual C++ 2013 Redistributable (x86)";
+        URL         = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x86.exe";
+        Filename    = "vcredist_2013_x86.exe";
         ProductCode = "{E59FD5FB-5A54-3B5C-B04E-7D638C0CFD35}";
     },
     @{
-        Name = "Microsoft Visual C++ 2013 Redistributable (x64)";
-        URL = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe";
-        Filename = "vcredist_2013_x64.exe";
+        Name        = "Microsoft Visual C++ 2013 Redistributable (x64)";
+        URL         = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe";
+        Filename    = "vcredist_2013_x64.exe";
         ProductCode = "{050D4FC8-5D48-4B8F-8972-47C82C46020F}";
     },
     # 2015-2022 (latest versions - same installers used for 2015, 2017, 2019, 2022)
     @{
-        Name = "Microsoft Visual C++ 2015-2022 Redistributable (x86)";
-        URL = "https://aka.ms/vs/17/release/vc_redist.x86.exe";
-        Filename = "vc_redist_2015_2022_x86.exe";
+        Name        = "Microsoft Visual C++ 2015-2022 Redistributable (x86)";
+        URL         = "https://aka.ms/vs/17/release/vc_redist.x86.exe";
+        Filename    = "vc_redist_2015_2022_x86.exe";
         ProductCode = "{d1a19398-f088-40b5-a0b9-0bdb31d480b7}";
     },
     @{
-        Name = "Microsoft Visual C++ 2015-2022 Redistributable (x64)";
-        URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
-        Filename = "vc_redist_2015_2022_x64.exe";
+        Name        = "Microsoft Visual C++ 2015-2022 Redistributable (x64)";
+        URL         = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+        Filename    = "vc_redist_2015_2022_x64.exe";
         ProductCode = "{57a73df6-4ba9-4c45-947a-f635fddeb65c}";
     }
 )
@@ -200,7 +200,7 @@ function Get-InstalledPrograms {
 
     foreach ($key in $uninstallKeys) {
         $installedPrograms += Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
-            Where-Object { ($_.DisplayName -like "*Microsoft Visual C++*" -or $_.DisplayName -like "*C++ Runtime*") -and $null -eq $_.ParentDisplayName }
+        Where-Object { ($_.DisplayName -like "*Microsoft Visual C++*" -or $_.DisplayName -like "*C++ Runtime*") -and $null -eq $_.ParentDisplayName }
     }
 
     return $installedPrograms | Sort-Object DisplayName
@@ -230,8 +230,7 @@ function Format-ProgramList {
         foreach ($item in $formattedList) {
             Write-Log $item -NoConsole
         }
-    }
-    else {
+    } else {
         Write-Host "`n${Title}: None found" -ForegroundColor $TitleColor
         Write-Log "${Title}: None found" -NoConsole
     }
@@ -248,7 +247,7 @@ function Invoke-SilentInstallation {
 
     $extension = [System.IO.Path]::GetExtension($FilePath).ToLower()
     $baseFileName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
-    $action = if($Uninstall){'uninstall'}else{'install'}
+    $action = if ($Uninstall) { 'uninstall' }else { 'install' }
 
     # Determine arguments based on file type and action
     switch ($extension) {
@@ -292,12 +291,11 @@ function Invoke-SilentInstallation {
 
         # Check if reboot is recommended
         if ($process.ExitCode -eq 3010) {
-            $global:rebootRecommended = $true
+            $script:rebootRecommended = $true
         }
 
         return $process
-    }
-    catch {
+    } catch {
         Write-Host "    Error executing ${DisplayName}: $_" -ForegroundColor Red
         Write-Log "Error executing ${DisplayName}: $_"
         return $false
@@ -327,8 +325,7 @@ function Invoke-DownloadWithRetry {
 
             Invoke-WebRequest -Uri $Url -OutFile $OutFile -ErrorAction Stop -UseBasicParsing
             $success = $true
-        }
-        catch {
+        } catch {
             $retryCount++
             if ($retryCount -ge $MaxRetries) {
                 Write-Host "    Failed to download $DisplayName after $MaxRetries attempts: $_" -ForegroundColor Red
@@ -343,7 +340,7 @@ function Invoke-DownloadWithRetry {
 
 # Start by creating the log file
 if ($PSCmdlet.ShouldProcess("Log file", "Create")) {
-    Write-Host "Log file created: $global:logFile" -ForegroundColor Cyan
+    Write-Host "Log file created: $script:logFile" -ForegroundColor Cyan
 }
 
 # Get currently installed Visual C++ Redistributables
@@ -365,8 +362,7 @@ if ($installedVCRedists.Count -gt 0) {
             if ($uninstallString -match '"([^"]+)"(.*)') {
                 $executable = $matches[1]
                 $existingArgs = $matches[2]
-            }
-            elseif ($uninstallString -match '([^\s]+)(.*)') {
+            } elseif ($uninstallString -match '([^\s]+)(.*)') {
                 $executable = $matches[1]
                 $existingArgs = $matches[2]
             }
@@ -390,8 +386,7 @@ if ($installedVCRedists.Count -gt 0) {
                             # If we can't extract the product code, use the original uninstall string with quiet/passive parameters
                             $process = Start-Process -FilePath $executable -ArgumentList "$existingArgs /quiet /norestart" -Wait -PassThru -ErrorAction Stop
                         }
-                    }
-                    else {
+                    } else {
                         # For EXE uninstallers
                         if ($existingArgs -notlike "*/quiet*" -and $existingArgs -notlike "*/passive*") {
                             $existingArgs += " /quiet /norestart"
@@ -405,7 +400,7 @@ if ($installedVCRedists.Count -gt 0) {
 
                         # Check if reboot required
                         if ($process.ExitCode -eq 3010) {
-                            $global:rebootRecommended = $true
+                            $script:rebootRecommended = $true
                         }
                     }
                     # Specific error handling for common error codes
@@ -413,8 +408,7 @@ if ($installedVCRedists.Count -gt 0) {
                         # Error 1605: This action is only valid for products that are currently installed
                         Write-Host "    Product $($program.DisplayName) was already uninstalled or not properly installed" -ForegroundColor Yellow
                         Write-Log "Product already uninstalled or not properly installed: $($program.DisplayName)"
-                    }
-                    elseif ($process.ExitCode -eq 1618) {
+                    } elseif ($process.ExitCode -eq 1618) {
                         # Error 1618: Another installation is in progress
                         Write-Host "    Another installation is in progress. Waiting 10 seconds before retry..." -ForegroundColor Yellow
                         Write-Log "Another installation in progress for: $($program.DisplayName). Waiting before retry."
@@ -429,25 +423,21 @@ if ($installedVCRedists.Count -gt 0) {
                             Write-Host "    Failed to uninstall $($program.DisplayName) on retry (Exit code: $($retryProcess.ExitCode))" -ForegroundColor Red
                             Write-Log "Failed to uninstall on retry: $($program.DisplayName) with exit code: $($retryProcess.ExitCode)"
                         }
-                    }
-                    else {
+                    } else {
                         Write-Host "    Failed to uninstall $($program.DisplayName) (Exit code: $($process.ExitCode))" -ForegroundColor Red
                         Write-Log "Failed to uninstall: $($program.DisplayName) with exit code: $($process.ExitCode)"
                     }
-                }
-                catch {
+                } catch {
                     Write-Host "    Error uninstalling $($program.DisplayName): $_" -ForegroundColor Red
                     Write-Log "Error uninstalling: $($program.DisplayName) - $_"
                 }
             }
-        }
-        else {
+        } else {
             Write-Host "  Unable to uninstall $($program.DisplayName) - No uninstall string found" -ForegroundColor Red
             Write-Log "Unable to uninstall: $($program.DisplayName) - No uninstall string found"
         }
     }
-}
-else {
+} else {
     Write-Host "No Microsoft Visual C++ Redistributables found on the system." -ForegroundColor Cyan
     Write-Log "No Microsoft Visual C++ Redistributables found on the system."
 }
@@ -468,8 +458,7 @@ foreach ($redist in $redistributables) {
                 Write-Host "    Download complete for $($redist.Name)" -ForegroundColor Green
                 Write-Log "Download complete: $($redist.Name)"
             }
-        }
-        catch {
+        } catch {
             Write-Host "    Failed to download $($redist.Name): $_" -ForegroundColor Red
             Write-Log "Download failed: $($redist.Name) - $_"
         }
@@ -500,15 +489,14 @@ foreach ($redist in $redistributables) {
                     if ($process.ExitCode -eq 3010) {
                         Write-Host "    Note: A system reboot is recommended after installation" -ForegroundColor Yellow
                         Write-Log "Reboot recommended after installing: $($redist.Name)"
-                        $global:rebootRecommended = $true
+                        $script:rebootRecommended = $true
                     }
                 }
                 # Handle specific error codes
                 elseif ($process -and $process.ExitCode -eq 5100) {
                     Write-Host "    Cannot install $($redist.Name) because a newer version is already installed" -ForegroundColor Yellow
                     Write-Log "Cannot install: $($redist.Name) - newer version already installed (code 5100)"
-                }
-                elseif ($process -and $process.ExitCode -eq 4096) {
+                } elseif ($process -and $process.ExitCode -eq 4096) {
                     # For 2008 packages that fail with 4096, try alternate installation parameters
                     Write-Host "    First attempt failed for $($redist.Name), trying alternate parameters..." -ForegroundColor Yellow
                     Write-Log "First attempt failed for $($redist.Name), trying alternate parameters"
@@ -520,27 +508,23 @@ foreach ($redist in $redistributables) {
                         Write-Log "Successfully installed with alternate parameters: $($redist.Name)"
 
                         if ($process.ExitCode -eq 3010) {
-                            $global:rebootRecommended = $true
+                            $script:rebootRecommended = $true
                         }
-                    }
-                    else {
+                    } else {
                         $exitCode = if ($process) { $process.ExitCode } else { "Unknown" }
                         Write-Host "    Failed to install $($redist.Name) with alternate parameters (Exit code: $exitCode)" -ForegroundColor Red
                         Write-Log "Failed to install with alternate parameters: $($redist.Name) with exit code: $exitCode"
                     }
-                }
-                else {
+                } else {
                     $exitCode = if ($process) { $process.ExitCode } else { "Unknown" }
                     Write-Host "    Failed to install $($redist.Name) (Exit code: $exitCode)" -ForegroundColor Red
                     Write-Log "Failed to install: $($redist.Name) with exit code: $exitCode"
                 }
-            }
-            catch {
+            } catch {
                 Write-Host "    Error installing $($redist.Name): $_" -ForegroundColor Red
                 Write-Log "Error installing: $($redist.Name) - $_"
             }
-        }
-        else {
+        } else {
             Write-Host "    Installation file for $($redist.Name) not found at $filePath" -ForegroundColor Red
             Write-Log "Installation file not found: $($redist.Name) at path $filePath"
         }
@@ -561,8 +545,7 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
     if ($installedAfter.Count -eq 0) {
         Write-Host "No Microsoft Visual C++ Redistributables were found after installation. This may indicate an installation problem." -ForegroundColor Red
         Write-Log "No Microsoft Visual C++ Redistributables found after installation - possible installation failure."
-    }
-    elseif ($installedAfter.Count -lt $redistributables.Count) {
+    } elseif ($installedAfter.Count -lt $redistributables.Count) {
         Write-Host "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)." -ForegroundColor Yellow
         Write-Log "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)."
     }
@@ -604,20 +587,18 @@ if (-not $NoCleanup) {
             Remove-Item -Path $downloadPath -Recurse -Force -ErrorAction Stop
             Write-Host "  Successfully removed downloaded files" -ForegroundColor Green
             Write-Log "Successfully removed downloaded files" -NoConsole
-        }
-        catch {
+        } catch {
             Write-Host "  Failed to remove downloaded files: $_" -ForegroundColor Yellow
             Write-Log "Failed to remove downloaded files: $_" -NoConsole
         }
     }
-}
-else {
+} else {
     Write-Host "`nDownloaded files remain in: $downloadPath" -ForegroundColor Cyan
     Write-Log "Downloaded files remain in: $downloadPath" -NoConsole
 }
 
 # Display reboot recommendation at the end if needed
-if ($global:rebootRecommended) {
+if ($script:rebootRecommended) {
     Write-Host "`nA system reboot is recommended to complete the installation process." -ForegroundColor Yellow
     Write-Log "A system reboot is recommended to complete the installation process." -NoConsole
 
@@ -632,5 +613,5 @@ if ($global:rebootRecommended) {
     }
 }
 
-Write-Host "`nProcess complete. Log file saved to: $global:logFile" -ForegroundColor Green
+Write-Host "`nProcess complete. Log file saved to: $script:logFile" -ForegroundColor Green
 Write-Log "Process complete" -NoConsole
