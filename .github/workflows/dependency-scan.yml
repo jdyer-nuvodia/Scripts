@@ -206,31 +206,54 @@ jobs:
         $importedModules = @()
 
         foreach ($script in $scriptFiles) {
-          $content = Get-Content -Path $script.FullName -Raw
+          try {
+            $content = Get-Content -Path $script.FullName -Raw -ErrorAction SilentlyContinue
 
-          # Find Import-Module statements
-          $importMatches = [regex]::Matches($content, 'Import-Module\s+["\']?([^"\'\s]+)["\']?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-          foreach ($match in $importMatches) {
-            $moduleName = $match.Groups[1].Value
-            if ($moduleName -notin $importedModules) {
-              $importedModules += $moduleName
-            }
-          }
+            if ($content) {
+              # Find Import-Module statements - fix regex pattern
+              $importPattern = 'Import-Module\s+["'']?([^"''\s]+)["'']?'
+              try {
+                $importMatches = [regex]::Matches($content, $importPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                foreach ($match in $importMatches) {
+                  $moduleName = $match.Groups[1].Value
+                  if ($moduleName -notin $importedModules) {
+                    $importedModules += $moduleName
+                  }
+                }
+              }
+              catch {
+                Write-Warning "Failed to process Import-Module pattern in $($script.Name): $_"
+              }
 
-          # Find #Requires statements
-          $requiresMatches = [regex]::Matches($content, '#Requires\s+-Modules?\s+([^\r\n]+)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-          foreach ($match in $requiresMatches) {
-            $moduleNames = $match.Groups[1].Value -split ',' | ForEach-Object { $_.Trim() }
-            foreach ($moduleName in $moduleNames) {
-              if ($moduleName -notin $importedModules) {
-                $importedModules += $moduleName
+              # Find #Requires statements - fix regex pattern
+              $requiresPattern = '#Requires\s+-Modules?\s+([^\r\n]+)'
+              try {
+                $requiresMatches = [regex]::Matches($content, $requiresPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                foreach ($match in $requiresMatches) {
+                  $moduleNames = $match.Groups[1].Value -split ',' | ForEach-Object { $_.Trim() }
+                  foreach ($moduleName in $moduleNames) {
+                    if ($moduleName -notin $importedModules) {
+                      $importedModules += $moduleName
+                    }
+                  }
+                }
+              }
+              catch {
+                Write-Warning "Failed to process #Requires pattern in $($script.Name): $_"
               }
             }
+          }
+          catch {
+            Write-Warning "Failed to read file $($script.Name): $_"
           }
         }
 
         Write-Output "Found references to the following modules:"
-        $importedModules | ForEach-Object { Write-Output "  - $_" }
+        if ($importedModules.Count -gt 0) {
+          $importedModules | ForEach-Object { Write-Output "  - $_" }
+        } else {
+          Write-Output "  No module references found"
+        }
 
         # Note: PowerShell Gallery doesn't have a built-in vulnerability database like npm
         # This is a placeholder for future enhancement when such services become available
