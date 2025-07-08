@@ -42,18 +42,18 @@
     Validation Requirements: Verify mailbox list before execution
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateScript({
-        if(-Not ($_ | Test-Path) ){
-            throw "File does not exist: $_"
-        }
-        if(-Not ($_ | Test-Path -PathType Leaf) ){
-            throw "The Path argument must be a file"
-        }
-        return $true
-    })]
+            if (-not ($_ | Test-Path) ) {
+                throw "File does not exist: $_"
+            }
+            if (-not ($_ | Test-Path -PathType Leaf) ) {
+                throw "The Path argument must be a file"
+            }
+            return $true
+        })]
     [System.IO.FileInfo]$userListPath = (Join-Path $PSScriptRoot "UserList.txt")
 )
 
@@ -93,8 +93,7 @@ foreach ($user in $users) {
             Write-Information "Successfully deleted mailbox for: $user" -InformationAction Continue
             $successCount++
         }
-    }
-    catch {
+    } catch {
         Write-Error "Failed to delete mailbox for: $user"
         Write-Error "Error: $_"
         $failCount++
