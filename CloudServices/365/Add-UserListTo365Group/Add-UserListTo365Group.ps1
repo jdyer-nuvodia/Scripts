@@ -52,24 +52,24 @@
     - Verify current user has appropriate permissions
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateScript({
-        if(-Not ($_ | Test-Path) ){
-            throw "File or folder does not exist"
-        }
-        if(-Not ($_ | Test-Path -PathType Leaf) ){
-            throw "The Path argument must be a file"
-        }
-        if($_ -notmatch "(\.csv)"){
-            throw "The file specified must be a csv"
-        }
-        return $true
-    })]
+            if (-not ($_ | Test-Path)) {
+                throw "File or folder does not exist"
+            }
+            if (-not ($_ | Test-Path -PathType Leaf)) {
+                throw "The Path argument must be a file"
+            }
+            if ($_ -notmatch "(\.csv)$") {
+                throw "The file specified must be a csv"
+            }
+            return $true
+        })]
     [System.IO.FileInfo]$CsvPath = (Join-Path $PSScriptRoot "users.csv"),
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
     [string]$GroupName = "ConfRmCal - Author"
 )
@@ -80,10 +80,10 @@ $ErrorActionPreference = "Stop"
 
 function Write-LogMessage {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [ValidateSet("Information", "Success", "Warning", "Error")]
         [string]$Level = "Information"
     )
@@ -122,8 +122,7 @@ try {
     try {
         $null = Get-DistributionGroup -Identity $GroupName -ErrorAction Stop
         Write-LogMessage "Verified group '$GroupName' exists" "Success"
-    }
-    catch {
+    } catch {
         throw "Distribution group '$GroupName' not found or access denied: $_"
     }
 
@@ -137,19 +136,16 @@ try {
                 Write-LogMessage "Successfully added user: $($user.UserPrincipalName)" "Success"
                 $successCount++
             }
-        }
-        catch {
+        } catch {
             Write-LogMessage "Failed to add user $($user.UserPrincipalName): $_" "Error"
             $failureCount++
         }
     }
 
     Write-LogMessage "Operation complete. Successfully added: $successCount users. Failed: $failureCount users" "Information"
-}
-catch {
+} catch {
     Write-LogMessage "Script execution failed: $_" "Error"
     throw
-}
-finally {
+} finally {
     Write-LogMessage "Script execution finished" "Information"
 }
