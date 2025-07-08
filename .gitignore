@@ -13,7 +13,7 @@
 [Tt]emp/
 [Oo]utput/
 
-.vscode/
+.vscode/*
 # Exception for PSScriptAnalyzer settings (needed for GitHub Actions)
 !.vscode/PSScriptAnalyzerSettings.psd1
 # Exception for extensions recommendations (needed for team consistency)
