@@ -59,8 +59,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true,
-               Position = 0,
-               HelpMessage = "Enter the email address or distinguished name of the mailbox")]
+        Position = 0,
+        HelpMessage = "Enter the email address or distinguished name of the mailbox")]
     [ValidateNotNullOrEmpty()]
     [string]$Mailbox
 )
@@ -70,8 +70,7 @@ function Test-ExchangeOnlineConnection {
     try {
         $null = Get-ConnectionInformation -ErrorAction Stop
         return $true
-    }
-    catch {
+    } catch {
         Write-Error "Not connected to Exchange Online. Please run Connect-ExchangeOnline first."
         return $false
     }
@@ -91,8 +90,8 @@ try {
     [xml]$diag = (Export-MailboxDiagnosticLogs $Mailbox -ExtendedProperties -ErrorAction Stop).MailboxLog
 
     Write-Information "`nELC Properties:" -InformationAction Continue
-    $elcProperties = $diag.Properties.MailboxTable.Property | Where-Object {$_.Name -like "ELC*"} |
-        Select-Object @{N='Property';E={$_.Name}}, @{N='Value';E={$_.Value}}
+    $elcProperties = $diag.Properties.MailboxTable.Property | Where-Object { $_.Name -like "ELC*" } |
+        Select-Object @{ N = 'Property'; E = { $_.Name } }, @{ N = 'Value'; E = { $_.Value } }
     $elcProperties | Format-Table -AutoSize
 
     Write-Information "`nExporting MRM diagnostic logs..." -InformationAction Continue
@@ -100,8 +99,7 @@ try {
     $mrmLogs | Format-List
 
     Write-Information "`nDiagnostic analysis completed successfully." -InformationAction Continue
-}
-catch {
+} catch {
     Write-Error "An error occurred during diagnostic analysis: $_"
     exit 1
 }
