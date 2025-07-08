@@ -2,10 +2,10 @@
 # Script: Get-FullMailboxAttributes.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-24 20:56:00 UTC
+# Last Updated: 2025-07-08 20:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Implemented Write-Information for PSScriptAnalyzer compliance
+# Version: 1.2.2
+# Additional Info: Renamed Write-Log function to Write-ScriptLog to avoid PSScriptAnalyzer warning about overwriting built-in cmdlet
 # =============================================================================
 
 <#
@@ -68,32 +68,32 @@
     - Verify ExchangeOnlineManagement module is installed
 #>
 
-[CmdletBinding(DefaultParameterSetName='File')]
+[CmdletBinding(DefaultParameterSetName = 'File')]
 param(
-    [Parameter(ParameterSetName='File')]
+    [Parameter(ParameterSetName = 'File')]
     [ValidateScript({
-        if ($_) { Test-Path -Path $_ }
-        else { $true }
-    })]
+            if ($_) { Test-Path -Path $_ }
+            else { $true }
+        })]
     [string]$InputPath = (Join-Path -Path $PSScriptRoot -ChildPath "mailboxes.txt"),
 
     [Parameter()]
     [ValidateScript({
-        if (-not (Test-Path $_)) {
-            New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        }
-        return $true
-    })]
+            if (-not (Test-Path $_)) {
+                New-Item -Path $_ -ItemType Directory -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$OutputPath = $PSScriptRoot,
 
-    [Parameter(ParameterSetName='Direct')]
+    [Parameter(ParameterSetName = 'Direct')]
     [string[]]$Mailboxes
 )
 
 # Initialize logging
 $LogFile = Join-Path -Path $OutputPath -ChildPath "MailboxAttributes_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
-function Write-Log {
+function Write-ScriptLog {
     param($Message, $Level = "Information")
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
@@ -112,17 +112,16 @@ function Write-Log {
 function Test-ExchangeConnection {
     try {
         $null = Get-OrganizationConfig -ErrorAction Stop
-        Write-Log -Message "Successfully connected to Exchange Online" -Level "Success"
+        Write-ScriptLog -Message "Successfully connected to Exchange Online" -Level "Success"
         return $true
-    }
-    catch {
-        Write-Log -Message "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." -Level "Error"
+    } catch {
+        Write-ScriptLog -Message "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." -Level "Error"
         return $false
     }
 }
 
 try {
-    Write-Log -Message "Starting mailbox attribute collection..." -Level "Process"
+    Write-ScriptLog -Message "Starting mailbox attribute collection..." -Level "Process"
 
     # Verify Exchange Online connection
     if (-not (Test-ExchangeConnection)) {
@@ -132,8 +131,7 @@ try {
     # Get mailbox list
     if ($PSCmdlet.ParameterSetName -eq 'Direct') {
         $processMailboxes = $Mailboxes
-    }
-    else {
+    } else {
         if (-not (Test-Path -Path $InputPath)) {
             throw "Input file not found: $InputPath"
         }
@@ -141,7 +139,7 @@ try {
     }
 
     $totalMailboxes = $processMailboxes.Count
-    Write-Log -Message "Found $totalMailboxes mailboxes to process" -Level "Process"
+    Write-ScriptLog -Message "Found $totalMailboxes mailboxes to process" -Level "Process"
     $processed = 0
 
     foreach ($mailbox in $processMailboxes) {
@@ -150,22 +148,19 @@ try {
         Write-Progress -Activity "Processing Mailboxes" -Status "$mailbox ($processed of $totalMailboxes)" -PercentComplete $percent
 
         try {
-            Write-Log -Message "Processing mailbox: $mailbox" -Level "Process"
+            Write-ScriptLog -Message "Processing mailbox: $mailbox" -Level "Process"
             $attributes = Get-Mailbox -Identity $mailbox -ErrorAction Stop | Select-Object *
             $outputFile = Join-Path -Path $OutputPath -ChildPath "$($mailbox -replace '[@\\/:*?"<>|]', '_')_attributes.txt"
             $attributes | Out-File -FilePath $outputFile -Force
-            Write-Log -Message "Created attribute file: $(Split-Path -Path $outputFile -Leaf)" -Level "Success"
-        }
-        catch {
-            Write-Log -Message "Error processing $mailbox`: $_" -Level "Error"
+            Write-ScriptLog -Message "Created attribute file: $(Split-Path -Path $outputFile -Leaf)" -Level "Success"
+        } catch {
+            Write-ScriptLog -Message "Error processing $mailbox`: $_" -Level "Error"
         }
     }
-}
-catch {
-    Write-Log -Message "Script execution failed: $_" -Level "Error"
+} catch {
+    Write-ScriptLog -Message "Script execution failed: $_" -Level "Error"
     exit 1
-}
-finally {
+} finally {
     Write-Progress -Activity "Processing Mailboxes" -Completed
-    Write-Log -Message "Script execution completed. See log file for details: $LogFile" -Level "Process"
+    Write-ScriptLog -Message "Script execution completed. See log file for details: $LogFile" -Level "Process"
 }
