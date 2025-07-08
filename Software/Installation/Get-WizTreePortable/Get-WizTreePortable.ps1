@@ -2,10 +2,10 @@
 # Script: Get-WizTreePortable.ps1
 # Created: 2025-02-08 15:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 15:07:00 UTC
+# Last Updated: 2025-07-08 21:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.2.1
-# Additional Info: Modified to start WizTree with visible window
+# Version: 2.3.0
+# Additional Info: Implemented Write-ColorOutput function for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -19,17 +19,58 @@
     .\Get-WizTreePortable.ps1
 #>
 
+# Initialize color support for cross-platform compatibility
+$script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$script:Colors = @{
+    Reset = if ($script:UseAnsiColors) { "`e[0m" } else { "" }
+    White = if ($script:UseAnsiColors) { "`e[37m" } else { "White" }
+    Cyan = if ($script:UseAnsiColors) { "`e[36m" } else { "Cyan" }
+    Green = if ($script:UseAnsiColors) { "`e[32m" } else { "Green" }
+    Yellow = if ($script:UseAnsiColors) { "`e[33m" } else { "Yellow" }
+    Red = if ($script:UseAnsiColors) { "`e[31m" } else { "Red" }
+    Magenta = if ($script:UseAnsiColors) { "`e[35m" } else { "Magenta" }
+    DarkGray = if ($script:UseAnsiColors) { "`e[90m" } else { "DarkGray" }
+}
+
+function Write-ColorOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    if ($script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $script:Colors[$Color]
+        $resetCode = $script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($script:Colors[$Color] -and $script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
+}
+
 function Get-LatestWizTreeUrl {
     try {
-        Write-Host "Checking for latest WizTree version..." -ForegroundColor Cyan
+        Write-ColorOutput -Message "Checking for latest WizTree version..." -Color "Cyan"
         $webResponse = Invoke-WebRequest -Uri "https://wiztree.co.uk/download/" -UseBasicParsing
         $pattern = 'href="([^"]*wiztree_\d+_\d+.*portable\.zip)"'
         if ($webResponse.Content -match $pattern) {
-            Write-Host "Found latest version URL" -ForegroundColor Green
+            Write-ColorOutput -Message "Found latest version URL" -Color "Green"
             return $Matches[1]
         }
         throw "Could not find download URL"
     }
+
     catch {
         Write-Warning "Failed to get latest version URL: $_"
         Write-Warning "Please check https://wiztree.co.uk/download/ for the latest version"
@@ -56,29 +97,31 @@ try {
     [string]$exePath = "$extractPath\WizTree64.exe"
 
     # Create temp directory if it doesn't exist
-    if (-Not (Test-Path -Path "C:\temp")) {
-        Write-Host "Creating temp directory..." -ForegroundColor Cyan
+    if (-not (Test-Path -Path "C:\temp")) {
+        Write-ColorOutput -Message "Creating temp directory..." -Color "Cyan"
         New-Item -ItemType Directory -Path "C:\temp" | Out-Null
     }
 
     # Download WizTree Portable
-    Write-Host "Downloading WizTree Portable..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Downloading WizTree Portable..." -Color "Cyan"
     Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFilePath -UseBasicParsing
 
     # Extract the ZIP file
-    Write-Host "Extracting files..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Extracting files..." -Color "Cyan"
     Expand-Archive -Path $zipFilePath -DestinationPath $extractPath -Force
 
     # Run WizTree as Administrator (ensuring x64 version)
-    Write-Host "Starting WizTree x64..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Starting WizTree x64..." -Color "Cyan"
     Start-Process -FilePath $exePath -Verb RunAs
 
-    Write-Host "WizTree has been successfully launched!" -ForegroundColor Green
+    Write-ColorOutput -Message "WizTree has been successfully launched!" -Color "Green"
 }
+
 catch {
     Write-Error "An error occurred: $_"
     exit 1
 }
+
 finally {
     # Cleanup
     if (Test-Path $zipFilePath) {
