@@ -12,14 +12,21 @@
 [Ll]ogs/
 [Tt]emp/
 [Oo]utput/
+
 .vscode/
 # Exception for PSScriptAnalyzer settings (needed for GitHub Actions)
 !.vscode/PSScriptAnalyzerSettings.psd1
+# Exception for extensions recommendations (needed for team consistency)
+!.vscode/extensions.json
 .vs/
 
 # PowerShell-specific files
 *.psm1.dll
 *.psm1.locked.json
+*.ps1xml
+
+# Test results
+**/TestResults/**
 
 # Secrets and configuration
 *.secret
@@ -30,8 +37,7 @@
 *.tmp
 *.lnk
 
-# .log files
-*.log
+
 
 # .marker files
 *.marker
@@ -41,7 +47,6 @@
 
 # Ignore everything in Development\Git\Generate-GitHistory directory
 Development/Git/Generate-GitHistory
-Development\Git\Generate-GitHistory
 
 # .csv files
 *.csv
