@@ -15,6 +15,15 @@ Execute the `Invoke-PowerShellCodeCleanup.ps1` script to automatically fix white
 3. **Current issues**: Identify existing formatting problems
 
 ### Execute Cleanup:
+Use -ScriptPath to specify the target script directory and run the cleanup tool:
+
+```powershell
+& "c:\Users\jdyer\OneDrive - Nuvodia\Documents\GitHub\Scripts\Development\CodeQuality\Invoke-PowerShellCodeCleanup.ps1"
+-ScriptPath "${input:scriptDirectory:Directory containing the target scripts}"
+```
+
+**OR**
+
 Run the cleanup script from the target script's directory:
 ```powershell
 Set-Location "${input:scriptDirectory:Directory containing the target scripts}"
