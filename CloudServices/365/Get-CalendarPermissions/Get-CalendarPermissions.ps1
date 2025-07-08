@@ -47,8 +47,7 @@ foreach ($mailbox in $mailboxes) {
 
     try {
         Get-MailboxFolderPermission -Identity $identity -ErrorAction Stop
-    }
-    catch {
+    } catch {
         Write-Error "Error accessing $($mailbox.UserPrincipalName)'s calendar: $_"
     }
 }
