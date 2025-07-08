@@ -208,22 +208,22 @@ jobs:
       run: |
         Write-Output "=== Dependency Security Scan Summary ==="
         Write-Output "Scan completed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
-        
+
         $hasSecurityReport = Test-Path "security-report.json"
         $hasSecretsReport = Test-Path "secrets-report.json"
-        
+
         if ($hasSecurityReport) {
           $securityData = Get-Content "security-report.json" | ConvertFrom-Json
           Write-Output "Security issues found: $($securityData.Count)"
         } else {
           Write-Output "No security issues detected"
         }
-        
+
         if ($hasSecretsReport) {
           $secretsData = Get-Content "secrets-report.json" | ConvertFrom-Json
           Write-Output "Potential secrets found: $($secretsData.Count)"
         } else {
           Write-Output "No potential secrets detected"
         }
-        
+
         Write-Output "Dependency security scan completed successfully"
