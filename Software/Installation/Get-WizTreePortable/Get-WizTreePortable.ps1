@@ -22,13 +22,13 @@
 # Initialize color support for cross-platform compatibility
 $script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $script:Colors = @{
-    Reset = if ($script:UseAnsiColors) { "`e[0m" } else { "" }
-    White = if ($script:UseAnsiColors) { "`e[37m" } else { "White" }
-    Cyan = if ($script:UseAnsiColors) { "`e[36m" } else { "Cyan" }
-    Green = if ($script:UseAnsiColors) { "`e[32m" } else { "Green" }
-    Yellow = if ($script:UseAnsiColors) { "`e[33m" } else { "Yellow" }
-    Red = if ($script:UseAnsiColors) { "`e[31m" } else { "Red" }
-    Magenta = if ($script:UseAnsiColors) { "`e[35m" } else { "Magenta" }
+    Reset    = if ($script:UseAnsiColors) { "`e[0m" } else { "" }
+    White    = if ($script:UseAnsiColors) { "`e[37m" } else { "White" }
+    Cyan     = if ($script:UseAnsiColors) { "`e[36m" } else { "Cyan" }
+    Green    = if ($script:UseAnsiColors) { "`e[32m" } else { "Green" }
+    Yellow   = if ($script:UseAnsiColors) { "`e[33m" } else { "Yellow" }
+    Red      = if ($script:UseAnsiColors) { "`e[31m" } else { "Red" }
+    Magenta  = if ($script:UseAnsiColors) { "`e[35m" } else { "Magenta" }
     DarkGray = if ($script:UseAnsiColors) { "`e[90m" } else { "DarkGray" }
 }
 
