@@ -20,7 +20,7 @@ replace found keywords with specified replacement strings.
 
 .PARAMETER SearchReplacePairs
 A hashtable containing search terms as keys and their replacement values.
-Example: @{"oldtext"="newtext"; "anotherold"="anothernew"}
+Example: @{ "oldtext"="newtext"; "anotherold"="anothernew"}
 
 .PARAMETER StartPath
 The root directory path where the search should begin.
@@ -29,11 +29,11 @@ The root directory path where the search should begin.
 When specified, automatically performs replacements without prompting for confirmation.
 
 .EXAMPLE
-.\Search-ContentRecursively.ps1 -SearchReplacePairs @{"ConfigMgr"="SCCM"} -StartPath "C:\Scripts"
+.\Search-ContentRecursively.ps1 -SearchReplacePairs @{ "ConfigMgr"="SCCM"} -StartPath "C:\Scripts"
 Searches for "ConfigMgr" in the specified directory and prompts to replace with "SCCM"
 
 .EXAMPLE
-.\Search-ContentRecursively.ps1 -SearchReplacePairs @{"jdyer-nuvodia"="moo"; "jdyer\OneDrive - Nuvodia\"="moo"} -StartPath "C:\Github" -AutoReplace
+.\Search-ContentRecursively.ps1 -SearchReplacePairs @{ "jdyer-nuvodia"="moo"; "jdyer\OneDrive - Nuvodia\"="moo"} -StartPath "C:\Github" -AutoReplace
 Searches for both terms and automatically replaces them with "moo" without prompting
 
 .EXAMPLE
@@ -90,7 +90,7 @@ function Write-ColorOutput {
 # Initialize logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
-$logFile = Join-Path $PSScriptRoot "Search-ContentRecursively_${systemName}_${timestamp}.log"
+$logFile = Join-Path $PSScriptRoot "Search-ContentRecursively_${ systemName}_${ timestamp}.log"
 $null = Start-Transcript -Path $logFile
 
 try {
@@ -106,8 +106,7 @@ try {
     if (-not $SearchReplacePairs -and $Keyword) {
         $SearchReplacePairs = @{ $Keyword = "" }
         # Empty replacement will be filled during interactive prompt
-    }
-    elseif (-not $SearchReplacePairs -and -not $Keyword) {
+    } elseif (-not $SearchReplacePairs -and -not $Keyword) {
         Write-ColorOutput "Error: Either -Keyword or -SearchReplacePairs must be provided." -ForegroundColor Red
         exit 1
     }
@@ -243,8 +242,7 @@ try {
                         $SearchReplacePairs[$searchTerm] = $replaceWith
                         $performReplacements = $true
                     }
-                }
-                else {
+                } else {
                     $confirmation = Read-Host "`nWould you like to replace all instances of '$searchTerm' with '$replaceWith'? (Y/N)"
                     $performReplacements = $confirmation -eq 'Y'
                 }
@@ -280,8 +278,7 @@ try {
                                 ForEach-Object { $_ -replace [regex]::Escape($searchTerm), $replaceWith } |
                                 Set-Content $filePath
                             Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
-                        }
-                        catch {
+                        } catch {
                             Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
                         }
                     }
@@ -296,8 +293,7 @@ try {
                             $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
                             Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
                             Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
-                        }
-                        catch {
+                        } catch {
                             Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
                         }
                     }
@@ -305,8 +301,7 @@ try {
             }
 
             Write-ColorOutput "`nReplacement operation completed." -ForegroundColor Cyan
-        }
-        else {
+        } else {
             Write-ColorOutput "`nReplacement operation cancelled." -ForegroundColor Yellow
         }
     }

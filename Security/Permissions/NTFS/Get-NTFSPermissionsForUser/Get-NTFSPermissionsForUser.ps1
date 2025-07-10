@@ -2,10 +2,13 @@
 # Script: Get-NTFSPermissionsForUser.ps1
 # Created: 2025-03-18 17:20:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-02 12:00:00 UTC
+# Last Updated: 2025-07-08 15:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.6
-# Additional Info: Fixed PSScriptAnalyzer compliance issues
+# Version: 1.8.7
+# Additional Info: Fixed PSScriptAnalyzer compliance issues for unused variables:
+#   - Removed intermediate $baseLogName variable and directly constructed log file paths
+#   - Replaced ForEach-Object pipeline with foreach loop to fix variable scoping issue with $foundPermissions
+#   - Fixed string interpolation syntax for consistent variable usage throughout log file naming
 # =============================================================================
 
 <#
@@ -65,9 +68,8 @@ $userString = if ($User) {
 }
 
 # Construct log file names
-$baseLogName = "NTFSPermissionsForUser_${systemName}_${userString}_${timestamp}"
-$debugLogFile = Join-Path $PSScriptRoot "${baseLogName}_debug.log"
-$transcriptFile = Join-Path $PSScriptRoot "${baseLogName}_transcript.log"
+$debugLogFile = Join-Path $PSScriptRoot "NTFSPermissionsForUser_${systemName}_${userString}_${timestamp}_debug.log"
+$transcriptFile = Join-Path $PSScriptRoot "NTFSPermissionsForUser_${systemName}_${userString}_${timestamp}_transcript.log"
 
 # Start Transcript
 Start-Transcript -Path $transcriptFile
@@ -178,8 +180,8 @@ try {
             }
 
             # Filter out empty identities and process each valid one
-            $IdentityList | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
-                $cleanIdentity = $_.Trim()
+            foreach ($identity in ($IdentityList | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+                $cleanIdentity = $identity.Trim()
 
                 # Compare owner SID with identity
                 $isOwner = $ownerSid -eq $cleanIdentity -or $acl.Owner -eq $cleanIdentity
@@ -369,7 +371,7 @@ Owner Status: $OwnerStatus
 
             if ($permissions.Count -gt 0) {
                 foreach ($perm in $permissions) {
-                    Write-Output "$($perm.Identity) has $($perm.Type) $($perm.Rights) $(if($perm.IsInherited){'(Inherited)'})"
+                    Write-Output "$($perm.Identity) has $($perm.Type) $($perm.Rights) $(if($perm.IsInherited) { '(Inherited)'})"
                 }
             }
 

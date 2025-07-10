@@ -62,10 +62,66 @@ param(
     [switch]$Restart
 )
 
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
+
 # Check for administrative privileges
-if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "This script requires administrative privileges. Please run as Administrator." -ForegroundColor Red
-    Exit
+if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-ColorOutput -Message "This script requires administrative privileges. Please run as Administrator." -Color 'Red'
+    exit
 }
 
 # Get the directory where the script is located
@@ -79,11 +135,11 @@ $script:rebootRecommended = $false
 
 # Create a single log file name with timestamp and computer name
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$script:logFile = "$scriptDirectory\reinstall_vcredist_${computerName}_${timestamp}.log"
+$script:logFile = "$scriptDirectory\reinstall_vcredist_${ computerName}_${ timestamp}.log"
 $script:logFileCreated = $false
 
 # Function to create a log file
-function Write-Log {
+function Write-ScriptLog {
     param (
         [string]$Message,
         [switch]$NoConsole
@@ -92,7 +148,7 @@ function Write-Log {
     # Create log file if it doesn't exist
     if (-not $script:logFileCreated) {
         "$([DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss UTC')) - Starting Microsoft Visual C++ Redistributable Reinstallation" |
-        Out-File -FilePath $script:logFile -Force
+            Out-File -FilePath $script:logFile -Force
         $script:logFileCreated = $true
     }
 
@@ -102,7 +158,7 @@ function Write-Log {
     Add-Content -Path $script:logFile -Value $logMessage
 
     if (-not $NoConsole) {
-        Write-Host $Message
+        Write-ColorOutput -Message $Message -Color "White"
     }
 }
 
@@ -110,7 +166,7 @@ function Write-Log {
 if (!(Test-Path -Path $downloadPath)) {
     if ($PSCmdlet.ShouldProcess("Directory $downloadPath", "Create")) {
         New-Item -ItemType Directory -Path $downloadPath -Force | Out-Null
-        Write-Host "Created temporary directory: $downloadPath" -ForegroundColor Cyan
+        Write-ColorOutput -Message "Created temporary directory: $downloadPath" -Color 'Cyan'
     }
 }
 
@@ -118,77 +174,77 @@ if (!(Test-Path -Path $downloadPath)) {
 $redistributables = @(
     # 2008 SP1
     @{
-        Name        = "Microsoft Visual C++ 2008 SP1 Redistributable (x86)";
-        URL         = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe";
-        Filename    = "vcredist_2008_x86.exe";
-        ProductCode = "{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
+        Name = "Microsoft Visual C++ 2008 SP1 Redistributable (x86)";
+        URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe";
+        Filename = "vcredist_2008_x86.exe";
+        ProductCode = " { FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}";
         # Add specific arguments for 2008 SP1 x86
-        Args        = "/q";
+        Args = "/q";
     },
     @{
-        Name        = "Microsoft Visual C++ 2008 SP1 Redistributable (x64)";
-        URL         = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe";
-        Filename    = "vcredist_2008_x64.exe";
-        ProductCode = "{350AA351-21FA-3270-8B7A-835434E766AD}";
+        Name = "Microsoft Visual C++ 2008 SP1 Redistributable (x64)";
+        URL = "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe";
+        Filename = "vcredist_2008_x64.exe";
+        ProductCode = " { 350AA351-21FA-3270-8B7A-835434E766AD}";
         # Add specific arguments for 2008 SP1 x64
-        Args        = "/q";
+        Args = "/q";
     },
     # 2010 SP1
     @{
-        Name        = "Microsoft Visual C++ 2010 SP1 Redistributable (x86)";
-        URL         = "https://download.microsoft.com/download/C/6/D/C6D0FD4E-9E53-4897-9B91-836EBA2AACD3/vcredist_x86.exe";
-        Filename    = "vcredist_2010_x86.exe";
-        ProductCode = "{F0C3E5D1-1ADE-321E-8167-68EF0DE699A5}";
+        Name = "Microsoft Visual C++ 2010 SP1 Redistributable (x86)";
+        URL = "https://download.microsoft.com/download/C/6/D/C6D0FD4E-9E53-4897-9B91-836EBA2AACD3/vcredist_x86.exe";
+        Filename = "vcredist_2010_x86.exe";
+        ProductCode = " { F0C3E5D1-1ADE-321E-8167-68EF0DE699A5}";
     },
     @{
-        Name        = "Microsoft Visual C++ 2010 SP1 Redistributable (x64)";
-        URL         = "https://download.microsoft.com/download/A/8/0/A80747C3-41BD-45DF-B505-E9710D2744E0/vcredist_x64.exe";
-        Filename    = "vcredist_2010_x64.exe";
-        ProductCode = "{1D8E6291-B0D5-35EC-8441-6616F567A0F7}";
+        Name = "Microsoft Visual C++ 2010 SP1 Redistributable (x64)";
+        URL = "https://download.microsoft.com/download/A/8/0/A80747C3-41BD-45DF-B505-E9710D2744E0/vcredist_x64.exe";
+        Filename = "vcredist_2010_x64.exe";
+        ProductCode = " { 1D8E6291-B0D5-35EC-8441-6616F567A0F7}";
     },
     # 2012 Update 4
     @{
-        Name        = "Microsoft Visual C++ 2012 Redistributable (x86)";
-        URL         = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe";
-        Filename    = "vcredist_2012_x86.exe";
-        ProductCode = "{33D1FD90-4274-48A1-9BC1-97E33D9C2D6F}";
+        Name = "Microsoft Visual C++ 2012 Redistributable (x86)";
+        URL = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe";
+        Filename = "vcredist_2012_x86.exe";
+        ProductCode = " { 33D1FD90-4274-48A1-9BC1-97E33D9C2D6F}";
     },
     @{
-        Name        = "Microsoft Visual C++ 2012 Redistributable (x64)";
-        URL         = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe";
-        Filename    = "vcredist_2012_x64.exe";
-        ProductCode = "{CA67548A-5EBE-413A-B50C-4B9CEB6D66C6}";
+        Name = "Microsoft Visual C++ 2012 Redistributable (x64)";
+        URL = "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe";
+        Filename = "vcredist_2012_x64.exe";
+        ProductCode = " { CA67548A-5EBE-413A-B50C-4B9CEB6D66C6}";
     },
     # 2013
     @{
-        Name        = "Microsoft Visual C++ 2013 Redistributable (x86)";
-        URL         = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x86.exe";
-        Filename    = "vcredist_2013_x86.exe";
-        ProductCode = "{E59FD5FB-5A54-3B5C-B04E-7D638C0CFD35}";
+        Name = "Microsoft Visual C++ 2013 Redistributable (x86)";
+        URL = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x86.exe";
+        Filename = "vcredist_2013_x86.exe";
+        ProductCode = " { E59FD5FB-5A54-3B5C-B04E-7D638C0CFD35}";
     },
     @{
-        Name        = "Microsoft Visual C++ 2013 Redistributable (x64)";
-        URL         = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe";
-        Filename    = "vcredist_2013_x64.exe";
-        ProductCode = "{050D4FC8-5D48-4B8F-8972-47C82C46020F}";
+        Name = "Microsoft Visual C++ 2013 Redistributable (x64)";
+        URL = "https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe";
+        Filename = "vcredist_2013_x64.exe";
+        ProductCode = " { 050D4FC8-5D48-4B8F-8972-47C82C46020F}";
     },
     # 2015-2022 (latest versions - same installers used for 2015, 2017, 2019, 2022)
     @{
-        Name        = "Microsoft Visual C++ 2015-2022 Redistributable (x86)";
-        URL         = "https://aka.ms/vs/17/release/vc_redist.x86.exe";
-        Filename    = "vc_redist_2015_2022_x86.exe";
-        ProductCode = "{d1a19398-f088-40b5-a0b9-0bdb31d480b7}";
+        Name = "Microsoft Visual C++ 2015-2022 Redistributable (x86)";
+        URL = "https://aka.ms/vs/17/release/vc_redist.x86.exe";
+        Filename = "vc_redist_2015_2022_x86.exe";
+        ProductCode = " { d1a19398-f088-40b5-a0b9-0bdb31d480b7}";
     },
     @{
-        Name        = "Microsoft Visual C++ 2015-2022 Redistributable (x64)";
-        URL         = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
-        Filename    = "vc_redist_2015_2022_x64.exe";
-        ProductCode = "{57a73df6-4ba9-4c45-947a-f635fddeb65c}";
+        Name = "Microsoft Visual C++ 2015-2022 Redistributable (x64)";
+        URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+        Filename = "vc_redist_2015_2022_x64.exe";
+        ProductCode = " { 57a73df6-4ba9-4c45-947a-f635fddeb65c}";
     }
 )
 
 # Function to get installed programs
-function Get-InstalledPrograms {
+function Get-InstalledProgram {
     param()
 
     $uninstallKeys = @(
@@ -200,7 +256,7 @@ function Get-InstalledPrograms {
 
     foreach ($key in $uninstallKeys) {
         $installedPrograms += Get-ItemProperty -Path $key -ErrorAction SilentlyContinue |
-        Where-Object { ($_.DisplayName -like "*Microsoft Visual C++*" -or $_.DisplayName -like "*C++ Runtime*") -and $null -eq $_.ParentDisplayName }
+            here-Object { ($_.DisplayName -like "*Microsoft Visual C++*" -or $_.DisplayName -like "*C++ Runtime*") -and $null -eq $_.ParentDisplayName }
     }
 
     return $installedPrograms | Sort-Object DisplayName
@@ -216,23 +272,23 @@ function Format-ProgramList {
     )
 
     if ($Programs.Count -gt 0) {
-        Write-Host "`n$Title ($($Programs.Count)):" -ForegroundColor $TitleColor
-        Write-Log "$Title ($($Programs.Count))" -NoConsole
+        Write-ColorOutput -Message "`n$Title ($($Programs.Count)):" -Color $TitleColor
+        Write-ScriptLog "$Title ($($Programs.Count))" -NoConsole
 
         $formattedList = @()
 
         foreach ($program in $Programs) {
-            Write-Host "  - $($program.DisplayName)" -ForegroundColor $ItemColor
+            Write-ColorOutput -Message "  - $($program.DisplayName)" -Color $ItemColor
             $formattedList += "  - $($program.DisplayName)"
         }
 
         # Log the full list to the log file
         foreach ($item in $formattedList) {
-            Write-Log $item -NoConsole
+            Write-ScriptLog $item -NoConsole
         }
     } else {
-        Write-Host "`n${Title}: None found" -ForegroundColor $TitleColor
-        Write-Log "${Title}: None found" -NoConsole
+        Write-ColorOutput -Message "`n${ Title}: None found" -Color $TitleColor
+        Write-ScriptLog "${ Title}: None found" -NoConsole
     }
 }
 
@@ -246,7 +302,6 @@ function Invoke-SilentInstallation {
     )
 
     $extension = [System.IO.Path]::GetExtension($FilePath).ToLower()
-    $baseFileName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
     $action = if ($Uninstall) { 'uninstall' }else { 'install' }
 
     # Determine arguments based on file type and action
@@ -254,7 +309,7 @@ function Invoke-SilentInstallation {
         ".msi" {
             # For MSI files use msiexec with appropriate switches
             $action = if ($Uninstall) { "/x" } else { "/i" }
-            $arguments = "$action `"$FilePath`" /quiet /norestart ALLUSERS=1"
+            $arguments = "$action `"$FilePath`" /quiet /norestart ALLUSERS = 1"
             if ($CustomArgs) {
                 $arguments += " $CustomArgs"
             }
@@ -273,15 +328,15 @@ function Invoke-SilentInstallation {
             }
         }
         default {
-            Write-Host "    Unsupported file type: $extension for $DisplayName" -ForegroundColor Red
-            Write-Log "Unsupported file type: $extension for $DisplayName"
+            Write-ColorOutput -Message "    Unsupported file type: $extension for $DisplayName" -Color 'Red'
+            Write-ScriptLog "Unsupported file type: $extension for $DisplayName"
             return $false
         }
     }
 
     try {
         # Log the command being executed
-        Write-Log "Executing: $(if($extension -eq '.msi'){'msiexec.exe'}else{$FilePath}) with args: $arguments" -NoConsole
+        Write-ScriptLog "Executing: $(if($extension -eq '.msi') { 'msiexec.exe'}else { $FilePath}) with args: $arguments" -NoConsole
 
         if ($extension -eq ".msi") {
             $process = Start-Process -FilePath "msiexec.exe" -ArgumentList $arguments -Wait -PassThru -ErrorAction Stop
@@ -296,8 +351,8 @@ function Invoke-SilentInstallation {
 
         return $process
     } catch {
-        Write-Host "    Error executing ${DisplayName}: $_" -ForegroundColor Red
-        Write-Log "Error executing ${DisplayName}: $_"
+        Write-ColorOutput -Message "    Error executing ${ DisplayName}: $_" -Color 'Red'
+        Write-ScriptLog "Error executing ${ DisplayName}: $_"
         return $false
     }
 }
@@ -318,8 +373,8 @@ function Invoke-DownloadWithRetry {
     while (-not $success -and $retryCount -lt $MaxRetries) {
         try {
             if ($retryCount -gt 0) {
-                Write-Host "    Retry attempt $retryCount for $DisplayName..." -ForegroundColor Yellow
-                Write-Log "Retry attempt $retryCount for download: $DisplayName"
+                Write-ColorOutput -Message "    Retry attempt $retryCount for $DisplayName..." -Color 'Yellow'
+                Write-ScriptLog "Retry attempt $retryCount for download: $DisplayName"
                 Start-Sleep -Seconds $RetryDelaySeconds
             }
 
@@ -328,8 +383,8 @@ function Invoke-DownloadWithRetry {
         } catch {
             $retryCount++
             if ($retryCount -ge $MaxRetries) {
-                Write-Host "    Failed to download $DisplayName after $MaxRetries attempts: $_" -ForegroundColor Red
-                Write-Log "Download failed after $MaxRetries attempts: $DisplayName - $_"
+                Write-ColorOutput -Message "    Failed to download $DisplayName after $MaxRetries attempts: $_" -Color 'Red'
+                Write-ScriptLog "Download failed after $MaxRetries attempts: $DisplayName - $_"
                 return $false
             }
         }
@@ -340,19 +395,19 @@ function Invoke-DownloadWithRetry {
 
 # Start by creating the log file
 if ($PSCmdlet.ShouldProcess("Log file", "Create")) {
-    Write-Host "Log file created: $script:logFile" -ForegroundColor Cyan
+    Write-ColorOutput -Message "Log file created: $script:logFile" -Color 'Cyan'
 }
 
 # Get currently installed Visual C++ Redistributables
-Write-Host "Gathering information about installed Microsoft Visual C++ Redistributables..." -ForegroundColor Cyan
-$installedVCRedists = Get-InstalledPrograms
+Write-ColorOutput -Message "Gathering information about installed Microsoft Visual C++ Redistributables..." -Color 'Cyan'
+$installedVCRedists = Get-InstalledProgram
 
 # Use Format-ProgramList to display found redistributables
 Format-ProgramList -Programs $installedVCRedists -Title "Found Microsoft Visual C++ Redistributable(s)" -TitleColor Yellow
 
 if ($installedVCRedists.Count -gt 0) {
     # Uninstall existing Visual C++ Redistributables
-    Write-Host "`nRemoving existing Microsoft Visual C++ Redistributables..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "`nRemoving existing Microsoft Visual C++ Redistributables..." -Color 'Cyan'
 
     foreach ($program in $installedVCRedists) {
         if ($program.UninstallString) {
@@ -368,8 +423,8 @@ if ($installedVCRedists.Count -gt 0) {
             }
 
             if ($PSCmdlet.ShouldProcess("$($program.DisplayName)", "Uninstall")) {
-                Write-Host "  Uninstalling: $($program.DisplayName)" -ForegroundColor Yellow
-                Write-Log "Removing: $($program.DisplayName)"
+                Write-ColorOutput -Message "  Uninstalling: $($program.DisplayName)" -Color 'Yellow'
+                Write-ScriptLog "Removing: $($program.DisplayName)"
 
                 try {
                     # Add a short delay between uninstallations to prevent conflicts
@@ -379,7 +434,7 @@ if ($installedVCRedists.Count -gt 0) {
                     if ($executable -like "*msiexec*" -or $program.UninstallString -like "*msiexec*") {
                         # Extract ProductCode if it's an MSI uninstallation
                         $productCode = ""
-                        if ($uninstallString -match "{[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}}") {
+                        if ($uninstallString -match " { [0-9A-F]{ 8}-([0-9A-F]{ 4}-) { 3}[0-9A-F]{ 12}}") {
                             $productCode = $matches[0]
                             $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /quiet /norestart" -Wait -PassThru -ErrorAction Stop
                         } else {
@@ -395,8 +450,8 @@ if ($installedVCRedists.Count -gt 0) {
                     }
 
                     if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
-                        Write-Host "    Successfully uninstalled $($program.DisplayName)" -ForegroundColor Green
-                        Write-Log "Successfully uninstalled: $($program.DisplayName)"
+                        Write-ColorOutput -Message "    Successfully uninstalled $($program.DisplayName)" -Color 'Green'
+                        Write-ScriptLog "Successfully uninstalled: $($program.DisplayName)"
 
                         # Check if reboot required
                         if ($process.ExitCode -eq 3010) {
@@ -406,68 +461,68 @@ if ($installedVCRedists.Count -gt 0) {
                     # Specific error handling for common error codes
                     elseif ($process.ExitCode -eq 1605) {
                         # Error 1605: This action is only valid for products that are currently installed
-                        Write-Host "    Product $($program.DisplayName) was already uninstalled or not properly installed" -ForegroundColor Yellow
-                        Write-Log "Product already uninstalled or not properly installed: $($program.DisplayName)"
+                        Write-ColorOutput -Message "    Product $($program.DisplayName) was already uninstalled or not properly installed" -Color 'Yellow'
+                        Write-ScriptLog "Product already uninstalled or not properly installed: $($program.DisplayName)"
                     } elseif ($process.ExitCode -eq 1618) {
                         # Error 1618: Another installation is in progress
-                        Write-Host "    Another installation is in progress. Waiting 10 seconds before retry..." -ForegroundColor Yellow
-                        Write-Log "Another installation in progress for: $($program.DisplayName). Waiting before retry."
+                        Write-ColorOutput -Message "    Another installation is in progress. Waiting 10 seconds before retry..." -Color 'Yellow'
+                        Write-ScriptLog "Another installation in progress for: $($program.DisplayName). Waiting before retry."
                         Start-Sleep -Seconds 10
 
                         # Try again after waiting
                         $retryProcess = Start-Process -FilePath $executable -ArgumentList $existingArgs -Wait -PassThru -ErrorAction Stop
                         if ($retryProcess.ExitCode -eq 0 -or $retryProcess.ExitCode -eq 3010) {
-                            Write-Host "    Successfully uninstalled $($program.DisplayName) on retry" -ForegroundColor Green
-                            Write-Log "Successfully uninstalled on retry: $($program.DisplayName)"
+                            Write-ColorOutput -Message "    Successfully uninstalled $($program.DisplayName) on retry" -Color 'Green'
+                            Write-ScriptLog "Successfully uninstalled on retry: $($program.DisplayName)"
                         } else {
-                            Write-Host "    Failed to uninstall $($program.DisplayName) on retry (Exit code: $($retryProcess.ExitCode))" -ForegroundColor Red
-                            Write-Log "Failed to uninstall on retry: $($program.DisplayName) with exit code: $($retryProcess.ExitCode)"
+                            Write-ColorOutput -Message "    Failed to uninstall $($program.DisplayName) on retry (Exit code: $($retryProcess.ExitCode))" -Color 'Red'
+                            Write-ScriptLog "Failed to uninstall on retry: $($program.DisplayName) with exit code: $($retryProcess.ExitCode)"
                         }
                     } else {
-                        Write-Host "    Failed to uninstall $($program.DisplayName) (Exit code: $($process.ExitCode))" -ForegroundColor Red
-                        Write-Log "Failed to uninstall: $($program.DisplayName) with exit code: $($process.ExitCode)"
+                        Write-ColorOutput -Message "    Failed to uninstall $($program.DisplayName) (Exit code: $($process.ExitCode))" -Color 'Red'
+                        Write-ScriptLog "Failed to uninstall: $($program.DisplayName) with exit code: $($process.ExitCode)"
                     }
                 } catch {
-                    Write-Host "    Error uninstalling $($program.DisplayName): $_" -ForegroundColor Red
-                    Write-Log "Error uninstalling: $($program.DisplayName) - $_"
+                    Write-ColorOutput -Message "    Error uninstalling $($program.DisplayName): $_" -Color 'Red'
+                    Write-ScriptLog "Error uninstalling: $($program.DisplayName) - $_"
                 }
             }
         } else {
-            Write-Host "  Unable to uninstall $($program.DisplayName) - No uninstall string found" -ForegroundColor Red
-            Write-Log "Unable to uninstall: $($program.DisplayName) - No uninstall string found"
+            Write-ColorOutput -Message "  Unable to uninstall $($program.DisplayName) - No uninstall string found" -Color 'Red'
+            Write-ScriptLog "Unable to uninstall: $($program.DisplayName) - No uninstall string found"
         }
     }
 } else {
-    Write-Host "No Microsoft Visual C++ Redistributables found on the system." -ForegroundColor Cyan
-    Write-Log "No Microsoft Visual C++ Redistributables found on the system."
+    Write-ColorOutput -Message "No Microsoft Visual C++ Redistributables found on the system." -Color 'Cyan'
+    Write-ScriptLog "No Microsoft Visual C++ Redistributables found on the system."
 }
 
 # Download all redistributables
-Write-Host "`nDownloading Microsoft Visual C++ Redistributables..." -ForegroundColor Cyan
-Write-Log "Downloading Microsoft Visual C++ Redistributables..." -NoConsole
+Write-ColorOutput -Message "`nDownloading Microsoft Visual C++ Redistributables..." -Color 'Cyan'
+Write-ScriptLog "Downloading Microsoft Visual C++ Redistributables..." -NoConsole
 
 foreach ($redist in $redistributables) {
     if ($PSCmdlet.ShouldProcess("$($redist.Name)", "Download")) {
         try {
-            Write-Host "  Downloading $($redist.Name)..." -ForegroundColor Cyan
-            Write-Log "Downloading: $($redist.Name) from $($redist.URL)"
+            Write-ColorOutput -Message "  Downloading $($redist.Name)..." -Color 'Cyan'
+            Write-ScriptLog "Downloading: $($redist.Name) from $($redist.URL)"
 
             $downloadSuccess = Invoke-DownloadWithRetry -Url $redist.URL -OutFile "$downloadPath\$($redist.Filename)" -DisplayName $redist.Name
 
             if ($downloadSuccess) {
-                Write-Host "    Download complete for $($redist.Name)" -ForegroundColor Green
-                Write-Log "Download complete: $($redist.Name)"
+                Write-ColorOutput -Message "    Download complete for $($redist.Name)" -Color 'Green'
+                Write-ScriptLog "Download complete: $($redist.Name)"
             }
         } catch {
-            Write-Host "    Failed to download $($redist.Name): $_" -ForegroundColor Red
-            Write-Log "Download failed: $($redist.Name) - $_"
+            Write-ColorOutput -Message "    Failed to download $($redist.Name): $_" -Color 'Red'
+            Write-ScriptLog "Download failed: $($redist.Name) - $_"
         }
     }
 }
 
 # Install all redistributables
-Write-Host "`nInstalling Microsoft Visual C++ Redistributables..." -ForegroundColor Cyan
-Write-Log "Installing Microsoft Visual C++ Redistributables..." -NoConsole
+Write-ColorOutput -Message "`nInstalling Microsoft Visual C++ Redistributables..." -Color 'Cyan'
+Write-ScriptLog "Installing Microsoft Visual C++ Redistributables..." -NoConsole
 
 foreach ($redist in $redistributables) {
     if ($PSCmdlet.ShouldProcess("$($redist.Name)", "Install")) {
@@ -475,79 +530,79 @@ foreach ($redist in $redistributables) {
 
         if (Test-Path -Path $filePath) {
             try {
-                Write-Host "  Installing $($redist.Name)..." -ForegroundColor Cyan
-                Write-Log "Installing: $($redist.Name)"
+                Write-ColorOutput -Message "  Installing $($redist.Name)..." -Color 'Cyan'
+                Write-ScriptLog "Installing: $($redist.Name)"
 
                 $customArgs = if ($redist.Args) { $redist.Args } else { "" }
                 $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name -CustomArgs $customArgs
 
                 if ($process -and ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010)) {
-                    Write-Host "    Successfully installed $($redist.Name)" -ForegroundColor Green
-                    Write-Log "Successfully installed: $($redist.Name)"
+                    Write-ColorOutput -Message "    Successfully installed $($redist.Name)" -Color 'Green'
+                    Write-ScriptLog "Successfully installed: $($redist.Name)"
 
                     # Check if reboot required
                     if ($process.ExitCode -eq 3010) {
-                        Write-Host "    Note: A system reboot is recommended after installation" -ForegroundColor Yellow
-                        Write-Log "Reboot recommended after installing: $($redist.Name)"
+                        Write-ColorOutput -Message "    Note: A system reboot is recommended after installation" -Color 'Yellow'
+                        Write-ScriptLog "Reboot recommended after installing: $($redist.Name)"
                         $script:rebootRecommended = $true
                     }
                 }
                 # Handle specific error codes
                 elseif ($process -and $process.ExitCode -eq 5100) {
-                    Write-Host "    Cannot install $($redist.Name) because a newer version is already installed" -ForegroundColor Yellow
-                    Write-Log "Cannot install: $($redist.Name) - newer version already installed (code 5100)"
+                    Write-ColorOutput -Message "    Cannot install $($redist.Name) because a newer version is already installed" -Color 'Yellow'
+                    Write-ScriptLog "Cannot install: $($redist.Name) - newer version already installed (code 5100)"
                 } elseif ($process -and $process.ExitCode -eq 4096) {
                     # For 2008 packages that fail with 4096, try alternate installation parameters
-                    Write-Host "    First attempt failed for $($redist.Name), trying alternate parameters..." -ForegroundColor Yellow
-                    Write-Log "First attempt failed for $($redist.Name), trying alternate parameters"
+                    Write-ColorOutput -Message "    First attempt failed for $($redist.Name), trying alternate parameters..." -Color 'Yellow'
+                    Write-ScriptLog "First attempt failed for $($redist.Name), trying alternate parameters"
 
                     $process = Invoke-SilentInstallation -FilePath $filePath -DisplayName $redist.Name -CustomArgs "/q /norestart"
 
                     if ($process -and ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010)) {
-                        Write-Host "    Successfully installed $($redist.Name) with alternate parameters" -ForegroundColor Green
-                        Write-Log "Successfully installed with alternate parameters: $($redist.Name)"
+                        Write-ColorOutput -Message "    Successfully installed $($redist.Name) with alternate parameters" -Color 'Green'
+                        Write-ScriptLog "Successfully installed with alternate parameters: $($redist.Name)"
 
                         if ($process.ExitCode -eq 3010) {
                             $script:rebootRecommended = $true
                         }
                     } else {
                         $exitCode = if ($process) { $process.ExitCode } else { "Unknown" }
-                        Write-Host "    Failed to install $($redist.Name) with alternate parameters (Exit code: $exitCode)" -ForegroundColor Red
-                        Write-Log "Failed to install with alternate parameters: $($redist.Name) with exit code: $exitCode"
+                        Write-ColorOutput -Message "    Failed to install $($redist.Name) with alternate parameters (Exit code: $exitCode)" -Color 'Red'
+                        Write-ScriptLog "Failed to install with alternate parameters: $($redist.Name) with exit code: $exitCode"
                     }
                 } else {
                     $exitCode = if ($process) { $process.ExitCode } else { "Unknown" }
-                    Write-Host "    Failed to install $($redist.Name) (Exit code: $exitCode)" -ForegroundColor Red
-                    Write-Log "Failed to install: $($redist.Name) with exit code: $exitCode"
+                    Write-ColorOutput -Message "    Failed to install $($redist.Name) (Exit code: $exitCode)" -Color 'Red'
+                    Write-ScriptLog "Failed to install: $($redist.Name) with exit code: $exitCode"
                 }
             } catch {
-                Write-Host "    Error installing $($redist.Name): $_" -ForegroundColor Red
-                Write-Log "Error installing: $($redist.Name) - $_"
+                Write-ColorOutput -Message "    Error installing $($redist.Name): $_" -Color 'Red'
+                Write-ScriptLog "Error installing: $($redist.Name) - $_"
             }
         } else {
-            Write-Host "    Installation file for $($redist.Name) not found at $filePath" -ForegroundColor Red
-            Write-Log "Installation file not found: $($redist.Name) at path $filePath"
+            Write-ColorOutput -Message "    Installation file for $($redist.Name) not found at $filePath" -Color 'Red'
+            Write-ScriptLog "Installation file not found: $($redist.Name) at path $filePath"
         }
     }
 }
 
 # Verify installation
-Write-Host "`nVerifying installations..." -ForegroundColor Cyan
-Write-Log "Verifying installations..." -NoConsole
+Write-ColorOutput -Message "`nVerifying installations..." -Color 'Cyan'
+Write-ScriptLog "Verifying installations..." -NoConsole
 
 if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify installation")) {
-    $installedAfter = Get-InstalledPrograms
+    $installedAfter = Get-InstalledProgram
 
     # Use Format-ProgramList to display installed redistributables
     Format-ProgramList -Programs $installedAfter -Title "Successfully installed Microsoft Visual C++ Redistributable(s)" -TitleColor Green
 
     # Compare before and after installation
     if ($installedAfter.Count -eq 0) {
-        Write-Host "No Microsoft Visual C++ Redistributables were found after installation. This may indicate an installation problem." -ForegroundColor Red
-        Write-Log "No Microsoft Visual C++ Redistributables found after installation - possible installation failure."
+        Write-ColorOutput -Message "No Microsoft Visual C++ Redistributables were found after installation. This may indicate an installation problem." -Color 'Red'
+        Write-ScriptLog "No Microsoft Visual C++ Redistributables found after installation - possible installation failure."
     } elseif ($installedAfter.Count -lt $redistributables.Count) {
-        Write-Host "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)." -ForegroundColor Yellow
-        Write-Log "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)."
+        Write-ColorOutput -Message "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)." -Color 'Yellow'
+        Write-ScriptLog "Warning: Not all expected redistributables were installed. Expected $($redistributables.Count) but found $($installedAfter.Count)."
     }
 
     # Check if specific versions are missing
@@ -557,7 +612,7 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
     foreach ($redist in $redistributables) {
         $found = $false
         foreach ($installed in $installedProducts) {
-            if ($installed -like "*$($redist.Name)*" -or ($redist.Name -match '(\d{4})' -and $installed -match $matches[1])) {
+            if ($installed -like "*$($redist.Name)*" -or ($redist.Name -match '(\d { 4})' -and $installed -match $matches[1])) {
                 $found = $true
                 break
             }
@@ -569,10 +624,10 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
     }
 
     if ($missingVersions.Count -gt 0) {
-        Write-Host "`nPotentially missing redistributables:" -ForegroundColor Yellow
+        Write-ColorOutput -Message "`nPotentially missing redistributables:" -Color 'Yellow'
         foreach ($missing in $missingVersions) {
-            Write-Host "  - $missing" -ForegroundColor Yellow
-            Write-Log "Potentially missing: $missing"
+            Write-ColorOutput -Message "  - $missing" -Color 'Yellow'
+            Write-ScriptLog "Potentially missing: $missing"
         }
     }
 }
@@ -580,31 +635,31 @@ if ($PSCmdlet.ShouldProcess("Microsoft Visual C++ Redistributables", "Verify ins
 # Clean up downloaded files if requested
 if (-not $NoCleanup) {
     if ($PSCmdlet.ShouldProcess("Downloaded Installation Files", "Clean up")) {
-        Write-Host "`nCleaning up downloaded files..." -ForegroundColor Cyan
-        Write-Log "Cleaning up downloaded files..." -NoConsole
+        Write-ColorOutput -Message "`nCleaning up downloaded files..." -Color 'Cyan'
+        Write-ScriptLog "Cleaning up downloaded files..." -NoConsole
 
         try {
             Remove-Item -Path $downloadPath -Recurse -Force -ErrorAction Stop
-            Write-Host "  Successfully removed downloaded files" -ForegroundColor Green
-            Write-Log "Successfully removed downloaded files" -NoConsole
+            Write-ColorOutput -Message "  Successfully removed downloaded files" -Color 'Green'
+            Write-ScriptLog "Successfully removed downloaded files" -NoConsole
         } catch {
-            Write-Host "  Failed to remove downloaded files: $_" -ForegroundColor Yellow
-            Write-Log "Failed to remove downloaded files: $_" -NoConsole
+            Write-ColorOutput -Message "  Failed to remove downloaded files: $_" -Color 'Yellow'
+            Write-ScriptLog "Failed to remove downloaded files: $_" -NoConsole
         }
     }
 } else {
-    Write-Host "`nDownloaded files remain in: $downloadPath" -ForegroundColor Cyan
-    Write-Log "Downloaded files remain in: $downloadPath" -NoConsole
+    Write-ColorOutput -Message "`nDownloaded files remain in: $downloadPath" -Color 'Cyan'
+    Write-ScriptLog "Downloaded files remain in: $downloadPath" -NoConsole
 }
 
 # Display reboot recommendation at the end if needed
 if ($script:rebootRecommended) {
-    Write-Host "`nA system reboot is recommended to complete the installation process." -ForegroundColor Yellow
-    Write-Log "A system reboot is recommended to complete the installation process." -NoConsole
+    Write-ColorOutput -Message "`nA system reboot is recommended to complete the installation process." -Color 'Yellow'
+    Write-ScriptLog "A system reboot is recommended to complete the installation process." -NoConsole
 
     if ($Restart) {
-        Write-Host "System will restart in 15 seconds. Press Ctrl+C to cancel." -ForegroundColor Yellow
-        Write-Log "System will restart in 15 seconds." -NoConsole
+        Write-ColorOutput -Message "System will restart in 15 seconds. Press Ctrl+C to cancel." -Color 'Yellow'
+        Write-ScriptLog "System will restart in 15 seconds." -NoConsole
 
         if ($PSCmdlet.ShouldProcess("System", "Restart")) {
             Start-Sleep -Seconds 15
@@ -613,5 +668,5 @@ if ($script:rebootRecommended) {
     }
 }
 
-Write-Host "`nProcess complete. Log file saved to: $script:logFile" -ForegroundColor Green
-Write-Log "Process complete" -NoConsole
+Write-ColorOutput -Message "`nProcess complete. Log file saved to: $script:logFile" -Color 'Green'
+Write-ScriptLog "Process complete" -NoConsole

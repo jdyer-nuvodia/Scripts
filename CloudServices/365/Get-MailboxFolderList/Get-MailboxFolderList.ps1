@@ -59,26 +59,26 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [ValidatePattern('^[^@]+@[^@]+\.[^@]+$|^[a-zA-Z]+/[^/]+$')]
     [string]$MailboxName,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$FolderFilter = "**",
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateScript({
-        if ($_ -and !(Test-Path $_)) {
-            New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        }
-        return $true
-    })]
+            if ($_ -and !(Test-Path $_)) {
+                New-Item -Path $_ -ItemType Directory -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$ExportPath = $PSScriptRoot
 )
 
 # Initialize logging
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$LogFile = Join-Path $ExportPath "MailboxFolderList_$($MailboxName.Split('@')[0])_${TimeStamp}.log"
+$LogFile = Join-Path $ExportPath "MailboxFolderList_$($MailboxName.Split('@')[0])_${ TimeStamp}.log"
 
 function Write-ScriptLog {
     param($Message, $Level = "Information")
@@ -89,10 +89,10 @@ function Write-ScriptLog {
 
     switch ($Level) {
         "Information" { Write-Output $Message }
-        "Success"     { Write-Output $Message }
-        "Warning"     { Write-Warning $Message }
-        "Error"       { Write-Error $Message }
-        "Process"     { Write-Output $Message }
+        "Success" { Write-Output $Message }
+        "Warning" { Write-Warning $Message }
+        "Error" { Write-Error $Message }
+        "Process" { Write-Output $Message }
     }
 }
 
@@ -103,8 +103,7 @@ try {
     try {
         $null = Get-EXOMailbox -Identity $MailboxName -ErrorAction Stop
         Write-ScriptLog "Successfully connected to Exchange Online" "Success"
-    }
-    catch {
+    } catch {
         if ($_.Exception.Message -like "*Connect-ExchangeOnline*") {
             Write-ScriptLog "Not connected to Exchange Online. Please run Connect-ExchangeOnline first" "Error"
             throw "Exchange Online connection required"
@@ -117,36 +116,34 @@ try {
     }
 
     # Create export filename with timestamp
-    $ExportFile = Join-Path $ExportPath "MailboxFolders_$($MailboxName.Split('@')[0])_${TimeStamp}.csv"
+    $ExportFile = Join-Path $ExportPath "MailboxFolders_$($MailboxName.Split('@')[0])_${ TimeStamp}.csv"
     Write-ScriptLog "Export will be saved to: $ExportFile" "Information"
 
     # Get folder statistics
     Write-ScriptLog "Retrieving folder statistics..." "Process"
     $Folders = Get-MailboxFolderStatistics -Identity $MailboxName |
-               Where-Object {$_.StartPath -like $FolderFilter}
+        Where-Object { $_.StartPath -like $FolderFilter }
 
     Write-ScriptLog "Found $($Folders.Count) folders matching filter" "Success"
 
     # Export to CSV with enhanced information
     $Folders |
-        Select-Object @{N='Mailbox';E={$MailboxName}},
-                      StartPath,
-                      FolderType,
-                      ItemsInFolder,
-                      @{N='FolderSizeInMB';E={[math]::Round($_.FolderSize.ToMB(), 2)}},
-                      LastModifiedTime,
-                      ContentMailboxGuid,
-                      ContentMailboxServerName |
+        Select-Object @{ N = 'Mailbox'; E = { $MailboxName } },
+        StartPath,
+        FolderType,
+        ItemsInFolder,
+        @{ N = 'FolderSizeInMB'; E = { [math]::Round($_.FolderSize.ToMB(), 2) } },
+        LastModifiedTime,
+        ContentMailboxGuid,
+        ContentMailboxServerName |
         Export-Csv -Path $ExportFile -NoTypeInformation
 
     Write-ScriptLog "Export completed successfully to: $ExportFile" "Success"
     Write-ScriptLog "Total folders exported: $($Folders.Count)" "Success"
-}
-catch {
+} catch {
     Write-ScriptLog "Error processing mailbox: $_" "Error"
     Write-ScriptLog "Stack Trace: $($_.ScriptStackTrace)" "Error"
     throw
-}
-finally {
+} finally {
     Write-ScriptLog "Script execution finished" "Information"
 }

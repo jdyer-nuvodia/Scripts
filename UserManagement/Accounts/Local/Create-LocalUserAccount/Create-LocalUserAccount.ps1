@@ -32,16 +32,16 @@
 #>
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$Username,
 
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [SecureString]$Password,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$FullName,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$Description
 )
 

@@ -45,21 +45,21 @@
     Shows what would be deleted, excluding TestUser and ServiceAccount in addition to the default system accounts
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$ParentPath = "C:\Users",
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [int]$MonthsOld = 6,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string[]]$ExcludeUsers = @()
 )
 
 function Show-DriveInfo {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [object]$Volume
     )
 
@@ -77,13 +77,13 @@ function Show-DriveInfo {
 
 function Write-LogEntry {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$LogPath,
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [string]$Level = "INFO"
     )
 
@@ -184,8 +184,7 @@ try {
             } else {
                 Write-LogEntry -Message "User directory '$($userDir.Name)' is active (has $($recentItems.Count) items modified since $cutoffDate)" -LogPath $detailLogPath -Level "INFO"
             }
-        }
-        catch {
+        } catch {
             Write-LogEntry -Message "Error analyzing user directory '$($userDir.Name)': $_" -LogPath $detailLogPath -Level "ERROR"
         }
     }
@@ -242,8 +241,7 @@ try {
             } else {
                 Write-LogEntry -Message "WhatIf: Would delete user directory: $($inactiveDir.FullName)" -LogPath $detailLogPath -Level "INFO"
             }
-        }
-        catch {
+        } catch {
             Write-LogEntry -Message "Failed to delete user directory '$($inactiveDir.FullName)': $_" -LogPath $detailLogPath -Level "ERROR"
             $errorCount++
         }
@@ -281,21 +279,18 @@ try {
     }
 
     Write-LogEntry -Message "Delete-OldUserFiles script execution completed successfully" -LogPath $detailLogPath -Level "SUCCESS"
-}
-catch {
+} catch {
     $errorMessage = "Critical error during script execution: $_"
     Write-Error $errorMessage
     Write-LogEntry -Message $errorMessage -LogPath $detailLogPath -Level "ERROR"
-}
-finally {
+} finally {
     # Stop logging and merge detailed log
     try {
         # Only stop transcript if one is actually running
         try {
             $transcriptRunning = $true
             Stop-Transcript -ErrorAction Stop
-        }
-        catch {
+        } catch {
             $transcriptRunning = $false
         }
 
@@ -318,8 +313,7 @@ finally {
         if (Test-Path -Path $finalLogPath) {
             Write-Information "`nDetailed log saved to: $finalLogPath" -InformationAction Continue
         }
-    }
-    catch {
+    } catch {
         Write-Warning "Failed to finalize logging: $_"
         # Ensure we still inform about the detail log location if it exists
         if (Test-Path -Path $detailLogPath) {

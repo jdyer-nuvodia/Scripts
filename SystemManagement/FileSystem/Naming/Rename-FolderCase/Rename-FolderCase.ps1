@@ -47,15 +47,15 @@
     - Validate successful rename operations
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory=$true,
-               Position=0,
-               ValueFromPipeline=$true,
-               ValueFromPipelineByPropertyName=$true)]
+    [Parameter(Mandatory = $true,
+               Position = 0,
+               ValueFromPipeline = $true,
+               ValueFromPipelineByPropertyName = $true)]
     [string]$StartPath,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Recursive
 )
 
@@ -76,7 +76,7 @@ function Convert-ToPascalCase {
     # Convert each word to proper case
     $words = $words | ForEach-Object {
         if ($_.Length -gt 0) {
-            $_.Substring(0,1).ToUpper() + $_.Substring(1).ToLower()
+            $_.Substring(0, 1).ToUpper() + $_.Substring(1).ToLower()
         }
     }
 
@@ -111,7 +111,7 @@ function Rename-FolderWithCase {
 
             # Handle case where only case is different (needs temp rename)
             if ($newPath.ToLower() -eq $StartPath.ToLower()) {
-                $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0,8)
+                $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0, 8)
                 $tempPath = Join-Path -Path $parentPath -ChildPath $tempName
 
                 if ($PSCmdlet.ShouldProcess($StartPath, "Rename to temp folder '$tempPath'")) {
@@ -122,19 +122,16 @@ function Rename-FolderWithCase {
                     Rename-Item -LiteralPath $tempPath -NewName $newName -ErrorAction Stop
                     Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
                 }
-            }
-            else {
+            } else {
                 if ($PSCmdlet.ShouldProcess($StartPath, "Rename to '$newPath'")) {
                     Rename-Item -LiteralPath $StartPath -NewName $newName -ErrorAction Stop
                     Write-Host "Successfully renamed: '$currentName' -> '$newName'" -ForegroundColor Green
                 }
             }
-        }
-        else {
+        } else {
             Write-Verbose "Skipping '$currentName' - already in correct case"
         }
-    }
-    catch {
+    } catch {
         Write-Error "Error processing folder '$StartPath': $_"
         Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     }
@@ -155,8 +152,7 @@ try {
         Write-Verbose "Getting all subfolders recursively..."
         $folders = Get-ChildItem -Path $StartPath -Directory -Recurse
         Write-Host "Found $($folders.Count) subfolders" -ForegroundColor Cyan
-    }
-    else {
+    } else {
         Write-Verbose "Getting immediate subfolders only..."
         $folders = Get-ChildItem -Path $StartPath -Directory
         Write-Host "Found $($folders.Count) folders" -ForegroundColor Cyan
@@ -179,8 +175,7 @@ try {
     }
 
     Write-Host "`nFolder case correction process completed successfully." -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Error "Script error: $_"
     Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     exit 1

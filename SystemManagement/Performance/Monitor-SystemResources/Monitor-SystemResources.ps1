@@ -123,7 +123,7 @@ $logFile = Join-Path $LogPath "SystemMonitor_$(Get-Date -Format 'yyyyMMdd').log"
 function Write-LogMessage {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
         [Parameter()]
@@ -156,8 +156,7 @@ function Get-SystemMetrics {
         $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
         if ($os.TotalVisibleMemorySize -gt 0) {
             $memoryUsed = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize * 100, 2)
-        }
-        else {
+        } else {
             throw "Invalid memory size reported by system"
         }
 
@@ -166,8 +165,7 @@ function Get-SystemMetrics {
         $diskMetrics = $disks | ForEach-Object {
             if ($_.Size -gt 0) {
                 $freeSpacePercent = [math]::Round($_.FreeSpace / $_.Size * 100, 2)
-            }
-            else {
+            } else {
                 Write-LogMessage "Drive $($_.DeviceID) reported zero size" -Level Warning -ConsoleColor Yellow
                 $freeSpacePercent = 0
             }
@@ -186,8 +184,7 @@ function Get-SystemMetrics {
             Disks = $diskMetrics
             Timestamp = Get-Date
         }
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error collecting system metrics: $_" -Level Error -ConsoleColor Red
         throw
     }
@@ -226,12 +223,10 @@ try {
         Write-LogMessage "----------------------------------------" -Level Information -ConsoleColor DarkGray
         Start-Sleep -Seconds $IntervalSeconds
     }
-}
-catch {
+} catch {
     Write-LogMessage "Script execution failed: $_" -Level Error -ConsoleColor Red
     Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level Error -ConsoleColor Red
     throw
-}
-finally {
+} finally {
     Write-LogMessage "Monitoring stopped. Check log file for details: $logFile" -Level Information -ConsoleColor Cyan
 }

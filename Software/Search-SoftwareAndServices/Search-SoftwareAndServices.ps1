@@ -2,10 +2,10 @@
 # Script: Search-SoftwareAndServices.ps1
 # Created: 2025-04-17 19:54:45 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-17 19:59:32 UTC
+# Last Updated: 2025-07-10 21:21:33 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Fixed permission denied errors when querying certain services
+# Version: 1.1.0
+# Additional Info: Fixed PSScriptAnalyzer compliance issues - replaced Write-Host with Write-ColorOutput and Get-WmiObject with Get-CimInstance
 # =============================================================================
 
 <#
@@ -80,13 +80,56 @@ if (-not $IncludeServices -and -not $IncludeSoftware) {
 # Create results array
 $results = @()
 
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset'    = "`e[0m"
+    }
+} else {
+    @{
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+    }
+}
+
 function Write-ColorOutput {
-    param (
+    param(
+        [Parameter(Mandatory = $true)]
         [string]$Message,
-        [string]$ForegroundColor = "White"
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
     )
 
-    Write-Host $Message -ForegroundColor $ForegroundColor
+    if ($Script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($Script:Colors[$Color] -and $Script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $Script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
 }
 
 # Function to search installed software
@@ -95,7 +138,7 @@ function Search-InstalledSoftware {
         [string]$Keyword
     )
 
-    Write-ColorOutput "Searching for installed software matching keyword: $Keyword..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Searching for installed software matching keyword: $Keyword..." -Color Cyan
 
     # Define paths for installed software
     $registryPaths = @(
@@ -114,11 +157,11 @@ function Search-InstalledSoftware {
             foreach ($software in $installedSoftware) {
                 if ($software.DisplayName -and ($software.DisplayName -like "*$Keyword*" -or $software.Publisher -like "*$Keyword*")) {
                     $softwareObj = [PSCustomObject]@{
-                        Type = "Software"
-                        Name = $software.DisplayName
-                        Version = $software.DisplayVersion
-                        Publisher = $software.Publisher
-                        InstallDate = $software.InstallDate
+                        Type            = "Software"
+                        Name            = $software.DisplayName
+                        Version         = $software.DisplayVersion
+                        Publisher       = $software.Publisher
+                        InstallDate     = $software.InstallDate
                         InstallLocation = $software.InstallLocation
                         UninstallString = $software.UninstallString
                     }
@@ -133,12 +176,12 @@ function Search-InstalledSoftware {
 }
 
 # Function to search Windows services
-function Search-WindowsServices {
+function Search-WindowsService {
     param (
         [string]$Keyword
     )
 
-    Write-ColorOutput "Searching for services matching keyword: $Keyword..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Searching for services matching keyword: $Keyword..." -Color Cyan
 
     $serviceResults = @()
 
@@ -146,43 +189,41 @@ function Search-WindowsServices {
     try {
         # Capture non-terminating errors using ErrorVariable
         $services = Get-Service -ErrorAction SilentlyContinue -ErrorVariable serviceErrors |
-            Where-Object {
-                $_.DisplayName -like "*$Keyword*" -or
-                $_.Name -like "*$Keyword*" -or
-                ($null -ne $_.Description -and $_.Description -like "*$Keyword*")
-            }
+        Where-Object {
+            $_.DisplayName -like "*$Keyword*" -or
+            $_.Name -like "*$Keyword*" -or
+            ($null -ne $_.Description -and $_.Description -like "*$Keyword*")
+        }
 
         # Log permission errors if verbose
         if ($serviceErrors) {
             $permissionDeniedCount = ($serviceErrors | Where-Object { $_.Exception.Message -like "*PermissionDenied*" }).Count
             if ($permissionDeniedCount -gt 0) {
-                Write-ColorOutput "Note: Unable to query $permissionDeniedCount service(s) due to permission restrictions." -ForegroundColor Yellow
+                Write-ColorOutput -Message "Note: Unable to query $permissionDeniedCount service(s) due to permission restrictions." -Color Yellow
                 Write-Verbose "Some services could not be accessed due to permission restrictions. This is normal behavior when not running as administrator."
             }
         }
-    }
-    catch {
-        Write-ColorOutput "Error retrieving services: $_" -ForegroundColor Red
+    } catch {
+        Write-ColorOutput -Message "Error retrieving services: $_" -Color Red
         return $serviceResults
     }
 
     foreach ($service in $services) {
         try {
-            $serviceDetails = Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
+            $serviceDetails = Get-CimInstance -ClassName Win32_Service -Filter "Name = '$($service.Name)'" -ErrorAction SilentlyContinue
 
             $serviceObj = [PSCustomObject]@{
-                Type = "Service"
-                Name = $service.DisplayName
-                Status = $service.Status
-                StartType = $service.StartType
+                Type        = "Service"
+                Name        = $service.DisplayName
+                Status      = $service.Status
+                StartType   = $service.StartType
                 ServiceName = $service.Name
                 Description = $serviceDetails.Description
-                PathName = $serviceDetails.PathName
-                StartName = $serviceDetails.StartName
+                PathName    = $serviceDetails.PathName
+                StartName   = $serviceDetails.StartName
             }
-              $serviceResults += $serviceObj
-        }
-        catch {
+            $serviceResults += $serviceObj
+        } catch {
             Write-Verbose "Error processing service $($service.Name): $_"
         }
     }
@@ -191,7 +232,7 @@ function Search-WindowsServices {
 }
 
 # Start script execution
-Write-ColorOutput "Starting search for '$Keyword' in installed software and services..." -ForegroundColor White
+Write-ColorOutput -Message "Starting search for '$Keyword' in installed software and services..." -Color White
 
 # Search installed software if specified
 if ($IncludeSoftware) {
@@ -199,18 +240,18 @@ if ($IncludeSoftware) {
         $softwareResults = Search-InstalledSoftware -Keyword $Keyword
         $results += $softwareResults
 
-        Write-ColorOutput "Found $($softwareResults.Count) software item(s) matching '$Keyword'" -ForegroundColor Green
+        Write-ColorOutput -Message "Found $($softwareResults.Count) software item(s) matching '$Keyword'" -Color Green
 
         # Display software results
         foreach ($item in $softwareResults) {
-            Write-ColorOutput "`nSoftware: $($item.Name)" -ForegroundColor Green
-            Write-ColorOutput "  Version: $($item.Version)" -ForegroundColor White
-            Write-ColorOutput "  Publisher: $($item.Publisher)" -ForegroundColor White
+            Write-ColorOutput -Message "`nSoftware: $($item.Name)" -Color Green
+            Write-ColorOutput -Message "  Version: $($item.Version)" -Color White
+            Write-ColorOutput -Message "  Publisher: $($item.Publisher)" -Color White
             if ($item.InstallLocation) {
-                Write-ColorOutput "  Install Location: $($item.InstallLocation)" -ForegroundColor DarkGray
+                Write-ColorOutput -Message "  Install Location: $($item.InstallLocation)" -Color DarkGray
             }
             if ($item.InstallDate) {
-                Write-ColorOutput "  Install Date: $($item.InstallDate)" -ForegroundColor DarkGray
+                Write-ColorOutput -Message "  Install Date: $($item.InstallDate)" -Color DarkGray
             }
         }
     }
@@ -219,10 +260,10 @@ if ($IncludeSoftware) {
 # Search services if specified
 if ($IncludeServices) {
     if ($PSCmdlet.ShouldProcess("System", "Search services for keyword: $Keyword")) {
-        $serviceResults = Search-WindowsServices -Keyword $Keyword
+        $serviceResults = Search-WindowsService -Keyword $Keyword
         $results += $serviceResults
 
-        Write-ColorOutput "`nFound $($serviceResults.Count) service(s) matching '$Keyword'" -ForegroundColor Green
+        Write-ColorOutput -Message "`nFound $($serviceResults.Count) service(s) matching '$Keyword'" -Color Green
 
         # Display service results
         foreach ($item in $serviceResults) {
@@ -233,20 +274,20 @@ if ($IncludeServices) {
                 default { "White" }
             }
 
-            Write-ColorOutput "`nService: $($item.Name) [$($item.ServiceName)]" -ForegroundColor Cyan
-            Write-ColorOutput "  Status: $($item.Status)" -ForegroundColor $statusColor
-            Write-ColorOutput "  Start Type: $($item.StartType)" -ForegroundColor White
+            Write-ColorOutput -Message "`nService: $($item.Name) [$($item.ServiceName)]" -Color Cyan
+            Write-ColorOutput -Message "  Status: $($item.Status)" -Color $statusColor
+            Write-ColorOutput -Message "  Start Type: $($item.StartType)" -Color White
             if ($item.Description) {
-                Write-ColorOutput "  Description: $($item.Description)" -ForegroundColor DarkGray
+                Write-ColorOutput -Message "  Description: $($item.Description)" -Color DarkGray
             }
-            Write-ColorOutput "  Path: $($item.PathName)" -ForegroundColor DarkGray
+            Write-ColorOutput -Message "  Path: $($item.PathName)" -Color DarkGray
         }
     }
 }
 
 # If no results found
 if ($results.Count -eq 0) {
-    Write-ColorOutput "No items found matching keyword: $Keyword" -ForegroundColor Yellow
+    Write-ColorOutput -Message "No items found matching keyword: $Keyword" -Color Yellow
 }
 
 # Export to CSV if path provided
@@ -254,12 +295,11 @@ if ($ExportPath -and $results.Count -gt 0) {
     if ($PSCmdlet.ShouldProcess("Export results", "Export search results to CSV file: $ExportPath")) {
         try {
             $results | Export-Csv -Path $ExportPath -NoTypeInformation
-            Write-ColorOutput "`nExported $($results.Count) results to $ExportPath" -ForegroundColor Green
-        }
-        catch {
-            Write-ColorOutput "Error exporting results to CSV: $_" -ForegroundColor Red
+            Write-ColorOutput -Message "`nExported $($results.Count) results to $ExportPath" -Color Green
+        } catch {
+            Write-ColorOutput -Message "Error exporting results to CSV: $_" -Color Red
         }
     }
 }
 
-Write-ColorOutput "`nSearch completed." -ForegroundColor Cyan
+Write-ColorOutput -Message "`nSearch completed." -Color Cyan

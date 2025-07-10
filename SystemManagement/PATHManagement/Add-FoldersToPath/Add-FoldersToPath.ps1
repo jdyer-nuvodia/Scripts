@@ -52,19 +52,19 @@
      - Validate no duplicate entries
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory=$true,
-               Position=0,
-               ValueFromPipeline=$true,
-               HelpMessage="Root directory to add to PATH")]
-    [ValidateScript({Test-Path $_ -PathType Container})]
+    [Parameter(Mandatory = $true,
+               Position = 0,
+               ValueFromPipeline = $true,
+               HelpMessage = "Root directory to add to PATH")]
+    [ValidateScript({ Test-Path $_ -PathType Container})]
     [string]$StartPath,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$NoRecurse,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet('Machine', 'User')]
     [string]$Scope = 'User'
 )
@@ -95,12 +95,12 @@ begin {
 
         # Use appropriate output methods
         switch ($Level) {
-            'ERROR'   { Write-Error $LogEntry }
+            'ERROR' { Write-Error $LogEntry }
             'WARNING' { Write-Warning $Message }
-            'DEBUG'   { Write-Verbose $Message }
-            'INFO'    { Write-Information $Message -InformationAction Continue }
+            'DEBUG' { Write-Verbose $Message }
+            'INFO' { Write-Information $Message -InformationAction Continue }
             'SUCCESS' { Write-Information "$Message" -InformationAction Continue }
-            default   { Write-Output $LogEntry }
+            default { Write-Output $LogEntry }
         }
     }    Write-LogEntry "Starting script execution" -Level INFO
     Write-LogEntry "Script version: 2.3.1" -Level INFO
@@ -118,8 +118,7 @@ begin {
         $currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::$Scope)
         $currentPathArray = $currentPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         Write-LogEntry "Current PATH contains $($currentPathArray.Count) entries" -Level INFO
-    }
-    catch {
+    } catch {
         Write-LogEntry "Failed to get current PATH: $_" -Level ERROR
         throw "Failed to get current PATH: $_"
     }
@@ -132,8 +131,7 @@ process {
 
         try {
             return (Resolve-Path $StartPath).Path.TrimEnd('\')
-        }
-        catch {
+        } catch {
             Write-LogEntry "Failed to resolve path: $StartPath" -Level WARNING
             return $null
         }
@@ -149,8 +147,7 @@ process {
         if ($currentPathArray -notcontains $sanitizedPath) {
             Write-LogEntry "Adding new path: $sanitizedPath" -Level DEBUG
             return $sanitizedPath
-        }
-        else {
+        } else {
             Write-LogEntry "Path already exists: $sanitizedPath" -Level DEBUG
             return $null
         }
@@ -221,15 +218,13 @@ process {
                 $newPaths | ForEach-Object {
                     Write-LogEntry "  + $_" -Level SUCCESS
                 }
-            }
-            else {
+            } else {
                 Write-LogEntry "WhatIf: Would add $($newPaths.Count) directories to PATH" -Level INFO
             }
         }        else {
             Write-LogEntry "No new directories needed to be added to PATH" -Level WARNING
         }
-    }
-    catch {
+    } catch {
         Write-LogEntry "Failed to process directories: $_" -Level ERROR
         Write-Error "Failed to process directories: $_"
         # Ensure we don't hang by explicitly returning

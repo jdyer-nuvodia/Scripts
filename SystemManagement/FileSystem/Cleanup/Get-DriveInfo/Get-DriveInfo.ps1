@@ -29,7 +29,7 @@ param ()
 # Initialize logging
 $scriptPath = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
 $systemName = [System.Environment]::MachineName
-$logFile = [System.IO.Path]::Combine($scriptPath, "Get-DriveInfo_${systemName}_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
+$logFile = [System.IO.Path]::Combine($scriptPath, "Get-DriveInfo_${ systemName}_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
 $script:logStream = [System.IO.StreamWriter]::new($logFile, $true, [System.Text.Encoding]::UTF8)
 
 function Write-Log {
@@ -54,7 +54,7 @@ function Write-Log {
 
 function Show-DriveInfo {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [object]$Volume
     )
 
@@ -98,13 +98,11 @@ try {
     }
 
     Write-Log "Drive information collection completed successfully. See log file for details: $logFile" -Color Green
-}
-catch {
+} catch {
     Write-Log "Error during execution: $($_.Exception.Message)" -Color Red
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Color Red
     exit 1
-}
-finally {
+} finally {
     if ($null -ne $script:logStream) {
         $script:logStream.Close()
         $script:logStream.Dispose()

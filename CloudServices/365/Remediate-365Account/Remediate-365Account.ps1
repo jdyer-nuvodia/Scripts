@@ -60,7 +60,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
+    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{ 2, 4}$')]
     [string]$UserPrincipalName,
 
     [Parameter(Mandatory = $false)]
@@ -131,7 +131,7 @@ function Reset-UserPassword {
             $params = @{
                 passwordProfile = @{
                     forceChangePasswordNextSignIn = $true
-                    password                      = $plaintextPassword
+                    password = $plaintextPassword
                 }
             }
 
@@ -223,8 +223,8 @@ function Remove-RecentMailRule {
         if ($PSCmdlet.ShouldProcess($UserPrincipalName, "Remove recent mail rules")) {
             $sevenDaysAgo = (Get-Date).AddDays(-7)
             $recentRules = Get-MgUserMailFolder -UserId $UserPrincipalName -MailFolderId Inbox |
-            Get-MgUserMailFolderMessageRule |
-            Where-Object { $_.CreatedDateTime -gt $sevenDaysAgo }
+                Get-MgUserMailFolderMessageRule |
+                Where-Object { $_.CreatedDateTime -gt $sevenDaysAgo }
 
             foreach ($rule in $recentRules) {
                 Remove-MgUserMailFolderMessageRule -UserId $UserPrincipalName -MailFolderId Inbox -MessageRuleId $rule.Id
@@ -251,7 +251,7 @@ function Disable-ExternalForwarding {
     try {
         # Disable mailbox forwarding
         $params = @{
-            "@odata.type"           = "#microsoft.graph.mailboxSettings"
+            "@odata.type" = "#microsoft.graph.mailboxSettings"
             automaticRepliesSetting = @{
                 status = "Disabled"
             }
@@ -260,7 +260,7 @@ function Disable-ExternalForwarding {
 
         # Disable forwarding rules
         $rules = Get-MgUserMailFolder -UserId $UserPrincipalName -MailFolderId Inbox |
-        Get-MgUserMailFolderMessageRule
+            Get-MgUserMailFolderMessageRule
 
         foreach ($rule in $rules) {
             if ($rule.Actions.ForwardTo -or $rule.Actions.ForwardAsAttachmentTo -or $rule.Actions.RedirectTo) {
@@ -293,7 +293,7 @@ function Enable-UserMFA {
             if ($user) {
                 # Set MFA requirement for the user
                 $params = @{
-                    "@odata.type"                    = "#microsoft.graph.user"
+                    "@odata.type" = "#microsoft.graph.user"
                     strongAuthenticationRequirements = @(
                         @{
                             state = "Enabled"
@@ -366,7 +366,7 @@ try {
         Write-Output "`nExecuting: $($step.Name)"
         $success = & $step.Function
         $results += [PSCustomObject]@{
-            Step   = $step.Name
+            Step = $step.Name
             Status = if ($success) { "Success" } else { "Failed" }
         }
     }

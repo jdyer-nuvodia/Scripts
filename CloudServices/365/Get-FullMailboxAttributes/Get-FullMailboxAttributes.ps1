@@ -55,7 +55,7 @@
     .\Get-FullMailboxAttributes.ps1 -InputPath "C:\Data\mailboxes.txt" -OutputPath "C:\Reports"
     Processes mailboxes from specified file and saves reports to custom location
 .EXAMPLE
-    .\Get-FullMailboxAttributes.ps1 -Mailboxes "user1@domain.com","user2@domain.com"
+    .\Get-FullMailboxAttributes.ps1 -Mailboxes "user1@domain.com", "user2@domain.com"
     Processes specified mailboxes directly without input file
 .NOTES
     Security Level: Medium

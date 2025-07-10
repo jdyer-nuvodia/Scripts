@@ -2,16 +2,13 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-02 23:50:00 UTC
+# Last Updated: 2025-07-08 15:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.4.0
-# Additional Info: Fixed PSScriptAnalyzer compliance issues:
-#   - Added explicit scoping for parameters in Convert-SidToName function
-#   - Renamed Write-NTFSLog to Write-NTFSLog to avoid cmdlet conflict
-#   - Added ShouldProcess support to New-LogHeader function
-#   - Added logic to use MaxThreads parameter for threading control
-#   - Added EnableSIDDiagnostics parameter usage for detailed SID diagnostics
-#   - Fixed all unused parameter warnings with proper scoping
+# Version: 3.4.1
+# Additional Info: Fixed PSScriptAnalyzer compliance issues for unused variables:
+#   - Removed intermediate $logBase variable and directly constructed log file paths
+#   - Fixed string interpolation in Write-NTFSLog function to properly use memoryInfo and categoryInfo variables
+#   - All variables now properly utilized eliminating PSUseDeclaredVarsMoreThanAssignments warnings
 # =============================================================================
 
 <#
@@ -118,16 +115,17 @@ process {
 
     # Add script-level cancellation token
     $script:cancellationTokenSource = New-Object System.Threading.CancellationTokenSource
-    $script:processingTimeout = New-TimeSpan -Minutes $TimeoutMinutes    # Function to get domain controllers and domain information
+    # Function to get domain controllers and domain information
+    $script:processingTimeout = New-TimeSpan -Minutes $TimeoutMinutes
     function Get-DomainController {
         try {
             # Try to get domain information using .NET first
             $domainInfo = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
             return @($domainInfo.DomainControllers | ForEach-Object {
                     [PSCustomObject]@{
-                        Name = $_.Name
-                        Domain = $domainInfo.Name
-                        Forest = $domainInfo.Forest.Name
+                        Name            = $_.Name
+                        Domain          = $domainInfo.Name
+                        Forest          = $domainInfo.Forest.Name
                         IsGlobalCatalog = $_.IsGlobalCatalog
                     }
                 })
@@ -138,9 +136,9 @@ process {
                 if (Get-Command Get-ADDomainController -ErrorAction SilentlyContinue) {
                     return @(Get-ADDomainController -Filter * | ForEach-Object {
                             [PSCustomObject]@{
-                                Name = $_.HostName
-                                Domain = $_.Domain
-                                Forest = $_.Forest
+                                Name            = $_.HostName
+                                Domain          = $_.Domain
+                                Forest          = $_.Forest
                                 IsGlobalCatalog = $_.IsGlobalCatalog
                             }
                         })
@@ -154,9 +152,9 @@ process {
                 $computerDomain = (Get-CimInstance Win32_ComputerSystem).Domain
                 if ($computerDomain) {
                     return @([PSCustomObject]@{
-                            Name = $env:COMPUTERNAME
-                            Domain = $computerDomain
-                            Forest = $computerDomain
+                            Name            = $env:COMPUTERNAME
+                            Domain          = $computerDomain
+                            Forest          = $computerDomain
                             IsGlobalCatalog = $false
                         })
                 }
@@ -198,7 +196,9 @@ process {
             Write-NTFSLog -Message "Error counting folders in $StartPath : $_" -Level 'ERROR' -Color "Red"
             return 0
         }
-    }    # Add a script-level hashtable to track processed folders
+
+    }
+    # Add a script-level hashtable to track processed folders
     $script:ProcessedFolderPaths = @{}
     function Compare-PermissionSet {
         param (
@@ -341,8 +341,8 @@ process {
             if (-not $script:SkipUniquenessCounting) {
                 if (-not $script:UniquePermissions.ContainsKey($permissionHash)) {
                     $script:UniquePermissions[$permissionHash] = @{
-                        Paths = @($StartPath)
-                        Owner = $acl.Owner
+                        Paths  = @($StartPath)
+                        Owner  = $acl.Owner
                         Access = $acl.Access
                     }
                 } else {
@@ -356,12 +356,12 @@ process {
 
             # Create folder permissions entry with MatchingSubfolders property
             $script:FolderPermissions[$StartPath] = @{
-                Owner = $acl.Owner
-                Access = $acl.Access
-                IsInherited = $true
-                UniqueHash = $permissionHash
-                IsLeafNode = $IsLeafNode
-                ChildCount = $folders.Count
+                Owner              = $acl.Owner
+                Access             = $acl.Access
+                IsInherited        = $true
+                UniqueHash         = $permissionHash
+                IsLeafNode         = $IsLeafNode
+                ChildCount         = $folders.Count
                 # Initialize empty list
                 MatchingSubfolders = [System.Collections.Generic.List[string]]::new()
             }
@@ -377,7 +377,7 @@ process {
 
                         # Compare permissions with parent
                         if (Compare-PermissionSet -Parent $script:FolderPermissions[$StartPath] -Child @{
-                                Owner = $subAcl.Owner
+                                Owner  = $subAcl.Owner
                                 Access = $subAcl.Access
                             }) {
                             # Add to matching subfolders if permissions are identical
@@ -482,10 +482,10 @@ process {
             $parentPath = Split-Path -Path $path -Parent
 
             $item = [PSCustomObject]@{
-                Path = $path
-                ParentPath = $parentPath
-                Owner = $permissions.Owner
-                AccessRules = $permissions.Access
+                Path               = $path
+                ParentPath         = $parentPath
+                Owner              = $permissions.Owner
+                AccessRules        = $permissions.Access
                 MatchingSubfolders = $(
                     if ($permissions.ContainsKey('MatchingSubfolders')) {
                         $permissions.MatchingSubfolders
@@ -737,9 +737,8 @@ process {
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $computerName = $env:COMPUTERNAME
     $safePath = Get-SafeFilename -StartPath $StartPath
-    $logBase = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}"
-    $script:DebugLogFile = "${logBase}_debug.log"
-    $script:TranscriptFile = "${logBase}_transcript.log"
+    $script:DebugLogFile = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}_debug.log"
+    $script:TranscriptFile = Join-Path $PSScriptRoot "NTFSPermissions_${computerName}_${safePath}_${timestamp}_transcript.log"
 
     # Function to create a standardized log header with enhanced metadata
     function New-LogHeader {
@@ -860,12 +859,12 @@ process {
             Write-NTFSLog -Message "No domains found. Only checking local Administrator accounts." -Level 'WARNING' -Color "Yellow"
 
             # Get local Administrator account
-            $wmiAdminAccounts = @(Get-CimInstance Win32_UserAccount -Filter "Name='Administrator' AND LocalAccount='True'" -ErrorAction SilentlyContinue)
+            $wmiAdminAccounts = @(Get-CimInstance Win32_UserAccount -Filter "Name = 'Administrator' AND LocalAccount = 'True'" -ErrorAction SilentlyContinue)
         } else {
             Write-NTFSLog -Message "Checking Administrator accounts across $($domains.Count) domain(s)..." -Level 'INFO' -Color "Cyan"
 
             # Get all Administrator accounts (both local and domain)
-            $wmiAdminAccounts = @(Get-CimInstance Win32_UserAccount -Filter "Name='Administrator'" -ErrorAction SilentlyContinue)
+            $wmiAdminAccounts = @(Get-CimInstance Win32_UserAccount -Filter "Name = 'Administrator'" -ErrorAction SilentlyContinue)
         }
 
         if ($wmiAdminAccounts -and $wmiAdminAccounts.Count -gt 0) {
@@ -887,11 +886,11 @@ process {
                 }
 
                 $adminAccounts += [PSCustomObject]@{
-                    SID = $account.SID
-                    Domain = $domain
-                    FQDN = $fqdn
-                    DomainType = $domainType
-                    DisplayName = "$($account.SID) [${domainType}: $fqdn]"
+                    SID         = $account.SID
+                    Domain      = $domain
+                    FQDN        = $fqdn
+                    DomainType  = $domainType
+                    DisplayName = "$($account.SID) [${ domainType}: $fqdn]"
                 }
             }
         }
@@ -905,22 +904,22 @@ process {
 
         # Initialize well-known SIDs
         $script:WellKnownSIDs = @{
-            "Nobody" = "S-1-0-0"
-            "Everyone" = "S-1-1-0"
-            "Local" = "S-1-2-0"
-            "CreatorOwner" = "S-1-3-0"
-            "CreatorGroup" = "S-1-3-1"
-            "Network" = "S-1-5-2"
-            "Interactive" = "S-1-5-4"
+            "Nobody"             = "S-1-0-0"
+            "Everyone"           = "S-1-1-0"
+            "Local"              = "S-1-2-0"
+            "CreatorOwner"       = "S-1-3-0"
+            "CreatorGroup"       = "S-1-3-1"
+            "Network"            = "S-1-5-2"
+            "Interactive"        = "S-1-5-4"
             "AuthenticatedUsers" = "S-1-5-11"
-            "LocalSystem" = "S-1-5-18"
-            "LocalService" = "S-1-5-19"
-            "NetworkService" = "S-1-5-20"
+            "LocalSystem"        = "S-1-5-18"
+            "LocalService"       = "S-1-5-19"
+            "NetworkService"     = "S-1-5-20"
             # Use first SID for lookups
-            "Administrator" = $script:AdminSID
-            "Administrators" = "S-1-5-32-544"
-            "Users" = "S-1-5-32-545"
-            "Guests" = "S-1-5-32-546"
+            "Administrator"      = $script:AdminSID
+            "Administrators"     = "S-1-5-32-544"
+            "Users"              = "S-1-5-32-545"
+            "Guests"             = "S-1-5-32-546"
         }
         Write-NTFSLog -Message "Initialized well-known SIDs collection with primary Administrator SID: $script:AdminSID" -Color "DarkGray" -NoConsole -Level 'DEBUG'
 
@@ -936,8 +935,8 @@ process {
 
         if ($script:WellKnownSIDs.Values -contains $Sid) {
             $name = $script:WellKnownSIDs.GetEnumerator() |
-                Where-Object { $_.Value -eq $Sid } |
-                Select-Object -First 1 -ExpandProperty Key
+            Where-Object { $_.Value -eq $Sid } |
+            Select-Object -First 1 -ExpandProperty Key
             return $name
         }
         return $null
@@ -992,18 +991,18 @@ process {
                 $objName = $objSID.Translate([System.Security.Principal.NTAccount])
                 $name = $objName.Value
                 $script:SidCache[$Sid] = $name
-                Write-NTFSLog -Message "Successfully resolved SID on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Level 'SUCCESS'
+                Write-NTFSLog -Message "Successfully resolved SID on attempt ${ attempt}: ${ Sid} -> ${ name}" -Color "Green" -NoConsole -Level 'SUCCESS'
                 return $name
             } catch {
                 # Fall back to AD lookup if .NET translation fails
-                Write-NTFSLog -Message ".NET translation failed on attempt ${attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole -Level 'DEBUG'
+                Write-NTFSLog -Message ".NET translation failed on attempt ${ attempt}, trying AD lookup for SID: $Sid" -Color "DarkGray" -NoConsole -Level 'DEBUG'
                 if (-not $script:SkipADResolution) {
                     try {
                         $user = Get-ADUser -Identity $Sid -Properties SamAccountName -ErrorAction Stop
                         if ($user) {
                             $name = $user.SamAccountName
                             $script:SidCache[$Sid] = $name
-                            Write-NTFSLog -Message "Successfully resolved SID via AD on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Level 'SUCCESS'
+                            Write-NTFSLog -Message "Successfully resolved SID via AD on attempt ${ attempt}: ${ Sid} -> ${ name}" -Color "Green" -NoConsole -Level 'SUCCESS'
                             return $name
                         }
                     } catch {
@@ -1013,7 +1012,7 @@ process {
                             if ($group) {
                                 $name = $group.SamAccountName
                                 $script:SidCache[$Sid] = $name
-                                Write-NTFSLog -Message "Successfully resolved SID via AD (group) on attempt ${attempt}: ${Sid} -> ${name}" -Color "Green" -NoConsole -Level 'SUCCESS'
+                                Write-NTFSLog -Message "Successfully resolved SID via AD (group) on attempt ${ attempt}: ${ Sid} -> ${ name}" -Color "Green" -NoConsole -Level 'SUCCESS'
                                 return $name
                             }
                         } catch {
@@ -1028,9 +1027,9 @@ process {
                 }
             }
         } catch {
-            Write-NTFSLog -Message "SID translation failed on attempt ${attempt}: ${Sid}" -Color "Yellow" -NoConsole -Level 'WARNING'
+            Write-NTFSLog -Message "SID translation failed on attempt ${ attempt}: ${ Sid}" -Color "Yellow" -NoConsole -Level 'WARNING'
             if ($script:SidTranslationAttempts[$Sid] -lt $script:MaxRetries) {
-                Write-NTFSLog -Message "Retrying in $script:RetryDelay seconds (attempt ${attempt}/${script:MaxRetries})..." -Color "DarkGray" -NoConsole -Level 'DEBUG'
+                Write-NTFSLog -Message "Retrying in $script:RetryDelay seconds (attempt ${ attempt}/${ script:MaxRetries})..." -Color "DarkGray" -NoConsole -Level 'DEBUG'
                 Start-Sleep -Seconds $script:RetryDelay
                 return Convert-SidToName -Sid $Sid
             }
@@ -1133,7 +1132,9 @@ process {
                     "$($_.IdentityReference)|$($_.FileSystemRights)|$($_.AccessControlType)"
                 }) -join ';'
         }
-    }    # Update Write-ProgressStatus to prevent duplicate progress messages
+
+    }
+    # Update Write-ProgressStatus to prevent duplicate progress messages
     function Write-ProgressStatus {
         param (
             [string]$Status,
@@ -1247,14 +1248,14 @@ process {
         # Create hierarchy structure
         $hierarchy = @()
         $hierarchy += [PSCustomObject]@{
-            Path = $StartPath
+            Path       = $StartPath
             ParentPath = ""
         }
 
         # Add all processed folders to hierarchy
         foreach ($path in $script:FolderPermissions.Keys | Where-Object { $_ -ne $StartPath }) {
             $hierarchy += [PSCustomObject]@{
-                Path = $path
+                Path       = $path
                 ParentPath = Split-Path -Parent $path
             }
         }
@@ -1326,10 +1327,10 @@ process {
             $acl = Get-Acl -Path $FolderPath -ErrorAction Stop
 
             $folderInfo = [PSCustomObject]@{
-                Path = $folder.FullName
-                ParentPath = $ParentPath
-                Owner = $acl.Owner
-                AccessRules = @($acl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
+                Path               = $folder.FullName
+                ParentPath         = $ParentPath
+                Owner              = $acl.Owner
+                AccessRules        = @($acl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
                 MatchingSubfolders = @()
             }
 
@@ -1355,8 +1356,8 @@ process {
                                 $subAcl = Get-Acl -Path $subfolder.FullName -ErrorAction Stop
 
                                 $subfolderId = [PSCustomObject]@{
-                                    Path = $subfolder.FullName
-                                    Owner = $subAcl.Owner
+                                    Path        = $subfolder.FullName
+                                    Owner       = $subAcl.Owner
                                     AccessRules = @($subAcl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
                                 }
 
@@ -1381,8 +1382,8 @@ process {
                             $subAcl = Get-Acl -Path $subfolder.FullName -ErrorAction Stop
 
                             $subfolderId = [PSCustomObject]@{
-                                Path = $subfolder.FullName
-                                Owner = $subAcl.Owner
+                                Path        = $subfolder.FullName
+                                Owner       = $subAcl.Owner
                                 AccessRules = @($subAcl.Access | Select-Object IdentityReference, FileSystemRights, IsInherited)
                             }
 

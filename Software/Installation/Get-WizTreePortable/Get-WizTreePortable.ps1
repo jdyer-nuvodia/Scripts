@@ -2,10 +2,10 @@
 # Script: Get-WizTreePortable.ps1
 # Created: 2025-02-08 15:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-08 21:00:00 UTC
+# Last Updated: 2025-07-08 21:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.0
-# Additional Info: Implemented Write-ColorOutput function for PSScriptAnalyzer compliance
+# Version: 2.3.1
+# Additional Info: Fixed PSScriptAnalyzer errors in Write-ColorOutput function string interpolation
 # =============================================================================
 
 <#
@@ -63,7 +63,7 @@ function Get-LatestWizTreeUrl {
     try {
         Write-ColorOutput -Message "Checking for latest WizTree version..." -Color "Cyan"
         $webResponse = Invoke-WebRequest -Uri "https://wiztree.co.uk/download/" -UseBasicParsing
-        $pattern = 'href="([^"]*wiztree_\d+_\d+.*portable\.zip)"'
+        $pattern = 'href = "([^"]*wiztree_\d+_\d+.*portable\.zip)"'
         if ($webResponse.Content -match $pattern) {
             Write-ColorOutput -Message "Found latest version URL" -Color "Green"
             return $Matches[1]

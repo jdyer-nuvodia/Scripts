@@ -3,10 +3,11 @@ $resourceGroupName = "JB-TEST-RG2"
 $vmName = "JB-TEST-DC01"
 
 # Get the auto-shutdown schedule for the VM
-$autoShutdown = Get-AzResource -ResourceGroupName $resourceGroupName `
-                               -ResourceType "Microsoft.DevTestLab/schedules" `
-                               -ResourceName "$vmName/auto-shutdown" `
-                               -ErrorAction SilentlyContinue
+$autoShutdown = Get-AzResource
+-ResourceGroupName $resourceGroupName `
+    -ResourceType "Microsoft.DevTestLab/schedules" `
+    -ResourceName "$vmName/auto-shutdown" `
+    -ErrorAction SilentlyContinue
 
 # Check if auto-shutdown is enabled
 if ($autoShutdown) {

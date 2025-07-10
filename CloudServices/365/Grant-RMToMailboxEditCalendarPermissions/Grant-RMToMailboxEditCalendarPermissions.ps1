@@ -75,44 +75,44 @@
     - Verify ExchangeOnlineManagement module is installed
 #>
 
-[CmdletBinding(DefaultParameterSetName='File',
-               SupportsShouldProcess=$true,
-               ConfirmImpact='High')]
+[CmdletBinding(DefaultParameterSetName = 'File',
+    SupportsShouldProcess = $true,
+    ConfirmImpact = 'High')]
 param(
-    [Parameter(Mandatory=$true,
-              Position=0,
-              HelpMessage="Email address of user to grant permissions to")]
-    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
+    [Parameter(Mandatory = $true,
+        Position = 0,
+        HelpMessage = "Email address of user to grant permissions to")]
+    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{ 2, 4}$')]
     [string]$UserEmail,
 
-    [Parameter(Mandatory=$false,
-              ParameterSetName='Single',
-              HelpMessage="Single mailbox to process")]
-    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
+    [Parameter(Mandatory = $false,
+        ParameterSetName = 'Single',
+        HelpMessage = "Single mailbox to process")]
+    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{ 2, 4}$')]
     [string]$SingleMailbox,
 
-    [Parameter(Mandatory=$false,
-              ParameterSetName='File',
-              HelpMessage="Path to mailbox list file")]
-    [ValidateScript({Test-Path $_})]
+    [Parameter(Mandatory = $false,
+        ParameterSetName = 'File',
+        HelpMessage = "Path to mailbox list file")]
+    [ValidateScript({ Test-Path $_ })]
     [string]$InputFile = (Join-Path $PSScriptRoot "mailboxes.txt"),
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [bool]$AutoMapping = $false,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateScript({
-        if (-not (Test-Path $_)) {
-            New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        }
-        return $true
-    })]
+            if (-not (Test-Path $_)) {
+                New-Item -Path $_ -ItemType Directory -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$LogPath = (Join-Path $PSScriptRoot "Logs")
 )
 
 # Initialize logging
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$LogFile = Join-Path $LogPath "PermissionGrants_${TimeStamp}.log"
+$LogFile = Join-Path $LogPath "PermissionGrants_${ TimeStamp}.log"
 
 function Write-ScriptLog {
     param($Message, $Level = "Information")
@@ -145,8 +145,7 @@ function Test-ExchangeConnection {
         $null = Get-OrganizationConfig -ErrorAction Stop
         Write-ScriptLog -Message "Successfully connected to Exchange Online" -Level "Success"
         return $true
-    }
-    catch {
+    } catch {
         Write-ScriptLog -Message "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." -Level "Error"
         return $false
     }
@@ -163,8 +162,7 @@ try {
     # Get mailbox list
     $mailboxes = if ($PSCmdlet.ParameterSetName -eq 'Single') {
         @($SingleMailbox)
-    }
-    else {
+    } else {
         Get-Content $InputFile
     }
 
@@ -192,21 +190,18 @@ try {
             # Grant calendar permissions
             $calendarPath = $mbx.UserPrincipalName + ":\Calendar"
             if ($PSCmdlet.ShouldProcess($calendarPath, "Grant Editor calendar permissions to $UserEmail")) {
-                Add-MailboxFolderPermission -Identity $calendarPath -User $UserEmail -AccessRights Editor -SharingPermissionFlags Delegate,CanViewPrivateItems -ErrorAction Stop
+                Add-MailboxFolderPermission -Identity $calendarPath -User $UserEmail -AccessRights Editor -SharingPermissionFlags Delegate, CanViewPrivateItems -ErrorAction Stop
                 Write-ScriptLog -Message "Granted Editor rights on calendar for $mailbox" -Level "Success"
             }
-        }
-        catch {
+        } catch {
             Write-ScriptLog -Message "Error processing $mailbox`: $_" -Level "Error"
         }
     }
-}
-catch {
+} catch {
     Write-ScriptLog -Message "Script execution failed: $_" -Level "Error"
     Write-ScriptLog -Message "Stack Trace: $($_.ScriptStackTrace)" -Level "Error"
     exit 1
-}
-finally {
+} finally {
     Write-Progress -Activity "Granting Permissions" -Completed
     Write-ScriptLog -Message "Script execution completed. See log file for details: $LogFile" -Level "Process"
 }

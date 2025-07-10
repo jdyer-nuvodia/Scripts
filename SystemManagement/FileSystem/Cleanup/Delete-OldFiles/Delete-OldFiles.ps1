@@ -36,21 +36,21 @@
     Deletes files older than 90 days from D:\Backups without recursing into subdirectories
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Low')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$StartPath = "C:\windows\System32\winevt\logs",
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [int]$daysOld = 30,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$NoRecurse
 )
 
 function Show-DriveInfo {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [object]$Volume
     )
 
@@ -170,11 +170,9 @@ try {
     } else {
         Write-Host "`nNo measurable space was reclaimed." -ForegroundColor Yellow
     }
-}
-catch {
+} catch {
     Write-Error "Error performing operation. Error: $_"
-}
-finally {
+} finally {
     # Stop logging
     try {
         Stop-Transcript
@@ -184,8 +182,7 @@ finally {
             Get-Content $tempDeletionLog | Out-File -FilePath $finalLogPath -Append
             Remove-Item $tempDeletionLog -Force
         }
-    }
-    catch {
+    } catch {
         Write-Error "Failed to stop transcript or merge logs: $_"
     }
 }

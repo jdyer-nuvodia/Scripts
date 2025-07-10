@@ -2,10 +2,10 @@
 # Script: Remove-WindowsBloatware.ps1
 # Created: 2025-05-07 15:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-01-27 23:45:00 UTC
+# Last Updated: 2025-07-10 16:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.3.0
-# Additional Info: Fixed PSScriptAnalyzer compliance issues, added ShouldProcess support, replaced Write-Host with Write-LogEntry, improved code formatting and indentation consistency
+# Version: 3.3.1
+# Additional Info: Fixed PSScriptAnalyzer variable usage detection issue by correcting string interpolation syntax for utcTimestamp variable
 # =============================================================================
 
 <#
@@ -103,7 +103,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Script variables
 $computerName = $env:COMPUTERNAME
 $utcTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd_HH-mm-ss")
-$logFile = "$PSScriptRoot\Remove-WindowsBloatware_${computerName}_${utcTimestamp}.log"
+$logFile = $PSScriptRoot + "\Remove-WindowsBloatware_" + $computerName + "_" + $utcTimestamp + ".log"
 $scriptVersion = "1.1.11"
 
 # Function to write log entries
@@ -293,7 +293,7 @@ function Uninstall-UWPApp {
                     } catch {
                         # Log the error but don't display it to the console
                         $errorMsg = $_.Exception.Message
-                        Write-LogEntry "ERROR: Failed to remove UWP application ${AppName}: $errorMsg" "WARNING"
+                        Write-LogEntry "ERROR: Failed to remove UWP application ${ AppName}: $errorMsg" "WARNING"
                     }
                 } else {
                     Write-LogEntry "WhatIf: Would remove UWP application: $AppName" "INFO"
@@ -305,7 +305,7 @@ function Uninstall-UWPApp {
     } catch {
         # Log the error but don't display it to the console
         $errorMsg = $_.Exception.Message
-        Write-LogEntry "ERROR: Failed to access UWP application ${AppName}: $errorMsg" "WARNING"
+        Write-LogEntry "ERROR: Failed to access UWP application ${ AppName}: $errorMsg" "WARNING"
     }
 }
 
@@ -710,14 +710,14 @@ function Uninstall-DellPair {
         Write-LogEntry "Searching for Dell Pair uninstaller in common locations" "INFO"
 
         $possiblePaths = @(
-            "${env:ProgramFiles}\Dell\Dell Pair\uninstall.exe",
-            "${env:ProgramFiles(x86)}\Dell\Dell Pair\uninstall.exe",
-            "${env:ProgramFiles}\Dell\DellPair\uninstall.exe",
-            "${env:ProgramFiles(x86)}\Dell\DellPair\uninstall.exe"
+            "${ env:ProgramFiles}\Dell\Dell Pair\uninstall.exe",
+            "${ env:ProgramFiles(x86)}\Dell\Dell Pair\uninstall.exe",
+            "${ env:ProgramFiles}\Dell\DellPair\uninstall.exe",
+            "${ env:ProgramFiles(x86)}\Dell\DellPair\uninstall.exe"
         )
 
         # Also search for uninstallers in Dell subdirectories
-        $dellDirs = Get-ChildItem -Path "${env:ProgramFiles}\Dell\", "${env:ProgramFiles(x86)}\Dell\" -Directory -ErrorAction SilentlyContinue
+        $dellDirs = Get-ChildItem -Path "${ env:ProgramFiles}\Dell\", "${ env:ProgramFiles(x86)}\Dell\" -Directory -ErrorAction SilentlyContinue
         foreach ($dir in $dellDirs) {
             $possiblePaths += Get-ChildItem -Path $dir.FullName -Recurse -Include "unins*.exe" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
         }
@@ -762,10 +762,10 @@ function Uninstall-DellPair {
             }
             # Remove program files
             $filePaths = @(
-                "${env:ProgramFiles}\Dell\Dell Pair\",
-                "${env:ProgramFiles(x86)}\Dell\Dell Pair\",
-                "${env:ProgramFiles}\Dell\DellPair\",
-                "${env:ProgramFiles(x86)}\Dell\DellPair\"
+                "${ env:ProgramFiles}\Dell\Dell Pair\",
+                "${ env:ProgramFiles(x86)}\Dell\Dell Pair\",
+                "${ env:ProgramFiles}\Dell\DellPair\",
+                "${ env:ProgramFiles(x86)}\Dell\DellPair\"
             )
 
             foreach ($filePath in $filePaths) {
@@ -858,7 +858,7 @@ function Stop-DisableBloatwareService {
                         $stopSuccess = $true
                     } catch {
                         $errorMsg = $_.Exception.Message
-                        Write-LogEntry "WARNING: Standard stop failed for ${ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
+                        Write-LogEntry "WARNING: Standard stop failed for ${ ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
                     }
 
                     # Method 2: Use WMI/CIM to stop the service if standard method failed
@@ -877,7 +877,7 @@ function Stop-DisableBloatwareService {
                             }
                         } catch {
                             $errorMsg = $_.Exception.Message
-                            Write-LogEntry "WARNING: WMI stop failed for ${ServiceName}: $errorMsg" "WARNING"
+                            Write-LogEntry "WARNING: WMI stop failed for ${ ServiceName}: $errorMsg" "WARNING"
                         }
                     }
 
@@ -893,7 +893,7 @@ function Stop-DisableBloatwareService {
                             }
                         } catch {
                             $errorMsg = $_.Exception.Message
-                            Write-LogEntry "WARNING: SC.exe stop failed for ${ServiceName}: $errorMsg" "WARNING"
+                            Write-LogEntry "WARNING: SC.exe stop failed for ${ ServiceName}: $errorMsg" "WARNING"
                         }
                     }
 
@@ -902,7 +902,7 @@ function Stop-DisableBloatwareService {
                     }
                 } catch {
                     $errorMsg = $_.Exception.Message
-                    Write-LogEntry "ERROR: Failed to stop service ${ServiceName}. Error: $errorMsg" "WARNING"
+                    Write-LogEntry "ERROR: Failed to stop service ${ ServiceName}. Error: $errorMsg" "WARNING"
                 }
             }
             # Then, set the service to disabled
@@ -919,7 +919,7 @@ function Stop-DisableBloatwareService {
                     $disableSuccess = $true
                 } catch {
                     $errorMsg = $_.Exception.Message
-                    Write-LogEntry "WARNING: Standard disable failed for ${ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
+                    Write-LogEntry "WARNING: Standard disable failed for ${ ServiceName}: $errorMsg. Trying alternative methods." "WARNING"
                 }
 
                 # Method 2: Use the registry directly if method 1 failed
@@ -935,14 +935,14 @@ function Stop-DisableBloatwareService {
                         }
                     } catch {
                         $errorMsg = $_.Exception.Message
-                        Write-LogEntry "WARNING: Registry disable failed for ${ServiceName}: $errorMsg" "WARNING"
+                        Write-LogEntry "WARNING: Registry disable failed for ${ ServiceName}: $errorMsg" "WARNING"
                     }
                 }
 
                 # Method 3: Use SC.exe command if both other methods failed
                 if (-not $disableSuccess) {
                     try {
-                        $scResult = Start-Process -FilePath "sc.exe" -ArgumentList "config $ServiceName start= disabled" -NoNewWindow -Wait -PassThru
+                        $scResult = Start-Process -FilePath "sc.exe" -ArgumentList "config $ServiceName start = disabled" -NoNewWindow -Wait -PassThru
                         if ($scResult.ExitCode -eq 0) {
                             Write-LogEntry "DISABLED: Service $ServiceName using SC.exe" "SUCCESS"
                             $disableSuccess = $true
@@ -951,7 +951,7 @@ function Stop-DisableBloatwareService {
                         }
                     } catch {
                         $errorMsg = $_.Exception.Message
-                        Write-LogEntry "WARNING: SC.exe disable failed for ${ServiceName}: $errorMsg" "WARNING"
+                        Write-LogEntry "WARNING: SC.exe disable failed for ${ ServiceName}: $errorMsg" "WARNING"
                     }
                 }
 
@@ -960,14 +960,14 @@ function Stop-DisableBloatwareService {
                 }
             } catch {
                 $errorMsg = $_.Exception.Message
-                Write-LogEntry "ERROR: Failed to disable service ${ServiceName}. Error: $errorMsg" "WARNING"
+                Write-LogEntry "ERROR: Failed to disable service ${ ServiceName}. Error: $errorMsg" "WARNING"
             }
         } else {
             Write-LogEntry "WhatIf: Would stop and disable service: $ServiceName" "INFO"
         }
     } catch {
         $errorMsg = $_.Exception.Message
-        Write-LogEntry "ERROR: An error occurred while processing service ${ServiceName}. Error: $errorMsg" "ERROR"
+        Write-LogEntry "ERROR: An error occurred while processing service ${ ServiceName}. Error: $errorMsg" "ERROR"
     }
 }
 
@@ -1071,22 +1071,22 @@ try {
 
     # Clean up any leftover files
     $bloatwareFolders = @(
-        "${env:ProgramFiles}\McAfee",
-        "${env:ProgramFiles}\Norton",
-        "${env:ProgramFiles}\Wild Tangent Games",
-        "${env:ProgramFiles(x86)}\McAfee",
-        "${env:ProgramFiles(x86)}\Norton",
-        "${env:ProgramFiles(x86)}\Wild Tangent Games"
+        "${ env:ProgramFiles}\McAfee",
+        "${ env:ProgramFiles}\Norton",
+        "${ env:ProgramFiles}\Wild Tangent Games",
+        "${ env:ProgramFiles(x86)}\McAfee",
+        "${ env:ProgramFiles(x86)}\Norton",
+        "${ env:ProgramFiles(x86)}\Wild Tangent Games"
     )
 
     # Manufacturer folders require special handling
     $manufacturerFolders = @(
-        "${env:ProgramFiles}\Dell",
-        "${env:ProgramFiles(x86)}\Dell",
-        "${env:ProgramFiles}\Lenovo",
-        "${env:ProgramFiles(x86)}\Lenovo",
-        "${env:ProgramFiles}\HP",
-        "${env:ProgramFiles(x86)}\HP"
+        "${ env:ProgramFiles}\Dell",
+        "${ env:ProgramFiles(x86)}\Dell",
+        "${ env:ProgramFiles}\Lenovo",
+        "${ env:ProgramFiles(x86)}\Lenovo",
+        "${ env:ProgramFiles}\HP",
+        "${ env:ProgramFiles(x86)}\HP"
     )
 
     Write-LogEntry "Cleaning up leftover bloatware directories..." "INFO"

@@ -30,7 +30,7 @@
     Default: @("8.8.8.8", "1.1.1.1", "microsoft.com")
 
 .PARAMETER TargetFile
-    Path to CSV file containing targets to test. CSV format: Target,Description,Priority
+    Path to CSV file containing targets to test. CSV format: Target, Description, Priority
 
 .PARAMETER Count
     Number of tests to perform per target in each loop iteration.
@@ -167,7 +167,7 @@ function Write-FinalLoopStatistic {
             $finalStats = @"
 
 ========================================
-Final Loop Statistics $(if($Interrupted){"(Script Interrupted)"}):
+Final Loop Statistics $(if($Interrupted) { "(Script Interrupted)"}):
 ========================================
 Test Duration: $testDuration
 Total Test Runs: $script:totalTestRuns
@@ -176,7 +176,7 @@ Successful Tests: $script:totalSuccessfulTests
 Failed Tests: $script:totalFailedTests
 Success Rate: $($successRate.ToString('N2'))%
 ========================================
-Test completed$(if($Interrupted){" (Interrupted)"}): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Test completed$(if($Interrupted) { " (Interrupted)"}): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Log file size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
 ========================================
 "@
@@ -200,8 +200,7 @@ Size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
 
             # Ensure file is flushed
             [System.IO.File]::WriteAllText($script:logFile, (Get-Content $script:logFile -Raw))
-        }
-        catch {
+        } catch {
             Write-Error "Error writing final statistics: $_"
         }
     }
@@ -219,8 +218,7 @@ function Write-LogMessage {
 
     if ($LogBuffer) {
         $LogBuffer.Value += $timestampedMessage
-    }
-    elseif ($FilePath) {
+    } elseif ($FilePath) {
         Add-Content -Path $FilePath -Value $timestampedMessage -ErrorAction SilentlyContinue
     }
 
@@ -266,9 +264,9 @@ function Write-TargetLogSection {
 function Get-FormattedSize {
     param([int64]$Size)
 
-    if ($Size -gt 1GB) { return "{0:N2} GB" -f ($Size / 1GB) }
-    if ($Size -gt 1MB) { return "{0:N2} MB" -f ($Size / 1MB) }
-    if ($Size -gt 1KB) { return "{0:N2} KB" -f ($Size / 1KB) }
+    if ($Size -gt 1GB) { return " { 0:N2} GB" -f ($Size / 1GB) }
+    if ($Size -gt 1MB) { return " { 0:N2} MB" -f ($Size / 1MB) }
+    if ($Size -gt 1KB) { return " { 0:N2} KB" -f ($Size / 1KB) }
     return "$Size Bytes"
 }
 
@@ -294,8 +292,7 @@ function Import-TargetsFromFile {
         }
 
         return $targetList
-    }
-    catch {
+    } catch {
         Write-Error -Message "Error reading target file: $_"
         return @()
     }
@@ -335,15 +332,14 @@ function Test-PingConnectivity {
             if ($responseTime -lt $pingResults.MinTime) { $pingResults.MinTime = $responseTime }
             if ($responseTime -gt $pingResults.MaxTime) { $pingResults.MaxTime = $responseTime }
 
-            $pingResults.Details += "Reply from $($ping.Address): time=$($responseTime)ms"
+            $pingResults.Details += "Reply from $($ping.Address): time = $($responseTime)ms"
 
-            Write-LogMessage -Message "Ping $i/$PingCount to ${TargetHost}: $($responseTime)ms" -LogBuffer $LogBuffer
-        }
-        catch {
+            Write-LogMessage -Message "Ping $i/$PingCount to ${ TargetHost}: $($responseTime)ms" -LogBuffer $LogBuffer
+        } catch {
             $pingResults.Sent++
             $pingResults.Lost++
             $pingResults.Details += "Request timeout for ping $i"
-            Write-LogMessage -Message "Ping $i/$PingCount to ${TargetHost}: Request timeout" -LogBuffer $LogBuffer
+            Write-LogMessage -Message "Ping $i/$PingCount to ${ TargetHost}: Request timeout" -LogBuffer $LogBuffer
         }
 
         if ($i -lt $PingCount) {
@@ -395,8 +391,7 @@ function Test-DNSResolution {
         }
 
         Write-LogMessage -Message "DNS resolution for $TargetHost successful: $($dnsResults.IPAddresses -join ', ') ($($dnsResults.ResolutionTime)ms)" -LogBuffer $LogBuffer
-    }
-    catch {
+    } catch {
         $dnsResults.ErrorMessage = $_.Exception.Message
         Write-LogMessage -Message "DNS resolution for $TargetHost failed: $($_.Exception.Message)" -LogBuffer $LogBuffer
     }
@@ -432,26 +427,23 @@ function Test-PortConnectivity {
                 if ($tcpClient.Connected) {
                     $portResults.OpenPorts += $port
                     $portResults.Results[$port] = "Open"
-                    Write-LogMessage -Message "Port $port on ${TargetHost}: Open" -LogBuffer $LogBuffer
-                }
-                else {
+                    Write-LogMessage -Message "Port $port on ${ TargetHost}: Open" -LogBuffer $LogBuffer
+                } else {
                     $portResults.ClosedPorts += $port
                     $portResults.Results[$port] = "Closed"
-                    Write-LogMessage -Message "Port $port on ${TargetHost}: Closed" -LogBuffer $LogBuffer
+                    Write-LogMessage -Message "Port $port on ${ TargetHost}: Closed" -LogBuffer $LogBuffer
                 }
-            }
-            else {
+            } else {
                 $portResults.ClosedPorts += $port
                 $portResults.Results[$port] = "Timeout"
-                Write-LogMessage -Message "Port $port on ${TargetHost}: Timeout" -LogBuffer $LogBuffer
+                Write-LogMessage -Message "Port $port on ${ TargetHost}: Timeout" -LogBuffer $LogBuffer
             }
 
             $tcpClient.Close()
-        }
-        catch {
+        } catch {
             $portResults.ClosedPorts += $port
             $portResults.Results[$port] = "Error: $($_.Exception.Message)"
-            Write-LogMessage -Message "Port $port on ${TargetHost}: Error - $($_.Exception.Message)" -LogBuffer $LogBuffer
+            Write-LogMessage -Message "Port $port on ${ TargetHost}: Error - $($_.Exception.Message)" -LogBuffer $LogBuffer
         }
     }
 
@@ -495,8 +487,7 @@ function Test-MTUDiscovery {
                 $mtuResults.TestResults += "MTU $size bytes: Success"
                 Write-LogMessage -Message "MTU test for $TargetHost at $size bytes: Success" -LogBuffer $LogBuffer
             }
-        }
-        catch {
+        } catch {
             $mtuResults.TestResults += "MTU $size bytes: Failed"
             Write-LogMessage -Message "MTU test for $TargetHost at $size bytes: Failed" -LogBuffer $LogBuffer
             break
@@ -550,8 +541,7 @@ function Test-SingleTarget {
 
         $testResult.Status = "Completed"
         $testResult.TestEndTime = Get-Date
-    }
-    catch {
+    } catch {
         $testResult.Status = "Failed"
         $testResult.Errors += $_.Exception.Message
         $testResult.TestEndTime = Get-Date
@@ -680,7 +670,7 @@ function Write-LoopIterationSummary {
 
         if ($null -ne $result.DNSResults.Success) {
             $dns = $result.DNSResults
-            Write-LogMessage -Message "  DNS: $(if($dns.Success){'Success'}else{'Failed'}) $(if($dns.Success){'(' + $dns.ResolutionTime + 'ms)'}else{''})" -FilePath $script:logFile
+            Write-LogMessage -Message "  DNS: $(if($dns.Success) { 'Success'}else { 'Failed'}) $(if($dns.Success) { '(' + $dns.ResolutionTime + 'ms)'}else { ''})" -FilePath $script:logFile
         }
 
         if ($result.PortResults.TestedPorts.Count -gt 0) {
@@ -690,7 +680,7 @@ function Write-LoopIterationSummary {
 
         if ($null -ne $result.MTUResults.Success) {
             $mtu = $result.MTUResults
-            Write-LogMessage -Message "  MTU: $(if($mtu.Success){$mtu.MaxMTU.ToString()}else{'Failed'})" -FilePath $script:logFile
+            Write-LogMessage -Message "  MTU: $(if($mtu.Success) { $mtu.MaxMTU.ToString()}else { 'Failed'})" -FilePath $script:logFile
         }
     }
 
@@ -720,7 +710,7 @@ function Write-AggregatedStatistic {
                 Write-LogMessage -Message "  Ping Totals: $($agg.PingStats.TotalReceived)/$($agg.PingStats.TotalSent) successful ($([Math]::Round($pingLossRate, 2))% loss)" -FilePath $script:logFile
                 if ($agg.PingStats.TotalReceived -gt 0) {
                     $minTime = if ($agg.PingStats.MinTime -eq [int]::MaxValue) { 0 } else { $agg.PingStats.MinTime }
-                    Write-LogMessage -Message "  Ping Times: Min=$($minTime)ms, Max=$($agg.PingStats.MaxTime)ms, Avg=$([Math]::Round($avgPingTime, 2))ms" -FilePath $script:logFile
+                    Write-LogMessage -Message "  Ping Times: Min = $($minTime)ms, Max = $($agg.PingStats.MaxTime)ms, Avg = $([Math]::Round($avgPingTime, 2))ms" -FilePath $script:logFile
                 }
             }
 
@@ -774,7 +764,7 @@ function Write-TestSummary {
             $ping = $result.PingResults
             Write-LogMessage -Message "Ping Results: $($ping.Received)/$($ping.Sent) successful ($($ping.PacketLoss)% loss)" -FilePath $script:logFile
             if ($ping.Received -gt 0) {
-                Write-LogMessage -Message "  Latency: Min=$($ping.MinTime)ms, Max=$($ping.MaxTime)ms, Avg=$($ping.AvgTime)ms" -FilePath $script:logFile
+                Write-LogMessage -Message "  Latency: Min = $($ping.MinTime)ms, Max = $($ping.MaxTime)ms, Avg = $($ping.AvgTime)ms" -FilePath $script:logFile
             }
         }
 
@@ -783,8 +773,7 @@ function Write-TestSummary {
             $dns = $result.DNSResults
             if ($dns.Success) {
                 Write-LogMessage -Message "DNS Resolution: Success ($($dns.ResolutionTime)ms) - $($dns.IPAddresses -join ', ')" -FilePath $script:logFile
-            }
-            else {
+            } else {
                 Write-LogMessage -Message "DNS Resolution: Failed - $($dns.ErrorMessage)" -FilePath $script:logFile
             }
         }
@@ -803,8 +792,7 @@ function Write-TestSummary {
             $mtu = $result.MTUResults
             if ($mtu.Success) {
                 Write-LogMessage -Message "MTU Discovery: Maximum MTU = $($mtu.MaxMTU) bytes" -FilePath $script:logFile
-            }
-            else {
+            } else {
                 Write-LogMessage -Message "MTU Discovery: Failed or no response" -FilePath $script:logFile
             }
         }
@@ -818,8 +806,7 @@ function Write-TestSummary {
     Write-LogMessage -Message "Log file saved: $script:logFile" -FilePath $script:logFile
     if (Test-Path -Path $script:logFile) {
         Write-LogMessage -Message "Log file size: $(Get-FormattedSize (Get-Item $script:logFile).Length)" -FilePath $script:logFile
-    }
-    else {
+    } else {
         Write-LogMessage -Message "Log file size: 0 Bytes (WhatIf mode)" -FilePath $script:logFile
     }
     Write-LogMessage -Message "========================================" -FilePath $script:logFile
@@ -829,8 +816,7 @@ function Get-DefaultGateway {
     try {
         $defaultRoute = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction Stop | Select-Object -First 1
         return $defaultRoute.NextHop
-    }
-    catch {
+    } catch {
         Write-Warning -Message "Could not determine default gateway: $($_.Exception.Message)"
         return $null
     }
@@ -877,8 +863,7 @@ function Test-TracerouteConnectivity {
                 try {
                     $hostInfo = [System.Net.Dns]::GetHostEntry($hop)
                     $hopInfo.HostName = $hostInfo.HostName
-                }
-                catch {
+                } catch {
                     $hopInfo.HostName = "Unknown"
                 }
 
@@ -886,8 +871,7 @@ function Test-TracerouteConnectivity {
                 try {
                     $hopPing = Test-Connection -ComputerName $hop -Count 1 -ErrorAction Stop
                     $hopInfo.ResponseTime = $hopPing.Latency
-                }
-                catch {
+                } catch {
                     $hopInfo.ResponseTime = -1
                     $traceResults.FailedHops++
                 }
@@ -902,8 +886,7 @@ function Test-TracerouteConnectivity {
         }
 
         Write-LogMessage -Message "Traceroute to $TargetHost completed: $($traceResults.TotalHops) hops, $($traceResults.FailedHops) failed" -LogBuffer $LogBuffer
-    }
-    catch {
+    } catch {
         Write-LogMessage -Message "Traceroute to $TargetHost failed: $($_.Exception.Message)" -LogBuffer $LogBuffer
     }
 
@@ -939,15 +922,13 @@ function Test-LocalNetworkConnectivity {
             $localResults.GatewayReachable = $true
             $localResults.GatewayLatency = ($gatewayPing | Measure-Object -Property Latency -Average).Average
             Write-LogMessage -Message "Gateway ping successful: Average latency $($localResults.GatewayLatency)ms" -LogBuffer $LogBuffer
-        }
-        catch {
+        } catch {
             Write-LogMessage -Message "Gateway ping failed: $($_.Exception.Message)" -LogBuffer $LogBuffer
         }
 
         # Test traceroute to a common external target through gateway
         $localResults.TracerouteResults = Test-TracerouteConnectivity -TargetHost "8.8.8.8" -LogBuffer $LogBuffer
-    }
-    else {
+    } else {
         Write-LogMessage -Message "Could not detect default gateway" -LogBuffer $LogBuffer
     }
 
@@ -974,22 +955,18 @@ function Test-LocalNetworkConnectivity {
             $localResults.NetworkAdapters += $adapterInfo
             Write-LogMessage -Message "Network adapter: $($adapter.Name) - $($adapterInfo.IPAddresses -join ', ')" -LogBuffer $LogBuffer
         }
-    }
-    catch {
+    } catch {
         Write-LogMessage -Message "Error getting network adapter information: $($_.Exception.Message)" -LogBuffer $LogBuffer
     }
 
     # Determine local network health
     if ($localResults.GatewayReachable -and $localResults.GatewayLatency -lt 50 -and $localResults.NetworkAdapters.Count -gt 0) {
         $localResults.LocalNetworkHealth = "Excellent"
-    }
-    elseif ($localResults.GatewayReachable -and $localResults.GatewayLatency -lt 100) {
+    } elseif ($localResults.GatewayReachable -and $localResults.GatewayLatency -lt 100) {
         $localResults.LocalNetworkHealth = "Good"
-    }
-    elseif ($localResults.GatewayReachable) {
+    } elseif ($localResults.GatewayReachable) {
         $localResults.LocalNetworkHealth = "Concerning"
-    }
-    else {
+    } else {
         $localResults.LocalNetworkHealth = "Poor"
     }
 
@@ -1018,8 +995,7 @@ function Get-NetworkHealthScore {
             $avgLatency = $TestResult.PingResults.AvgTime
             if ($avgLatency -le 50) {
                 $scores.PingScore = [Math]::Min($scores.PingScore + 5, 100)
-            }
-            elseif ($avgLatency -gt 200) {
+            } elseif ($avgLatency -gt 200) {
                 $scores.PingScore = [Math]::Max($scores.PingScore - 10, 0)
             }
         }
@@ -1031,15 +1007,12 @@ function Get-NetworkHealthScore {
             # Score based on resolution time
             if ($TestResult.DNSResults.ResolutionTime -le 100) {
                 $scores.DNSScore = 100
-            }
-            elseif ($TestResult.DNSResults.ResolutionTime -le 500) {
+            } elseif ($TestResult.DNSResults.ResolutionTime -le 500) {
                 $scores.DNSScore = 95
-            }
-            else {
+            } else {
                 $scores.DNSScore = 85
             }
-        }
-        else {
+        } else {
             $scores.DNSScore = 0
         }
     }
@@ -1053,14 +1026,11 @@ function Get-NetworkHealthScore {
     if ($null -ne $TestResult.MTUResults.Success) {
         if ($TestResult.MTUResults.Success -and $TestResult.MTUResults.MaxMTU -ge 1500) {
             $scores.MTUScore = 100
-        }
-        elseif ($TestResult.MTUResults.Success -and $TestResult.MTUResults.MaxMTU -ge 1200) {
+        } elseif ($TestResult.MTUResults.Success -and $TestResult.MTUResults.MaxMTU -ge 1200) {
             $scores.MTUScore = 80
-        }
-        elseif ($TestResult.MTUResults.Success) {
+        } elseif ($TestResult.MTUResults.Success) {
             $scores.MTUScore = 60
-        }
-        else {
+        } else {
             $scores.MTUScore = 0
         }
     }
@@ -1076,11 +1046,9 @@ function Get-NetworkHealthScore {
     # Determine health status
     if ($scores.OverallScore -ge 98) {
         $scores.HealthStatus = "Excellent"
-    }
-    elseif ($scores.OverallScore -ge 90) {
+    } elseif ($scores.OverallScore -ge 90) {
         $scores.HealthStatus = "Concerning"
-    }
-    else {
+    } else {
         $scores.HealthStatus = "Poor"
     }
 
@@ -1115,16 +1083,16 @@ function Test-ExpectedPortFailure {
     # Expected failures for specific well-known services
     switch ($targetLower) {
         'microsoft.com' {
-              # Microsoft.com doesn't run DNS
-              if ($Port -eq 53) { return $true }
+            # Microsoft.com doesn't run DNS
+            if ($Port -eq 53) { return $true }
         }
         'google.com' {
             # Google.com doesn't run DNS (different from 8.8.8.8)
             if ($Port -eq 53) { return $true }
         }
         'cloudflare.com' {
-              # Cloudflare.com website doesn't run DNS
-              if ($Port -eq 53) { return $true }
+            # Cloudflare.com website doesn't run DNS
+            if ($Port -eq 53) { return $true }
         }
     }
 
@@ -1154,12 +1122,10 @@ function Get-AdjustedPortScore {
         if (-not $isOpen) {
             if ($isExpectedFailure) {
                 $expectedFailures++
-            }
-            else {
+            } else {
                 $unexpectedFailures++
             }
-        }
-        elseif ($isExpectedFailure) {
+        } elseif ($isExpectedFailure) {
             # Bonus for unexpected successful connections
             $bonusPoints += 5
         }
@@ -1286,7 +1252,7 @@ try {
     # Create log file
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $computerName = $env:COMPUTERNAME
-    $fileName = "AdvancedNetworkTest_${computerName}_${timestamp}.log"
+    $fileName = "AdvancedNetworkTest_${ computerName}_${ timestamp}.log"
     $script:logFile = Join-Path -Path $OutputPath -ChildPath $fileName
 
     # Create log header
@@ -1298,8 +1264,8 @@ Computer Name: $computerName
 Test Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Test Types: $($TestType -join ', ')
 Count per Target: $Count
-Loop Mode: $(if($Loop){"Enabled (Continuous)"}else{"Disabled (Single Run)"})
-Parallel Processing: $(if($Parallel){"Enabled"}else{"Disabled"})
+Loop Mode: $(if($Loop) { "Enabled (Continuous)"}else { "Disabled (Single Run)"})
+Parallel Processing: $(if($Parallel) { "Enabled"}else { "Disabled"})
 Timeout: $Timeout ms
 ========================================
 
@@ -1323,8 +1289,7 @@ Timeout: $Timeout ms
                 Priority = $target.Priority
             }
         }
-    }
-    else {
+    } else {
         foreach ($target in $Target) {
             $targetList += @{
                 Target = $target
@@ -1334,7 +1299,7 @@ Timeout: $Timeout ms
         }
     }
 
-    Write-Information -MessageData "Testing $($targetList.Count) target(s)$(if($Loop){" in continuous loop mode"}else{" in single-run mode"})" -InformationAction Continue
+    Write-Information -MessageData "Testing $($targetList.Count) target(s)$(if($Loop) { " in continuous loop mode"}else { " in single-run mode"})" -InformationAction Continue
     if ($Loop) {
         Write-Information -MessageData "Press Ctrl+C to stop continuous loop mode" -InformationAction Continue
     }
@@ -1361,405 +1326,395 @@ Timeout: $Timeout ms
                     $jobScriptBlock = {
                         param($TargetHost, $Description, $Priority, $TestTypes, $TestCount, $TestTimeout, $TestPorts, $TestMaxMTU)
 
-                # Define Initialize-NetworkTestResult function in job scope
-                function Initialize-NetworkTestResult {
-                    param([string]$Target)
+                        # Define Initialize-NetworkTestResult function in job scope
+                        function Initialize-NetworkTestResult {
+                            param([string]$Target)
 
-                    return @{
-                        Target = $Target
-                        Description = ""
-                        Priority = "Medium"
-                        PingResults = @{}
-                        DNSResults = @{}
-                        PortResults = @{}
-                        MTUResults = @{}
-                        TestStartTime = Get-Date
-                        TestEndTime = $null
-                        Status = "Running"
-                        Errors = @()
-                        LogBuffer = @()
-                    }
-                }
-
-                # Define Write-LogMessage function in job scope
-                function Write-LogMessage {
-                    param(
-                        [string]$Message,
-                        [string]$FilePath,
-                        [switch]$NoConsole,
-                        [ref]$LogBuffer
-                    )
-
-                    $timestampedMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC'): $Message"
-
-                    if ($LogBuffer) {
-                        $LogBuffer.Value += $timestampedMessage
-                    }
-                    elseif ($FilePath) {
-                        Add-Content -Path $FilePath -Value $timestampedMessage -ErrorAction SilentlyContinue
-                    }
-
-                    if (-not $NoConsole) {
-                        Write-Information -MessageData $timestampedMessage -InformationAction Continue
-                    }
-                }
-
-                # Define Test-PingConnectivity function in job scope
-                function Test-PingConnectivity {
-                    param(
-                        [string]$TargetHost,
-                        [int]$PingCount,
-                        [int]$TimeoutMs,
-                        [ref]$LogBuffer
-                    )
-
-                    $pingResults = @{
-                        Sent = 0
-                        Received = 0
-                        Lost = 0
-                        MinTime = [int]::MaxValue
-                        MaxTime = 0
-                        AvgTime = 0
-                        TotalTime = 0
-                        PacketLoss = 0
-                        Details = @()
-                    }
-
-                    Write-LogMessage -Message "Starting ping test for $TargetHost ($PingCount packets)" -LogBuffer $LogBuffer
-
-                    for ($i = 1; $i -le $PingCount; $i++) {
-                        try {
-                            $ping = Test-Connection -ComputerName $TargetHost -Count 1 -TimeoutSeconds ($TimeoutMs / 1000) -ErrorAction Stop
-
-                            $responseTime = $ping.Latency
-                            $pingResults.Sent++
-                            $pingResults.Received++
-                            $pingResults.TotalTime += $responseTime
-
-                            if ($responseTime -lt $pingResults.MinTime) { $pingResults.MinTime = $responseTime }
-                            if ($responseTime -gt $pingResults.MaxTime) { $pingResults.MaxTime = $responseTime }
-
-                            $pingResults.Details += "Reply from $($ping.Address): time=$($responseTime)ms"
-
-                            Write-LogMessage -Message "Ping $i/$PingCount to ${TargetHost}: $($responseTime)ms" -LogBuffer $LogBuffer
-                        }
-                        catch {
-                            $pingResults.Sent++
-                            $pingResults.Lost++
-                            $pingResults.Details += "Request timeout for ping $i"
-                            Write-LogMessage -Message "Ping $i/$PingCount to ${TargetHost}: Request timeout" -LogBuffer $LogBuffer
-                        }
-
-                        if ($i -lt $PingCount) {
-                            Start-Sleep -Milliseconds 1000
-                        }
-                    }
-
-                    if ($pingResults.Received -gt 0) {
-                        $pingResults.AvgTime = [math]::Round($pingResults.TotalTime / $pingResults.Received, 2)
-                    }
-
-                    if ($pingResults.MinTime -eq [int]::MaxValue) {
-                        $pingResults.MinTime = 0
-                    }
-
-                    $pingResults.PacketLoss = [math]::Round(($pingResults.Lost / $pingResults.Sent) * 100, 2)
-
-                    return $pingResults
-                }
-
-                # Define Test-DNSResolution function in job scope
-                function Test-DNSResolution {
-                    param(
-                        [string]$TargetHost,
-                        [ref]$LogBuffer
-                    )
-
-                    $dnsResults = @{
-                        HostName = $TargetHost
-                        IPAddresses = @()
-                        ResolutionTime = 0
-                        Success = $false
-                        ErrorMessage = ""
-                    }
-
-                    Write-LogMessage -Message "Starting DNS resolution test for $TargetHost" -LogBuffer $LogBuffer
-
-                    try {
-                        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-                        $dnsResult = Resolve-DnsName -Name $TargetHost -ErrorAction Stop
-                        $stopwatch.Stop()
-
-                        $dnsResults.ResolutionTime = $stopwatch.ElapsedMilliseconds
-                        $dnsResults.Success = $true
-
-                        foreach ($record in $dnsResult) {
-                            if ($record.IPAddress) {
-                                $dnsResults.IPAddresses += $record.IPAddress
+                            return @{
+                                Target = $Target
+                                Description = ""
+                                Priority = "Medium"
+                                PingResults = @{}
+                                DNSResults = @{}
+                                PortResults = @{}
+                                MTUResults = @{}
+                                TestStartTime = Get-Date
+                                TestEndTime = $null
+                                Status = "Running"
+                                Errors = @()
+                                LogBuffer = @()
                             }
                         }
 
-                        Write-LogMessage -Message "DNS resolution for $TargetHost successful: $($dnsResults.IPAddresses -join ', ') ($($dnsResults.ResolutionTime)ms)" -LogBuffer $LogBuffer
-                    }
-                    catch {
-                        $dnsResults.ErrorMessage = $_.Exception.Message
-                        Write-LogMessage -Message "DNS resolution for $TargetHost failed: $($_.Exception.Message)" -LogBuffer $LogBuffer
-                    }
+                        # Define Write-LogMessage function in job scope
+                        function Write-LogMessage {
+                            param(
+                                [string]$Message,
+                                [string]$FilePath,
+                                [switch]$NoConsole,
+                                [ref]$LogBuffer
+                            )
 
-                    return $dnsResults
-                }
+                            $timestampedMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC'): $Message"
 
-                # Define Test-PortConnectivity function in job scope
-                function Test-PortConnectivity {
-                    param(
-                        [string]$TargetHost,
-                        [int[]]$PortList,
-                        [int]$TimeoutMs,
-                        [ref]$LogBuffer
-                    )
+                            if ($LogBuffer) {
+                                $LogBuffer.Value += $timestampedMessage
+                            } elseif ($FilePath) {
+                                Add-Content -Path $FilePath -Value $timestampedMessage -ErrorAction SilentlyContinue
+                            }
 
-                    $portResults = @{
-                        TestedPorts = @()
-                        OpenPorts = @()
-                        ClosedPorts = @()
-                        Results = @{}
-                    }
+                            if (-not $NoConsole) {
+                                Write-Information -MessageData $timestampedMessage -InformationAction Continue
+                            }
+                        }
 
-                    Write-LogMessage -Message "Starting port connectivity test for $TargetHost on ports: $($PortList -join ', ')" -LogBuffer $LogBuffer
+                        # Define Test-PingConnectivity function in job scope
+                        function Test-PingConnectivity {
+                            param(
+                                [string]$TargetHost,
+                                [int]$PingCount,
+                                [int]$TimeoutMs,
+                                [ref]$LogBuffer
+                            )
 
-                    foreach ($port in $PortList) {
-                        $portResults.TestedPorts += $port
+                            $pingResults = @{
+                                Sent = 0
+                                Received = 0
+                                Lost = 0
+                                MinTime = [int]::MaxValue
+                                MaxTime = 0
+                                AvgTime = 0
+                                TotalTime = 0
+                                PacketLoss = 0
+                                Details = @()
+                            }
 
-                        try {
-                            $tcpClient = New-Object System.Net.Sockets.TcpClient
-                            $connectTask = $tcpClient.ConnectAsync($TargetHost, $port)
+                            Write-LogMessage -Message "Starting ping test for $TargetHost ($PingCount packets)" -LogBuffer $LogBuffer
 
-                            if ($connectTask.Wait($TimeoutMs)) {
-                                if ($tcpClient.Connected) {
-                                    $portResults.OpenPorts += $port
-                                    $portResults.Results[$port] = "Open"
-                                    Write-LogMessage -Message "Port $port on ${TargetHost}: Open" -LogBuffer $LogBuffer
+                            for ($i = 1; $i -le $PingCount; $i++) {
+                                try {
+                                    $ping = Test-Connection -ComputerName $TargetHost -Count 1 -TimeoutSeconds ($TimeoutMs / 1000) -ErrorAction Stop
+
+                                    $responseTime = $ping.Latency
+                                    $pingResults.Sent++
+                                    $pingResults.Received++
+                                    $pingResults.TotalTime += $responseTime
+
+                                    if ($responseTime -lt $pingResults.MinTime) { $pingResults.MinTime = $responseTime }
+                                    if ($responseTime -gt $pingResults.MaxTime) { $pingResults.MaxTime = $responseTime }
+
+                                    $pingResults.Details += "Reply from $($ping.Address): time = $($responseTime)ms"
+
+                                    Write-LogMessage -Message "Ping $i/$PingCount to ${ TargetHost}: $($responseTime)ms" -LogBuffer $LogBuffer
+                                } catch {
+                                    $pingResults.Sent++
+                                    $pingResults.Lost++
+                                    $pingResults.Details += "Request timeout for ping $i"
+                                    Write-LogMessage -Message "Ping $i/$PingCount to ${ TargetHost}: Request timeout" -LogBuffer $LogBuffer
                                 }
-                                else {
+
+                                if ($i -lt $PingCount) {
+                                    Start-Sleep -Milliseconds 1000
+                                }
+                            }
+
+                            if ($pingResults.Received -gt 0) {
+                                $pingResults.AvgTime = [math]::Round($pingResults.TotalTime / $pingResults.Received, 2)
+                            }
+
+                            if ($pingResults.MinTime -eq [int]::MaxValue) {
+                                $pingResults.MinTime = 0
+                            }
+
+                            $pingResults.PacketLoss = [math]::Round(($pingResults.Lost / $pingResults.Sent) * 100, 2)
+
+                            return $pingResults
+                        }
+
+                        # Define Test-DNSResolution function in job scope
+                        function Test-DNSResolution {
+                            param(
+                                [string]$TargetHost,
+                                [ref]$LogBuffer
+                            )
+
+                            $dnsResults = @{
+                                HostName = $TargetHost
+                                IPAddresses = @()
+                                ResolutionTime = 0
+                                Success = $false
+                                ErrorMessage = ""
+                            }
+
+                            Write-LogMessage -Message "Starting DNS resolution test for $TargetHost" -LogBuffer $LogBuffer
+
+                            try {
+                                $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+                                $dnsResult = Resolve-DnsName -Name $TargetHost -ErrorAction Stop
+                                $stopwatch.Stop()
+
+                                $dnsResults.ResolutionTime = $stopwatch.ElapsedMilliseconds
+                                $dnsResults.Success = $true
+
+                                foreach ($record in $dnsResult) {
+                                    if ($record.IPAddress) {
+                                        $dnsResults.IPAddresses += $record.IPAddress
+                                    }
+                                }
+
+                                Write-LogMessage -Message "DNS resolution for $TargetHost successful: $($dnsResults.IPAddresses -join ', ') ($($dnsResults.ResolutionTime)ms)" -LogBuffer $LogBuffer
+                            } catch {
+                                $dnsResults.ErrorMessage = $_.Exception.Message
+                                Write-LogMessage -Message "DNS resolution for $TargetHost failed: $($_.Exception.Message)" -LogBuffer $LogBuffer
+                            }
+
+                            return $dnsResults
+                        }
+
+                        # Define Test-PortConnectivity function in job scope
+                        function Test-PortConnectivity {
+                            param(
+                                [string]$TargetHost,
+                                [int[]]$PortList,
+                                [int]$TimeoutMs,
+                                [ref]$LogBuffer
+                            )
+
+                            $portResults = @{
+                                TestedPorts = @()
+                                OpenPorts = @()
+                                ClosedPorts = @()
+                                Results = @{}
+                            }
+
+                            Write-LogMessage -Message "Starting port connectivity test for $TargetHost on ports: $($PortList -join ', ')" -LogBuffer $LogBuffer
+
+                            foreach ($port in $PortList) {
+                                $portResults.TestedPorts += $port
+
+                                try {
+                                    $tcpClient = New-Object System.Net.Sockets.TcpClient
+                                    $connectTask = $tcpClient.ConnectAsync($TargetHost, $port)
+
+                                    if ($connectTask.Wait($TimeoutMs)) {
+                                        if ($tcpClient.Connected) {
+                                            $portResults.OpenPorts += $port
+                                            $portResults.Results[$port] = "Open"
+                                            Write-LogMessage -Message "Port $port on ${ TargetHost}: Open" -LogBuffer $LogBuffer
+                                        } else {
+                                            $portResults.ClosedPorts += $port
+                                            $portResults.Results[$port] = "Closed"
+                                            Write-LogMessage -Message "Port $port on ${ TargetHost}: Closed" -LogBuffer $LogBuffer
+                                        }
+                                    } else {
+                                        $portResults.ClosedPorts += $port
+                                        $portResults.Results[$port] = "Timeout"
+                                        Write-LogMessage -Message "Port $port on ${ TargetHost}: Timeout" -LogBuffer $LogBuffer
+                                    }
+
+                                    $tcpClient.Close()
+                                } catch {
                                     $portResults.ClosedPorts += $port
-                                    $portResults.Results[$port] = "Closed"
-                                    Write-LogMessage -Message "Port $port on ${TargetHost}: Closed" -LogBuffer $LogBuffer
+                                    $portResults.Results[$port] = "Error: $($_.Exception.Message)"
+                                    Write-LogMessage -Message "Port $port on ${ TargetHost}: Error - $($_.Exception.Message)" -LogBuffer $LogBuffer
                                 }
                             }
-                            else {
-                                $portResults.ClosedPorts += $port
-                                $portResults.Results[$port] = "Timeout"
-                                Write-LogMessage -Message "Port $port on ${TargetHost}: Timeout" -LogBuffer $LogBuffer
+
+                            return $portResults
+                        }
+
+                        # Define Test-MTUDiscovery function in job scope
+                        function Test-MTUDiscovery {
+                            param(
+                                [string]$TargetHost,
+                                [int]$MaxMTUSize,
+                                [ref]$LogBuffer
+                            )
+
+                            $mtuResults = @{
+                                MaxMTU = 0
+                                OptimalMTU = 0
+                                TestResults = @()
+                                Success = $false
                             }
 
-                            $tcpClient.Close()
-                        }
-                        catch {
-                            $portResults.ClosedPorts += $port
-                            $portResults.Results[$port] = "Error: $($_.Exception.Message)"
-                            Write-LogMessage -Message "Port $port on ${TargetHost}: Error - $($_.Exception.Message)" -LogBuffer $LogBuffer
-                        }
-                    }
+                            Write-LogMessage -Message "Starting MTU discovery for $TargetHost (max size: $MaxMTUSize)" -LogBuffer $LogBuffer
 
-                    return $portResults
-                }
-
-                # Define Test-MTUDiscovery function in job scope
-                function Test-MTUDiscovery {
-                    param(
-                        [string]$TargetHost,
-                        [int]$MaxMTUSize,
-                        [ref]$LogBuffer
-                    )
-
-                    $mtuResults = @{
-                        MaxMTU = 0
-                        OptimalMTU = 0
-                        TestResults = @()
-                        Success = $false
-                    }
-
-                    Write-LogMessage -Message "Starting MTU discovery for $TargetHost (max size: $MaxMTUSize)" -LogBuffer $LogBuffer
-
-                    # Start with common MTU sizes and work up
-                    $testSizes = @(576, 1024, 1280, 1460, 1500)
-                    if ($MaxMTUSize -gt 1500) {
-                        $testSizes += @(4000, 8000, $MaxMTUSize)
-                    }
-
-                    foreach ($size in $testSizes | Sort-Object) {
-                        if ($size -gt $MaxMTUSize) { continue }
-
-                        try {
-                            $pingSize = $size - 28
-                            # Subtract IP and ICMP headers
-                            if ($pingSize -lt 1) { continue }
-
-                            $ping = Test-Connection -ComputerName $TargetHost -BufferSize $pingSize -Count 1 -ErrorAction Stop
-
-                            if ($ping) {
-                                $mtuResults.MaxMTU = $size
-                                $mtuResults.TestResults += "MTU $size bytes: Success"
-                                Write-LogMessage -Message "MTU test for $TargetHost at $size bytes: Success" -LogBuffer $LogBuffer
+                            # Start with common MTU sizes and work up
+                            $testSizes = @(576, 1024, 1280, 1460, 1500)
+                            if ($MaxMTUSize -gt 1500) {
+                                $testSizes += @(4000, 8000, $MaxMTUSize)
                             }
+
+                            foreach ($size in $testSizes | Sort-Object) {
+                                if ($size -gt $MaxMTUSize) { continue }
+
+                                try {
+                                    $pingSize = $size - 28
+                                    # Subtract IP and ICMP headers
+                                    if ($pingSize -lt 1) { continue }
+
+                                    $ping = Test-Connection -ComputerName $TargetHost -BufferSize $pingSize -Count 1 -ErrorAction Stop
+
+                                    if ($ping) {
+                                        $mtuResults.MaxMTU = $size
+                                        $mtuResults.TestResults += "MTU $size bytes: Success"
+                                        Write-LogMessage -Message "MTU test for $TargetHost at $size bytes: Success" -LogBuffer $LogBuffer
+                                    }
+                                } catch {
+                                    $mtuResults.TestResults += "MTU $size bytes: Failed"
+                                    Write-LogMessage -Message "MTU test for $TargetHost at $size bytes: Failed" -LogBuffer $LogBuffer
+                                    break
+                                }
+                            }
+
+                            if ($mtuResults.MaxMTU -gt 0) {
+                                $mtuResults.OptimalMTU = $mtuResults.MaxMTU
+                                $mtuResults.Success = $true
+                            }
+
+                            return $mtuResults
                         }
-                        catch {
-                            $mtuResults.TestResults += "MTU $size bytes: Failed"
-                            Write-LogMessage -Message "MTU test for $TargetHost at $size bytes: Failed" -LogBuffer $LogBuffer
-                            break
+
+                        # Define Test-SingleTarget function in job scope
+                        function Test-SingleTarget {
+                            param(
+                                [string]$TargetHost,
+                                [string]$Description = "",
+                                [string]$Priority = "Medium",
+                                [string[]]$TestTypes = @("Ping", "DNS"),
+                                [int]$TestCount = 10,
+                                [int]$TestTimeout = 5000,
+                                [int[]]$TestPorts = @(80, 443, 53),
+                                [int]$TestMaxMTU = 1500
+                            )
+
+                            $testResult = Initialize-NetworkTestResult -Target $TargetHost
+                            $testResult.Description = $Description
+                            $testResult.Priority = $Priority
+
+                            try {
+                                # Ping Test
+                                if ($TestTypes -contains "Ping" -or $TestTypes -contains "All") {
+                                    $testResult.PingResults = Test-PingConnectivity -TargetHost $TargetHost -PingCount $TestCount -TimeoutMs $TestTimeout -LogBuffer ([ref]$testResult.LogBuffer)
+                                }
+
+                                # DNS Test
+                                if ($TestTypes -contains "DNS" -or $TestTypes -contains "All") {
+                                    $testResult.DNSResults = Test-DNSResolution -TargetHost $TargetHost -LogBuffer ([ref]$testResult.LogBuffer)
+                                }
+
+                                # Port Test
+                                if ($TestTypes -contains "Port" -or $TestTypes -contains "All") {
+                                    $testResult.PortResults = Test-PortConnectivity -TargetHost $TargetHost -PortList $TestPorts -TimeoutMs $TestTimeout -LogBuffer ([ref]$testResult.LogBuffer)
+                                }
+
+                                # MTU Test
+                                if ($TestTypes -contains "MTU" -or $TestTypes -contains "All") {
+                                    $testResult.MTUResults = Test-MTUDiscovery -TargetHost $TargetHost -MaxMTUSize $TestMaxMTU -LogBuffer ([ref]$testResult.LogBuffer)
+                                }
+
+                                $testResult.Status = "Completed"
+                                $testResult.TestEndTime = Get-Date
+                            } catch {
+                                $testResult.Status = "Failed"
+                                $testResult.Errors += $_.Exception.Message
+                                $testResult.TestEndTime = Get-Date
+                                Write-LogMessage -Message "Tests failed for target: $TargetHost - $($_.Exception.Message)" -LogBuffer ([ref]$testResult.LogBuffer)
+                            }
+
+                            return $testResult
                         }
+
+                        # Execute the test for this target
+                        return Test-SingleTarget -TargetHost $TargetHost -Description $Description -Priority $Priority -TestTypes $TestTypes -TestCount $TestCount -TestTimeout $TestTimeout -TestPorts $TestPorts -TestMaxMTU $TestMaxMTU
                     }
 
-                    if ($mtuResults.MaxMTU -gt 0) {
-                        $mtuResults.OptimalMTU = $mtuResults.MaxMTU
-                        $mtuResults.Success = $true
-                    }
-
-                    return $mtuResults
+                    $job = Start-Job -ScriptBlock $jobScriptBlock -ArgumentList $targetInfo.Target, $targetInfo.Description, $targetInfo.Priority, $TestType, $Count, $Timeout, $Ports, $MaxMTU
+                    $jobs += $job
                 }
 
-                # Define Test-SingleTarget function in job scope
-                function Test-SingleTarget {
-                    param(
-                        [string]$TargetHost,
-                        [string]$Description = "",
-                        [string]$Priority = "Medium",
-                        [string[]]$TestTypes = @("Ping", "DNS"),
-                        [int]$TestCount = 10,
-                        [int]$TestTimeout = 5000,
-                        [int[]]$TestPorts = @(80, 443, 53),
-                        [int]$TestMaxMTU = 1500
-                    )
+                # Wait for all jobs to complete
+                Write-Information -MessageData "Waiting for parallel jobs to complete..." -InformationAction Continue
+                $jobs | Wait-Job | Out-Null
 
-                    $testResult = Initialize-NetworkTestResult -Target $TargetHost
-                    $testResult.Description = $Description
-                    $testResult.Priority = $Priority
-
-                    try {
-                        # Ping Test
-                        if ($TestTypes -contains "Ping" -or $TestTypes -contains "All") {
-                            $testResult.PingResults = Test-PingConnectivity -TargetHost $TargetHost -PingCount $TestCount -TimeoutMs $TestTimeout -LogBuffer ([ref]$testResult.LogBuffer)
-                        }
-
-                        # DNS Test
-                        if ($TestTypes -contains "DNS" -or $TestTypes -contains "All") {
-                            $testResult.DNSResults = Test-DNSResolution -TargetHost $TargetHost -LogBuffer ([ref]$testResult.LogBuffer)
-                        }
-
-                        # Port Test
-                        if ($TestTypes -contains "Port" -or $TestTypes -contains "All") {
-                            $testResult.PortResults = Test-PortConnectivity -TargetHost $TargetHost -PortList $TestPorts -TimeoutMs $TestTimeout -LogBuffer ([ref]$testResult.LogBuffer)
-                        }
-
-                        # MTU Test
-                        if ($TestTypes -contains "MTU" -or $TestTypes -contains "All") {
-                            $testResult.MTUResults = Test-MTUDiscovery -TargetHost $TargetHost -MaxMTUSize $TestMaxMTU -LogBuffer ([ref]$testResult.LogBuffer)
-                        }
-
-                        $testResult.Status = "Completed"
-                        $testResult.TestEndTime = Get-Date
+                # Collect results
+                foreach ($job in $jobs) {
+                    $result = Receive-Job -Job $job -ErrorAction SilentlyContinue
+                    if ($result) {
+                        $script:results[$result.Target] = $result
                     }
-                    catch {
-                        $testResult.Status = "Failed"
-                        $testResult.Errors += $_.Exception.Message
-                        $testResult.TestEndTime = Get-Date
-                        Write-LogMessage -Message "Tests failed for target: $TargetHost - $($_.Exception.Message)" -LogBuffer ([ref]$testResult.LogBuffer)
-                    }
-
-                    return $testResult
                 }
 
-                # Execute the test for this target
-                return Test-SingleTarget -TargetHost $TargetHost -Description $Description -Priority $Priority -TestTypes $TestTypes -TestCount $TestCount -TestTimeout $TestTimeout -TestPorts $TestPorts -TestMaxMTU $TestMaxMTU
+                # Clean up jobs
+                $jobs | Remove-Job -Force
+            } else {
+                Write-Information -MessageData "Running tests sequentially..." -InformationAction Continue
+
+                foreach ($targetInfo in $targetList) {
+                    $result = Test-SingleTarget -TargetHost $targetInfo.Target -Description $targetInfo.Description -Priority $targetInfo.Priority -TestTypes $TestType -TestCount $Count -TestTimeout $Timeout -TestPorts $Ports -TestMaxMTU $MaxMTU
+                    $script:results[$result.Target] = $result
+                }
             }
 
-            $job = Start-Job -ScriptBlock $jobScriptBlock -ArgumentList $targetInfo.Target, $targetInfo.Description, $targetInfo.Priority, $TestType, $Count, $Timeout, $Ports, $MaxMTU
-            $jobs += $job
-        }
+            # Update aggregated statistics
+            Update-AggregatedStatistic -TestResults $script:results
 
-        # Wait for all jobs to complete
-        Write-Information -MessageData "Waiting for parallel jobs to complete..." -InformationAction Continue
-        $jobs | Wait-Job | Out-Null
+            # Write iteration summary to log
+            Write-LoopIterationSummary -IterationNumber $script:totalTestRuns -IterationResults $script:results
 
-        # Collect results
-        foreach ($job in $jobs) {
-            $result = Receive-Job -Job $job -ErrorAction SilentlyContinue
-            if ($result) {
-                $script:results[$result.Target] = $result
+            # Write organized target sections to log file for this iteration
+            if ($PSCmdlet.ShouldProcess($script:logFile, "Write Target Test Sections")) {
+                foreach ($targetName in $script:results.Keys | Sort-Object) {
+                    Write-TargetLogSection -TestResult $script:results[$targetName] -FilePath $script:logFile
+                }
             }
-        }
 
-        # Clean up jobs
-        $jobs | Remove-Job -Force
-    }
-    else {
-        Write-Information -MessageData "Running tests sequentially..." -InformationAction Continue
+            # Perform local network testing if enabled (only on first run or every 10th run to avoid log bloat)
+            $localNetworkResults = $null
+            if ($IncludeLocalNetwork -and ($script:totalTestRuns -eq 1 -or $script:totalTestRuns % 10 -eq 0)) {
+                Write-Information -MessageData "Running local network connectivity tests..." -InformationAction Continue
+                $localNetworkResults = Test-LocalNetworkConnectivity -TestTimeout $Timeout -LogBuffer ([ref]@())
 
-        foreach ($targetInfo in $targetList) {
-            $result = Test-SingleTarget -TargetHost $targetInfo.Target -Description $targetInfo.Description -Priority $targetInfo.Priority -TestTypes $TestType -TestCount $Count -TestTimeout $Timeout -TestPorts $Ports -TestMaxMTU $MaxMTU
-            $script:results[$result.Target] = $result
-        }
-    }
+                # Write local network results to log
+                Write-LogMessage -Message "`n========================================" -FilePath $script:logFile
+                Write-LogMessage -Message "LOCAL NETWORK TEST RESULTS (Run #$script:totalTestRuns)" -FilePath $script:logFile
+                Write-LogMessage -Message "========================================" -FilePath $script:logFile
+                Write-LogMessage -Message "Default Gateway: $($localNetworkResults.DefaultGateway)" -FilePath $script:logFile
+                Write-LogMessage -Message "Gateway Reachable: $($localNetworkResults.GatewayReachable)" -FilePath $script:logFile
+                if ($localNetworkResults.GatewayReachable) {
+                    Write-LogMessage -Message "Gateway Latency: $([Math]::Round($localNetworkResults.GatewayLatency, 2))ms" -FilePath $script:logFile
+                }
+                Write-LogMessage -Message "Local Network Health: $($localNetworkResults.LocalNetworkHealth)" -FilePath $script:logFile
+                Write-LogMessage -Message "Active Network Adapters: $($localNetworkResults.NetworkAdapters.Count)" -FilePath $script:logFile
 
-    # Update aggregated statistics
-    Update-AggregatedStatistic -TestResults $script:results
+                if ($localNetworkResults.TracerouteResults.Success) {
+                    Write-LogMessage -Message "Traceroute Results: $($localNetworkResults.TracerouteResults.TotalHops) hops, $($localNetworkResults.TracerouteResults.FailedHops) failed" -FilePath $script:logFile
+                }
+            }
 
-    # Write iteration summary to log
-    Write-LoopIterationSummary -IterationNumber $script:totalTestRuns -IterationResults $script:results
+            # Write aggregated statistics every 10 iterations
+            Write-AggregatedStatistic -IterationNumber $script:totalTestRuns
 
-    # Write organized target sections to log file for this iteration
-    if ($PSCmdlet.ShouldProcess($script:logFile, "Write Target Test Sections")) {
-        foreach ($targetName in $script:results.Keys | Sort-Object) {
-            Write-TargetLogSection -TestResult $script:results[$targetName] -FilePath $script:logFile
-        }
-    }
+            # Write comprehensive network analysis if enabled (only on first run or every 10th run)
+            if ($IncludeResultAnalysis -and ($script:totalTestRuns -eq 1 -or $script:totalTestRuns % 10 -eq 0)) {
+                Write-NetworkAnalysis -AllResults $script:results -LocalNetworkResults $localNetworkResults -FilePath $script:logFile
+            }
 
-    # Perform local network testing if enabled (only on first run or every 10th run to avoid log bloat)
-    $localNetworkResults = $null
-    if ($IncludeLocalNetwork -and ($script:totalTestRuns -eq 1 -or $script:totalTestRuns % 10 -eq 0)) {
-        Write-Information -MessageData "Running local network connectivity tests..." -InformationAction Continue
-        $localNetworkResults = Test-LocalNetworkConnectivity -TestTimeout $Timeout -LogBuffer ([ref]@())
+            Write-Information -MessageData "Test run #$script:totalTestRuns completed" -InformationAction Continue
 
-        # Write local network results to log
-        Write-LogMessage -Message "`n========================================" -FilePath $script:logFile
-        Write-LogMessage -Message "LOCAL NETWORK TEST RESULTS (Run #$script:totalTestRuns)" -FilePath $script:logFile
-        Write-LogMessage -Message "========================================" -FilePath $script:logFile
-        Write-LogMessage -Message "Default Gateway: $($localNetworkResults.DefaultGateway)" -FilePath $script:logFile
-        Write-LogMessage -Message "Gateway Reachable: $($localNetworkResults.GatewayReachable)" -FilePath $script:logFile
-        if ($localNetworkResults.GatewayReachable) {
-            Write-LogMessage -Message "Gateway Latency: $([Math]::Round($localNetworkResults.GatewayLatency, 2))ms" -FilePath $script:logFile
-        }
-        Write-LogMessage -Message "Local Network Health: $($localNetworkResults.LocalNetworkHealth)" -FilePath $script:logFile
-        Write-LogMessage -Message "Active Network Adapters: $($localNetworkResults.NetworkAdapters.Count)" -FilePath $script:logFile
+            # Check if we should stop (single run mode)
+            if (-not $Loop) {
+                Write-Information -MessageData "`nSingle-run mode: Test completed" -InformationAction Continue
+                break
+            }
 
-        if ($localNetworkResults.TracerouteResults.Success) {
-            Write-LogMessage -Message "Traceroute Results: $($localNetworkResults.TracerouteResults.TotalHops) hops, $($localNetworkResults.TracerouteResults.FailedHops) failed" -FilePath $script:logFile
-        }
-    }
+            # Small delay between test runs in loop mode
+            if ($Loop) {
+                Start-Sleep -Seconds 5
+            }
 
-    # Write aggregated statistics every 10 iterations
-    Write-AggregatedStatistic -IterationNumber $script:totalTestRuns
-
-    # Write comprehensive network analysis if enabled (only on first run or every 10th run)
-    if ($IncludeResultAnalysis -and ($script:totalTestRuns -eq 1 -or $script:totalTestRuns % 10 -eq 0)) {
-        Write-NetworkAnalysis -AllResults $script:results -LocalNetworkResults $localNetworkResults -FilePath $script:logFile
-    }
-
-    Write-Information -MessageData "Test run #$script:totalTestRuns completed" -InformationAction Continue
-
-    # Check if we should stop (single run mode)
-    if (-not $Loop) {
-        Write-Information -MessageData "`nSingle-run mode: Test completed" -InformationAction Continue
-        break
-    }
-
-    # Small delay between test runs in loop mode
-    if ($Loop) {
-        Start-Sleep -Seconds 5
-    }
-
-}
-catch {
+        } catch {
             if ($_.Exception.Message -match "cancelled by the user") {
                 $script:interrupted = $true
                 break
@@ -1771,22 +1726,19 @@ catch {
     # Write final summary and statistics
     Write-TestSummary -AllResults $script:results
 
-    Write-Information -MessageData "`nAdvanced Network Connectivity Test Completed$(if($script:interrupted){" (Interrupted)"})" -InformationAction Continue
+    Write-Information -MessageData "`nAdvanced Network Connectivity Test Completed$(if($script:interrupted) { " (Interrupted)"})" -InformationAction Continue
     Write-Information -MessageData "Results saved to: $script:logFile" -InformationAction Continue
-}
-catch {
+} catch {
     Write-Error -Message "Error during network connectivity test: $($_.Exception.Message)"
     Write-Information -MessageData "Stack Trace: $($_.ScriptStackTrace)" -InformationAction Continue
     if ($script:logFile) {
         Write-LogMessage -Message "ERROR: $($_.Exception.Message)" -FilePath $script:logFile
         Write-LogMessage -Message "Stack Trace: $($_.ScriptStackTrace)" -FilePath $script:logFile
     }
-}
-finally {
+} finally {
     if ($script:interrupted) {
         Write-FinalLoopStatistic -Interrupted
-    }
-    else {
+    } else {
         Write-FinalLoopStatistic
     }
 }

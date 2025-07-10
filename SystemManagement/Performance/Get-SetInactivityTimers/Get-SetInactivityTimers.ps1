@@ -26,7 +26,7 @@ Displays current inactivity settings and prompts for changes
 Shows what changes would be made without actually making them
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param()
 
 # Function to safely stop transcript
@@ -49,8 +49,7 @@ function Stop-TranscriptSafely {
             # Set the flag to inactive *after* successful stop
             $script:transcriptActive = $false
             Write-Debug "Transcript marked as inactive."
-        }
-        catch {
+        } catch {
             Write-Warning "Error stopping transcript: $_"
             # Even if stopping failed, mark as inactive to prevent retry loops if applicable
             $script:transcriptActive = $false
@@ -90,13 +89,13 @@ function Format-Minutes {
     $minutes = $remainingMinutesAfterDays % 60
 
     $parts = @()
-    if ($days -gt 0) { $parts += "$days day$(if ($days -gt 1) {'s'} else {''})" }
-    if ($hours -gt 0) { $parts += "$hours hour$(if ($hours -gt 1) {'s'} else {''})" }
-    if ($minutes -gt 0) { $parts += "$minutes minute$(if ($minutes -gt 1) {'s'} else {''})" }
+    if ($days -gt 0) { $parts += "$days day$(if ($days -gt 1) { 's'} else { ''})" }
+    if ($hours -gt 0) { $parts += "$hours hour$(if ($hours -gt 1) { 's'} else { ''})" }
+    if ($minutes -gt 0) { $parts += "$minutes minute$(if ($minutes -gt 1) { 's'} else { ''})" }
 
     # Fallback if calculation results in empty parts (should not happen with Floor)
     if ($parts.Count -eq 0) {
-        return "$minutesInt minute$(if ($minutesInt -gt 1) {'s'} else {''})"
+        return "$minutesInt minute$(if ($minutesInt -gt 1) { 's'} else { ''})"
     }
 
     return $parts -join ', '
@@ -115,7 +114,7 @@ function Get-PowerSettings {
         return $null
     }
     # Extract the GUID robustly
-    $schemeGuid = ($powerSchemeInfo -split ' ' | Where-Object { $_ -match '^[{(]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[)}]?$' } | Select-Object -First 1)
+    $schemeGuid = ($powerSchemeInfo -split ' ' | Where-Object { $_ -match '^[{ (]?[0-9a-fA-F]{ 8}-([0-9a-fA-F]{ 4}-) { 3}[0-9a-fA-F]{ 12}[)}]?$' } | Select-Object -First 1)
     # Extract the Scheme Name
     $schemeName = if ($powerSchemeInfo -match '\((.*?)\)') { $matches[1] } else { "Unknown" }
     Write-Debug "Active Power Scheme Name: $schemeName"
@@ -166,7 +165,7 @@ function Get-PowerSettings {
 
     foreach ($line in $powerSettingsLines) {
         # Identify current Subgroup
-        if ($line -match "Subgroup GUID: ([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})") {
+        if ($line -match "Subgroup GUID: ([0-9a-fA-F]{ 8}-([0-9a-fA-F]{ 4}-) { 3}[0-9a-fA-F]{ 12})") {
             $currentSubgroupGuid = $matches[1]
             # Reset setting when subgroup changes
                         $currentSettingGuid = $null
@@ -175,7 +174,7 @@ function Get-PowerSettings {
         }
 
         # Identify current Power Setting GUID within the subgroup
-        if ($line -match "Power Setting GUID: ([0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})") {
+        if ($line -match "Power Setting GUID: ([0-9a-fA-F]{ 8}-([0-9a-fA-F]{ 4}-) { 3}[0-9a-fA-F]{ 12})") {
             $currentSettingGuid = $matches[1]
             Write-Debug "Processing Setting: $currentSettingGuid within Subgroup: $currentSubgroupGuid"
             continue
@@ -189,12 +188,10 @@ function Get-PowerSettings {
             if ($currentSubgroupGuid -eq $displaySubgroupGuid -and $currentSettingGuid -eq $displayTimeoutSettingGuid) {
                 $monitorTimeoutAC_Seconds = $seconds
                 Write-Debug "Assigned AC Monitor Timeout: $seconds seconds"
-            }
-            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $sleepTimeoutSettingGuid) {
+            } elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $sleepTimeoutSettingGuid) {
                 $sleepTimeoutAC_Seconds = $seconds
                 Write-Debug "Assigned AC Sleep Timeout: $seconds seconds"
-            }
-            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $hibernateTimeoutSettingGuid) {
+            } elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $hibernateTimeoutSettingGuid) {
                 $hibernateTimeoutAC_Seconds = $seconds
                 Write-Debug "Assigned AC Hibernate Timeout: $seconds seconds"
             }
@@ -208,12 +205,10 @@ function Get-PowerSettings {
             if ($currentSubgroupGuid -eq $displaySubgroupGuid -and $currentSettingGuid -eq $displayTimeoutSettingGuid) {
                 $monitorTimeoutDC_Seconds = $seconds
                 Write-Debug "Assigned DC Monitor Timeout: $seconds seconds"
-            }
-            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $sleepTimeoutSettingGuid) {
+            } elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $sleepTimeoutSettingGuid) {
                 $sleepTimeoutDC_Seconds = $seconds
                 Write-Debug "Assigned DC Sleep Timeout: $seconds seconds"
-            }
-            elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $hibernateTimeoutSettingGuid) {
+            } elseif ($currentSubgroupGuid -eq $sleepSubgroupGuid -and $currentSettingGuid -eq $hibernateTimeoutSettingGuid) {
                 $hibernateTimeoutDC_Seconds = $seconds
                 Write-Debug "Assigned DC Hibernate Timeout: $seconds seconds"
             }
@@ -291,8 +286,7 @@ function Get-LockPolicySettings {    Write-Host "Checking Group Policy and secur
         if ($inactivityLimit) {
             $settings.AutoLockTimeout = [math]::Round($inactivityLimit.InactivityTimeoutSecs / 60)
         }
-    }
-    catch {
+    } catch {
         Write-Warning "Error checking security policies: $_"
     }
 
@@ -317,7 +311,7 @@ function Get-IntelContextSensing {
             $contextSensingInfo.Status = $service.Status
 
             # Try to get version info
-            $path = (Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue).PathName
+            $path = (Get-WmiObject -Class Win32_Service -Filter "Name = '$($service.Name)'" -ErrorAction SilentlyContinue).PathName
             if ($path) {
                 $contextSensingInfo.Path = $path -replace '^"([^"]+)".*$', '$1'
                 if (Test-Path $contextSensingInfo.Path) {
@@ -354,8 +348,7 @@ function Get-IntelContextSensing {
                 $contextSensingInfo.Version = $apps[0].DisplayVersion
             }
         }
-    }
-    catch {
+    } catch {
         Write-Debug "Error checking for Intel Context Sensing: $_"
     }
 
@@ -374,8 +367,8 @@ function Get-DellOptimizer {
     try {
         # Check for Dell Optimizer application
         $appPaths = @(
-            "${env:ProgramFiles}\Dell\DellOptimizer\DellOptimizer.exe",
-            "${env:ProgramFiles(x86)}\Dell\DellOptimizer\DellOptimizer.exe"
+            "${ env:ProgramFiles}\Dell\DellOptimizer\DellOptimizer.exe",
+            "${ env:ProgramFiles(x86)}\Dell\DellOptimizer\DellOptimizer.exe"
         )
 
         foreach ($path in $appPaths) {
@@ -416,12 +409,10 @@ function Get-DellOptimizer {
                         $enabled = Get-ItemProperty -Path $featurePaths[$feature] -Name "Enabled" -ErrorAction SilentlyContinue
                         if ($null -ne $enabled -and $enabled.Enabled -eq 1) {
                             $dellOptimizerInfo.Features += "$feature (Enabled)"
-                        }
-                        else {
+                        } else {
                             $dellOptimizerInfo.Features += "$feature (Disabled)"
                         }
-                    }
-                    catch {
+                    } catch {
                         $dellOptimizerInfo.Features += "$feature (Status Unknown)"
                     }
                 }
@@ -443,8 +434,7 @@ function Get-DellOptimizer {
                 $dellOptimizerInfo.Version = $apps[0].DisplayVersion
             }
         }
-    }
-    catch {
+    } catch {
         Write-Debug "Error checking for Dell Optimizer: $_"
     }
 
@@ -467,7 +457,7 @@ function Get-EllipticSensor {
             $ellipticInfo.Status = $service.Status
 
             # Try to get version info
-            $path = (Get-WmiObject -Class Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue).PathName
+            $path = (Get-WmiObject -Class Win32_Service -Filter "Name = '$($service.Name)'" -ErrorAction SilentlyContinue).PathName
             if ($path) {
                 $ellipticInfo.Path = $path -replace '^"([^"]+)".*$', '$1'
                 if (Test-Path $ellipticInfo.Path) {
@@ -511,8 +501,7 @@ function Get-EllipticSensor {
                 $ellipticInfo.Version = $apps[0].DisplayVersion
             }
         }
-    }
-    catch {
+    } catch {
         Write-Debug "Error checking for Elliptic Virtual Lock Sensor: $_"
     }
 
@@ -583,13 +572,11 @@ function Get-WindowsDynamicLock {
             if (-not $bluetoothAvailable -and $dynamicLockInfo.Enabled) {
                 $dynamicLockInfo.Status += " (Warning: No Bluetooth devices detected)"
             }
-        }
-        catch {
+        } catch {
             Write-Debug "Error checking Bluetooth devices: $_"
             $dynamicLockInfo.RequiresBluetoothDevice = "Unknown (Error checking devices)"
         }
-    }
-    catch {
+    } catch {
         Write-Debug "Error checking for Windows Dynamic Lock: $_"
     }
 
@@ -650,7 +637,7 @@ function Set-PowerTimeout {
     if ($PSCmdlet.ShouldProcess("Power Settings", "Update inactivity timeouts")) {
         try {
             # Get current power scheme GUID
-            $schemeGuid = (powercfg /getactivescheme) -split " " | Where-Object { $_ -match '^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$' }
+            $schemeGuid = (powercfg /getactivescheme) -split " " | Where-Object { $_ -match '^[{ ]?[0-9a-fA-F]{ 8}-([0-9a-fA-F]{ 4}-) { 3}[0-9a-fA-F]{ 12}[}]?$' }
             if (-not $schemeGuid) {
                 Write-Warning "Could not determine active power scheme GUID"
                 return $false
@@ -683,8 +670,7 @@ function Set-PowerTimeout {
             }
 
             Write-Host "All inactivity timers have been updated successfully!" -ForegroundColor Green
-        }
-        catch {
+        } catch {
             Write-host "Error setting power settings: $_" -ForegroundColor Red
             return $false
         }
@@ -737,8 +723,7 @@ function Set-LockPolicySettings {
 
             Write-Host "Group Policy settings have been updated successfully!" -ForegroundColor Green
             return $true
-        }
-        catch {
+        } catch {
             Write-host "Error setting Group Policy settings: $_" -ForegroundColor Red
             return $false
         }
@@ -758,8 +743,7 @@ function Start-TranscriptSafely {
             Start-Transcript -Path $script:logPath -Force
             $script:transcriptActive = $true
             Write-Debug "Debug logging started. Log file: $script:logPath"
-        }
-        catch {
+        } catch {
             Write-Warning "Failed to start transcript: $_"
         }
     }
@@ -792,23 +776,23 @@ try {
     # Check if Get-PowerSettings returned valid data
     if ($null -ne $currentSettings) {
         # Ensure PowerPlanName exists
-                Write-Host ("Active Power Plan: {0}" -f $currentSettings.PowerPlanName)
-        Write-Host ("Plan GUID: {0}" -f $currentSettings.PowerPlanGuid)
+                Write-Host ("Active Power Plan: { 0}" -f $currentSettings.PowerPlanName)
+        Write-Host ("Plan GUID: { 0}" -f $currentSettings.PowerPlanGuid)
 
         Write-Host "`nCurrent Inactivity Settings:" -ForegroundColor White
         Write-Host "------------------------" -ForegroundColor White
         Write-Host "`nDisplay Settings:" -ForegroundColor Cyan
-        Write-Host ("Monitor Timeout (AC Power): {0}" -f (Format-Minutes $currentSettings.MonitorTimeoutAC))
-        Write-Host ("Monitor Timeout (Battery): {0}" -f (Format-Minutes $currentSettings.MonitorTimeoutDC))
+        Write-Host ("Monitor Timeout (AC Power): { 0}" -f (Format-Minutes $currentSettings.MonitorTimeoutAC))
+        Write-Host ("Monitor Timeout (Battery): { 0}" -f (Format-Minutes $currentSettings.MonitorTimeoutDC))
 
         Write-Host "`nSleep Settings:" -ForegroundColor Cyan
-        Write-Host ("Sleep Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.SleepTimeoutAC))
-        Write-Host ("Sleep Timer (Battery): {0}" -f (Format-Minutes $currentSettings.SleepTimeoutDC))
-        Write-Host ("Hibernate Timer (AC Power): {0}" -f (Format-Minutes $currentSettings.HibernateTimeoutAC))
-        Write-Host ("Hibernate Timer (Battery): {0}" -f (Format-Minutes $currentSettings.HibernateTimeoutDC))
+        Write-Host ("Sleep Timer (AC Power): { 0}" -f (Format-Minutes $currentSettings.SleepTimeoutAC))
+        Write-Host ("Sleep Timer (Battery): { 0}" -f (Format-Minutes $currentSettings.SleepTimeoutDC))
+        Write-Host ("Hibernate Timer (AC Power): { 0}" -f (Format-Minutes $currentSettings.HibernateTimeoutAC))
+        Write-Host ("Hibernate Timer (Battery): { 0}" -f (Format-Minutes $currentSettings.HibernateTimeoutDC))
 
         Write-Host "`nScreen Saver:" -ForegroundColor Cyan
-        Write-Host ("Screen Saver Timeout: {0}" -f (Format-Minutes $currentSettings.ScreenSaverTimeout))
+        Write-Host ("Screen Saver Timeout: { 0}" -f (Format-Minutes $currentSettings.ScreenSaverTimeout))
     } else {
          Write-Warning "Could not display power settings as they failed to load."
     }
@@ -817,10 +801,10 @@ try {
     if ($null -ne $lockSettings) {
         Write-Host "`nSecurity and Group Policy Settings:" -ForegroundColor White
         Write-Host "--------------------------------" -ForegroundColor White
-        Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): {0}" -f $(if ($lockSettings.ScreenSaverForced) { "Yes" } else { "No" }))
-        Write-Host ("Auto Lock Enabled: {0}" -f $(if ($lockSettings.AutoLockEnabled) { "Yes" } else { "No" }))
+        Write-Host ("Screen Saver Security Enforced (User cannot remove password requirement when returning from Screen Saver): { 0}" -f $(if ($lockSettings.ScreenSaverForced) { "Yes" } else { "No" }))
+        Write-Host ("Auto Lock Enabled: { 0}" -f $(if ($lockSettings.AutoLockEnabled) { "Yes" } else { "No" }))
         if ($null -ne $lockSettings.AutoLockTimeout) {
-            Write-Host ("Auto Lock Timeout: {0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
+            Write-Host ("Auto Lock Timeout: { 0}" -f (Format-Minutes $lockSettings.AutoLockTimeout))
         }
     } else {
         Write-Warning "Could not display lock policy settings as they failed to load."
@@ -833,44 +817,44 @@ try {
 
         # Intel Context Sensing
         Write-Host "`nIntel Context Sensing:" -ForegroundColor Cyan
-        Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.IntelContextSensing.Installed) { "Yes" } else { "No" }))
+        Write-Host ("Installed: { 0}" -f $(if ($autoLockCapabilities.IntelContextSensing.Installed) { "Yes" } else { "No" }))
         if ($autoLockCapabilities.IntelContextSensing.Installed) {
-            Write-Host ("Status: {0}" -f $autoLockCapabilities.IntelContextSensing.Status)
-            Write-Host ("Version: {0}" -f $autoLockCapabilities.IntelContextSensing.Version)
+            Write-Host ("Status: { 0}" -f $autoLockCapabilities.IntelContextSensing.Status)
+            Write-Host ("Version: { 0}" -f $autoLockCapabilities.IntelContextSensing.Version)
         }
 
         # Dell Optimizer
         Write-Host "`nDell Optimizer:" -ForegroundColor Cyan
-        Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.DellOptimizer.Installed) { "Yes" } else { "No" }))
+        Write-Host ("Installed: { 0}" -f $(if ($autoLockCapabilities.DellOptimizer.Installed) { "Yes" } else { "No" }))
         if ($autoLockCapabilities.DellOptimizer.Installed) {
-            Write-Host ("Status: {0}" -f $autoLockCapabilities.DellOptimizer.Status)
-            Write-Host ("Version: {0}" -f $autoLockCapabilities.DellOptimizer.Version)
+            Write-Host ("Status: { 0}" -f $autoLockCapabilities.DellOptimizer.Status)
+            Write-Host ("Version: { 0}" -f $autoLockCapabilities.DellOptimizer.Version)
             Write-Host "Features:"
             foreach ($feature in $autoLockCapabilities.DellOptimizer.Features) {
-                Write-Host ("  - {0}" -f $feature)
+                Write-Host ("  - { 0}" -f $feature)
             }
         }
 
         # Elliptic Sensor
         Write-Host "`nElliptic Virtual Lock Sensor:" -ForegroundColor Cyan
-        Write-Host ("Installed: {0}" -f $(if ($autoLockCapabilities.EllipticSensor.Installed) { "Yes" } else { "No" }))
+        Write-Host ("Installed: { 0}" -f $(if ($autoLockCapabilities.EllipticSensor.Installed) { "Yes" } else { "No" }))
         if ($autoLockCapabilities.EllipticSensor.Installed) {
-            Write-Host ("Status: {0}" -f $autoLockCapabilities.EllipticSensor.Status)
-            Write-Host ("Version: {0}" -f $autoLockCapabilities.EllipticSensor.Version)
+            Write-Host ("Status: { 0}" -f $autoLockCapabilities.EllipticSensor.Status)
+            Write-Host ("Version: { 0}" -f $autoLockCapabilities.EllipticSensor.Version)
         }
 
         # Windows Dynamic Lock
         Write-Host "`nWindows Dynamic Lock:" -ForegroundColor Cyan
-        Write-Host ("Enabled: {0}" -f $(if ($autoLockCapabilities.WindowsDynamicLock.Enabled) { "Yes" } else { "No" }))
+        Write-Host ("Enabled: { 0}" -f $(if ($autoLockCapabilities.WindowsDynamicLock.Enabled) { "Yes" } else { "No" }))
         if ($autoLockCapabilities.WindowsDynamicLock.Enabled) {
-            Write-Host ("Status: {0}" -f $autoLockCapabilities.WindowsDynamicLock.Status)
+            Write-Host ("Status: { 0}" -f $autoLockCapabilities.WindowsDynamicLock.Status)
         }
 
         # Summary of supported methods
         Write-Host "`nSupported Auto-Lock Methods:" -ForegroundColor White
         if ($autoLockCapabilities.SupportedAutoLockMethods.Count -gt 0) {
             foreach ($method in $autoLockCapabilities.SupportedAutoLockMethods) {
-                Write-Host ("  - {0}" -f $method) -ForegroundColor Green
+                Write-Host ("  - { 0}" -f $method) -ForegroundColor Green
             }
         } else {
             Write-Host "  No auto-lock methods detected on this system" -ForegroundColor Yellow
@@ -883,8 +867,7 @@ try {
 
         if ($response -ne "Y") {
             Write-Debug "User chose not to make changes. Preparing to exit."
-        }
-        else {
+        } else {
             # If continuing, prepare power settings params
             $powerParams = @{}
 
@@ -959,13 +942,11 @@ try {
         }
     # End of check if settings loaded
         }
-}
-catch {
+} catch {
     Write-Host "An error occurred: $_" -ForegroundColor Red
     # Log error more formally
         Write-Error "Script failed with error: $_"
-}
-finally {
+} finally {
     Write-Debug "Entering finally block."
     # Always attempt to stop transcript in finally block if it was started
     Stop-TranscriptSafely

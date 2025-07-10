@@ -48,12 +48,12 @@ Creates a transcript log file in the same directory as the script.
 # CmdletBinding and param must be after comment-based help
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false, HelpMessage="Specify the number of hours back to search for lockout events. Default is 24.")]
+    [Parameter(Mandatory = $false, HelpMessage = "Specify the number of hours back to search for lockout events. Default is 24.")]
     # Limit search range for performance
         [ValidateRange(1, 720)]
     [int]$HoursAgo = 24,
 
-    [Parameter(Mandatory=$false, HelpMessage="Filter lockouts for a specific username.")]
+    [Parameter(Mandatory = $false, HelpMessage = "Filter lockouts for a specific username.")]
     [string]$UserName
 )
 
@@ -109,8 +109,7 @@ begin {
                 # Set the flag to inactive *after* successful stop
                 $script:transcriptActive = $false
                 Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray
-            }
-            catch {
+            } catch {
                 Write-Warning "Error stopping transcript: $_"
                 try {
                     # Second try - just in case the first attempt failed but didn't throw properly
@@ -171,8 +170,8 @@ process {
             Write-Host "Querying Domain Controller: $dc" -ForegroundColor Cyan
             try {
                 $filterHashTable = @{
-                    LogName   = 'Security'
-                    ID        = 4740
+                    LogName = 'Security'
+                    ID = 4740
                     StartTime = $startTime
                 }
 
@@ -225,8 +224,8 @@ process {
                         }
 
                         $lockoutDetail = [PSCustomObject]@{
-                            TimeLockedUTC  = $eventTime
-                            UserName       = $lockedOutUser
+                            TimeLockedUTC = $eventTime
+                            UserName = $lockedOutUser
                             # Use the processed display name
                                                         CallerComputer = $callerComputerDisplay
                             DomainController = $dc

@@ -60,9 +60,9 @@
      - Test environment variable accessibility
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param (
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet("Machine", "User")]
     [string]$Scope = "User"
 )
@@ -79,7 +79,7 @@ if ($Scope -eq "Machine" -and -not ([Security.Principal.WindowsPrincipal][Securi
 $scriptName = $MyInvocation.MyCommand.Name
 $computerName = $env:COMPUTERNAME
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$logPath = Join-Path -Path $PSScriptRoot -ChildPath "${computerName}_${scriptName}_${timestamp}.log"
+$logPath = Join-Path -Path $PSScriptRoot -ChildPath "${ computerName}_${ scriptName}_${ timestamp}.log"
 
 function Write-Log {
     param (
@@ -93,14 +93,14 @@ function Write-Log {
     Add-Content -Path $logPath -Value $logMessage
 
     switch ($Level) {
-        "INFO"    { Write-Host $Message -ForegroundColor White }
+        "INFO" { Write-Host $Message -ForegroundColor White }
         "PROCESS" { Write-Host $Message -ForegroundColor Cyan }
         "SUCCESS" { Write-Host $Message -ForegroundColor Green }
         "WARNING" { Write-Host $Message -ForegroundColor Yellow }
-        "ERROR"   { Write-Host $Message -ForegroundColor Red }
-        "DEBUG"   { Write-Host $Message -ForegroundColor Magenta }
-        "DETAIL"  { Write-Host $Message -ForegroundColor DarkGray }
-        default   { Write-Host $Message }
+        "ERROR" { Write-Host $Message -ForegroundColor Red }
+        "DEBUG" { Write-Host $Message -ForegroundColor Magenta }
+        "DETAIL" { Write-Host $Message -ForegroundColor DarkGray }
+        default { Write-Host $Message }
     }
 }
 
@@ -118,8 +118,8 @@ $defaultMachinePaths = @(
 )
 
 $defaultUserPaths = @(
-    'C:\Users\{0}\AppData\Local\Microsoft\WindowsApps' -f $env:USERNAME,
-    'C:\Users\{0}\AppData\Local\GitHubDesktop\bin' -f $env:USERNAME
+    'C:\Users\{ 0}\AppData\Local\Microsoft\WindowsApps' -f $env:USERNAME,
+    'C:\Users\{ 0}\AppData\Local\GitHubDesktop\bin' -f $env:USERNAME
 )
 
 # Select appropriate paths based on PATH type
@@ -134,7 +134,7 @@ try {
 
     # Backup current PATH
     $currentPath = [Environment]::GetEnvironmentVariable('PATH', $pathType)
-    $backupPath = Join-Path -Path $PSScriptRoot -ChildPath "${pathType}_PATH_Backup_${timestamp}.txt"
+    $backupPath = Join-Path -Path $PSScriptRoot -ChildPath "${ pathType}_PATH_Backup_${ timestamp}.txt"
 
     Write-Log "Current $pathType PATH: $currentPath" "DETAIL"
 
@@ -153,8 +153,7 @@ try {
     } else {
         Write-Log "WhatIf: Would reset $pathType PATH to: $($newPathEntries -join ';')" "DEBUG"
     }
-}
-catch {
+} catch {
     Write-Log "Failed to update $pathType PATH: $_" "ERROR"
     exit 1
 }
@@ -167,7 +166,7 @@ if (Get-Command -Name Invoke-ScriptAnalyzer -ErrorAction SilentlyContinue) {
     if ($scriptAnalyzerResults) {
         Write-Log "PSScriptAnalyzer found issues:" "WARNING"
         foreach ($result in $scriptAnalyzerResults) {
-            Write-Log ("Line {0}: {1} - {2}" -f $result.Line, $result.RuleName, $result.Message) "DETAIL"
+            Write-Log ("Line { 0}: { 1} - { 2}" -f $result.Line, $result.RuleName, $result.Message) "DETAIL"
         }
     } else {
         Write-Log "PSScriptAnalyzer found no issues" "SUCCESS"

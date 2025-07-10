@@ -68,32 +68,32 @@ param(
 # Initialize logging
 $SystemName = $env:COMPUTERNAME
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$LogFile = Join-Path $ReportPath "LogAnalysis_${SystemName}_${TimeStamp}.log"
-$ReportFile = Join-Path $ReportPath "LogAnalysis_${SystemName}_${TimeStamp}.html"
+$LogFile = Join-Path $ReportPath "LogAnalysis_${ SystemName}_${ TimeStamp}.log"
+$ReportFile = Join-Path $ReportPath "LogAnalysis_${ SystemName}_${ TimeStamp}.html"
 
 # Initialize color support
 $Script:UseAnsiColors = ($PSVersionTable.PSVersion.Major -ge 7)
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        White    = "`e[37m"
-        Cyan     = "`e[36m"
-        Green    = "`e[32m"
-        Yellow   = "`e[33m"
-        Red      = "`e[31m"
-        Magenta  = "`e[35m"
+        White = "`e[37m"
+        Cyan = "`e[36m"
+        Green = "`e[32m"
+        Yellow = "`e[33m"
+        Red = "`e[31m"
+        Magenta = "`e[35m"
         DarkGray = "`e[90m"
-        Reset    = "`e[0m"
+        Reset = "`e[0m"
     }
 } else {
     @{
-        White    = "White"
-        Cyan     = "Cyan"
-        Green    = "Green"
-        Yellow   = "Yellow"
-        Red      = "Red"
-        Magenta  = "Magenta"
+        White = "White"
+        Cyan = "Cyan"
+        Green = "Green"
+        Yellow = "Yellow"
+        Red = "Red"
+        Magenta = "Magenta"
         DarkGray = "DarkGray"
-        Reset    = ""
+        Reset = ""
     }
 }
 
@@ -109,7 +109,7 @@ function Write-ColorOutput {
         # PowerShell 7+ with ANSI escape codes
         $colorCode = $Script:Colors[$Color]
         $resetCode = $Script:Colors.Reset
-        Write-Output "${colorCode}${Message}${resetCode}"
+        Write-Output "${ colorCode}${ Message}${ resetCode}"
     } else {
         # PowerShell 5.1 - Change console color, write output, then reset
         $originalColor = $Host.UI.RawUI.ForegroundColor
@@ -187,7 +187,7 @@ function Get-LogStatistic {
             $Events = Get-WinEvent -LogName $LogName -MaxEvents 1 -ErrorAction Stop
             # If successful, proceed with full query
             $FilterHash = @{
-                LogName   = $LogName
+                LogName = $LogName
                 StartTime = $StartTime
             }
             $Events = Get-WinEvent -FilterHashtable $FilterHash -ErrorAction Stop
@@ -202,8 +202,8 @@ function Get-LogStatistic {
                 $Events = $Events | ForEach-Object {
                     # Convert to equivalent WinEvent structure
                     [PSCustomObject]@{
-                        TimeCreated  = $_.TimeGenerated
-                        Level        = switch ($_.EntryType) {
+                        TimeCreated = $_.TimeGenerated
+                        Level = switch ($_.EntryType) {
                             'Error' { 2 }
                             'Warning' { 3 }
                             default { 4 }
@@ -257,7 +257,7 @@ function Get-LogStatistic {
         }
     } catch {
         $ErrorMessage = $_.Exception.Message
-        Write-LogMessage "Error processing ${LogName}: ${ErrorMessage}" -Level Error
+        Write-LogMessage "Error processing ${ LogName}: ${ ErrorMessage}" -Level Error
         return $null
     }
 }
@@ -270,7 +270,7 @@ function Get-SecurityEvent {
 
     try {
         $FilterHash = @{
-            LogName   = 'Security'
+            LogName = 'Security'
             StartTime = $StartTime
         }
 
@@ -332,10 +332,14 @@ function New-HTMLReport {
         body { font-family: Arial, sans-serif; margin: 20px; }
         h1, h2 { color: #2c3e50; }
         table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-        th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
-        th { background-color: #f5f5f5; }
-        .error { color: #e74c3c; }
-        .warning { color: #f39c12; }
+        # ddd; }
+                th, td { padding: 8px; text-align: left; border: 1px solid
+        # f5f5f5; }
+                th { background-color:
+        # e74c3c; }
+                .error { color:
+        # f39c12; }
+                .warning { color:
         .success { color: #27ae60; }
     </style>
 </head>
@@ -355,7 +359,7 @@ function New-HTMLReport {
     <table>
         <tr><th>Metric</th><th>Value</th></tr>
         <tr><td>Total Entries</td><td>$($stat.TotalEntries)</td></tr>
-        <tr><td>Recent Entries (${script:DaysToAnalyze}d)</td><td>$($stat.RecentEntries)</td></tr>
+        <tr><td>Recent Entries (${ script:DaysToAnalyze}d)</td><td>$($stat.RecentEntries)</td></tr>
         <tr><td>Error Count</td><td>$($stat.ErrorCount)</td></tr>
         <tr><td>Warning Count</td><td>$($stat.WarningCount)</td></tr>
         <tr><td>Daily Entry Rate</td><td>$($stat.DailyRate)</td></tr>

@@ -92,29 +92,29 @@ begin {
     # Color codes for different PowerShell versions
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         $Script:Colors = @{
-            Reset    = "`e[0m"
-            White    = "`e[37m"
-            Cyan     = "`e[36m"
-            Green    = "`e[32m"
-            Yellow   = "`e[33m"
-            Red      = "`e[31m"
-            Magenta  = "`e[35m"
+            Reset = "`e[0m"
+            White = "`e[37m"
+            Cyan = "`e[36m"
+            Green = "`e[32m"
+            Yellow = "`e[33m"
+            Red = "`e[31m"
+            Magenta = "`e[35m"
             DarkGray = "`e[90m"
-            Bold     = "`e[1m"
+            Bold = "`e[1m"
         }
         $Script:UseAnsiColors = $true
     } else {
         # PowerShell 5.1 - Use console color mapping
         $Script:Colors = @{
-            Reset    = ""
-            White    = "White"
-            Cyan     = "Cyan"
-            Green    = "Green"
-            Yellow   = "Yellow"
-            Red      = "Red"
-            Magenta  = "Magenta"
+            Reset = ""
+            White = "White"
+            Cyan = "Cyan"
+            Green = "Green"
+            Yellow = "Yellow"
+            Red = "Red"
+            Magenta = "Magenta"
             DarkGray = "DarkGray"
-            Bold     = ""
+            Bold = ""
         }
         $Script:UseAnsiColors = $false
     }
@@ -126,13 +126,13 @@ begin {
         )
 
         if ($SizeInBytes -ge 1TB) {
-            return "{0:N2} TB" -f ($SizeInBytes / 1TB)
+            return " { 0:N2} TB" -f ($SizeInBytes / 1TB)
         } elseif ($SizeInBytes -ge 1GB) {
-            return "{0:N2} GB" -f ($SizeInBytes / 1GB)
+            return " { 0:N2} GB" -f ($SizeInBytes / 1GB)
         } elseif ($SizeInBytes -ge 1MB) {
-            return "{0:N2} MB" -f ($SizeInBytes / 1MB)
+            return " { 0:N2} MB" -f ($SizeInBytes / 1MB)
         } elseif ($SizeInBytes -ge 1KB) {
-            return "{0:N2} KB" -f ($SizeInBytes / 1KB)
+            return " { 0:N2} KB" -f ($SizeInBytes / 1KB)
         } else {
             return "$SizeInBytes bytes"
         }
@@ -179,19 +179,19 @@ begin {
             }
 
             return [PSCustomObject]@{
-                Path         = $Path
-                SizeBytes    = $totalSize
-                FileCount    = $files.Count
+                Path = $Path
+                SizeBytes = $totalSize
+                FileCount = $files.Count
                 IsAccessible = $true
-                Error        = $null
+                Error = $null
             }
         } catch {
             return [PSCustomObject]@{
-                Path         = $Path
-                SizeBytes    = 0
-                FileCount    = 0
+                Path = $Path
+                SizeBytes = 0
+                FileCount = 0
                 IsAccessible = $false
-                Error        = $_.Exception.Message
+                Error = $_.Exception.Message
             }
         }
     }
@@ -240,12 +240,12 @@ begin {
 
                 if ($totalSize -ge $minSizeBytes) {
                     $results += [PSCustomObject]@{
-                        Type               = "Folder"
-                        Name               = $subdir.Name
-                        Path               = $subdir.FullName
-                        SizeBytes          = $totalSize
-                        SizeFormatted      = Format-FileSize -SizeInBytes $totalSize
-                        lastwriteTime      = $subdir.lastwriteTime
+                        Type = "Folder"
+                        Name = $subdir.Name
+                        Path = $subdir.FullName
+                        SizeBytes = $totalSize
+                        SizeFormatted = Format-FileSize -SizeInBytes $totalSize
+                        lastwriteTime = $subdir.lastwriteTime
                         lastwriteFormatted = Format-writeTime -DateTime $subdir.lastwriteTime
                     }
                 }
@@ -256,12 +256,12 @@ begin {
             foreach ($file in $files) {
                 if ($file.Length -ge $minSizeBytes) {
                     $fileItem = [PSCustomObject]@{
-                        Type               = "File"
-                        Name               = $file.Name
-                        Path               = $file.FullName
-                        SizeBytes          = $file.Length
-                        SizeFormatted      = Format-FileSize -SizeInBytes $file.Length
-                        lastwriteTime      = $file.lastwriteTime
+                        Type = "File"
+                        Name = $file.Name
+                        Path = $file.FullName
+                        SizeBytes = $file.Length
+                        SizeFormatted = Format-FileSize -SizeInBytes $file.Length
+                        lastwriteTime = $file.lastwriteTime
                         lastwriteFormatted = Format-writeTime -DateTime $file.lastwriteTime
                     }
                     $results += $fileItem
@@ -365,7 +365,7 @@ begin {
         try {
             $computerName = $env:COMPUTERNAME
             $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-            $logFileName = "Find-LargestFolders_${computerName}_${timestamp}.log"
+            $logFileName = "Find-LargestFolders_${ computerName}_${ timestamp}.log"
             $fullLogPath = Join-Path -Path $LogPath -ChildPath $logFileName
 
             if ($PSCmdlet.ShouldProcess($fullLogPath, "Start transcript log")) {
@@ -427,9 +427,9 @@ Process ID: $PID
         .SYNOPSIS
         Converts size strings with units (GB, MB, KB, B) and returns size in bytes.
         .DESCRIPTION
-        Helper function to convert size strings like "5.23 GB", "1,024 MB", etc. to bytes.
+        Helper function to convert size strings like "5.23 GB", "1, 024 MB", etc. to bytes.
         .PARAMETER SizeText
-        The size string to convert (e.g., "5.23 GB", "1,024 MB").
+        The size string to convert (e.g., "5.23 GB", "1, 024 MB").
         .EXAMPLE
         ConvertFrom-SizeString -SizeText "5.23 GB"
         Returns the size in bytes equivalent to 5.23 GB.
@@ -440,7 +440,7 @@ Process ID: $PID
         )
         try {
             # Remove common formatting characters and normalize
-            $cleanText = $SizeText -replace ',', '' -replace '\s+', ' '
+            $cleanText = $SizeText -replace ', ', '' -replace '\s+', ' '
             # Match number followed by optional unit
             if ($cleanText -match '(\d+\.?\d*)\s*(GB|MB|KB|B|BYTES)?') {
                 $value = [double]$matches[1]
@@ -480,20 +480,20 @@ Process ID: $PID
         )
         try {
             $overhead = [PSCustomObject]@{
-                MFTSize                 = 0
-                TotalReservedClusters   = 0
+                MFTSize = 0
+                TotalReservedClusters = 0
                 StorageReservedClusters = 0
-                MFTZoneSize             = 0
-                BytesPerCluster         = 0
-                TotalOverhead           = 0
-                EstimationMethod        = "Unknown"
-                RawNTFSInfo             = @{
+                MFTZoneSize = 0
+                BytesPerCluster = 0
+                TotalOverhead = 0
+                EstimationMethod = "Unknown"
+                RawNTFSInfo = @{
                 }
             }
             # Execute fsutil fsinfo ntfsinfo to get comprehensive NTFS information
             try {
-                Write-DebugInfo -Message "Executing fsutil fsinfo ntfsinfo ${DriveLetter}:" -Category "NTFS"
-                $fsutilOutput = & fsutil fsinfo ntfsinfo "${DriveLetter}:" 2>$null
+                Write-DebugInfo -Message "Executing fsutil fsinfo ntfsinfo ${ DriveLetter}:" -Category "NTFS"
+                $fsutilOutput = & fsutil fsinfo ntfsinfo "${ DriveLetter}:" 2>$null
                 if ($fsutilOutput -and $fsutilOutput.Count -gt 0) {
                     Write-DebugInfo -Message "Successfully retrieved fsutil output with $($fsutilOutput.Count) lines" -Category "NTFS"
                     foreach ($line in $fsutilOutput) {
@@ -516,8 +516,8 @@ Process ID: $PID
                             }
                         }
                         # Parse Total Reserved Clusters
-                        elseif ($line -match "Total Reserved Clusters\s*:\s*([0-9,]+)\s*\(\s*(.+?)\s*\)") {
-                            $reservedClustersText = $matches[1] -replace ',', ''
+                        elseif ($line -match "Total Reserved Clusters\s*:\s*([0-9, ]+)\s*\(\s*(.+?)\s*\)") {
+                            $reservedClustersText = $matches[1] -replace ', ', ''
                             $reservedSizeText = $matches[2].Trim()
                             Write-DebugInfo -Message "Found Total Reserved Clusters: '$reservedClustersText' ($reservedSizeText)" -Category "NTFS"
                             $overhead.TotalReservedClusters = [int64]$reservedClustersText
@@ -534,8 +534,8 @@ Process ID: $PID
                             }
                         }
                         # Parse Bytes Per Cluster for calculations
-                        elseif ($line -match "Bytes Per Cluster\s*:\s*([0-9,]+)") {
-                            $bytesPerClusterText = $matches[1] -replace ',', ''
+                        elseif ($line -match "Bytes Per Cluster\s*:\s*([0-9, ]+)") {
+                            $bytesPerClusterText = $matches[1] -replace ', ', ''
                             $overhead.BytesPerCluster = [int64]$bytesPerClusterText
                             Write-DebugInfo -Message "Found Bytes Per Cluster: $($overhead.BytesPerCluster)" -Category "NTFS"
                         }
@@ -558,14 +558,14 @@ Process ID: $PID
             return $overhead
         } catch {
             return [PSCustomObject]@{
-                MFTSize                 = 0
-                TotalReservedClusters   = 0
+                MFTSize = 0
+                TotalReservedClusters = 0
                 StorageReservedClusters = 0
-                MFTZoneSize             = 0
-                BytesPerCluster         = 0
-                TotalOverhead           = 0
-                EstimationMethod        = "Error: $($_.Exception.Message)"
-                RawNTFSInfo             = @{
+                MFTZoneSize = 0
+                BytesPerCluster = 0
+                TotalOverhead = 0
+                EstimationMethod = "Error: $($_.Exception.Message)"
+                RawNTFSInfo = @{
                 }
             }
         }
@@ -591,19 +591,19 @@ Process ID: $PID
         )
         try {
             $vssInfo = [PSCustomObject]@{
-                AllocatedSpace   = 0
-                UsedSpace        = 0
-                MaxSpace         = 0
-                ShadowCopyCount  = 0
-                TotalOverhead    = 0
+                AllocatedSpace = 0
+                UsedSpace = 0
+                MaxSpace = 0
+                ShadowCopyCount = 0
+                TotalOverhead = 0
                 EstimationMethod = "Unknown"
-                RawVSSInfo       = @{
+                RawVSSInfo = @{
                 }
             }
             # Execute vssadmin list shadowstorage to get VSS storage information
             try {
-                Write-DebugInfo -Message "Executing vssadmin list shadowstorage /for=${DriveLetter}:" -Category "VSS"
-                $vssOutput = & vssadmin list shadowstorage /for="${DriveLetter}:" 2>$null
+                Write-DebugInfo -Message "Executing vssadmin list shadowstorage /for = ${ DriveLetter}:" -Category "VSS"
+                $vssOutput = & vssadmin list shadowstorage /for = "${ DriveLetter}:" 2>$null
                 if ($vssOutput -and $vssOutput.Count -gt 0) {
                     Write-DebugInfo -Message "Successfully retrieved VSS output with $($vssOutput.Count) lines" -Category "VSS"
                     $foundValidStorage = $false
@@ -663,13 +663,13 @@ Process ID: $PID
             return $vssInfo
         } catch {
             return [PSCustomObject]@{
-                AllocatedSpace   = 0
-                UsedSpace        = 0
-                MaxSpace         = 0
-                ShadowCopyCount  = 0
-                TotalOverhead    = 0
+                AllocatedSpace = 0
+                UsedSpace = 0
+                MaxSpace = 0
+                ShadowCopyCount = 0
+                TotalOverhead = 0
                 EstimationMethod = "Error: $($_.Exception.Message)"
-                RawVSSInfo       = @{
+                RawVSSInfo = @{
                 }
             }
         }
@@ -694,18 +694,18 @@ Process ID: $PID
         )
         try {
             $systemInfo = [PSCustomObject]@{
-                PageFileSize         = 0
-                HibernationFileSize  = 0
+                PageFileSize = 0
+                HibernationFileSize = 0
                 SystemVolumeInfoSize = 0
-                TempFilesSize        = 0
-                RecycleBinSize       = 0
-                TotalSystemSize      = 0
-                EstimationMethod     = "Get-ChildItem with -Force"
-                Details              = @{
+                TempFilesSize = 0
+                RecycleBinSize = 0
+                TotalSystemSize = 0
+                EstimationMethod = "Get-ChildItem with -Force"
+                Details = @{
                 }
             }
 
-            $drivePath = "${DriveLetter}:"
+            $drivePath = "${ DriveLetter}:"
 
             # Check for pagefile.sys
             $pageFilePath = Join-Path -Path $drivePath -ChildPath "pagefile.sys"
@@ -781,14 +781,14 @@ Process ID: $PID
             return $systemInfo
         } catch {
             return [PSCustomObject]@{
-                PageFileSize         = 0
-                HibernationFileSize  = 0
+                PageFileSize = 0
+                HibernationFileSize = 0
                 SystemVolumeInfoSize = 0
-                TempFilesSize        = 0
-                RecycleBinSize       = 0
-                TotalSystemSize      = 0
-                EstimationMethod     = "Error: $($_.Exception.Message)"
-                Details              = @{
+                TempFilesSize = 0
+                RecycleBinSize = 0
+                TotalSystemSize = 0
+                EstimationMethod = "Error: $($_.Exception.Message)"
+                Details = @{
                 }
             }
         }
@@ -799,7 +799,7 @@ Process ID: $PID
             [string]$DriveLetter
         )
         Write-Output ""
-        Write-ColorOutput -Message "System Overhead Analysis for Drive ${DriveLetter}:" -Color "Green"
+        Write-ColorOutput -Message "System Overhead Analysis for Drive ${ DriveLetter}:" -Color "Green"
         Write-ColorOutput -Message "============================================" -Color "Green"
 
         # Get NTFS overhead
@@ -873,7 +873,7 @@ Process ID: $PID
         try {
             $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop
             Write-Output ""
-            Write-ColorOutput -Message "Drive Volume Details for ${DriveLetter}:" -Color "Green"
+            Write-ColorOutput -Message "Drive Volume Details for ${ DriveLetter}:" -Color "Green"
             Write-ColorOutput -Message "------------------------" -Color "Green"
             Write-ColorOutput -Message "Drive Letter: $($volume.DriveLetter):" -Color "White"
             Write-ColorOutput -Message "Drive Label: $($volume.FileSystemLabel)" -Color "White"
@@ -887,7 +887,7 @@ Process ID: $PID
             Write-ColorOutput -Message "Operational Status: $($volume.OperationalStatus)" -Color "White"
             Write-Output ""
         } catch {
-            Write-ColorOutput -Message "Error retrieving drive information for ${DriveLetter}: $($_.Exception.Message)" -Color "Red"
+            Write-ColorOutput -Message "Error retrieving drive information for ${ DriveLetter}: $($_.Exception.Message)" -Color "Red"
         }
     }
 
@@ -917,7 +917,7 @@ Process ID: $PID
             # PowerShell 7+ with ANSI escape codes
             $colorCode = $Script:Colors[$Color]
             $resetCode = $Script:Colors.Reset
-            Write-Output "${colorCode}${Message}${resetCode}"
+            Write-Output "${ colorCode}${ Message}${ resetCode}"
         } else {
             # PowerShell 5.1 - Change console color, write output, then reset
             $originalColor = $Host.UI.RawUI.ForegroundColor
@@ -971,7 +971,7 @@ process {
             $driveLetter = if ($StartPath -match '^([A-Za-z]):') { $matches[1] } else { $null }
 
             # Show system overhead if analyzing a drive root
-            if ($driveLetter -and $StartPath -eq "${driveLetter}:\") {
+            if ($driveLetter -and $StartPath -eq "${ driveLetter}:\") {
                 $totalOverhead = Show-SystemOverhead -DriveLetter $driveLetter
                 Write-Output ""
             }

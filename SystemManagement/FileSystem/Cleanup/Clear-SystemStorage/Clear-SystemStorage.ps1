@@ -45,7 +45,7 @@ param (
 # Initialize logging
 $scriptPath = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
 $systemName = [System.Environment]::MachineName
-$logFile = [System.IO.Path]::Combine($scriptPath, "Clear-SystemStorage_${systemName}_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
+$logFile = [System.IO.Path]::Combine($scriptPath, "Clear-SystemStorage_${ systemName}_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
 $script:logStream = [System.IO.StreamWriter]::new($logFile, $true, [System.Text.Encoding]::UTF8)
 
 function Write-Log {
@@ -70,7 +70,7 @@ function Write-Log {
 
 function Show-DriveInfo {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [object]$Volume
     )
 
@@ -105,8 +105,7 @@ function New-SystemRestorePoint {
         Checkpoint-Computer -Description "Pre-System Cleanup $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -RestorePointType "MODIFY_SETTINGS"
         Write-StatusMessage "System restore point created successfully." -Color Green
         return $true
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Failed to create system restore point: $_" -Color Red
         return $false
     }
@@ -140,17 +139,15 @@ function Remove-TempFiles {
                         $removedFiles.Count++
                         $removedFiles.TotalSize += $fileSize
                         Write-Log "Deleted: $_" -Color DarkGray -NoConsole
-                    }
-                    catch {
+                    } catch {
                         $lockedFiles.Count++
                         $lockedFiles.TotalSize += $fileSize
                     }
                 }
                 Write-StatusMessage "Processed $folder" -Color Green
             }
-        }
-        catch {
-            Write-Log "Error accessing folder ${folder}: $($_.Exception.Message)" -Color Yellow
+        } catch {
+            Write-Log "Error accessing folder ${ folder}: $($_.Exception.Message)" -Color Yellow
         }
     }
 
@@ -175,21 +172,18 @@ function Remove-TempFiles {
                                 $removedFiles.Count++
                                 $removedFiles.TotalSize += $fileSize
                                 Write-Log "Deleted old file: $_" -Color DarkGray -NoConsole
-                            }
-                            catch {
+                            } catch {
                                 $lockedFiles.Count++
                                 $lockedFiles.TotalSize += $fileSize
                             }
                     }
                     Write-StatusMessage "Processed $downloadPath" -Color Green
-                }
-                catch {
+                } catch {
                     Write-Log "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
                 }
             }
         }
-    }
-    catch {
+    } catch {
         Write-Log "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
     }
 
@@ -210,8 +204,7 @@ function Clear-RecycleBinContents {
         # Use the built-in cmdlet if available (PowerShell 5.1 and later)
         if (Get-Command -Name Clear-RecycleBin -ErrorAction SilentlyContinue) {
             Clear-RecycleBin -Force -ErrorAction Stop
-        }
-        else {
+        } else {
             # Fallback for older PowerShell versions
             $shell = New-Object -ComObject Shell.Application
             $recycleBin = $shell.NameSpace(0xa)
@@ -223,8 +216,7 @@ function Clear-RecycleBinContents {
             }
         }
         Write-StatusMessage "Recycle Bin cleared successfully." -Color Green
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error clearing Recycle Bin: $_" -Color Yellow
     }
 }
@@ -242,7 +234,7 @@ function Clear-ShadowCopies {
         [System.IO.File]::Delete($tempFile)
 
         # Parse shadow copies
-        $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: {(.*?)}" -AllMatches |
+        $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: { (.*?)}" -AllMatches |
             ForEach-Object { $_.Matches.Groups[1].Value })
 
         $totalCopies = $shadowCopies.Count
@@ -253,25 +245,21 @@ function Clear-ShadowCopies {
             # Keep the last one (most recent), delete the rest
             $shadowCopies | Select-Object -SkipLast 1 | ForEach-Object {
                 try {
-                    $process = Start-Process -FilePath "vssadmin" -ArgumentList "delete shadows /Shadow={$_} /Quiet" -NoNewWindow -Wait -PassThru
+                    $process = Start-Process -FilePath "vssadmin" -ArgumentList "delete shadows /Shadow = { $_} /Quiet" -NoNewWindow -Wait -PassThru
                     if ($process.ExitCode -eq 0) {
                         Write-Log "Deleted shadow copy: $_" -Color DarkGray -NoConsole
-                    }
-                    else {
+                    } else {
                         Write-Log "Failed to delete shadow copy $_. Exit code: $($process.ExitCode)" -Color Yellow
                     }
-                }
-                catch {
-                    Write-Log "Error deleting shadow copy ${_}: $($_.Exception.Message)" -Color Yellow
+                } catch {
+                    Write-Log "Error deleting shadow copy ${ _}: $($_.Exception.Message)" -Color Yellow
                 }
             }
             Write-StatusMessage "Shadow copy cleanup completed. Kept most recent copy." -Color Green
-        }
-        else {
+        } else {
             Write-StatusMessage "No excess shadow copies found (Current count: $totalCopies)." -Color Green
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error managing shadow copies: $($_.Exception.Message)" -Color Yellow
     }
 }
@@ -284,8 +272,7 @@ function Remove-WindowsErrorReports {
             [System.IO.Directory]::Delete($wer, $true)
             Write-StatusMessage "Windows Error Reports removed successfully." -Color Green
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error removing Windows Error Reports: $_" -Color Yellow
     }
 }
@@ -324,8 +311,7 @@ function Clear-BrowserCaches {
                             try {
                                 [System.IO.Directory]::Delete($profilePath, $true)
                                 Write-StatusMessage "Cleared Firefox cache for profile in $userName" -Color Green
-                            }
-                            catch {
+                            } catch {
                                 $errorMsg = $_.Exception.Message
                                 Write-Log "Error clearing Firefox cache for $userName`: $errorMsg" -Color Yellow
 
@@ -335,21 +321,18 @@ function Clear-BrowserCaches {
                             }
                         }
                     }
-                }
-                else {
+                } else {
                     # Chrome and Edge cache structure
                     [System.IO.Directory]::Delete($cachePath, $true)
                     Write-StatusMessage "Cleared $browser cache for user $userName" -Color Green
                 }
-            }
-            catch {
+            } catch {
                 $errorMsg = $_.Exception.Message
                 Write-Log "Failed to clear $browser cache for $userName`: $errorMsg" -Color Yellow
 
                 if ($_.Exception -is [System.UnauthorizedAccessException]) {
                     Write-Log "Access denied for $browser cache. Browser may be running for user $userName." -Color Yellow
-                }
-                elseif ($_.Exception -is [System.IO.IOException]) {
+                } elseif ($_.Exception -is [System.IO.IOException]) {
                     Write-Log "Cache files are in use for user $userName. Try closing the browser first." -Color Yellow
                 }
             }
@@ -378,13 +361,11 @@ function Remove-WindowsLogs {
                 } else {
                     Write-StatusMessage "No entries older than 30 days in $($_.Log) log" -Color DarkGray
                 }
-            }
-            catch {
+            } catch {
                 Write-StatusMessage "Could not process $($_.Log) log: $_" -Color Yellow
             }
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error accessing event logs: $_" -Color Yellow
     }
 }
@@ -404,8 +385,7 @@ try {
                 }
                 Write-Log "Proceeding without restore point due to Force parameter." -Color Yellow
             }
-        }
-        else {
+        } else {
             Write-Log "Skipping restore point creation as requested." -Color Yellow
         }
 
@@ -422,8 +402,7 @@ try {
             Write-Log "Initial drive space for $($volume.DriveLetter):" -Color Yellow
             Show-DriveInfo -Volume $volume
         }
-    }
-    catch {
+    } catch {
         Write-Log "Error accessing initial drive information: $_" -Color Red
     # Perform cleanup operations
         }
@@ -444,19 +423,16 @@ try {
                 Show-DriveInfo -Volume $volume
             }
         }
-    }
-    catch {
+    } catch {
         Write-Log "Error accessing final drive information: $_" -Color Red
     }
 
     Write-Log "System storage cleanup completed successfully. See log file for details: $logFile" -Color Green
-}
-catch {
+} catch {
     Write-Log "Critical error during execution: $($_.Exception.Message)" -Color Red
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Color Red
     exit 1
-}
-finally {
+} finally {
     if ($null -ne $script:logStream) {
         $script:logStream.Close()
         $script:logStream.Dispose()

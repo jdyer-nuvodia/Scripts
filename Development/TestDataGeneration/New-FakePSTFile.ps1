@@ -83,7 +83,7 @@ $scriptName = $MyInvocation.MyCommand.Name
 $scriptPath = $MyInvocation.MyCommand.Path | Split-Path -Parent
 $systemName = $env:COMPUTERNAME
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$logFileName = "{0}_{1}_{2}_UTC.log" -f $scriptName.Replace('.ps1', ''), $systemName, $timestamp
+$logFileName = " { 0}_ { 1}_ { 2}_UTC.log" -f $scriptName.Replace('.ps1', ''), $systemName, $timestamp
 $logPath = Join-Path -Path $scriptPath -ChildPath $logFileName
 $startTime = Get-Date
 
@@ -124,8 +124,7 @@ function New-RandomFile {
         if (-not (Test-Path -Path $directory)) {
             if ($PSCmdlet.ShouldProcess($directory, "Create directory")) {
                 New-Item -Path $directory -ItemType Directory -Force | Out-Null
-            }
-            else {
+            } else {
                 return $false
             }
         }
@@ -133,7 +132,7 @@ function New-RandomFile {
         if ($PSCmdlet.ShouldProcess($FilePath, "Create random file ($([Math]::Round($SizeInBytes / 1MB, 2)) MB)")) {
             # Generate random content efficiently for large files
             # 64KB buffer for efficiency
-                        $buffer = New-Object byte[] 65536
+            $buffer = New-Object byte[] 65536
             $random = New-Object System.Random
             $remainingBytes = $SizeInBytes
 
@@ -145,8 +144,7 @@ function New-RandomFile {
                 if ($bytesToWrite -eq $buffer.Length) {
                     $random.NextBytes($buffer)
                     $fileStream.Write($buffer, 0, $buffer.Length)
-                }
-                else {
+                } else {
                     $smallBuffer = New-Object byte[] $bytesToWrite
                     $random.NextBytes($smallBuffer)
                     $fileStream.Write($smallBuffer, 0, $smallBuffer.Length)
@@ -159,12 +157,10 @@ function New-RandomFile {
             $fileStream.Dispose()
 
             return $true
-        }
-        else {
+        } else {
             return $false
         }
-    }
-    catch {
+    } catch {
         Write-ColoredOutput -Message "WARNING: Failed to create random file '$FilePath': $($_.Exception.Message)"
         return $false
     }
@@ -182,16 +178,16 @@ function New-RandomAttachment {
     try {
         # Random file types that are commonly attached to emails
         $fileTypes = @(
-            @{Extension = ".pdf"; Name = "Document"},
-            @{Extension = ".docx"; Name = "Report"},
-            @{Extension = ".xlsx"; Name = "Spreadsheet"},
-            @{Extension = ".pptx"; Name = "Presentation"},
-            @{Extension = ".txt"; Name = "Notes"},
-            @{Extension = ".jpg"; Name = "Image"},
-            @{Extension = ".png"; Name = "Photo"},
-            @{Extension = ".zip"; Name = "Archive"},
-            @{Extension = ".log"; Name = "LogFile"},
-            @{Extension = ".csv"; Name = "DataFile"}
+            @{ Extension = ".pdf"; Name = "Document" },
+            @{ Extension = ".docx"; Name = "Report" },
+            @{ Extension = ".xlsx"; Name = "Spreadsheet" },
+            @{ Extension = ".pptx"; Name = "Presentation" },
+            @{ Extension = ".txt"; Name = "Notes" },
+            @{ Extension = ".jpg"; Name = "Image" },
+            @{ Extension = ".png"; Name = "Photo" },
+            @{ Extension = ".zip"; Name = "Archive" },
+            @{ Extension = ".log"; Name = "LogFile" },
+            @{ Extension = ".csv"; Name = "DataFile" }
         )
 
         # Select random file type
@@ -199,9 +195,9 @@ function New-RandomAttachment {
 
         # Generate random size between 2MB and 5MB
         # 2MB
-                $minSizeBytes = 2 * 1024 * 1024
+        $minSizeBytes = 2 * 1024 * 1024
         # 5MB
-                $maxSizeBytes = 5 * 1024 * 1024
+        $maxSizeBytes = 5 * 1024 * 1024
         $randomSize = Get-Random -Minimum $minSizeBytes -Maximum $maxSizeBytes
 
         # Generate unique filename with timestamp
@@ -209,7 +205,7 @@ function New-RandomAttachment {
         $randomNumber = Get-Random -Minimum 1000 -Maximum 9999
         $fileName = "$($selectedType.Name)_$timestamp`_$randomNumber$($selectedType.Extension)"
         # Create the random file
-                $fullPath = Join-Path -Path $TempDirectory -ChildPath $fileName
+        $fullPath = Join-Path -Path $TempDirectory -ChildPath $fileName
         $success = New-RandomFile -FilePath $fullPath -SizeInBytes $randomSize
 
         if ($success) {
@@ -219,14 +215,12 @@ function New-RandomAttachment {
                 SizeMB = [Math]::Round($randomSize / 1MB, 2)
                 Success = $true
             }
+        } else {
+            return @{ Success = $false }
         }
-        else {
-            return @{Success = $false}
-        }
-    }
-    catch {
+    } catch {
         Write-ColoredOutput -Message "WARNING: Failed to generate random attachment: $($_.Exception.Message)"
-        return @{Success = $false}
+        return @{ Success = $false }
     }
 }
 
@@ -244,7 +238,7 @@ function Test-OutlookPrerequisite {
     # Comprehensive check for Outlook installation in Program Files directories
     $programFilesPaths = @(
         $env:ProgramFiles,
-        ${env:ProgramFiles(x86)}
+        ${ env:ProgramFiles(x86)}
     )
 
     $outlookPaths = @()
@@ -255,21 +249,21 @@ function Test-OutlookPrerequisite {
             # Office versions and their typical paths
             $officeVersions = @(
                 # Office 2016/2019/2021/365 Click-to-Run
-                                "Microsoft Office\root\Office16",
+                "Microsoft Office\root\Office16",
                 # Office 2016 MSI
-                                "Microsoft Office\Office16",
+                "Microsoft Office\Office16",
                 # Office 2013 Click-to-Run
-                                "Microsoft Office\root\Office15",
+                "Microsoft Office\root\Office15",
                 # Office 2013 MSI
-                                "Microsoft Office\Office15",
+                "Microsoft Office\Office15",
                 # Office 2010 Click-to-Run
-                                "Microsoft Office\root\Office14",
+                "Microsoft Office\root\Office14",
                 # Office 2010 MSI
-                                "Microsoft Office\Office14",
+                "Microsoft Office\Office14",
                 # Office 2007
-                                "Microsoft Office\OFFICE12",
+                "Microsoft Office\OFFICE12",
                 # Office 2003
-                                "Microsoft Office\OFFICE11"
+                "Microsoft Office\OFFICE11"
             )
 
             foreach ($version in $officeVersions) {
@@ -315,8 +309,8 @@ function Test-OutlookPrerequisite {
         Write-ColoredOutput -Message "WARNING: Outlook executable not found in standard Program Files locations"
         Write-ColoredOutput -Message "Checked paths in:"
         Write-ColoredOutput -Message "  - $env:ProgramFiles"
-        if ($env:ProgramFiles -ne ${env:ProgramFiles(x86)}) {
-            Write-ColoredOutput -Message "  - ${env:ProgramFiles(x86)}"
+        if ($env:ProgramFiles -ne ${ env:ProgramFiles(x86)}) {
+            Write-ColoredOutput -Message "  - ${ env:ProgramFiles(x86)}"
         }
     }
 
@@ -360,13 +354,11 @@ function Test-OutlookPrerequisite {
             [System.GC]::WaitForPendingFinalizers()
 
             return $true
-        }
-        catch {
+        } catch {
             Write-ColoredOutput -Message "ERROR: Outlook COM interface test failed: $($_.Exception.Message)"
             return $false
         }
-    }
-    else {
+    } else {
         Write-ColoredOutput -Message "COM interface test skipped as requested"
         return ($outlookInstalled -or $registryFound)
     }
@@ -410,7 +402,10 @@ function New-PSTFileWithData {
 
         [Parameter(Mandatory = $false)]
         [string]$AttachmentTempPath = "C:\Temp\PST_Attachments"
-    )    try {        if (-not $IsWhatIfMode) {
+    )
+
+    try {
+        if (-not $IsWhatIfMode) {
             if ($PSCmdlet.ShouldProcess($FilePath, "Create PST file with $EmailCount emails")) {
                 Write-ColoredOutput -Message "Creating PST file with $EmailCount emails at: $FilePath"
 
@@ -424,344 +419,339 @@ function New-PSTFileWithData {
                         Write-ColoredOutput -Message "Creating temporary attachment directory: $AttachmentTempPath"
                         New-Item -Path $AttachmentTempPath -ItemType Directory -Force | Out-Null
                     }
-                }
-                else {
+                } else {
                     Write-ColoredOutput -Message "No attachments will be generated (AttachmentPercentage = 0)"
                 }
 
-            # Test Outlook prerequisites first
-            if (-not (Test-OutlookPrerequisite)) {
-                throw "Outlook prerequisites not met. Please install and configure Microsoft Outlook."
-            }
-
-            # Delete existing file if it exists
-            if (Test-Path -Path $FilePath) {
-                Write-ColoredOutput -Message "Removing existing PST file..."
-                Remove-Item -Path $FilePath -Force
-            }
-
-            # Ensure target directory exists
-            $targetDir = Split-Path -Path $FilePath -Parent
-            if (-not (Test-Path -Path $targetDir)) {
-                Write-ColoredOutput -Message "Creating target directory: $targetDir"
-                New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
-            }
-
-            # Create Outlook application object
-            Write-ColoredOutput -Message "Initializing Outlook COM interface..."
-            $outlook = New-Object -ComObject Outlook.Application
-
-            Write-ColoredOutput -Message "Outlook application object created successfully"
-
-            # Get namespace
-            $namespace = $outlook.GetNamespace("MAPI")
-
-            # Create new PST file
-            Write-ColoredOutput -Message "Adding new PST data store..."
-            $namespace.AddStore($FilePath)
-
-            # Find the newly created PST store
-            $store = $namespace.Stores | Where-Object { $_.FilePath -eq $FilePath }
-            if (-not $store) {
-                throw "Failed to create or access PST file: $FilePath"
-            }
-
-            Write-ColoredOutput -Message "PST store created successfully: $($store.DisplayName)"
-
-            # Get root folder
-            $rootFolder = $store.GetRootFolder()
-            Write-ColoredOutput -Message "Root folder accessed: $($rootFolder.Name)"
-
-            # Ensure default folders exist (create Inbox if it doesn't exist)
-            Write-ColoredOutput -Message "Setting up default folder structure..."
-
-            # Check if Inbox exists, create if not
-            $inbox = $rootFolder.Folders | Where-Object { $_.Name -eq "Inbox" }
-            if (-not $inbox) {
-                Write-ColoredOutput -Message "Creating Inbox folder..."
-                $inbox = $rootFolder.Folders.Add("Inbox")
-            }
-
-            # Create custom folders for sample organization
-                        Write-ColoredOutput -Message "PST folder structure initialized successfully"
-            Write-ColoredOutput -Message "Creating custom sample folders..."
-            $customFolders = @("Important", "Projects", "Personal", "Archive")
-            $allFolders = @{"Inbox" = $inbox}
-
-            foreach ($customFolderName in $customFolders) {
-                try {
-                    # Check if folder already exists
-                    $existingCustomFolder = $rootFolder.Folders | Where-Object { $_.Name -eq $customFolderName }
-
-                    if (-not $existingCustomFolder) {
-                        Write-ColoredOutput -Message "Creating custom folder: $customFolderName"
-                        $newCustomFolder = $rootFolder.Folders.Add($customFolderName)
-                        $allFolders[$customFolderName] = $newCustomFolder
-                    }
-                    else {
-                        Write-ColoredOutput -Message "Custom folder already exists: $customFolderName"
-                        $allFolders[$customFolderName] = $existingCustomFolder
-                    }
-                }
-                catch {
-                    Write-ColoredOutput -Message "WARNING: Could not create custom folder '$customFolderName': $($_.Exception.Message)"
-                }
-            }
-
-            # Randomly distribute emails across all folders
-            $folderNames = $allFolders.Keys
-            Write-ColoredOutput -Message "Randomly distributing $EmailCount emails across all folders ($($folderNames -join ', '))..."
-
-            # Create random distribution array
-            $folderDistribution = @{}
-            foreach ($folderName in $folderNames) {
-                $folderDistribution[$folderName] = 0
-            }
-
-            # Randomly assign each email to a folder
-            for ($i = 1; $i -le $EmailCount; $i++) {
-                $randomFolder = $folderNames | Get-Random
-                $folderDistribution[$randomFolder]++
-            # Display distribution
-                        }
-            Write-ColoredOutput -Message "Email distribution plan:"
-            foreach ($folderName in $folderNames) {
-                $count = $folderDistribution[$folderName]
-                Write-ColoredOutput -Message "  $folderName`: $count emails"
-            }
-
-            # Sample data arrays for email generation
-            $sampleSubjects = @(
-                "Meeting Follow-up", "Project Update", "Weekly Report", "Action Items",
-                "Budget Review", "Client Feedback", "Team Announcement", "Schedule Change",
-                "Important Notice", "Document Review", "Status Update", "Planning Session",
-                "Quarterly Results", "System Maintenance", "Policy Changes", "Training Session"
-            )
-
-            $sampleSenders = @(
-                "john.doe@company.com", "jane.smith@company.com", "mike.johnson@client.com",
-                "sarah.wilson@partner.org", "david.brown@vendor.net", "lisa.davis@consultant.biz",
-                "admin@system.local", "support@vendor.com", "manager@department.org"
-            )
-
-            $sampleBodies = @(
-                "Please find the attached document for your review. Let me know if you have any questions or concerns.",
-                "Following up on our meeting yesterday. Here are the action items we discussed.",
-                "This is the weekly status report for the project. All milestones are on track.",
-                "I wanted to update you on the latest developments regarding the budget review.",
-                "The client has provided feedback on the proposal. Please see the details below.",
-                "Please be aware of the schedule changes for next week's meetings.",
-                "The quarterly review is scheduled for next month. Please prepare your reports accordingly.",
-                "System maintenance is planned for this weekend. Please plan accordingly.",                "New company policies have been updated. Please review at your earliest convenience."
-            )
-
-            $totalSuccessfulEmails = 0
-
-            # Create emails for each folder according to distribution
-            foreach ($folderName in $folderNames) {
-                $emailsForThisFolder = $folderDistribution[$folderName]
-
-                if ($emailsForThisFolder -eq 0) {
-                    Write-ColoredOutput -Message "Skipping $folderName (no emails assigned)"
-                    continue
+                # Test Outlook prerequisites first
+                if (-not (Test-OutlookPrerequisite)) {
+                    throw "Outlook prerequisites not met. Please install and configure Microsoft Outlook."
                 }
 
-                Write-ColoredOutput -Message "Creating $emailsForThisFolder emails for $folderName..."
-                $folderSuccessCount = 0
-                $targetFolder = $allFolders[$folderName]
+                # Delete existing file if it exists
+                if (Test-Path -Path $FilePath) {
+                    Write-ColoredOutput -Message "Removing existing PST file..."
+                    Remove-Item -Path $FilePath -Force
+                }
 
-                for ($j = 1; $j -le $emailsForThisFolder; $j++) {
-                    # Get random content
-                                        try {
-                        $randomSubject = $sampleSubjects | Get-Random
-                        $randomSender = $sampleSenders | Get-Random
-                        $randomBody = $sampleBodies | Get-Random
+                # Ensure target directory exists
+                $targetDir = Split-Path -Path $FilePath -Parent
+                if (-not (Test-Path -Path $targetDir)) {
+                    Write-ColoredOutput -Message "Creating target directory: $targetDir"
+                    New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
+                }
 
-                        # Create email item using CreateItem method
-                        # 0 = olMailItem
-                                                $mailItem = $outlook.CreateItem(0)
+                # Create Outlook application object
+                Write-ColoredOutput -Message "Initializing Outlook COM interface..."
+                $outlook = New-Object -ComObject Outlook.Application
 
-                        # Set email properties with folder context
-                        if ($folderName -eq "Inbox") {
-                            $mailItem.Subject = "$randomSubject"
-                            $mailItem.Body = "$randomBody`n`nGenerated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
+                Write-ColoredOutput -Message "Outlook application object created successfully"
+
+                # Get namespace
+                $namespace = $outlook.GetNamespace("MAPI")
+
+                # Create new PST file
+                Write-ColoredOutput -Message "Adding new PST data store..."
+                $namespace.AddStore($FilePath)
+
+                # Find the newly created PST store
+                $store = $namespace.Stores | Where-Object { $_.FilePath -eq $FilePath }
+                if (-not $store) {
+                    throw "Failed to create or access PST file: $FilePath"
+                }
+
+                Write-ColoredOutput -Message "PST store created successfully: $($store.DisplayName)"
+
+                # Get root folder
+                $rootFolder = $store.GetRootFolder()
+                Write-ColoredOutput -Message "Root folder accessed: $($rootFolder.Name)"
+
+                # Ensure default folders exist (create Inbox if it doesn't exist)
+                Write-ColoredOutput -Message "Setting up default folder structure..."
+
+                # Check if Inbox exists, create if not
+                $inbox = $rootFolder.Folders | Where-Object { $_.Name -eq "Inbox" }
+                if (-not $inbox) {
+                    Write-ColoredOutput -Message "Creating Inbox folder..."
+                    $inbox = $rootFolder.Folders.Add("Inbox")
+                }
+
+                # Create custom folders for sample organization
+                Write-ColoredOutput -Message "PST folder structure initialized successfully"
+                Write-ColoredOutput -Message "Creating custom sample folders..."
+                $customFolders = @("Important", "Projects", "Personal", "Archive")
+                $allFolders = @{ "Inbox" = $inbox }
+
+                foreach ($customFolderName in $customFolders) {
+                    try {
+                        # Check if folder already exists
+                        $existingCustomFolder = $rootFolder.Folders | Where-Object { $_.Name -eq $customFolderName }
+
+                        if (-not $existingCustomFolder) {
+                            Write-ColoredOutput -Message "Creating custom folder: $customFolderName"
+                            $newCustomFolder = $rootFolder.Folders.Add($customFolderName)
+                            $allFolders[$customFolderName] = $newCustomFolder
                         } else {
-                            $mailItem.Subject = "[$folderName] $randomSubject"
-                            $mailItem.Body = "$randomBody`n`nFolder Category: $folderName`nGenerated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
-
-                            # Add category to help identify the intended folder
-                            try {
-                                $mailItem.Categories = $folderName
-                            } catch {
-                                Write-Verbose "Could not set category: $($_.Exception.Message)"
-                            }
+                            Write-ColoredOutput -Message "Custom folder already exists: $customFolderName"
+                            $allFolders[$customFolderName] = $existingCustomFolder
                         }
+                    } catch {
+                        Write-ColoredOutput -Message "WARNING: Could not create custom folder '$customFolderName': $($_.Exception.Message)"
+                    }
+                }
 
-                        $mailItem.To = "testuser@example.com"
+                # Randomly distribute emails across all folders
+                $folderNames = $allFolders.Keys
+                Write-ColoredOutput -Message "Randomly distributing $EmailCount emails across all folders ($($folderNames -join ', '))..."
 
-                        # Set sender information
+                # Create random distribution array
+                $folderDistribution = @{}
+                foreach ($folderName in $folderNames) {
+                    $folderDistribution[$folderName] = 0
+                }
+
+                # Randomly assign each email to a folder
+                for ($i = 1; $i -le $EmailCount; $i++) {
+                    $randomFolder = $folderNames | Get-Random
+                    $folderDistribution[$randomFolder]++
+                    # Display distribution
+                }
+                Write-ColoredOutput -Message "Email distribution plan:"
+                foreach ($folderName in $folderNames) {
+                    $count = $folderDistribution[$folderName]
+                    Write-ColoredOutput -Message "  $folderName`: $count emails"
+                }
+
+                # Sample data arrays for email generation
+                $sampleSubjects = @(
+                    "Meeting Follow-up", "Project Update", "Weekly Report", "Action Items",
+                    "Budget Review", "Client Feedback", "Team Announcement", "Schedule Change",
+                    "Important Notice", "Document Review", "Status Update", "Planning Session",
+                    "Quarterly Results", "System Maintenance", "Policy Changes", "Training Session"
+                )
+
+                $sampleSenders = @(
+                    "john.doe@company.com", "jane.smith@company.com", "mike.johnson@client.com",
+                    "sarah.wilson@partner.org", "david.brown@vendor.net", "lisa.davis@consultant.biz",
+                    "admin@system.local", "support@vendor.com", "manager@department.org"
+                )
+
+                $sampleBodies = @(
+                    "Please find the attached document for your review. Let me know if you have any questions or concerns.",
+                    "Following up on our meeting yesterday. Here are the action items we discussed.",
+                    "This is the weekly status report for the project. All milestones are on track.",
+                    "I wanted to update you on the latest developments regarding the budget review.",
+                    "The client has provided feedback on the proposal. Please see the details below.",
+                    "Please be aware of the schedule changes for next week's meetings.",
+                    "The quarterly review is scheduled for next month. Please prepare your reports accordingly.",
+                    "System maintenance is planned for this weekend. Please plan accordingly.",
+                    "New company policies have been updated. Please review at your earliest convenience."
+                )
+
+                $totalSuccessfulEmails = 0
+
+                # Create emails for each folder according to distribution
+                foreach ($folderName in $folderNames) {
+                    $emailsForThisFolder = $folderDistribution[$folderName]
+
+                    if ($emailsForThisFolder -eq 0) {
+                        Write-ColoredOutput -Message "Skipping $folderName (no emails assigned)"
+                        continue
+                    }
+
+                    Write-ColoredOutput -Message "Creating $emailsForThisFolder emails for $folderName..."
+                    $folderSuccessCount = 0
+                    $targetFolder = $allFolders[$folderName]
+
+                    for ($j = 1; $j -le $emailsForThisFolder; $j++) {
+                        # Get random content
                         try {
-                            $mailItem.SenderName = ($randomSender -split '@')[0] -replace '\.', ' '
-                            $mailItem.SenderEmailAddress = $randomSender
-                        } catch {
-                            Write-Verbose "Could not set sender information: $($_.Exception.Message)"
-                        }
+                            $randomSubject = $sampleSubjects | Get-Random
+                            $randomSender = $sampleSenders | Get-Random
+                            $randomBody = $sampleBodies | Get-Random
 
-                        # Set random past dates (SentOn should be before ReceivedTime)
-                        $daysBack = Get-Random -Minimum 1 -Maximum 90
-                        $hoursBack = Get-Random -Minimum 1 -Maximum 24
-                        $minutesBack = Get-Random -Minimum 1 -Maximum 60
-                        $randomSentDate = (Get-Date).AddDays(-$daysBack).AddHours(-$hoursBack).AddMinutes(-$minutesBack)
-                        $randomReceivedDate = $randomSentDate.AddMinutes((Get-Random -Minimum 1 -Maximum 30))
+                            # Create email item using CreateItem method
+                            # 0 = olMailItem
+                            $mailItem = $outlook.CreateItem(0)
 
-                        try {
-                            $mailItem.SentOn = $randomSentDate
-                            $mailItem.ReceivedTime = $randomReceivedDate
-                            $mailItem.CreationTime = $randomReceivedDate
-                        } catch {
-                            Write-Verbose "Could not set date properties: $($_.Exception.Message)"
-                        }
+                            # Set email properties with folder context
+                            if ($folderName -eq "Inbox") {
+                                $mailItem.Subject = "$randomSubject"
+                                $mailItem.Body = "$randomBody`n`nGenerated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
+                            } else {
+                                $mailItem.Subject = "[$folderName] $randomSubject"
+                                $mailItem.Body = "$randomBody`n`nFolder Category: $folderName`nGenerated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
 
-                        # Set read status randomly for more realistic data
-                        try {
-                            # Randomly mark some as unread
-                                                        $mailItem.UnRead = (Get-Random -Maximum 2) -eq 1
-                        } catch {
-                            Write-Verbose "Could not set read status: $($_.Exception.Message)"
-                        # Set importance randomly for more realistic data
-                                                }
-                        try {
-                            # 0=Low, 1=Normal, 2=High
-                                                        $mailItem.Importance = Get-Random -Minimum 0 -Maximum 3
-                        } catch {
-                            Write-Verbose "Could not set importance: $($_.Exception.Message)"
-                        }
-
-                        # Add random attachments based on percentage
-                        $currentAttachmentFiles = @()
-                        if ($AttachmentPercentage -gt 0) {
-                            $shouldAddAttachment = (Get-Random -Minimum 1 -Maximum 101) -le $AttachmentPercentage
-
-                            if ($shouldAddAttachment) {
+                                # Add category to help identify the intended folder
                                 try {
-                                    Write-Verbose "Generating attachment for email $j in $folderName..."
-                                    $attachmentInfo = New-RandomAttachment -TempDirectory $AttachmentTempPath
-
-                                    if ($attachmentInfo.Success) {
-                                        Write-Verbose "Adding attachment: $($attachmentInfo.FileName) ($($attachmentInfo.SizeMB) MB)"
-                                        $attachment = $mailItem.Attachments.Add($attachmentInfo.FilePath)
-                                        $attachment.DisplayName = $attachmentInfo.FileName
-
-                                        # Track temp files for cleanup
-                                        $currentAttachmentFiles += $attachmentInfo.FilePath
-                                        $attachmentTempFiles += $attachmentInfo.FilePath
-
-                                        # Update email body to mention attachment
-                                        $attachmentNote = "`n`n--- Attachment ---`nFile: $($attachmentInfo.FileName)`nSize: $($attachmentInfo.SizeMB) MB"
-                                        $mailItem.Body += $attachmentNote
-
-                                        Write-Verbose "Successfully added attachment: $($attachmentInfo.FileName)"
-                                    }
-                                    else {
-                                        Write-Verbose "Failed to generate attachment for email $j"
-                                    }
-                                }
-                                catch {
-                                    Write-ColoredOutput -Message "  WARNING: Failed to add attachment to email $j in $folderName`: $($_.Exception.Message)"
+                                    $mailItem.Categories = $folderName
+                                } catch {
+                                    Write-Verbose "Could not set category: $($_.Exception.Message)"
                                 }
                             }
-                        # Save the email first
-                                                }
-                        $mailItem.Save()
 
-                        # Move the email to the target folder
-                        $mailItem = $mailItem.Move($targetFolder)
+                            $mailItem.To = "testuser@example.com"
 
-                        $folderSuccessCount++
-                        # Clean up
-                                                $totalSuccessfulEmails++
-                        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($mailItem) | Out-Null
-
-                        # Clean up temporary attachment files for this email
-                        foreach ($tempFile in $currentAttachmentFiles) {
+                            # Set sender information
                             try {
-                                if (Test-Path -Path $tempFile) {
-                                    Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
-                                    Write-Verbose "Cleaned up temp attachment file: $tempFile"
+                                $mailItem.SenderName = ($randomSender -split '@')[0] -replace '\.', ' '
+                                $mailItem.SenderEmailAddress = $randomSender
+                            } catch {
+                                Write-Verbose "Could not set sender information: $($_.Exception.Message)"
+                            }
+
+                            # Set random past dates (SentOn should be before ReceivedTime)
+                            $daysBack = Get-Random -Minimum 1 -Maximum 90
+                            $hoursBack = Get-Random -Minimum 1 -Maximum 24
+                            $minutesBack = Get-Random -Minimum 1 -Maximum 60
+                            $randomSentDate = (Get-Date).AddDays(-$daysBack).AddHours(-$hoursBack).AddMinutes(-$minutesBack)
+                            $randomReceivedDate = $randomSentDate.AddMinutes((Get-Random -Minimum 1 -Maximum 30))
+
+                            try {
+                                $mailItem.SentOn = $randomSentDate
+                                $mailItem.ReceivedTime = $randomReceivedDate
+                                $mailItem.CreationTime = $randomReceivedDate
+                            } catch {
+                                Write-Verbose "Could not set date properties: $($_.Exception.Message)"
+                            }
+
+                            # Set read status randomly for more realistic data
+                            try {
+                                # Randomly mark some as unread
+                                $mailItem.UnRead = (Get-Random -Maximum 2) -eq 1
+                            } catch {
+                                Write-Verbose "Could not set read status: $($_.Exception.Message)"
+                                # Set importance randomly for more realistic data
+                            }
+                            try {
+                                # 0=Low, 1=Normal, 2=High
+                                $mailItem.Importance = Get-Random -Minimum 0 -Maximum 3
+                            } catch {
+                                Write-Verbose "Could not set importance: $($_.Exception.Message)"
+                            }
+
+                            # Add random attachments based on percentage
+                            $currentAttachmentFiles = @()
+                            if ($AttachmentPercentage -gt 0) {
+                                $shouldAddAttachment = (Get-Random -Minimum 1 -Maximum 101) -le $AttachmentPercentage
+
+                                if ($shouldAddAttachment) {
+                                    try {
+                                        Write-Verbose "Generating attachment for email $j in $folderName..."
+                                        $attachmentInfo = New-RandomAttachment -TempDirectory $AttachmentTempPath
+
+                                        if ($attachmentInfo.Success) {
+                                            Write-Verbose "Adding attachment: $($attachmentInfo.FileName) ($($attachmentInfo.SizeMB) MB)"
+                                            $attachment = $mailItem.Attachments.Add($attachmentInfo.FilePath)
+                                            $attachment.DisplayName = $attachmentInfo.FileName
+
+                                            # Track temp files for cleanup
+                                            $currentAttachmentFiles += $attachmentInfo.FilePath
+                                            $attachmentTempFiles += $attachmentInfo.FilePath
+
+                                            # Update email body to mention attachment
+                                            $attachmentNote = "`n`n--- Attachment ---`nFile: $($attachmentInfo.FileName)`nSize: $($attachmentInfo.SizeMB) MB"
+                                            $mailItem.Body += $attachmentNote
+
+                                            Write-Verbose "Successfully added attachment: $($attachmentInfo.FileName)"
+                                        } else {
+                                            Write-Verbose "Failed to generate attachment for email $j"
+                                        }
+                                    } catch {
+                                        Write-ColoredOutput -Message "  WARNING: Failed to add attachment to email $j in $folderName`: $($_.Exception.Message)"
+                                    }
+                                }
+
+                            }
+                            # Save the email first
+                            $mailItem.Save()
+
+                            # Move the email to the target folder
+                            $mailItem = $mailItem.Move($targetFolder)
+
+                            $folderSuccessCount++
+
+                            # Clean up
+                            $totalSuccessfulEmails++
+                            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($mailItem) | Out-Null
+
+                            # Clean up temporary attachment files for this email
+                            foreach ($tempFile in $currentAttachmentFiles) {
+                                try {
+                                    if (Test-Path -Path $tempFile) {
+                                        Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+                                        Write-Verbose "Cleaned up temp attachment file: $tempFile"
+                                    }
+                                } catch {
+                                    Write-Verbose "Could not clean up temp file '$tempFile': $($_.Exception.Message)"
                                 }
                             }
-                            catch {
-                                Write-Verbose "Could not clean up temp file '$tempFile': $($_.Exception.Message)"
+
+                            if ($j % 5 -eq 0 -or $j -eq $emailsForThisFolder) {
+                                Write-ColoredOutput -Message "  Created email $j of $emailsForThisFolder for $folderName"
+                            }
+                        } catch {
+                            Write-ColoredOutput -Message "  WARNING: Failed to create email $j for $folderName`: $($_.Exception.Message)"
+                        }
+                    }
+
+                    if ($folderSuccessCount -gt 0) {
+                        Write-ColoredOutput -Message "Successfully created $folderSuccessCount emails for $folderName"
+                    }
+                }            Write-ColoredOutput -Message "PST file creation completed: $FilePath"
+
+                # Summary of what was created
+                Write-Output ""
+                Write-ColoredOutput -Message "=== Summary ==="
+                Write-ColoredOutput -Message "[SUCCESS] PST file created with folder structure"
+                Write-ColoredOutput -Message "[SUCCESS] $totalSuccessfulEmails of $EmailCount emails created and saved to PST folders"
+                Write-ColoredOutput -Message "[SUCCESS] Emails distributed across PST folders (not in default mailbox)"
+                if ($AttachmentPercentage -gt 0) {
+                    $expectedAttachmentCount = [Math]::Ceiling($EmailCount * ($AttachmentPercentage / 100))
+                    Write-ColoredOutput -Message "[SUCCESS] Random attachments (2-5MB) added to approximately $AttachmentPercentage% of emails"
+                }
+                Write-Output ""
+                Write-ColoredOutput -Message "PST file ready for use: $FilePath"
+                Write-ColoredOutput -Message "You can now import this PST file into Outlook or other applications"
+
+                # Clean up any remaining temporary attachment files
+                if ($AttachmentPercentage -gt 0) {
+                    Write-ColoredOutput -Message "Cleaning up temporary attachment files..."
+                    try {
+                        if (Test-Path -Path $AttachmentTempPath) {
+                            $remainingFiles = Get-ChildItem -Path $AttachmentTempPath -File -ErrorAction SilentlyContinue
+                            foreach ($file in $remainingFiles) {
+                                try {
+                                    Remove-Item -Path $file.FullName -Force -ErrorAction SilentlyContinue
+                                    Write-Verbose "Cleaned up remaining temp file: $($file.Name)"
+                                } catch {
+                                    Write-Verbose "Could not clean up temp file '$($file.Name)': $($_.Exception.Message)"
+                                }
+                            }
+
+                            # Try to remove the temp directory if it's empty
+                            $remainingItems = Get-ChildItem -Path $AttachmentTempPath -ErrorAction SilentlyContinue
+                            if (-not $remainingItems) {
+                                Remove-Item -Path $AttachmentTempPath -Force -ErrorAction SilentlyContinue
+                                Write-ColoredOutput -Message "Temporary attachment directory cleaned up"
                             }
                         }
-
-                        if ($j % 5 -eq 0 -or $j -eq $emailsForThisFolder) {
-                            Write-ColoredOutput -Message "  Created email $j of $emailsForThisFolder for $folderName"
-                        }
+                    } catch {
+                        Write-ColoredOutput -Message "WARNING: Could not fully clean up temporary attachment directory: $($_.Exception.Message)"
                     }
-                    catch {
-                        Write-ColoredOutput -Message "  WARNING: Failed to create email $j for $folderName`: $($_.Exception.Message)"
-                    }
+                    # Optional: Remove the PST from Outlook profile (keep file but remove from profile)
                 }
-
-                if ($folderSuccessCount -gt 0) {
-                    Write-ColoredOutput -Message "Successfully created $folderSuccessCount emails for $folderName"
-                }
-            }            Write-ColoredOutput -Message "PST file creation completed: $FilePath"
-
-            # Summary of what was created            Write-Output ""
-            Write-ColoredOutput -Message "=== Summary ==="
-            Write-ColoredOutput -Message "[SUCCESS] PST file created with folder structure"
-            Write-ColoredOutput -Message "[SUCCESS] $totalSuccessfulEmails of $EmailCount emails created and saved to PST folders"
-            Write-ColoredOutput -Message "[SUCCESS] Emails distributed across PST folders (not in default mailbox)"
-            if ($AttachmentPercentage -gt 0) {
-                $expectedAttachmentCount = [Math]::Ceiling($EmailCount * ($AttachmentPercentage / 100))
-                Write-ColoredOutput -Message "[SUCCESS] Random attachments (2-5MB) added to approximately $AttachmentPercentage% of emails"
-            }
-            Write-Output ""
-            Write-ColoredOutput -Message "PST file ready for use: $FilePath"
-            Write-ColoredOutput -Message "You can now import this PST file into Outlook or other applications"
-
-            # Clean up any remaining temporary attachment files
-            if ($AttachmentPercentage -gt 0) {
-                Write-ColoredOutput -Message "Cleaning up temporary attachment files..."
+                # This prevents the test PST from remaining in the user's Outlook
+                Write-ColoredOutput -Message "Removing PST from Outlook profile (file remains on disk)..."
                 try {
-                    if (Test-Path -Path $AttachmentTempPath) {
-                        $remainingFiles = Get-ChildItem -Path $AttachmentTempPath -File -ErrorAction SilentlyContinue
-                        foreach ($file in $remainingFiles) {
-                            try {
-                                Remove-Item -Path $file.FullName -Force -ErrorAction SilentlyContinue
-                                Write-Verbose "Cleaned up remaining temp file: $($file.Name)"
-                            }
-                            catch {
-                                Write-Verbose "Could not clean up temp file '$($file.Name)': $($_.Exception.Message)"
-                            }
-                        }
-
-                        # Try to remove the temp directory if it's empty
-                        $remainingItems = Get-ChildItem -Path $AttachmentTempPath -ErrorAction SilentlyContinue
-                        if (-not $remainingItems) {
-                            Remove-Item -Path $AttachmentTempPath -Force -ErrorAction SilentlyContinue
-                            Write-ColoredOutput -Message "Temporary attachment directory cleaned up"
-                        }
-                    }
+                    $namespace.RemoveStore($store.GetRootFolder())
+                    Write-ColoredOutput -Message "PST removed from Outlook profile successfully"
+                } catch {
+                    Write-ColoredOutput -Message "WARNING: Could not remove PST from profile: $($_.Exception.Message)"
+                    Write-ColoredOutput -Message "You may need to manually remove it from Outlook"
                 }
-                catch {
-                    Write-ColoredOutput -Message "WARNING: Could not fully clean up temporary attachment directory: $($_.Exception.Message)"
-                }
-            # Optional: Remove the PST from Outlook profile (keep file but remove from profile)
-                        }
-            # This prevents the test PST from remaining in the user's Outlook
-            Write-ColoredOutput -Message "Removing PST from Outlook profile (file remains on disk)..."
-            try {
-                $namespace.RemoveStore($store.GetRootFolder())
-                Write-ColoredOutput -Message "PST removed from Outlook profile successfully"
             }
-            catch {
-                Write-ColoredOutput -Message "WARNING: Could not remove PST from profile: $($_.Exception.Message)"
-                Write-ColoredOutput -Message "You may need to manually remove it from Outlook"
-            }}        }
-        else {
+        } else {
             Write-ColoredOutput -Message "WHATIF: Would create PST file at $FilePath with $EmailCount emails randomly distributed across folders"
             if ($AttachmentPercentage -gt 0) {
                 $expectedAttachmentCount = [Math]::Ceiling($EmailCount * ($AttachmentPercentage / 100))
@@ -769,11 +759,10 @@ function New-PSTFileWithData {
                 Write-ColoredOutput -Message "WHATIF: Would use temporary attachment directory: $AttachmentTempPath"
             }
         }
-    }
-    catch {
+    } catch {
         Write-ColoredOutput -Message "ERROR: $($_.Exception.Message)"
         throw
-    }    finally {
+    } finally {
         # Clean up COM objects - be more careful with cleanup order
         try {
             if ($allFolders) {
@@ -782,8 +771,7 @@ function New-PSTFileWithData {
                         if ($folderObj -and [System.Runtime.Interopservices.Marshal]::IsComObject($folderObj)) {
                             [System.Runtime.Interopservices.Marshal]::ReleaseComObject($folderObj) | Out-Null
                         }
-                    }
-                    catch {
+                    } catch {
                         Write-Verbose "Folder cleanup warning: $($_.Exception.Message)"
                     }
                 }
@@ -803,11 +791,9 @@ function New-PSTFileWithData {
             if ($outlook -and [System.Runtime.Interopservices.Marshal]::IsComObject($outlook)) {
                 [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
             }
-        }
-        catch {
+        } catch {
             Write-Verbose "COM cleanup warning: $($_.Exception.Message)"
-        }
-        finally {
+        } finally {
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
         }
@@ -842,12 +828,12 @@ try {
     if (Test-Path -Path $PSTPath) {
         if ($PSCmdlet.ShouldProcess($PSTPath, "Overwrite existing PST file")) {
             Write-ColoredOutput -Message "WARNING: PST file already exists and will be overwritten: $PSTPath"
-        }
-        else {
+        } else {
             Write-ColoredOutput -Message "WHATIF: Would overwrite existing PST file: $PSTPath"
         }
+
+    }
     # Create the PST file with data
-        }
     $isWhatIfMode = $PSBoundParameters.ContainsKey('WhatIf') -and $PSBoundParameters['WhatIf']
     New-PSTFileWithData -FilePath $PSTPath -EmailCount $EmailCount -IsWhatIfMode $isWhatIfMode -AttachmentPercentage $AttachmentPercentage -AttachmentTempPath $AttachmentTempPath
 
@@ -856,8 +842,7 @@ try {
 
     Write-ColoredOutput -Message "=== Execution Completed Successfully ==="
     Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds"
-}
-catch {
+} catch {
     $endTime = Get-Date
     $duration = $endTime - $startTime
 
@@ -866,8 +851,6 @@ catch {
     Write-ColoredOutput -Message "Total Execution Time: $($duration.TotalSeconds) seconds"
 
     exit 1
-}
-finally {
+} finally {
     Write-ColoredOutput -Message "Log file saved to: $logPath"
 }
-

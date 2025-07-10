@@ -42,7 +42,7 @@ function Find-USBDrive {
         }
     }
     # Return null if no USB drive is found
-        return $null
+    return $null
 }
 
 # Define the path to the DattoAgent folder (relative to the USB drive's root)
@@ -53,7 +53,7 @@ $usbDriveLetter = Find-USBDrive
 
 if ($usbDriveLetter) {
     # Construct the full path to the DattoAgent folder on the USB drive
-    $DattoAgentFolder = "${usbDriveLetter}:\$DattoAgentFolderRelative"
+    $DattoAgentFolder = "${ usbDriveLetter}:\$DattoAgentFolderRelative"
 
     # Check if the DattoAgent folder exists
     if (Test-Path $DattoAgentFolder -PathType Container) {

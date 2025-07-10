@@ -108,12 +108,12 @@ function Write-Log {
 
     # Write to console with appropriate color
     $ConsoleColor = switch ($Level) {
-        "INFO"    { "White" }
+        "INFO" { "White" }
         "SUCCESS" { "Green" }
         "WARNING" { "Yellow" }
-        "ERROR"   { "Red" }
-        "DEBUG"   { "Magenta" }
-        default   { "White" }
+        "ERROR" { "Red" }
+        "DEBUG" { "Magenta" }
+        default { "White" }
     }
 
     Write-Host $LogMessage -ForegroundColor $ConsoleColor
@@ -167,30 +167,27 @@ function Get-RDPSessions {
                     $Hours = [int]$Matches[2]
                     $Minutes = [int]$Matches[3]
                     $IdleMinutes = ($Days * 24 * 60) + ($Hours * 60) + $Minutes
-                }
-                elseif ($IdleTime -match '(\d+):(\d+)') {
+                } elseif ($IdleTime -match '(\d+):(\d+)') {
                     # Hours + minutes format
                     $Hours = [int]$Matches[1]
                     $Minutes = [int]$Matches[2]
                     $IdleMinutes = ($Hours * 60) + $Minutes
-                }
-                elseif ($IdleTime -match '^\d+$') {
+                } elseif ($IdleTime -match '^\d+$') {
                     # Just minutes
                     $IdleMinutes = [int]$IdleTime
-                }
-                elseif ($IdleTime -eq '.') {
+                } elseif ($IdleTime -eq '.') {
                     # Active session with no idle time
                     $IdleMinutes = 0
                 }
 
                 $Session = [PSCustomObject]@{
                     ComputerName = $ComputerName
-                    SessionId    = $SessionId
-                    Username     = $Username
-                    SessionName  = $SessionName
-                    State        = $SessionState
-                    IdleTime     = $IdleTime
-                    IdleMinutes  = $IdleMinutes
+                    SessionId = $SessionId
+                    Username = $Username
+                    SessionName = $SessionName
+                    State = $SessionState
+                    IdleTime = $IdleTime
+                    IdleMinutes = $IdleMinutes
                 }
 
                 $Sessions += $Session
@@ -198,8 +195,7 @@ function Get-RDPSessions {
         }
 
         return $Sessions
-    }
-    catch {
+    } catch {
         Write-Log -Message "Error retrieving RDP sessions: $_" -Level "ERROR"
         throw
     }
@@ -232,15 +228,13 @@ function Remove-RDPSession {
 
                 Write-Log -Message "Successfully terminated $SessionInfo" -Level "SUCCESS"
                 return $true
-            }
-            else {
+            } else {
                 Write-Log -Message "WhatIf: Would terminate $SessionInfo" -Level "DEBUG"
                 return $true
             }
         }
         return $false
-    }
-    catch {
+    } catch {
         Write-Log -Message "Error terminating RDP session: $_" -Level "ERROR"
         return $false
     }
@@ -261,7 +255,7 @@ try {
     }
 
     # Display all sessions
-    Write-Log -Message "RDP Sessions on ${ComputerName}:" -Level "INFO"
+    Write-Log -Message "RDP Sessions on ${ ComputerName}:" -Level "INFO"
     $FilteredSessions | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Log -Message $_ -Level "INFO" }
 
     # Handle termination if requested
@@ -273,8 +267,7 @@ try {
 
         if ($SessionsToTerminate.Count -eq 0) {
             Write-Log -Message "No eligible sessions to terminate based on current criteria." -Level "WARNING"
-        }
-        else {
+        } else {
             Write-Log -Message "Sessions eligible for termination:" -Level "WARNING"
             $SessionsToTerminate | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Log -Message $_ -Level "WARNING" }
 
@@ -292,8 +285,7 @@ try {
                         "A" { $ConfirmAll = $true; $ShouldTerminate = $true }
                         "Q" { break }
                     }
-                }
-                else {
+                } else {
                     $ShouldTerminate = $true
                 }
 
@@ -308,8 +300,7 @@ try {
     }
 
     Write-Log -Message "Script completed successfully" -Level "SUCCESS"
-}
-catch {
+} catch {
     Write-Log -Message "Script execution failed: $_" -Level "ERROR"
     exit 1
 }

@@ -38,16 +38,16 @@
     Validation Requirements: Verify target directory before execution
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$TargetPath
 )
 
 # Function to take ownership of files and folders
 function Set-Ownership {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$StartPath
     )
 
@@ -66,8 +66,7 @@ function Set-Ownership {
         }
 
         return $true
-    }
-    catch {
+    } catch {
         Write-Host "Error taking ownership of $StartPath`: $($_.Exception.Message)" -ForegroundColor Yellow
         return $false
     }
@@ -93,8 +92,7 @@ try {
                 Write-Host "Deleting file: $($_.FullName)" -ForegroundColor Yellow
                 Remove-Item -Path $_.FullName -Force -ErrorAction Stop
             }
-        }
-        catch {
+        } catch {
             Write-Host "Failed to delete file $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
@@ -124,22 +122,19 @@ try {
                             Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
                             $success = $true
                             Write-Host "Successfully deleted folder: $($_.FullName)" -ForegroundColor Green
-                        }
-                        catch {
+                        } catch {
                             if ($attempt -lt $maxAttempts) {
                                 Write-Host "Attempt $attempt failed, retrying in 2 seconds..." -ForegroundColor Yellow
                                 Start-Sleep -Seconds 2
                                 $attempt++
-                            }
-                            else {
+                            } else {
                                 Write-Host "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -ForegroundColor Yellow
                                 Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Yellow
                                 # Continue with other folders instead of stopping
                             }
                         }
                     }
-                }
-                catch {
+                } catch {
                     Write-Host "Error processing folder $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
                     # Continue with other folders
                 }
@@ -147,15 +142,14 @@ try {
         }
 
     Write-Host "Directory cleanup completed successfully!" -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Error "An error occurred during the cleanup process: $_"
     exit 1
 }
 
 function Show-DriveInfo {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [object]$Volume
     )
 
@@ -186,7 +180,6 @@ try {
 
     Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
     Show-DriveInfo -Volume $lowestVolume
-}
-catch {
+} catch {
     Write-Error "Error accessing drive information. Error: $_"
 }

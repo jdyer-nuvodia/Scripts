@@ -2,10 +2,10 @@
 # Script: Download-Windows11ISO.ps1
 # Created: 2025-05-14 18:31:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-04 07:51:00 UTC
+# Last Updated: 2025-07-08 21:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Implemented Write-ColorOutput function for PSScriptAnalyzer compliance and enhanced color output support
+# Version: 1.2.1
+# Additional Info: Fixed PSScriptAnalyzer errors in Write-ColorOutput function string interpolation
 # =============================================================================
 
 <#
@@ -49,7 +49,7 @@ $logPath = Join-Path -Path $PSScriptRoot -ChildPath $logFileName
 
 # Windows 11 24H2 download URL - Microsoft's official link
 # Note: Microsoft sometimes changes URLs, so this might need updating
-$downloadUrl = "https://software.download.prss.microsoft.com/dbazure/Win11_24H2_English_x64.iso?t=67b30897-2be6-43d9-84e7-deac8e3d2aaf&P1=1747334540&P2=601&P3=2&P4=Lrm%2bfKD9uFLxAagpY8i9Jx6%2bnZURyKtenVU0zMdfRWSznot2U30ok%2bc5SfPPtrFzhASYF0B8SjjSLN00W%2bwYJGq5izxvfC6ulMHEFT%2bqLVbe4q4qnkncWd%2bdq5qU9O8UrYv%2bouQ9gLVuE2kZbSlJB37VzLazzRVCAsoBmlpPomSRY5sV36LEk7zzDPrbRNBtbUZ9S%2fZySY1gYKlfSMdORI1PYNyo%2fw3sK3BFlChuZHojHlJCSyzkgJ6X2fXEZYVKoRy4ndRZCL%2bSViPEztzHHTlDMPLMTN%2fTbJdYpEOV0gEhVX4AuuAXmANVzLAyHx0EZAEKp1GESUHAN72qvk8ZYQ%3d%3d"
+$downloadUrl = "https://software.download.prss.microsoft.com/dbazure/Win11_24H2_English_x64.iso?t = 67b30897-2be6-43d9-84e7-deac8e3d2aaf&P1 = 1747334540&P2 = 601&P3 = 2&P4 = Lrm%2bfKD9uFLxAagpY8i9Jx6%2bnZURyKtenVU0zMdfRWSznot2U30ok%2bc5SfPPtrFzhASYF0B8SjjSLN00W%2bwYJGq5izxvfC6ulMHEFT%2bqLVbe4q4qnkncWd%2bdq5qU9O8UrYv%2bouQ9gLVuE2kZbSlJB37VzLazzRVCAsoBmlpPomSRY5sV36LEk7zzDPrbRNBtbUZ9S%2fZySY1gYKlfSMdORI1PYNyo%2fw3sK3BFlChuZHojHlJCSyzkgJ6X2fXEZYVKoRy4ndRZCL%2bSViPEztzHHTlDMPLMTN%2fTbJdYpEOV0gEhVX4AuuAXmANVzLAyHx0EZAEKp1GESUHAN72qvk8ZYQ%3d%3d"
 
 # Expected SHA-256 hash of the ISO file
 # This is a placeholder - you should replace it with the actual hash from Microsoft
@@ -68,26 +68,26 @@ $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 if ($Script:UseAnsiColors) {
     # PowerShell 7+ ANSI escape codes
     $Script:Colors = @{
-        White    = "`e[37m"
-        Cyan     = "`e[36m"
-        Green    = "`e[32m"
-        Yellow   = "`e[33m"
-        Red      = "`e[31m"
-        Magenta  = "`e[35m"
+        White = "`e[37m"
+        Cyan = "`e[36m"
+        Green = "`e[32m"
+        Yellow = "`e[33m"
+        Red = "`e[31m"
+        Magenta = "`e[35m"
         DarkGray = "`e[90m"
-        Reset    = "`e[0m"
+        Reset = "`e[0m"
     }
 } else {
     # PowerShell 5.1 console colors
     $Script:Colors = @{
-        White    = "White"
-        Cyan     = "Cyan"
-        Green    = "Green"
-        Yellow   = "Yellow"
-        Red      = "Red"
-        Magenta  = "Magenta"
+        White = "White"
+        Cyan = "Cyan"
+        Green = "Green"
+        Yellow = "Yellow"
+        Red = "Red"
+        Magenta = "Magenta"
         DarkGray = "DarkGray"
-        Reset    = ""
+        Reset = ""
     }
 }
 
@@ -211,7 +211,7 @@ try {
     $servicePoint.ConnectionLimit = 10 * $maxConcurrentThreads
     $servicePoint.Expect100Continue = $false
 
-    Write-LogMessage -Message "Optimized connection settings: ConnectionLimit=$($servicePoint.ConnectionLimit), Threads=$maxConcurrentThreads" -Level "DEBUG"
+    Write-LogMessage -Message "Optimized connection settings: ConnectionLimit = $($servicePoint.ConnectionLimit), Threads = $maxConcurrentThreads" -Level "DEBUG"
 
     # Use HttpClient instead of WebClient for better performance (available in PowerShell 5.1)
     $handler = New-Object System.Net.Http.HttpClientHandler

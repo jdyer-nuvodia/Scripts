@@ -2,10 +2,10 @@
 # Script: Reinstall-ForticlientVPN.ps1
 # Created: 2024-02-13 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-13 18:30:00 UTC
+# Last Updated: 2025-07-10 01:00:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1
-# Additional Info: Script to remove and reinstall Forticlient VPN
+# Version: 1.2.0
+# Additional Info: Script to remove and reinstall Forticlient VPN. Fixed PSScriptAnalyzer compliance, converted Write-Host to Write-ColorOutput, removed ExecutionPolicy Bypass, fixed parameter usage.
 # =============================================================================
 
 <#
@@ -43,6 +43,62 @@ param(
     [switch]$Interactive
 )
 
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
+
 # Set verbose preference and transcript
 $VerbosePreference = 'Continue'
 $logFile = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) "FortiClientVPN_Install.log"
@@ -51,23 +107,30 @@ Start-Transcript -Path $logFile -Append
 # Ensure running as administrator
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Verbose "Restarting script with elevated privileges..."
-    Start-Process PowerShell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    Start-Process PowerShell -ArgumentList "-NoProfile -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
 
-function Stop-ForticlientServices {
+function Stop-ForticlientService {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     Write-Verbose "Searching for Forticlient processes..."
     Get-Process | Where-Object { $_.Name -like "*Forti*" } | ForEach-Object {
         Write-Verbose "Attempting to stop process: $($_.Name)"
-        $_ | Stop-Process -Force -ErrorAction SilentlyContinue
+        if ($PSCmdlet.ShouldProcess("Process $($_.Name)", "Stop Process")) {
+            $_ | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
     }
 
     Write-Verbose "Searching for Forticlient services..."
     $services = Get-Service -Name "Forticlient*" -ErrorAction SilentlyContinue
     foreach ($service in $services) {
         Write-Verbose "Attempting to stop service: $($service.Name)"
-        Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue
-        Write-Host "Stopped service: $($service.Name)"
+        if ($PSCmdlet.ShouldProcess("Service $($service.Name)", "Stop Service")) {
+            Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue
+            Write-ColorOutput -Message "Stopped service: $($service.Name)" -Color "Green"
+        }
     }
 }
 
@@ -85,9 +148,9 @@ function Uninstall-ExistingForticlient {
             if ($app.UninstallString) {
                 $uninstallCmd = $app.UninstallString
                 if ($uninstallCmd -match "msiexec") {
-                    $productCode = $uninstallCmd -replace ".*({.*})", '$1'
+                    $productCode = $uninstallCmd -replace ".*({ .*})", '$1'
                     Write-Verbose "Found product code: $productCode"
-                    Write-Host "Uninstalling: $($app.DisplayName)"
+                    Write-ColorOutput -Message "Uninstalling: $($app.DisplayName)" -Color "White"
                     Write-Verbose "Executing: msiexec.exe /x $productCode /qn /norestart"
                     Start-Process "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait
                 }
@@ -100,24 +163,24 @@ function Test-Installation {
     Write-Verbose "Verifying FortiClient installation..."
     $maxAttempts = 3
     # seconds
-        $retryDelay = 10
+    $retryDelay = 10
 
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         Write-Verbose "Verification attempt $attempt of $maxAttempts"
 
         # Check registry
         $installed = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
-                    Where-Object { $_.DisplayName -like "*FortiClient*" }
+            Where-Object { $_.DisplayName -like "*FortiClient*" }
 
         if (-not $installed) {
             $installed = Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* |
-                        Where-Object { $_.DisplayName -like "*FortiClient*" }
+                Where-Object { $_.DisplayName -like "*FortiClient*" }
         }
 
         # Check file system
         $programFiles = @(
-            "${env:ProgramFiles}\Fortinet\FortiClient",
-            "${env:ProgramFiles(x86)}\Fortinet\FortiClient"
+            "${ env:ProgramFiles}\Fortinet\FortiClient",
+            "${ env:ProgramFiles(x86)}\Fortinet\FortiClient"
         )
         $filesExist = $programFiles | Where-Object { Test-Path $_ } | Select-Object -First 1
 
@@ -125,7 +188,7 @@ function Test-Installation {
         $serviceExists = Get-Service -Name "FortiClient*" -ErrorAction SilentlyContinue
 
         if ($installed -and $filesExist -and $serviceExists) {
-            Write-Host "FortiClient installation verified successfully"
+            Write-ColorOutput -Message "FortiClient installation verified successfully" -Color "White"
             return $true
         }
 
@@ -143,13 +206,18 @@ function Test-Installation {
 }
 
 function Install-ForticlientVPN {
+    param(
+        [switch]$ShowWindow,
+        [switch]$Interactive
+    )
+
     $tempPath = Join-Path $env:LOCALAPPDATA "Temp\ForticlientVPN"
     Write-Verbose "Creating temporary directory: $tempPath"
     New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
     $exePath = Join-Path $tempPath "FortiClientVPN.exe"
 
     try {
-        Write-Host "Downloading Forticlient VPN installer..."
+        Write-ColorOutput -Message "Downloading Forticlient VPN installer..." -Color "White"
         $downloadUrl = "https://links.fortinet.com/forticlient/win/vpnagent"
 
         Write-Verbose "Downloading from: $downloadUrl"
@@ -164,8 +232,7 @@ function Install-ForticlientVPN {
                 Invoke-WebRequest -Uri $downloadUrl -OutFile $exePath -TimeoutSec 60
                 $success = $true
                 break
-            }
-            catch {
+            } catch {
                 Write-Warning "Download attempt $i failed: $_"
                 if ($i -lt $downloadAttempts) {
                     Start-Sleep -Seconds 10
@@ -177,13 +244,13 @@ function Install-ForticlientVPN {
             throw "Failed to download installer after $downloadAttempts attempts"
         }
 
-        Write-Host "Installing Forticlient VPN..."
+        Write-ColorOutput -Message "Installing Forticlient VPN..." -Color "White"
 
         # Install directly using EXE with proper switches
         $installArgs = if ($Interactive) {
             "/passive"
         } else {
-            "/quiet /norestart ALLUSERS=1"
+            "/quiet /norestart ALLUSERS = 1"
         }
 
         if ($ShowWindow) {
@@ -215,7 +282,7 @@ function Install-ForticlientVPN {
             Write-Verbose "Verification attempt $i of $verificationAttempts"
             if (Test-Installation) {
                 $verified = $true
-                Write-Host "FortiClient VPN installation verified successfully"
+                Write-ColorOutput -Message "FortiClient VPN installation verified successfully" -Color "White"
                 break
             }
 
@@ -228,13 +295,11 @@ function Install-ForticlientVPN {
         if (-not $verified) {
             throw "Installation verification failed after $verificationAttempts attempts"
         }
-    }
-    catch {
+    } catch {
         Write-LogEntry "Error during FortiClient VPN installation: $_" -Type "Error"
         Write-Error $_
         throw
-    }
-    finally {
+    } finally {
         Write-Verbose "Cleaning up temporary files..."
         if (Test-Path $tempPath) {
             Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -270,16 +335,13 @@ function Write-LogEntry {
             $sw.Close()
             $fs.Close()
             break
-        }
-        catch {
+        } catch {
             if ($i -eq $maxAttempts) {
                 Write-Warning "Failed to write to log file after $maxAttempts attempts: $_"
-            }
-            else {
+            } else {
                 Start-Sleep -Seconds $retryDelay
             }
-        }
-        finally {
+        } finally {
             if ($sw) { $sw.Dispose() }
             if ($fs) { $fs.Dispose() }
         }
@@ -319,22 +381,21 @@ function Get-ScriptDirectory {
 # Main execution
 try {
     Write-LogEntry "=== Starting Forticlient VPN reinstallation process ===" -Type "Info"
-    Write-Host "Starting Forticlient VPN reinstallation..."
+    Write-ColorOutput -Message "Starting Forticlient VPN reinstallation..." -Color "White"
     Write-LogEntry "Stopping Forticlient services..." -Type "Info"
-    Stop-ForticlientServices
+    Stop-ForticlientService
     Write-LogEntry "Uninstalling existing Forticlient..." -Type "Info"
     Uninstall-ExistingForticlient
     Write-LogEntry "Installing new Forticlient VPN..." -Type "Info"
-    Install-ForticlientVPN
+    Install-ForticlientVPN -ShowWindow:$ShowWindow -Interactive:$Interactive
     Write-LogEntry "=== Forticlient VPN reinstallation process completed ===" -Type "Info"
     if (Test-Installation) {
         Write-LogEntry "FortiClient VPN reinstallation completed and verified" -Type "Info"
-        Write-Host "FortiClient VPN reinstallation completed and verified"
+        Write-ColorOutput -Message "FortiClient VPN reinstallation completed and verified" -Color "White"
     } else {
         Write-LogEntry "FortiClient VPN reinstallation could not be verified" -Type "Error"
         Write-Error "FortiClient VPN reinstallation could not be verified"
     }
-}
-finally {
+} finally {
     Stop-Transcript
 }

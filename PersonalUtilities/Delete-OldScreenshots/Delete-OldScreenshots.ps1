@@ -36,14 +36,14 @@
     Validation Requirements: Verify folder path exists before execution
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
-    [Parameter(Mandatory=$false)]
-    [ValidateScript({Test-Path $_})]
+    [Parameter(Mandatory = $false)]
+    [ValidateScript({ Test-Path $_ })]
     [string]$FolderPath = "C:\Users\jdyer\OneDrive - Nuvodia\Pictures\Screenshots",
 
-    [Parameter(Mandatory=$false)]
-    [ValidateRange(1,365)]
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(1, 365)]
     [int]$DaysOld = 30
 )
 
@@ -96,8 +96,7 @@ try {
                 $deleted++
                 Write-LogMessage "Deleted: $($file.Name)" "Success"
             }
-        }
-        catch {
+        } catch {
             $failed++
             Write-LogMessage "Failed to delete: $($file.Name). Error: $($_.Exception.Message)" "Error"
         }
@@ -105,12 +104,10 @@ try {
 
     Write-Progress -Activity "Deleting old screenshots" -Completed
     Write-LogMessage "Operation complete. Successfully deleted: $deleted files. Failed: $failed files" "Information"
-}
-catch {
+} catch {
     Write-LogMessage "Script execution failed: $($_.Exception.Message)" "Error"
     exit 1
-}
-finally {
+} finally {
     Write-Progress -Activity "Deleting old screenshots" -Completed
     Write-LogMessage "Script execution finished. Cleaning up resources." "Information"
     # Remove any temporary variables that might contain sensitive data

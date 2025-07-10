@@ -124,7 +124,7 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
 # Initialize logging
 $SystemName = $env:COMPUTERNAME
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$LogFile = Join-Path $ReportPath "SystemHealth_${SystemName}_${Timestamp}.log"
+$LogFile = Join-Path $ReportPath "SystemHealth_${ SystemName}_${ Timestamp}.log"
 
 function Write-ColorOutput {
     <#
@@ -152,7 +152,7 @@ function Write-ColorOutput {
         # PowerShell 7+ with ANSI escape codes
         $colorCode = $Script:Colors[$Color]
         $resetCode = $Script:Colors.Reset
-        Write-Output "${colorCode}${Message}${resetCode}"
+        Write-Output "${ colorCode}${ Message}${ resetCode}"
     } else {
         # PowerShell 5.1 - Change console color, write output, then reset
         $originalColor = $Host.UI.RawUI.ForegroundColor
@@ -401,7 +401,7 @@ function Get-VMStorageStatus {
 
     try {
         # Check for thin provisioning
-        $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+        $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType = 3" -ErrorAction Stop
         foreach ($Disk in $Disks) {
             # VM-specific disk checks            $PhysicalDisk = Get-CimInstance -ClassName Win32_DiskDrive |
             Where-Object { $_.DeviceID -eq $Disk.DeviceID }
@@ -467,18 +467,18 @@ function Get-SystemResourceStatus {
             } else {
                 $MemoryStatus = if ($MemoryUsage -ge 90) { "Error" } elseif ($MemoryUsage -ge 80) { "Warning" } else { "Success" }
             }
-            Write-LogMessage "Memory Usage: ${MemoryUsage}%" -Level $MemoryStatus
+            Write-LogMessage "Memory Usage: ${ MemoryUsage}%" -Level $MemoryStatus
         } else {
             Write-LogMessage "Invalid memory size reported by system" -Level "Error"
         }
 
         # Disk Space
-        $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+        $Disks = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType = 3" -ErrorAction Stop
         foreach ($Disk in $Disks) {
             if ($Disk.Size -gt 0) {
                 $FreeSpace = [math]::Round(($Disk.FreeSpace / $Disk.Size) * 100, 2)
                 $Status = if ($FreeSpace -le 10) { "Error" } elseif ($FreeSpace -le 20) { "Warning" } else { "Success" }
-                Write-LogMessage "Drive $($Disk.DeviceID) - Free Space: ${FreeSpace}% ($(([math]::Round($Disk.FreeSpace / 1GB, 2)))GB free)" -Level $Status
+                Write-LogMessage "Drive $($Disk.DeviceID) - Free Space: ${ FreeSpace}% ($(([math]::Round($Disk.FreeSpace / 1GB, 2)))GB free)" -Level $Status
             } else {
                 Write-LogMessage "Invalid disk size reported for drive $($Disk.DeviceID)" -Level "Error"
             }
@@ -508,7 +508,7 @@ function Get-CriticalServicesStatus {
             }
             Write-LogMessage "Service $($ServiceStatus.DisplayName): $($ServiceStatus.Status)" -Level $Status
         } catch {
-            Write-LogMessage "Error checking service ${Service}: $($_.Exception.Message)" -Level "Error"
+            Write-LogMessage "Error checking service ${ Service}: $($_.Exception.Message)" -Level "Error"
         }
     }
 }
@@ -567,7 +567,7 @@ function Get-WindowsUpdateStatus {
     try {
         $UpdateSession = New-Object -ComObject Microsoft.Update.Session
         $UpdateSearcher = $UpdateSession.CreateUpdateSearcher()
-        $SearchResult = $UpdateSearcher.Search("IsInstalled=0")
+        $SearchResult = $UpdateSearcher.Search("IsInstalled = 0")
 
         $Count = $SearchResult.Updates.Count
         $Status = if ($Count -ge 10) { "Error" } elseif ($Count -ge 5) { "Warning" } else { "Success" }
@@ -605,11 +605,11 @@ function Get-NetworkStatus {
             # Handle different PowerShell versions - newer versions use Latency property
             $LatencyMs = if ($Result.Latency) { $Result.Latency } else { $Result.ResponseTime }
             $Status = switch ($LatencyMs) {
-                { $_ -ge 200 } { "Warning" }
-                { $_ -ge 500 } { "Error" }
+ { $_ -ge 200 } { "Warning" }
+ { $_ -ge 500 } { "Error" }
                 default { "Success" }
             }
-            Write-LogMessage "Network latency to $($Target.Name) ($($Target.Host)): ${LatencyMs}ms" -Level $Status
+            Write-LogMessage "Network latency to $($Target.Name) ($($Target.Host)): ${ LatencyMs}ms" -Level $Status
         } catch {
             Write-LogMessage "Failed to reach $($Target.Name) ($($Target.Host)): $($_.Exception.Message)" -Level "Error"
         }
@@ -644,11 +644,11 @@ function Get-VMNetworkStatus {
 
             $Threshold = $Target.VMThreshold
             $Status = switch ($AvgLatency) {
-                { $_ -ge ($Threshold * 2) } { "Error" }
-                { $_ -ge $Threshold } { "Warning" }
+ { $_ -ge ($Threshold * 2) } { "Error" }
+ { $_ -ge $Threshold } { "Warning" }
                 default { "Success" }
             }
-            Write-LogMessage "Network latency to $($Target.Name): $([math]::Round($AvgLatency, 2))ms (VM threshold: ${Threshold}ms)" -Level $Status
+            Write-LogMessage "Network latency to $($Target.Name): $([math]::Round($AvgLatency, 2))ms (VM threshold: ${ Threshold}ms)" -Level $Status
         } catch {
             Write-LogMessage "Failed to reach $($Target.Name): $($_.Exception.Message)" -Level "Error"
         }

@@ -44,7 +44,7 @@
     .\Diagnose-MailboxFolderAssistant.ps1 -Mailbox "user@contoso.com"
     Analyzes the folder assistant settings for the specified mailbox
 .EXAMPLE
-    .\Diagnose-MailboxFolderAssistant.ps1 -Mailbox "CN=John Smith,OU=Users,DC=contoso,DC=com"
+    .\Diagnose-MailboxFolderAssistant.ps1 -Mailbox "CN = John Smith, OU = Users, DC = contoso, DC = com"
     Analyzes the folder assistant using distinguished name format
 .NOTES
     Security Level: Medium

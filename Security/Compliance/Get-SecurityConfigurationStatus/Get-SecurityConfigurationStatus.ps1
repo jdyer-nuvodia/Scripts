@@ -2,10 +2,10 @@
 # Script: Get-SecurityConfigurationStatus.ps1
 # Created: 2024-03-17 17:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-02 19:08:00 UTC
+# Last Updated: 2025-07-08 21:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.0
-# Additional Info: Implemented appropriate PowerShell cmdlets for PSScriptAnalyzer compliance
+# Version: 1.9.0
+# Additional Info: Fixed PSScriptAnalyzer compliance issues - replaced WMI cmdlets with CIM cmdlets and changed function names to singular nouns
 # =============================================================================
 
 <#
@@ -53,7 +53,7 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet('HTML', 'Text')]
     [string]$OutputFormat = 'HTML'
 )
@@ -82,22 +82,22 @@ param(
 function Write-StatusMessage {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message,
 
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [ValidateSet("Info", "Process", "Success", "Warning", "Error", "Debug", "Detail")]
         [string]$Type = "Info"
     )
 
     switch ($Type) {
-        "Info"    { Write-Output $Message }
+        "Info" { Write-Output $Message }
         "Process" { Write-Verbose $Message }
         "Success" { Write-Output $Message }
         "Warning" { Write-Warning $Message }
-        "Error"   { Write-Error $Message }
-        "Debug"   { Write-Debug $Message }
-        "Detail"  { Write-Verbose $Message }
+        "Error" { Write-Error $Message }
+        "Debug" { Write-Debug $Message }
+        "Detail" { Write-Verbose $Message }
     }
 }
 
@@ -119,7 +119,7 @@ function Test-IsDomainController {
     [OutputType([bool])]
     param()
 
-    return (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
+    return (Get-CimInstance Win32_ComputerSystem).DomainRole -ge 4
 }
 
 <#
@@ -137,7 +137,7 @@ function Test-IsDomainController {
 function Get-GPStatusWithGpresult {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$false)]
+        [Parameter(Mandatory = $false)]
         [ValidateSet("HTML", "Text")]
         [string]$OutputFormat = $script:OutputFormat
     )
@@ -159,8 +159,7 @@ function Get-GPStatusWithGpresult {
                 Start-Process $reportFile
                 return
             }
-        }
-        catch {
+        } catch {
             Write-StatusMessage "HTML report generation failed: $($_.Exception.Message)" -Type "Warning"
         }
     }
@@ -179,14 +178,13 @@ function Get-GPStatusWithGpresult {
         } else {
             Write-StatusMessage "No Group Policy settings found" -Type "Warning"
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Failed to generate Group Policy report: $($_.Exception.Message)" -Type "Error"
     }
 }
 
 # Function to get detailed security and password policy settings
-function Get-SecurityPolicySettings {
+function Get-SecurityPolicySetting {
     Write-StatusMessage "Analyzing Security Policy Settings..." -Type "Process"
 
     try {
@@ -238,14 +236,13 @@ function Get-SecurityPolicySettings {
                 }
             }
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error retrieving security settings: $($_.Exception.Message)" -Type "Error"
     }
 }
 
 # Function to get audit policy settings
-function Get-AuditPolicySettings {
+function Get-AuditPolicySetting {
     Write-StatusMessage "Analyzing Audit Policy Settings..." -Type "Process"
 
     try {
@@ -256,8 +253,7 @@ function Get-AuditPolicySettings {
             Write-StatusMessage "Category: $($policy.'Subcategory')" -Type "Success"
             Write-StatusMessage "  Setting: $($policy.'Inclusion Setting')" -Type "Detail"
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error retrieving audit policy settings: $($_.Exception.Message)" -Type "Error"
     }
 }
@@ -294,23 +290,22 @@ function Get-SystemAccessControl {
                 if (Test-Path $StartPath) {
                     Write-StatusMessage "Registry Path: $StartPath" -Type "Success"
                     Get-ItemProperty -Path $StartPath |
-                        Select-Object -Property * -ExcludeProperty PS* |
-                        ForEach-Object {
-                            $_.PSObject.Properties | ForEach-Object {
-                                Write-StatusMessage "  $($_.Name): $($_.Value)" -Type "Detail"
-                            }
+                    Select-Object -Property * -ExcludeProperty PS* |
+                    ForEach-Object {
+                        $_.PSObject.Properties | ForEach-Object {
+                            Write-StatusMessage "  $($_.Name): $($_.Value)" -Type "Detail"
                         }
+                    }
                 }
             }
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error retrieving system access control settings: $($_.Exception.Message)" -Type "Error"
     }
 }
 
 # Function to get security template settings
-function Get-SecurityTemplateSettings {
+function Get-SecurityTemplateSetting {
     Write-StatusMessage "Analyzing Security Template Settings..." -Type "Process"
 
     try {
@@ -329,8 +324,7 @@ function Get-SecurityTemplateSettings {
                 if ($line -match '^\[(.+)\]') {
                     $currentSection = $matches[1]
                     Write-StatusMessage "`nSection: $currentSection" -Type "Success"
-                }
-                elseif ($line -match '^(.+?)\s*=\s*(.+)$') {
+                } elseif ($line -match '^(.+?)\s*=\s*(.+)$') {
                     $setting = $matches[1].Trim()
                     $value = $matches[2].Trim()
                     Write-StatusMessage "  $setting = $value" -Type "Detail"
@@ -339,14 +333,13 @@ function Get-SecurityTemplateSettings {
 
             Remove-Item $templatePath -Force
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error analyzing security template: $($_.Exception.Message)" -Type "Error"
     }
 }
 
 # Function to get security database settings
-function Get-SecurityDatabaseSettings {
+function Get-SecurityDatabaseSetting {
     Write-StatusMessage "Analyzing Security Database Settings..." -Type "Process"
 
     try {
@@ -362,7 +355,7 @@ function Get-SecurityDatabaseSettings {
 
             # Get security areas
             $areas = @("Account Policies", "Local Policies", "Event Log", "Restricted Groups",
-                      "System Services", "Registry", "File System")
+                "System Services", "Registry", "File System")
 
             foreach ($area in $areas) {
                 Write-StatusMessage "`nAnalyzing $area..." -Type "Success"
@@ -382,14 +375,13 @@ function Get-SecurityDatabaseSettings {
             Remove-Item "$scaPath.sdb" -Force -ErrorAction SilentlyContinue
             Remove-Item "$scaPath.jfm" -Force -ErrorAction SilentlyContinue
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error analyzing security database: $($_.Exception.Message)" -Type "Error"
     }
 }
 
 # Function to get advanced registry settings
-function Get-AdvancedRegistrySettings {
+function Get-AdvancedRegistrySetting {
     Write-StatusMessage "Analyzing Advanced Registry Security Settings..." -Type "Process"
 
     try {
@@ -411,29 +403,27 @@ function Get-AdvancedRegistrySettings {
                 try {
                     $properties = Get-ItemProperty -Path $StartPath -ErrorAction Stop
                     $properties.PSObject.Properties |
-                        Where-Object { $_.Name -notlike 'PS*' } |
-                        ForEach-Object {
-                            $value = if ($_.Value -is [byte[]]) {
-                                [System.BitConverter]::ToString($_.Value)
-                            } else {
-                                $_.Value
-                            }
-                            Write-StatusMessage "  $($_.Name): $value" -Type "Detail"
+                    Where-Object { $_.Name -notlike 'PS*' } |
+                    ForEach-Object {
+                        $value = if ($_.Value -is [byte[]]) {
+                            [System.BitConverter]::ToString($_.Value)
+                        } else {
+                            $_.Value
                         }
-                }
-                catch {
+                        Write-StatusMessage "  $($_.Name): $value" -Type "Detail"
+                    }
+                } catch {
                     Write-StatusMessage "  Error reading properties: $($_.Exception.Message)" -Type "Warning"
                 }
             }
         }
-    }
-    catch {
+    } catch {
         Write-StatusMessage "Error analyzing registry settings: $($_.Exception.Message)" -Type "Error"
     }
 }
 
 # Get system and domain information
-$computerSystem = Get-WmiObject Win32_ComputerSystem
+$computerSystem = Get-CimInstance Win32_ComputerSystem
 $computerName = $computerSystem.Name
 $domainName = if ($computerSystem.PartOfDomain) { $computerSystem.Domain } else { "WORKGROUP" }
 
@@ -448,18 +438,17 @@ try {
     Write-StatusMessage "----------------------------------------" -Type "Info"
 
     # Get all security-related settings
-    Get-SecurityPolicySettings
-    Get-AuditPolicySettings
+    Get-SecurityPolicySetting
+    Get-AuditPolicySetting
     Get-SystemAccessControl
-    Get-SecurityTemplateSettings
-    Get-SecurityDatabaseSettings
-    Get-AdvancedRegistrySettings
+    Get-SecurityTemplateSetting
+    Get-SecurityDatabaseSetting
+    Get-AdvancedRegistrySetting
 
     if ($domainName -eq "WORKGROUP") {
         Write-StatusMessage "Computer is in a workgroup. Limited Group Policy information will be available." -Type "Warning"
         Get-GPStatusWithGpresult -OutputFormat $OutputFormat
-    }
-    elseif (Test-IsDomainController) {
+    } elseif (Test-IsDomainController) {
         if (Get-Module -ListAvailable -Name GroupPolicy) {
             Import-Module GroupPolicy
 
@@ -483,8 +472,7 @@ try {
                 } else {
                     Write-StatusMessage "  No policy data available for this user" -Type "Warning"
                 }
-            }
-            catch {
+            } catch {
                 Write-StatusMessage "Unable to retrieve policies for current user" -Type "Warning"
                 Write-StatusMessage $_.Exception.Message -Type "Error"
             }
@@ -496,12 +484,10 @@ try {
         Write-StatusMessage "Computer is domain-joined but not a Domain Controller. Using gpresult for analysis." -Type "Info"
         Get-GPStatusWithGpresult -OutputFormat $OutputFormat
     }
-}
-catch {
+} catch {
     Write-StatusMessage "An error occurred while analyzing Group Policy settings" "Error"
     Write-StatusMessage $_.Exception.Message "Error"
-}
-finally {
+} finally {
     Write-StatusMessage "`nAnalysis Summary:" "Info"
     Write-StatusMessage "System Name: $computerName" "Detail"
     Write-StatusMessage "Domain: $domainName" "Detail"

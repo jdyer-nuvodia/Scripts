@@ -31,7 +31,7 @@
     Validation Requirements: Verify access after granting permissions
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
     [Parameter(Mandatory = $true)]
     [string]$UserName
@@ -48,7 +48,7 @@ $mailboxes = Get-Content "$PSScriptRoot\mailboxes.txt"
 
 foreach ($mailboxEmail in $mailboxes) {
     Write-Output "Processing calendar permissions for $mailboxEmail..."
-    $calendarPath = "${mailboxEmail}:\Calendar"
+    $calendarPath = "${ mailboxEmail}:\Calendar"
 
     try {
         # Check if the mailbox exists and store the result
@@ -59,11 +59,10 @@ foreach ($mailboxEmail in $mailboxes) {
 
         # Set calendar permissions
         if ($PSCmdlet.ShouldProcess($calendarPath, "Grant Editor calendar permissions to $UserName")) {
-            Set-MailboxFolderPermission -Identity $calendarPath -User $UserName -AccessRights Editor -SharingPermissionFlags Delegate,CanViewPrivateItems
+            Set-MailboxFolderPermission -Identity $calendarPath -User $UserName -AccessRights Editor -SharingPermissionFlags Delegate, CanViewPrivateItems
             Write-Output "Successfully granted Editor access to $mailboxEmail's calendar for user $UserName"
         }
-    }
-    catch {
+    } catch {
         Write-Error "Error processing $mailboxEmail's calendar: $_"
     }
 }

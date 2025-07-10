@@ -57,31 +57,31 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
     [string]$ResourceGroupName = "JB-TEST-RG2",
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateScript({
-        if (-Not (Test-Path $_)) {
-            throw "Template folder does not exist"
-        }
-        if (-Not (Test-Path (Join-Path $_ "template.json"))) {
-            throw "template.json not found in specified folder"
-        }
-        if (-Not (Test-Path (Join-Path $_ "parameters.json"))) {
-            throw "parameters.json not found in specified folder"
-        }
-        return $true
-    })]
+            if (-not (Test-Path $_)) {
+                throw "Template folder does not exist"
+            }
+            if (-not (Test-Path (Join-Path $_ "template.json"))) {
+                throw "template.json not found in specified folder"
+            }
+            if (-not (Test-Path (Join-Path $_ "parameters.json"))) {
+                throw "parameters.json not found in specified folder"
+            }
+            return $true
+        })]
     [string]$TemplateFolder = ".\AGTemplate-JB-TEST-RG2",
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
     [string]$DeploymentName = "AGDeployment",
 
-    [Parameter(Mandatory=$false)]
-    [ValidatePattern('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')]
+    [Parameter(Mandatory = $false)]
+    [ValidatePattern('^[0-9a-f]{ 8}-[0-9a-f]{ 4}-[0-9a-f]{ 4}-[0-9a-f]{ 4}-[0-9a-f]{ 12}$')]
     [string]$SubscriptionId
 )
 
@@ -98,10 +98,10 @@ function Write-LogMessage {
 
     switch ($Level) {
         "Information" { Write-Output $Message }
-        "Success"     { Write-Output $Message }
-        "Warning"     { Write-Warning $Message }
-        "Error"       { Write-Error $Message -ErrorAction Continue }
-        "Process"     { Write-Verbose $Message -Verbose }
+        "Success" { Write-Output $Message }
+        "Warning" { Write-Warning $Message }
+        "Error" { Write-Error $Message -ErrorAction Continue }
+        "Process" { Write-Verbose $Message -Verbose }
     }
 }
 
@@ -118,8 +118,7 @@ try {
     try {
         $null = Get-AzContext -ErrorAction Stop
         Write-LogMessage "Already connected to Azure" "Success"
-    }
-    catch {
+    } catch {
         Write-LogMessage "Not connected to Azure. Initiating sign-in..." "Process"
         Connect-AzAccount
     }
@@ -153,15 +152,12 @@ try {
 
     if ($deployment.ProvisioningState -eq "Succeeded") {
         Write-LogMessage "Action Group deployment completed successfully" "Success"
-    }
-    else {
+    } else {
         throw "Deployment failed with state: $($deployment.ProvisioningState)"
     }
-}
-catch {
+} catch {
     Write-LogMessage "Deployment failed: $_" "Error"
     throw
-}
-finally {
+} finally {
     Write-LogMessage "Deployment process finished" "Information"
 }

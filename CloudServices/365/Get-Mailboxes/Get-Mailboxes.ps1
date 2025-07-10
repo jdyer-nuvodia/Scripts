@@ -44,10 +44,10 @@
 
 # Parameters
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$InputFile = (Join-Path $PSScriptRoot "names.txt"),
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$OutputFile
 )
 

@@ -43,7 +43,7 @@
     .\Monitor-CriticalServices.ps1
     Monitors default critical services with manual continuation prompt
 .EXAMPLE
-    .\Monitor-CriticalServices.ps1 -Services "wuauserv","WinDefend","spooler"
+    .\Monitor-CriticalServices.ps1 -Services "wuauserv", "WinDefend", "spooler"
     Monitors specific services only
 .EXAMPLE
     .\Monitor-CriticalServices.ps1 -RefreshInterval 60 -LogPath "C:\Logs"
@@ -59,7 +59,7 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string[]]$Services = @(
         # Windows Update
                 "wuauserv",
@@ -79,7 +79,7 @@ param(
                 "RpcSs"
     ),
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateScript({
         if ($_ -and !(Test-Path $_)) {
             New-Item -Path $_ -ItemType Directory -Force | Out-Null
@@ -88,7 +88,7 @@ param(
     })]
     [string]$LogPath = $PSScriptRoot,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateRange(0, 3600)]
     [int]$RefreshInterval = 0
 )
@@ -114,13 +114,13 @@ param(
 function Write-ServiceStatus {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$ServiceName,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Status,
 
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$DisplayName
     )
 
@@ -160,7 +160,7 @@ function Watch-Services {
     # Create log file with system name and timestamp
     $systemName = $env:COMPUTERNAME
     $dateStamp = Get-Date -Format "yyyyMMdd"
-    $logFile = Join-Path $LogPath "ServiceMonitor_${systemName}_${dateStamp}.log"
+    $logFile = Join-Path $LogPath "ServiceMonitor_${ systemName}_${ dateStamp}.log"
 
     try {
         do {
@@ -180,8 +180,7 @@ function Watch-Services {
                     Write-ServiceStatus -ServiceName $svc.Name -Status $svc.Status -DisplayName $svc.DisplayName
                     # Log each service status
                     "[$currentTimestamp] Service: $($svc.DisplayName) - Status: $($svc.Status)" | Out-File -FilePath $logFile -Append
-                }
-                catch {
+                } catch {
                     Write-Host "Service $service not found!" -ForegroundColor Red
                     # Log missing service
                     "[$currentTimestamp] ERROR: Service $service not found - $($_.Exception.Message)" | Out-File -FilePath $logFile -Append
@@ -193,19 +192,16 @@ function Watch-Services {
                 Start-Sleep -Seconds $RefreshInterval
                 $continue = New-Object System.Management.Automation.Host.KeyInfo
                 $continue.Character = 'y'
-            }
-            else {
+            } else {
                 Write-Host "`nPress 'Y' to continue monitoring, any other key to exit..." -ForegroundColor Cyan
-                $continue = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                $continue = $host.UI.RawUI.ReadKey("NoEcho, IncludeKeyDown")
             }
 
         } while ($continue.Character -eq 'y' -or $continue.Character -eq 'Y')
-    }
-    catch {
+    } catch {
         "[$currentTimestamp] ERROR: Monitoring failed - $($_.Exception.Message)" | Out-File -FilePath $logFile -Append
         throw
-    }
-    finally {
+    } finally {
         # Log end of monitoring session
         "[$currentTimestamp] Service monitoring session completed on $systemName" | Out-File -FilePath $logFile -Append
     }

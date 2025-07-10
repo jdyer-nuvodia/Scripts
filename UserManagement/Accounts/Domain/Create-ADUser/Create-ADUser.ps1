@@ -50,7 +50,7 @@
     Use: Read-Host -AsSecureString "Enter Password"
 .PARAMETER OUPath
     Distinguished Name of the OU where the user will be created
-    Example: "OU=Users,OU=Company,DC=domain,DC=com"
+    Example: "OU = Users, OU = Company, DC = domain, DC = com"
 .PARAMETER Groups
     Array of group names to add the user to
     Optional - if not specified, user will only have default group memberships
@@ -58,14 +58,14 @@
     $securePass = Read-Host -AsSecureString "Enter Password"
     .\Create-ADUser.ps1 -Name "John Doe" -GivenName "John" -Surname "Doe" `
         -SamAccountName "jdoe" -UserPrincipalName "jdoe@domain.com" `
-        -Password $securePass -OUPath "OU=Users,DC=domain,DC=com"
+        -Password $securePass -OUPath "OU = Users, DC = domain, DC = com"
 
     Creates a new user account for John Doe with minimal parameters using secure password input
 .EXAMPLE
     $securePass = ConvertTo-SecureString "InitialP@ss123" -AsPlainText -Force
     .\Create-ADUser.ps1 -Name "Jane Smith" -GivenName "Jane" -Surname "Smith" `
         -SamAccountName "jsmith" -UserPrincipalName "jsmith@domain.com" `
-        -Password $securePass -OUPath "OU=Sales,OU=Users,DC=domain,DC=com" `
+        -Password $securePass -OUPath "OU = Sales, OU = Users, DC = domain, DC = com" `
         -Groups @("Sales Team", "Remote Users", "VPN Users")
 
     Creates a new user account for Jane Smith and adds her to multiple groups
@@ -80,7 +80,7 @@
     - Verify password meets complexity requirements
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
@@ -95,7 +95,7 @@ param(
     [string]$Surname,
 
     [Parameter(Mandatory = $true)]
-    [ValidatePattern('^[a-zA-Z0-9\-\.]{1,20}$')]
+    [ValidatePattern('^[a-zA-Z0-9\-\.]{ 1, 20}$')]
     [string]$SamAccountName,
 
     [Parameter(Mandatory = $true)]
@@ -132,9 +132,9 @@ function Write-Log {
 
     switch ($Level) {
         "Information" { Write-Host $Message -ForegroundColor White }
-        "Success"     { Write-Host $Message -ForegroundColor Green }
-        "Warning"     { Write-Host $Message -ForegroundColor Yellow }
-        "Error"       { Write-Host $Message -ForegroundColor Red }
+        "Success" { Write-Host $Message -ForegroundColor Green }
+        "Warning" { Write-Host $Message -ForegroundColor Yellow }
+        "Error" { Write-Host $Message -ForegroundColor Red }
     }
 }
 
@@ -148,7 +148,7 @@ try {
     }
 
     # Verify SamAccountName is unique
-    if (Get-ADUser -Filter {SamAccountName -eq $SamAccountName} -ErrorAction SilentlyContinue) {
+    if (Get-ADUser -Filter { SamAccountName -eq $SamAccountName} -ErrorAction SilentlyContinue) {
         throw "SamAccountName '$SamAccountName' already exists"
     }
 
@@ -176,8 +176,7 @@ try {
                         Add-ADGroupMember -Identity $Group -Members $SamAccountName -ErrorAction Stop
                         Write-Log "Added to group: $Group" "Success"
                     }
-                }
-                catch {
+                } catch {
                     Write-Log "Failed to add to group $Group`: $_" "Warning"
                 }
             }
@@ -185,12 +184,10 @@ try {
     }
 
     Write-Log "User creation process completed successfully" "Success"
-}
-catch {
+} catch {
     Write-Log "Error creating user: $_" "Error"
     throw
-}
-finally {
+} finally {
     Write-Log "Script execution finished" "Information"
 }
 

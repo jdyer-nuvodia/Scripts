@@ -51,19 +51,19 @@ saving the resulting text files to the TextFiles directory.
 Shows what would happen if the script was run but does not actually convert any files.
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory=$true, Position=0, ValueFromPipeline=$true, ValueFromPipelineByPropertyName=$true)]
+    [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$Path,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Recurse,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$Destination,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Force
 )
 
@@ -78,110 +78,109 @@ begin {
 
     # Function to convert a single Markdown file to text
     function Convert-MarkdownToText {
-        [CmdletBinding(SupportsShouldProcess=$true)]
+        [CmdletBinding(SupportsShouldProcess = $true)]
         [OutputType([System.Boolean])]
         param(
-            [Parameter(Mandatory=$true)]
+            [Parameter(Mandatory = $true)]
             [ValidateNotNullOrEmpty()]
             [string]$MarkdownFile,
 
-            [Parameter(Mandatory=$false)]
+            [Parameter(Mandatory = $false)]
             [string]$OutputDirectory,
 
-            [Parameter(Mandatory=$false)]
+            [Parameter(Mandatory = $false)]
             [switch]$Force
         )
 
-    try {
-        Write-Verbose -Message "Processing $MarkdownFile..."
+        try {
+            Write-Verbose -Message "Processing $MarkdownFile..."
 
-        # Validate the input file
-        if (-not (Test-Path -Path $MarkdownFile -PathType Leaf)) {
-            Write-Error -Message "File not found - $MarkdownFile"
-            return $false
-        }
-
-        # Determine the output path
-        $fileName = [System.IO.Path]::GetFileNameWithoutExtension($MarkdownFile)
-        if ([string]::IsNullOrEmpty($OutputDirectory)) {
-            $outputPath = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($MarkdownFile), "$fileName.txt")
-        } else {
-            $outputPath = [System.IO.Path]::Combine($OutputDirectory, "$fileName.txt")
-        }
-
-        # Check if output file already exists
-        if ((Test-Path -Path $outputPath) -and -not $Force) {
-            $response = Read-Host "Output file $outputPath already exists. Overwrite? (Y/N)"
-            if ($response -ne 'Y') {
-                Write-Warning -Message "Skipping file: $MarkdownFile"
+            # Validate the input file
+            if (-not (Test-Path -Path $MarkdownFile -PathType Leaf)) {
+                Write-Error -Message "File not found - $MarkdownFile"
                 return $false
             }
-        }
 
-        # Read the Markdown content
-        $content = Get-Content -Path $MarkdownFile -Raw
+            # Determine the output path
+            $fileName = [System.IO.Path]::GetFileNameWithoutExtension($MarkdownFile)
+            if ([string]::IsNullOrEmpty($OutputDirectory)) {
+                $outputPath = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($MarkdownFile), "$fileName.txt")
+            } else {
+                $outputPath = [System.IO.Path]::Combine($OutputDirectory, "$fileName.txt")
+            }
 
-        # Apply Markdown to text conversion rules
-        $plainText = $content
-
-        # Remove HTML tags
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '<[^>]+>', '')
-
-        # Convert headers to plain text with emphasis
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '#{1,6}\s*(.+)$', '$1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-
-        # Convert links [text](url) to just text
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\[([^\]]+)\]\([^\)]+\)', '$1')
-
-        # Convert image notations to just alt text
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '!\[([^\]]+)\]\([^\)]+\)', '$1')
-
-        # Remove bold and italic formatting
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\*\*(.+?)\*\*', '$1')
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '__(.+?)__', '$1')
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\*(.+?)\*', '$1')
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '_(.+?)_', '$1')
-
-        # Convert code blocks, both inline and multi-line
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '```[\s\S]*?```', '')
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '`([^`]+)`', '$1')
-
-        # Replace horizontal rules with a line of dashes
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*[-*_]{3,}\s*$', '-------------------------------------------', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-
-        # Convert bullet lists to plain text with dashes
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*[-*+]\s+(.+)$', '- $1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-
-        # Convert numbered lists to plain text
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*\d+\.\s+(.+)$', '$1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-
-        # Fix extra blank lines
-        $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\n{3,}', "`n`n")
-
-        # Ensure output directory exists
-        if (-not [string]::IsNullOrEmpty($OutputDirectory)) {
-            if (-not (Test-Path -Path $OutputDirectory)) {
-                if ($PSCmdlet.ShouldProcess($OutputDirectory, "Create Directory")) {
-                    New-Item -Path $OutputDirectory -ItemType Directory -Force | Out-Null
-                    Write-Verbose -Message "Created output directory: $OutputDirectory"
+            # Check if output file already exists
+            if ((Test-Path -Path $outputPath) -and -not $Force) {
+                $response = Read-Host "Output file $outputPath already exists. Overwrite? (Y/N)"
+                if ($response -ne 'Y') {
+                    Write-Warning -Message "Skipping file: $MarkdownFile"
+                    return $false
                 }
             }
-        }
 
-        # Write the plain text to the output file
-        if ($PSCmdlet.ShouldProcess($outputPath, "Create Text File")) {
-            Set-Content -Path $outputPath -Value $plainText
-            Write-Output "Converted to text file: $outputPath"
+            # Read the Markdown content
+            $content = Get-Content -Path $MarkdownFile -Raw
+
+            # Apply Markdown to text conversion rules
+            $plainText = $content
+
+            # Remove HTML tags
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '<[^>]+>', '')
+
+            # Convert headers to plain text with emphasis
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '#{ 1, 6}\s*(.+)$', '$1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+
+            # Convert links [text](url) to just text
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\[([^\]]+)\]\([^\)]+\)', '$1')
+
+            # Convert image notations to just alt text
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '!\[([^\]]+)\]\([^\)]+\)', '$1')
+
+            # Remove bold and italic formatting
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\*\*(.+?)\*\*', '$1')
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '__(.+?)__', '$1')
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\*(.+?)\*', '$1')
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '_(.+?)_', '$1')
+
+            # Convert code blocks, both inline and multi-line
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '```[\s\S]*?```', '')
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '`([^`]+)`', '$1')
+
+            # Replace horizontal rules with a line of dashes
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*[-*_]{ 3, }\s*$', '-------------------------------------------', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+
+            # Convert bullet lists to plain text with dashes
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*[-*+]\s+(.+)$', '- $1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+
+            # Convert numbered lists to plain text
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '^\s*\d+\.\s+(.+)$', '$1', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+
+            # Fix extra blank lines
+            $plainText = [System.Text.RegularExpressions.Regex]::Replace($plainText, '\n { 3, }', "`n`n")
+
+            # Ensure output directory exists
+            if (-not [string]::IsNullOrEmpty($OutputDirectory)) {
+                if (-not (Test-Path -Path $OutputDirectory)) {
+                    if ($PSCmdlet.ShouldProcess($OutputDirectory, "Create Directory")) {
+                        New-Item -Path $OutputDirectory -ItemType Directory -Force | Out-Null
+                        Write-Verbose -Message "Created output directory: $OutputDirectory"
+                    }
+                }
+            }
+
+            # Write the plain text to the output file
+            if ($PSCmdlet.ShouldProcess($outputPath, "Create Text File")) {
+                Set-Content -Path $outputPath -Value $plainText
+                Write-Output "Converted to text file: $outputPath"
+                return $true
+            }
+
             return $true
+        } catch {
+            Write-Error -Message "Error processing file $MarkdownFile : $_"
+            return $false
         }
-
-        return $true
     }
-    catch {
-        Write-Error -Message "Error processing file $MarkdownFile : $_"
-        return $false
-    }
-}
 }
 
 process {
@@ -202,8 +201,7 @@ process {
                 }
             }
         }
-    }
-    elseif (Test-Path -Path $Path -PathType Leaf) {
+    } elseif (Test-Path -Path $Path -PathType Leaf) {
         # It's a file, process it directly
         $script:fileCount++
 
@@ -219,8 +217,7 @@ process {
             Write-Error -Message "File is not a Markdown file (.md or .markdown extension required): $Path"
             $script:errorCount++
         }
-    }
-    else {
+    } else {
         Write-Error -Message "Path not found - $Path"
         $script:errorCount++
     }
@@ -251,8 +248,7 @@ end {
             # No files processed
             exit 2
         }
-    }
-    catch {
+    } catch {
         Write-Error -Message "Error: $_"
         exit 1
     }

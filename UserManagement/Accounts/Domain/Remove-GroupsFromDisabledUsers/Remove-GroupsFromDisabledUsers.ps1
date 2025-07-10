@@ -40,7 +40,7 @@
     - Verify users have appropriate group membership
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param()
 
 # Import required assembly for MessageBox
@@ -99,7 +99,7 @@ Try {
         $UserCounter++
         # Calculate and display progress percentage
         $PercentComplete = [math]::Round(($UserCounter / $DisabledUsersCount) * 100, 1)
-        Write-Host "Processing user $UserCounter of $DisabledUsersCount ($PercentComplete%): ${User}" -ForegroundColor Cyan
+        Write-Host "Processing user $UserCounter of $DisabledUsersCount ($PercentComplete%): ${ User}" -ForegroundColor Cyan
 
         try {
             # Get user details
@@ -123,7 +123,7 @@ Try {
                         }
                         # Set Domain Users as primary group
                         if ($PSCmdlet.ShouldProcess($User, "Set Domain Users as primary group")) {
-                            Set-ADUser -Identity $User -Replace @{primaryGroupID = $DomainUsersPGID}
+                            Set-ADUser -Identity $User -Replace @{ primaryGroupID = $DomainUsersPGID}
                             Write-Host "Reset primary group to Domain Users" -ForegroundColor Green
                         }
                     } catch {
@@ -165,7 +165,7 @@ Try {
                 Write-Host "User description already indicates disabled status" -ForegroundColor Green
             }
         } catch {
-            Write-Host "Error processing user ${User} - $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Error processing user ${ User} - $($_.Exception.Message)" -ForegroundColor Red
         }
 
         Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
@@ -204,11 +204,10 @@ function Wait-ForKey {
     if ($psISE) {
         # Running in PowerShell ISE
         $null = Read-Host "Press Enter to continue..."
-    }
-    else {
+    } else {
         # Running in console or "Run with PowerShell"
         Write-Host "Press any key to continue..."
-        $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
+        $host.UI.RawUI.ReadKey("NoEcho, IncludeKeyDown") | Out-Null
     }
 }
 

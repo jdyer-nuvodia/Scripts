@@ -2,10 +2,10 @@
 # Script: Remove-AdobeAcrobatReader.ps1
 # Created: 2025-02-27 18:52:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:35:00 UTC
+# Last Updated: 2025-07-10 21:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Added SupportsShouldProcess for safer software removal
+# Version: 1.2.0
+# Additional Info: Fixed PSScriptAnalyzer compliance by renaming Write-Log to Write-LogMessage to avoid built-in cmdlet conflict, converted Write-Host to Write-ColorOutput for unattended execution
 # =============================================================================
 
 <#
@@ -43,26 +43,81 @@
     - Validate registry cleanup
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param()
 
+
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset'    = "`e[0m"
+    }
+} else {
+    @{
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset'    = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
 # Run this script as an administrator
-if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
-{
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "You do not have Administrator rights to run this script!`nPlease re-run this script as an Administrator!"
-    Break
+    break
 }
 
 # Function to write log messages
-function Write-Log {
+function Write-LogMessage {
     param([string]$Message)
     $logPath = "C:\Temp\AdobeReaderRemoval_$(Get-Date -Format 'yyyyMMdd').log"
     $logMessage = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $Message"
     Add-Content -Path $logPath -Value $logMessage
-    Write-Host $logMessage
+    Write-ColorOutput -Message $logMessage -Color "White"
 }
 
-Write-Log "Starting Adobe Acrobat Reader removal process"
+Write-LogMessage "Starting Adobe Acrobat Reader removal process"
 
 # Uninstall Adobe Acrobat Reader using MSI
 $uninstallKeys = @(
@@ -73,50 +128,50 @@ $uninstallKeys = @(
 $foundInstallations = $false
 
 foreach ($key in $uninstallKeys) {
-    Write-Log "Searching for Adobe Reader in $key"
+    Write-LogMessage "Searching for Adobe Reader in $key"
     $adobeReaderEntries = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
-        Get-ItemProperty |
-        Where-Object {
-            $_.DisplayName -like "*Adobe Acrobat Reader*" -or
-            $_.DisplayName -like "*Adobe Reader*" -and
-            $_.DisplayName -notlike "*Standard*" -and
-            $_.DisplayName -notlike "*Professional*"
-        }
+    Get-ItemProperty |
+    Where-Object {
+        $_.DisplayName -like "*Adobe Acrobat Reader*" -or
+        $_.DisplayName -like "*Adobe Reader*" -and
+        $_.DisplayName -notlike "*Standard*" -and
+        $_.DisplayName -notlike "*Professional*"
+    }
 
     if ($adobeReaderEntries) {
         $foundInstallations = $true
         foreach ($entry in $adobeReaderEntries) {
             $productCode = $entry.PSChildName
             $displayName = $entry.DisplayName
-            Write-Log "Found installation: $displayName with product code: $productCode"
+            Write-LogMessage "Found installation: $displayName with product code: $productCode"
             if ($PSCmdlet.ShouldProcess($displayName, "Uninstall using MSI")) {
                 try {
                     $process = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn" -Wait -NoNewWindow -PassThru
                     if ($process.ExitCode -eq 0) {
-                        Write-Log "Successfully uninstalled $displayName"
+                        Write-LogMessage "Successfully uninstalled $displayName"
                     } else {
-                        Write-Log "Failed to uninstall $displayName. Exit code: $($process.ExitCode)"
+                        Write-LogMessage "Failed to uninstall $displayName. Exit code: $($process.ExitCode)"
                     }
                 } catch {
-                    Write-Log "Error occurred while uninstalling $displayName. Error: $_"
+                    Write-LogMessage "Error occurred while uninstalling $displayName. Error: $_"
                 }
             }
         }
     } else {
-        Write-Log "No Adobe Reader installations found in $key"
+        Write-LogMessage "No Adobe Reader installations found in $key"
     }
 }
 
 if (-not $foundInstallations) {
-    Write-Log "No Adobe Acrobat Reader installations were found to uninstall."
+    Write-LogMessage "No Adobe Acrobat Reader installations were found to uninstall."
 }
 
 # Remove Adobe Acrobat Reader directories
 $directories = @(
-    "${env:ProgramFiles}\Adobe\Acrobat Reader",
-    "${env:ProgramFiles(x86)}\Adobe\Acrobat Reader",
-    "${env:APPDATA}\Adobe\Acrobat",
-    "${env:LOCALAPPDATA}\Adobe\Acrobat"
+    "${ env:ProgramFiles}\Adobe\Acrobat Reader",
+    "${ env:ProgramFiles(x86)}\Adobe\Acrobat Reader",
+    "${ env:APPDATA}\Adobe\Acrobat",
+    "${ env:LOCALAPPDATA}\Adobe\Acrobat"
 )
 
 foreach ($dir in $directories) {
@@ -124,13 +179,13 @@ foreach ($dir in $directories) {
         if ($PSCmdlet.ShouldProcess($dir, "Remove directory")) {
             try {
                 Remove-Item -Path $dir -Recurse -Force
-                Write-Log "Removed directory: $dir"
+                Write-LogMessage "Removed directory: $dir"
             } catch {
-                Write-Log "Failed to remove directory $dir. Error: $_"
+                Write-LogMessage "Failed to remove directory $dir. Error: $_"
             }
         }
     } else {
-        Write-Log "Directory not found: $dir"
+        Write-LogMessage "Directory not found: $dir"
     }
 }
 
@@ -144,41 +199,41 @@ $adobeKeys = @(
     "HKCU:\Software\Adobe\Adobe Acrobat"
 )
 
-Write-Log "Searching for Adobe Reader/Acrobat registry keys:"
+Write-LogMessage "Searching for Adobe Reader/Acrobat registry keys:"
 foreach ($key in $adobeKeys) {
     if (Test-Path $key) {
         $versions = Get-ChildItem -Path $key -ErrorAction SilentlyContinue
         foreach ($version in $versions) {
             $versionNumber = $version.PSChildName
-            Write-Log "Found Adobe Reader/Acrobat version: $versionNumber in $key"
+            Write-LogMessage "Found Adobe Reader/Acrobat version: $versionNumber in $key"
 
             if ($PSCmdlet.ShouldProcess("$key\$versionNumber", "Remove registry key")) {
                 try {
                     Remove-Item -Path $version.PSPath -Recurse -Force
-                    Write-Log "Removed registry key: $($version.PSPath)"
+                    Write-LogMessage "Removed registry key: $($version.PSPath)"
                 } catch {
-                    Write-Log "Failed to remove registry key $($version.PSPath). Error: $_"
+                    Write-LogMessage "Failed to remove registry key $($version.PSPath). Error: $_"
                 }
             }
         }
     } else {
-        Write-Log "Registry key not found: $key"
+        Write-LogMessage "Registry key not found: $key"
     }
 }
 
 # Remove Creative Cloud Files shortcut from Explorer
-$ccfPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{0E270DAA-1BE6-48F2-AC49-5CE0DBECC398}"
+$ccfPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{ 0E270DAA-1BE6-48F2-AC49-5CE0DBECC398}"
 if (Test-Path $ccfPath) {
     if ($PSCmdlet.ShouldProcess("Creative Cloud Files shortcut", "Remove from Explorer")) {
         try {
             Remove-Item -Path $ccfPath -Recurse -Force
-            Write-Log "Removed Creative Cloud Files shortcut from Explorer"
+            Write-LogMessage "Removed Creative Cloud Files shortcut from Explorer"
         } catch {
-            Write-Log "Failed to remove Creative Cloud Files shortcut. Error: $_"
+            Write-LogMessage "Failed to remove Creative Cloud Files shortcut. Error: $_"
         }
     }
 } else {
-    Write-Log "Creative Cloud Files shortcut not found"
+    Write-LogMessage "Creative Cloud Files shortcut not found"
 }
 
-Write-Log "Adobe Acrobat Reader removal process completed"
+Write-LogMessage "Adobe Acrobat Reader removal process completed"

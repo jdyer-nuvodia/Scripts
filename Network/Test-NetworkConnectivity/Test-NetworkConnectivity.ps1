@@ -88,13 +88,13 @@ function Write-FinalStatistic {
             $finalStats = @"
 
 ========================================
-Final Statistics $(if($Interrupted){"(Script Interrupted)"}):
+Final Statistics $(if($Interrupted) { "(Script Interrupted)"}):
 ========================================
 Test Duration: $((Get-Date) - (Get-Item $script:logFile).CreationTime)
 Packets: Sent = $script:sent, Received = $script:received, Lost = $($script:sent - $script:received) ($($packetLoss.ToString('N2'))% loss)
-Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue){"0"}else{$script:minTime})ms, Max = $script:maxTime`ms, Avg = $($avgTime.ToString('N2'))ms
+Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue) { "0"}else { $script:minTime})ms, Max = $script:maxTime`ms, Avg = $($avgTime.ToString('N2'))ms
 ========================================
-Test completed$(if($Interrupted){" (Interrupted)"}): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+Test completed$(if($Interrupted) { " (Interrupted)"}): $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Log file size: $(Get-FormattedSize (Get-Item $script:logFile).Length)
 ========================================
 "@
@@ -146,9 +146,9 @@ function Write-LogMessage {
 function Get-FormattedSize {
     param([int64]$Size)
 
-    if ($Size -gt 1GB) { return "{0:N2} GB" -f ($Size / 1GB) }
-    if ($Size -gt 1MB) { return "{0:N2} MB" -f ($Size / 1MB) }
-    if ($Size -gt 1KB) { return "{0:N2} KB" -f ($Size / 1KB) }
+    if ($Size -gt 1GB) { return " { 0:N2} GB" -f ($Size / 1GB) }
+    if ($Size -gt 1MB) { return " { 0:N2} MB" -f ($Size / 1MB) }
+    if ($Size -gt 1KB) { return " { 0:N2} KB" -f ($Size / 1KB) }
     return "$Size Bytes"
 }
 
@@ -181,7 +181,7 @@ function Get-DetailedPingResult {
             $line = $line.Trim()
 
             # Check for successful reply
-            if ($line -match "Reply from ([0-9\.]+): bytes=\d+ time=(\d+)ms TTL=\d+") {
+            if ($line -match "Reply from ([0-9\.]+): bytes = \d+ time = (\d+)ms TTL = \d+") {
                 $result.Success = $true
                 $result.IPAddress = $matches[1]
                 $result.ResponseTime = [int]$matches[2]
@@ -189,7 +189,7 @@ function Get-DetailedPingResult {
                 break
             }
             # Check for reply with time<1ms
-            elseif ($line -match "Reply from ([0-9\.]+): bytes=\d+ time<(\d+)ms TTL=\d+") {
+            elseif ($line -match "Reply from ([0-9\.]+): bytes = \d+ time<(\d+)ms TTL = \d+") {
                 $result.Success = $true
                 $result.IPAddress = $matches[1]
                 $result.ResponseTime = 1
@@ -242,7 +242,7 @@ try {
     # Create timestamp and filename
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $computerName = $env:COMPUTERNAME
-    $fileName = "PingTest_${computerName}_${timestamp}.log"
+    $fileName = "PingTest_${ computerName}_${ timestamp}.log"
     $script:logFile = Join-Path $OutputPath $fileName
 
     # Create log file with header
@@ -253,7 +253,7 @@ Extended Ping Test Results
 Computer Name: $computerName
 Test Started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Target: $Target
-Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
+Mode: $(if($Count -eq 0) { "Continuous"}else { "Count: $Count"})
 ========================================
 
 "@
@@ -372,7 +372,7 @@ Mode: $(if($Count -eq 0){"Continuous"}else{"Count: $Count"})
 Current Statistics:
 ----------------
 Packets: Sent = $script:sent, Received = $script:received, Lost = $($script:sent - $script:received) ($($packetLoss.ToString('N2'))% loss)
-Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue){"0"}else{$script:minTime})ms, Max = $script:maxTime`ms, Avg = $($avgTime.ToString('N2'))ms
+Round Trip Times: Min = $(if($script:minTime -eq [int]::MaxValue) { "0"}else { $script:minTime})ms, Max = $script:maxTime`ms, Avg = $($avgTime.ToString('N2'))ms
 
 "@
                 Write-LogMessage -Message $stats -FilePath $script:logFile

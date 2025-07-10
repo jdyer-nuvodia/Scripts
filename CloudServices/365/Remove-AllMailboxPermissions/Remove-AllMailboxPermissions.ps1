@@ -68,33 +68,33 @@
     - Verify ExchangeOnlineManagement module is installed
 #>
 
-[CmdletBinding(DefaultParameterSetName='File',
-               SupportsShouldProcess=$true,
-               ConfirmImpact='High')]
+[CmdletBinding(DefaultParameterSetName = 'File',
+    SupportsShouldProcess = $true,
+    ConfirmImpact = 'High')]
 param(
-    [Parameter(ParameterSetName='Single',
-               Position=0,
-               HelpMessage="Email address of mailbox to process")]
-    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')]
+    [Parameter(ParameterSetName = 'Single',
+        Position = 0,
+        HelpMessage = "Email address of mailbox to process")]
+    [ValidatePattern('^[\w-\.]+@([\w-]+\.)+[\w-]{ 2, 4}$')]
     [string]$MailboxIdentity,
 
-    [Parameter(ParameterSetName='File')]
-    [ValidateScript({Test-Path $_})]
+    [Parameter(ParameterSetName = 'File')]
+    [ValidateScript({ Test-Path $_ })]
     [string]$InputPath = (Join-Path $PSScriptRoot "mailboxes.txt"),
 
     [Parameter()]
     [ValidateScript({
-        if (-not (Test-Path $_)) {
-            New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        }
-        return $true
-    })]
+            if (-not (Test-Path $_)) {
+                New-Item -Path $_ -ItemType Directory -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$LogPath = (Join-Path $PSScriptRoot "Logs")
 )
 
 # Initialize logging
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$LogFile = Join-Path $LogPath "PermissionRemovals_${TimeStamp}.log"
+$LogFile = Join-Path $LogPath "PermissionRemovals_${ TimeStamp}.log"
 
 function Write-LogMessage {
     [CmdletBinding()]
@@ -123,15 +123,14 @@ function Test-ExchangeConnection {
         $null = Get-OrganizationConfig -ErrorAction Stop
         Write-LogMessage "Successfully connected to Exchange Online" "Success"
         return $true
-    }
-    catch {
+    } catch {
         Write-LogMessage "Not connected to Exchange Online. Please run Connect-ExchangeOnline first." "Error"
         return $false
     }
 }
 
 function Remove-MailboxDelegate {
-    [CmdletBinding(SupportsShouldProcess=$true)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param([string]$Identity)
 
@@ -149,15 +148,14 @@ function Remove-MailboxDelegate {
             }
         }
         return $true
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error removing FullAccess permissions for $Identity`: $_" "Error"
         return $false
     }
 }
 
 function Remove-SendAsPermission {
-    [CmdletBinding(SupportsShouldProcess=$true)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param([string]$Identity)
 
@@ -172,15 +170,14 @@ function Remove-SendAsPermission {
             }
         }
         return $true
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error removing SendAs permissions for $Identity`: $_" "Error"
         return $false
     }
 }
 
 function Remove-SendOnBehalfPermission {
-    [CmdletBinding(SupportsShouldProcess=$true)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param([string]$Identity)
 
@@ -190,15 +187,14 @@ function Remove-SendOnBehalfPermission {
             Write-LogMessage "Removed all Send on Behalf permissions for $Identity" "Success"
         }
         return $true
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error removing Send on Behalf permissions for $Identity`: $_" "Error"
         return $false
     }
 }
 
 function Remove-CalendarPermission {
-    [CmdletBinding(SupportsShouldProcess=$true)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param([string]$Identity)
 
@@ -215,8 +211,7 @@ function Remove-CalendarPermission {
             }
         }
         return $true
-    }
-    catch {
+    } catch {
         Write-LogMessage "Error removing calendar permissions for $Identity`: $_" "Error"
         return $false
     }
@@ -233,8 +228,7 @@ try {
     # Get mailbox list
     $mailboxes = if ($PSCmdlet.ParameterSetName -eq 'Single') {
         @($MailboxIdentity)
-    }
-    else {
+    } else {
         Get-Content $InputPath
     }
 
@@ -252,8 +246,7 @@ try {
         # Verify mailbox exists
         try {
             $null = Get-Mailbox -Identity $mailbox -ErrorAction Stop
-        }
-        catch {
+        } catch {
             Write-LogMessage "Mailbox not found: $mailbox. Skipping." "Warning"
             continue
         }
@@ -271,14 +264,11 @@ try {
         $status = if ($successCount -eq $results.Count) { "Success" } else { "Warning" }
         Write-LogMessage "Completed processing $mailbox`: $successCount of $($results.Count) operations successful" $status
     }
-}
-catch {
+} catch {
     Write-LogMessage "Script execution failed: $_" "Error"
     Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" "Error"
     exit 1
-}
-finally {
+} finally {
     Write-Progress -Activity "Removing Permissions" -Completed
     Write-LogMessage "Script execution completed. See log file for details: $LogFile" "Process"
 }
-
