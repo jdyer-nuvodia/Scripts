@@ -9,7 +9,8 @@
         "ms-vscode.vscode-json",
         "redhat.vscode-yaml",
         "github.vscode-github-actions",
-        "esbenp.prettier-vscode"
+        "esbenp.prettier-vscode",
+        "gitguardian-secret-security.gitguardian"
     ],
     "unwantedRecommendations": [
         "ms-vscode.vscode-typescript"
