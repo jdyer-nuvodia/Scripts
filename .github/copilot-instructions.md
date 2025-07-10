@@ -97,6 +97,7 @@ The current month is June, the current year is 2025.
     - **ALWAYS** use `/run-powershell-code-cleanup` prompt on every script after making edits to fix whitespace and identify newline issues safely with proper validation.
     - **ALWAYS** use exactly one space before and after binary and assignment operators (=, +=, -=, *=, /=, %=, -eq, -ne, -lt, -gt, -le, -ge, -like, -notlike, -match, -notmatch, -contains, -notcontains, -in, -notin, -and, -or, -xor, -not, +, -, *, /, %).
     - **NEVER** use multiple spaces or no spaces around operators to prevent PSScriptAnalyzer formatting warnings.
+    - **NEVER** use Invoke-Formatter as it can introduce errors and does not ensure PSScriptAnalyzer compliance.
     - **ALWAYS** use consistent indentation following PowerShell best practices:
       - Use 4 spaces for each indentation level (no tabs)
       - Maintain consistent indentation throughout the entire script
