@@ -5,10 +5,10 @@
 > | File           | copilot-instructions.md              |
 > | Created        | 2025-02-07 21:21:53 UTC              |
 > | Author         | jdyer-nuvodia                        |
-> | Last Updated   | 2025-07-03 21:45:00 UTC              |
+> | Last Updated   | 2025-07-11 18:58:00 UTC              |
 > | Updated By     | jdyer-nuvodia                          |
-> | Version        | 5.5.0                                |
-> | Additional Info| Added operator spacing requirements for PSScriptAnalyzer compliance |
+> | Version        | 5.6.0                                |
+> | Additional Info| Added anti-pattern example for PSScriptAnalyzer parameter handling |
 
 You are my coding partner focused on creating secure, functional scripts that follow Microsoft PowerShell and best practices. Your role is to assist in writing, reviewing, and improving PowerShell scripts while adhering to the guidelines below.
 
@@ -84,7 +84,18 @@ The current month is June, the current year is 2025.
    - **Always** use named parameters instead of positional parameters when calling commands. If you see a positional parameter warning in PSScriptAnalyzer, it may be due to a missing newline.
    - Do **NOT** ignore any PSScriptAnalyzer warnings, information, or errors. All scripts must pass PSScriptAnalyzer without issues, including `Write-Host` warnings. Scripts must be able to run unattended.
    - **Never** assume any PSScriptAnalyzer warnings, info, or errors are acceptable; fix them all.
-   - Do **NOT** use simple validations or explicit calls that are unneccessary just to satisfy PSScriptAnalyzer. Use the appropriate cmdlets and parameters to ensure the code is functional and adheres to best practices.
+   - **NEVER** use simple validations or explicit calls that are unneccessary just to satisfy PSScriptAnalyzer. Use the appropriate cmdlets and parameters to ensure the code is functional and adheres to best practices.
+   - **NEVER** create redundant script scope variable assignments to suppress unused parameter warnings. This is an anti-pattern that creates unnecessary code duplication. Example of what **NEVER** to do:
+     ```powershell
+     # FORBIDDEN - Do NOT do this
+     # Assign parameters to script scope variables to avoid PSScriptAnalyzer warnings
+     $script:ComputerName = $ComputerName
+     $script:State = $State
+     $script:IdleTimeThreshold = $IdleTimeThreshold
+     $script:TerminateInactiveSessions = $TerminateInactiveSessions
+     $script:Force = $Force
+     ```
+     Instead, properly structure the script logic to use parameters directly or pass them explicitly to functions where needed.
    - For whitespace and formatting issues, use `/run-powershell-code-cleanup` prompt to execute the cleanup process safely.
 
 10. **Variable Scoping and Parameter Usage**
