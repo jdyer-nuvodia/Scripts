@@ -2,10 +2,10 @@
 # Script: Delete-OldFiles.ps1
 # Created: 2025-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-14 17:16:00 UTC
+# Last Updated: 2025-07-11 02:55:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.10.0
-# Additional Info: Changed ConfirmImpact to Low for automated operation
+# Version: 1.10.1
+# Additional Info: Converted Write-Host to Write-ColorOutput and applied code quality cleanup
 # =============================================================================
 
 <#
@@ -48,22 +48,78 @@ param(
     [switch]$NoRecurse
 )
 
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
+
 function Show-DriveInfo {
     param (
         [Parameter(Mandatory = $true)]
         [object]$Volume
     )
 
-    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
-    Write-Host ""
+    Write-ColorOutput -Message "`nDrive Volume Details:" -Color 'Green'
+    Write-ColorOutput -Message "------------------------" -Color 'Green'
+    Write-ColorOutput -Message "Drive Letter: $($Volume.DriveLetter)" -Color 'Cyan'
+    Write-ColorOutput -Message "Drive Label: $($Volume.FileSystemLabel)" -Color 'Cyan'
+    Write-ColorOutput -Message "File System: $($Volume.FileSystem)" -Color 'Cyan'
+    Write-ColorOutput -Message "Drive Type: $($Volume.DriveType)" -Color 'Cyan'
+    Write-ColorOutput -Message "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -Color 'Cyan'
+    Write-ColorOutput -Message "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -Color 'Cyan'
+    Write-ColorOutput -Message "Health Status: $($Volume.HealthStatus)" -Color 'Cyan'
+    Write-ColorOutput -Message "" -Color "White"
 }
 
 try {
@@ -77,9 +133,9 @@ try {
     $driveLetter = $StartPath.Substring(0, 1)
 
     # Get volume information before deletion
-    Write-Host "Getting drive information before deletion..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Getting drive information before deletion..." -Color 'Cyan'
     $volumeBefore = Get-Volume -DriveLetter $driveLetter -ErrorAction Stop
-    Write-Host "Drive information before file deletion:" -ForegroundColor Yellow
+    Write-ColorOutput -Message "Drive information before file deletion:" -Color 'Yellow'
     Show-DriveInfo -Volume $volumeBefore
 
     # Get the current date
@@ -88,7 +144,7 @@ try {
     # Calculate the cutoff date
     $cutoffDate = $currentDate.AddDays(-$daysOld)
 
-    Write-Host "`nDeleting files$(if(!$NoRecurse) { ' and directories' }) older than $daysOld days..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "`nDeleting files$(if(!$NoRecurse) { ' and directories' }) older than $daysOld days..." -Color 'Cyan'
 
     # Get files to delete based on recursion setting
     $oldFiles = if (!$NoRecurse) {
@@ -106,9 +162,9 @@ try {
         $percentComplete = [math]::Round(($currentFile / $totalFiles) * 100, 2)
 
         Write-Progress -Activity "Deleting Old Files" `
-                      -Status "Processing $currentFile of $totalFiles files ($percentComplete%)" `
-                      -PercentComplete $percentComplete `
-                      -CurrentOperation $file.Name
+            -Status "Processing $currentFile of $totalFiles files ($percentComplete%)" `
+            -PercentComplete $percentComplete `
+            -CurrentOperation $file.Name
 
         try {
             if ($PSCmdlet.ShouldProcess($file.FullName, "Delete file")) {
@@ -126,8 +182,8 @@ try {
     # Only process directories if -NoRecurse is not specified
     if (!$NoRecurse) {
         $oldDirs = Get-ChildItem -Path $StartPath -Directory -Recurse |
-                   Where-Object { $_.LastWriteTime -lt $cutoffDate } |
-                   Sort-Object FullName -Descending
+            Where-Object { $_.LastWriteTime -lt $cutoffDate } |
+            Sort-Object FullName -Descending
 
         $totalDirs = $oldDirs.Count
         $currentDir = 0
@@ -137,9 +193,9 @@ try {
             $percentComplete = [math]::Round(($currentDir / $totalDirs) * 100, 2)
 
             Write-Progress -Activity "Processing Empty Directories" `
-                          -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
-                          -PercentComplete $percentComplete `
-                          -CurrentOperation $dir.Name
+                -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
+                -PercentComplete $percentComplete `
+                -CurrentOperation $dir.Name
 
             if (!(Get-ChildItem -Path $dir.FullName -Force)) {
                 try {
@@ -158,17 +214,17 @@ try {
     }
 
     # Get volume information after deletion
-    Write-Host "`nGetting drive information after deletion..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "`nGetting drive information after deletion..." -Color 'Cyan'
     $volumeAfter = Get-Volume -DriveLetter $driveLetter -ErrorAction Stop
-    Write-Host "Drive information after file deletion:" -ForegroundColor Yellow
+    Write-ColorOutput -Message "Drive information after file deletion:" -Color 'Yellow'
     Show-DriveInfo -Volume $volumeAfter
 
     # Show space reclaimed
     $spaceReclaimed = $volumeAfter.SizeRemaining - $volumeBefore.SizeRemaining
     if ($spaceReclaimed -gt 0) {
-        Write-Host "`nSpace reclaimed: $([math]::Round($spaceReclaimed/1MB, 2)) MB" -ForegroundColor Green
+        Write-ColorOutput -Message "`nSpace reclaimed: $([math]::Round($spaceReclaimed/1MB, 2)) MB" -Color 'Green'
     } else {
-        Write-Host "`nNo measurable space was reclaimed." -ForegroundColor Yellow
+        Write-ColorOutput -Message "`nNo measurable space was reclaimed." -Color 'Yellow'
     }
 } catch {
     Write-Error "Error performing operation. Error: $_"
