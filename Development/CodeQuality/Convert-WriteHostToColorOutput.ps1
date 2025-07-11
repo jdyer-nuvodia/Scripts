@@ -2,10 +2,10 @@
 # Script: Convert-WriteHostToColorOutput.ps1
 # Created: 2025-07-09 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 20:26:00 UTC
+# Last Updated: 2025-07-11 17:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added pattern to handle Write-Host calls with variable color parameters (e.g., Write-Host $Message -ForegroundColor $Color)
+# Version: 1.3.1
+# Additional Info: Removed noisy output when Write-ColorOutput function already exists in target script
 # =============================================================================
 
 <#
@@ -115,13 +115,13 @@ function Write-ColorOutput {
 
 function Add-ColorSupportToScript {
     param(
-        [string]$Content,
-        [string]$FilePath
+        [string]$Content
     )
 
     # Check if Write-ColorOutput function already exists
     if ($Content -match 'function Write-ColorOutput') {
-        Write-Output "Write-ColorOutput function already exists in $FilePath, skipping addition"
+        # Function already exists, return content unchanged
+        # Note: FilePath parameter kept for consistency with function signature
         return $Content
     }
 
@@ -263,6 +263,14 @@ function Convert-WriteHostCall {
     $afterCount = ($modifiedContent | Select-String -Pattern $pattern7 -AllMatches).Matches.Count
     $replacementCount += ($beforeCount - $afterCount)
 
+    # Pattern 7b: Write-Host $variable (no color parameter) - followed by closing brace or other punctuation
+    $pattern7b = 'Write-Host\s+(\$[a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\s*[})])'
+    $replacement7b = 'Write-ColorOutput -Message $1 -Color "White"'
+    $beforeCount = ($modifiedContent | Select-String -Pattern $pattern7b -AllMatches).Matches.Count
+    $modifiedContent = $modifiedContent -replace $pattern7b, $replacement7b
+    $afterCount = ($modifiedContent | Select-String -Pattern $pattern7b -AllMatches).Matches.Count
+    $replacementCount += ($beforeCount - $afterCount)
+
     # Pattern 8: Write-Host with parenthesized expressions (no color parameter)
     $pattern8 = 'Write-Host\s+(\([^)]+\))(?!\s+-ForegroundColor)'
     $replacement8 = 'Write-ColorOutput -Message $1 -Color "White"'
@@ -295,45 +303,45 @@ function ConvertScript {
 
     try {
         # Validate file exists and is a PowerShell script
-        if (-not (Test-Path -Path $FilePath)) {
-            Write-Warning "File not found: $FilePath"
+        if (-not (Test-Path -Path ${FilePath})) {
+            Write-Warning "File not found: ${FilePath}"
             return
         }
 
-        if (-not ($FilePath -match '\.ps1$')) {
-            Write-Warning "File is not a PowerShell script: $FilePath"
+        if (-not (${FilePath} -match '\.ps1$')) {
+            Write-Warning "File is not a PowerShell script: ${FilePath}"
             return
         }
 
-        Write-Output "Processing: $FilePath"
+        Write-Output "Processing: ${FilePath}"
 
         # Read the file content
-        $originalContent = Get-Content -Path $FilePath -Raw -Encoding UTF8
+        $originalContent = Get-Content -Path ${FilePath} -Raw -Encoding UTF8
 
         if ([string]::IsNullOrWhiteSpace($originalContent)) {
-            Write-Warning "File is empty or could not be read: $FilePath"
+            Write-Warning "File is empty or could not be read: ${FilePath}"
             return
         }
 
         # Check if the file contains Write-Host calls
         $writeHostMatches = $originalContent | Select-String -Pattern "Write-Host" -AllMatches
         if (-not $writeHostMatches.Matches) {
-            Write-Output "No Write-Host calls found in $FilePath"
+            Write-Output "No Write-Host calls found in ${FilePath}"
             return
-        }        Write-Output "Found $($writeHostMatches.Matches.Count) Write-Host call(s) in $FilePath"
+        }        Write-Output "Found $($writeHostMatches.Matches.Count) Write-Host call(s) in ${FilePath}"
 
         # Create backup if requested
         if ($BackupOriginal) {
-            $backupPath = "$FilePath.backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-            if ($PSCmdlet.ShouldProcess($FilePath, "Create backup at $backupPath")) {
-                Copy-Item -Path $FilePath -Destination $backupPath -Force
+            $backupPath = "${FilePath}.backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+            if ($PSCmdlet.ShouldProcess(${FilePath}, "Create backup at $backupPath")) {
+                Copy-Item -Path ${FilePath} -Destination $backupPath -Force
                 Write-Output "Created backup: $backupPath"
             }
         }
 
-        if ($PSCmdlet.ShouldProcess($FilePath, "Convert Write-Host calls to Write-ColorOutput")) {
+        if ($PSCmdlet.ShouldProcess(${FilePath}, "Convert Write-Host calls to Write-ColorOutput")) {
             # Add color support code if needed
-            $contentWithColorSupport = Add-ColorSupportToScript -Content $originalContent -FilePath $FilePath
+            $contentWithColorSupport = Add-ColorSupportToScript -Content $originalContent -FilePath ${FilePath}
 
             # Convert Write-Host calls
             $conversionResult = Convert-WriteHostCall -Content $contentWithColorSupport
@@ -341,18 +349,18 @@ function ConvertScript {
             $replacementCount = $conversionResult.ReplacementCount
 
             # Save the updated content
-            $modifiedContent | Out-File -FilePath $FilePath -Encoding UTF8 -NoNewline
+            $modifiedContent | Out-File -FilePath ${FilePath} -Encoding UTF8 -NoNewline
 
-            Write-Output "Successfully converted $replacementCount Write-Host call(s) in $FilePath"
+            Write-Output "Successfully converted $replacementCount Write-Host call(s) in ${FilePath}"
         }
 
     } catch {
-        Write-Error "Error processing $FilePath`: $_"
+        Write-Error "Error processing ${FilePath}`: $_"
     }
 }
 
 # Main execution
-foreach ($path in $FilePath) {
+foreach ($path in ${FilePath}) {
     # Handle wildcards and multiple files
     $resolvedPaths = Get-ChildItem -Path $path -Filter "*.ps1" -ErrorAction SilentlyContinue
 
