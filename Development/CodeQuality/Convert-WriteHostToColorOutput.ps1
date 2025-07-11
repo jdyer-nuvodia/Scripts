@@ -2,10 +2,10 @@
 # Script: Convert-WriteHostToColorOutput.ps1
 # Created: 2025-07-09 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 00:10:00 UTC
+# Last Updated: 2025-07-10 20:26:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Changed parameter name from -ScriptPath to -FilePath for consistency with PowerShell conventions
+# Version: 1.2.0
+# Additional Info: Added pattern to handle Write-Host calls with variable color parameters (e.g., Write-Host $Message -ForegroundColor $Color)
 # =============================================================================
 
 <#
@@ -18,6 +18,7 @@ calls to ensure PSScriptAnalyzer compliance. The script handles various Write-Ho
 - Write-Host with double quotes and -ForegroundColor
 - Write-Host with single quotes and -ForegroundColor
 - Write-Host with variables and -ForegroundColor
+- Write-Host with variable color parameters (e.g., Write-Host $Message -ForegroundColor $Color)
 - Write-Host with string interpolation
 
 The script also adds the required Write-ColorOutput function and color support variables to the
@@ -184,17 +185,17 @@ function Convert-WriteHostCall {
 
     # Define color mapping from ForegroundColor to our Color parameter
     $colorMap = @{
-        'Cyan'     = 'Cyan'
-        'Green'    = 'Green'
-        'Yellow'   = 'Yellow'
-        'Red'      = 'Red'
+        'Cyan' = 'Cyan'
+        'Green' = 'Green'
+        'Yellow' = 'Yellow'
+        'Red' = 'Red'
         'DarkGray' = 'DarkGray'
-        'Magenta'  = 'Magenta'
-        'White'    = 'White'
+        'Magenta' = 'Magenta'
+        'White' = 'White'
         # Map Blue to Cyan as fallback
-        'Blue'     = 'Cyan'
+        'Blue' = 'Cyan'
         # Map Gray to DarkGray as fallback
-        'Gray'     = 'DarkGray'
+        'Gray' = 'DarkGray'
     }
 
     $replacementCount = 0
@@ -270,8 +271,17 @@ function Convert-WriteHostCall {
     $afterCount = ($modifiedContent | Select-String -Pattern $pattern8 -AllMatches).Matches.Count
     $replacementCount += ($beforeCount - $afterCount)
 
+    # Pattern 9: Write-Host with variable color parameter
+    # Handles cases like: Write-Host $Message -ForegroundColor $Color
+    $pattern9 = 'Write-Host\s+([^-]+?)\s+-ForegroundColor\s+(\$[a-zA-Z_][a-zA-Z0-9_]*)'
+    $replacement9 = 'Write-ColorOutput -Message $1 -Color $2'
+    $beforeCount = ($modifiedContent | Select-String -Pattern $pattern9 -AllMatches).Matches.Count
+    $modifiedContent = $modifiedContent -replace $pattern9, $replacement9
+    $afterCount = ($modifiedContent | Select-String -Pattern $pattern9 -AllMatches).Matches.Count
+    $replacementCount += ($beforeCount - $afterCount)
+
     return @{
-        Content          = $modifiedContent
+        Content = $modifiedContent
         ReplacementCount = $replacementCount
     }
 }
