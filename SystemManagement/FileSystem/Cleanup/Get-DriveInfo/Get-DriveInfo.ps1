@@ -2,10 +2,10 @@
 # Script: Get-DriveInfo.ps1
 # Created: 2025-03-19 22:27:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-03-19 22:27:00 UTC
+# Last Updated: 2025-07-10 20:28:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial creation from Clear-SystemStorage.ps1
+# Version: 1.0.2
+# Additional Info: Fixed PSScriptAnalyzer warning by renaming Write-Log to Write-LogMessage to avoid overriding built-in cmdlet
 # =============================================================================
 
 <#
@@ -26,13 +26,69 @@
 [CmdletBinding()]
 param ()
 
+
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
 # Initialize logging
 $scriptPath = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
 $systemName = [System.Environment]::MachineName
-$logFile = [System.IO.Path]::Combine($scriptPath, "Get-DriveInfo_${ systemName}_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
+$logFile = [System.IO.Path]::Combine($scriptPath, "Get-DriveInfo_${systemName}_$([DateTime]::UtcNow.ToString('yyyyMMdd_HHmmss')).log")
 $script:logStream = [System.IO.StreamWriter]::new($logFile, $true, [System.Text.Encoding]::UTF8)
 
-function Write-Log {
+function Write-LogMessage {
     param(
         [string]$Message,
         [string]$Color = 'White',
@@ -48,7 +104,7 @@ function Write-Log {
 
     # Write to console if not suppressed
     if (-not $NoConsole) {
-        Write-Host $Message -ForegroundColor $Color
+        Write-ColorOutput -Message $Message -Color $Color
     }
 }
 
@@ -58,19 +114,19 @@ function Show-DriveInfo {
         [object]$Volume
     )
 
-    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Used Space: $([math]::Round(($Volume.Size - $Volume.SizeRemaining)/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space %: $([math]::Round(($Volume.SizeRemaining/$Volume.Size) * 100, 2))%" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
-    Write-Host "Operational Status: $($Volume.OperationalStatus)" -ForegroundColor Cyan
-    Write-Host ""
+    Write-ColorOutput -Message "`nDrive Volume Details:" -Color 'Green'
+    Write-ColorOutput -Message "------------------------" -Color 'Green'
+    Write-ColorOutput -Message "Drive Letter: $($Volume.DriveLetter)" -Color 'Cyan'
+    Write-ColorOutput -Message "Drive Label: $($Volume.FileSystemLabel)" -Color 'Cyan'
+    Write-ColorOutput -Message "File System: $($Volume.FileSystem)" -Color 'Cyan'
+    Write-ColorOutput -Message "Drive Type: $($Volume.DriveType)" -Color 'Cyan'
+    Write-ColorOutput -Message "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -Color 'Cyan'
+    Write-ColorOutput -Message "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -Color 'Cyan'
+    Write-ColorOutput -Message "Used Space: $([math]::Round(($Volume.Size - $Volume.SizeRemaining)/1GB, 2)) GB" -Color 'Cyan'
+    Write-ColorOutput -Message "Free Space %: $([math]::Round(($Volume.SizeRemaining/$Volume.Size) * 100, 2))%" -Color 'Cyan'
+    Write-ColorOutput -Message "Health Status: $($Volume.HealthStatus)" -Color 'Cyan'
+    Write-ColorOutput -Message "Operational Status: $($Volume.OperationalStatus)" -Color 'Cyan'
+    Write-ColorOutput -Message "" -Color "White"
 }
 
 function Write-StatusMessage {
@@ -78,7 +134,7 @@ function Write-StatusMessage {
         [string]$Message,
         [string]$Color = 'White'
     )
-    Write-Log -Message $Message -Color $Color
+    Write-LogMessage -Message $Message -Color $Color
 }
 
 # Main execution
@@ -87,7 +143,7 @@ try {
     $volumes = Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter
 
     if ($volumes.Count -eq 0) {
-        Write-Log "No drives with letters found on the system." -Color Red
+        Write-LogMessage "No drives with letters found on the system." -Color Red
         exit 1
     }
 
@@ -97,10 +153,10 @@ try {
         Show-DriveInfo -Volume $volume
     }
 
-    Write-Log "Drive information collection completed successfully. See log file for details: $logFile" -Color Green
+    Write-LogMessage "Drive information collection completed successfully. See log file for details: $logFile" -Color Green
 } catch {
-    Write-Log "Error during execution: $($_.Exception.Message)" -Color Red
-    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Color Red
+    Write-LogMessage "Error during execution: $($_.Exception.Message)" -Color Red
+    Write-LogMessage "Stack trace: $($_.ScriptStackTrace)" -Color Red
     exit 1
 } finally {
     if ($null -ne $script:logStream) {
