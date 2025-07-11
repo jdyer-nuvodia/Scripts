@@ -152,7 +152,7 @@ function Write-ColorOutput {
         # PowerShell 7+ with ANSI escape codes
         $colorCode = $Script:Colors[$Color]
         $resetCode = $Script:Colors.Reset
-        Write-Output "${ colorCode}${ Message}${ resetCode}"
+        Write-Output "${colorCode}${ Message}${resetCode}"
     } else {
         # PowerShell 5.1 - Change console color, write output, then reset
         $originalColor = $Host.UI.RawUI.ForegroundColor
@@ -605,8 +605,8 @@ function Get-NetworkStatus {
             # Handle different PowerShell versions - newer versions use Latency property
             $LatencyMs = if ($Result.Latency) { $Result.Latency } else { $Result.ResponseTime }
             $Status = switch ($LatencyMs) {
- { $_ -ge 200 } { "Warning" }
- { $_ -ge 500 } { "Error" }
+                { $_ -ge 200 } { "Warning" }
+                { $_ -ge 500 } { "Error" }
                 default { "Success" }
             }
             Write-LogMessage "Network latency to $($Target.Name) ($($Target.Host)): ${ LatencyMs}ms" -Level $Status
@@ -644,8 +644,8 @@ function Get-VMNetworkStatus {
 
             $Threshold = $Target.VMThreshold
             $Status = switch ($AvgLatency) {
- { $_ -ge ($Threshold * 2) } { "Error" }
- { $_ -ge $Threshold } { "Warning" }
+                { $_ -ge ($Threshold * 2) } { "Error" }
+                { $_ -ge $Threshold } { "Warning" }
                 default { "Success" }
             }
             Write-LogMessage "Network latency to $($Target.Name): $([math]::Round($AvgLatency, 2))ms (VM threshold: ${ Threshold}ms)" -Level $Status
