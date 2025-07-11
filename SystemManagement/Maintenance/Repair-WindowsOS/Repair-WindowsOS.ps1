@@ -90,9 +90,9 @@ function Write-ColorOutput {
         $colorCode = $script:Colors[$Color]
         $resetCode = $script:Colors.Reset
         if ($NoNewLine) {
-            Write-Output "${ colorCode}${ Message}${ resetCode}" -NoNewline
+            Write-Output "${colorCode}${Message}${resetCode}" -NoNewline
         } else {
-            Write-Output "${ colorCode}${ Message}${ resetCode}"
+            Write-Output "${colorCode}${Message}${resetCode}"
         }
     } else {
         # PowerShell 5.1 - Change console color, write output, then reset
