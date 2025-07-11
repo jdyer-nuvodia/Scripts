@@ -126,13 +126,13 @@ begin {
         )
 
         if ($SizeInBytes -ge 1TB) {
-            return " { 0:N2} TB" -f ($SizeInBytes / 1TB)
+            return "{0:N2} TB" -f ($SizeInBytes / 1TB)
         } elseif ($SizeInBytes -ge 1GB) {
-            return " { 0:N2} GB" -f ($SizeInBytes / 1GB)
+            return "{0:N2} GB" -f ($SizeInBytes / 1GB)
         } elseif ($SizeInBytes -ge 1MB) {
-            return " { 0:N2} MB" -f ($SizeInBytes / 1MB)
+            return "{0:N2} MB" -f ($SizeInBytes / 1MB)
         } elseif ($SizeInBytes -ge 1KB) {
-            return " { 0:N2} KB" -f ($SizeInBytes / 1KB)
+            return "{0:N2} KB" -f ($SizeInBytes / 1KB)
         } else {
             return "$SizeInBytes bytes"
         }
