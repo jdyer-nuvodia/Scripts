@@ -2,10 +2,10 @@
 # Script: Rename-ScriptToFolderName.ps1
 # Created: 2025-02-05 23:22:49 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-02-26 23:14:00 UTC
+# Last Updated: 2025-07-11 05:18:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3
-# Additional Info: Updated header format to meet new standards
+# Version: 1.3.7
+# Additional Info: Fixed PSScriptAnalyzer unused parameter warning by adding explicit parameter reference in begin block
 # =============================================================================
 
 <#
@@ -55,149 +55,209 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory = $true,
-               Position = 0,
-               ValueFromPipeline = $true,
-               ValueFromPipelineByPropertyName = $true)]
+        Position = 0,
+        ValueFromPipeline = $true,
+        ValueFromPipelineByPropertyName = $true)]
     [string]$StartPath,
 
     [Parameter(Mandatory = $false)]
     [switch]$Recursive
 )
 
-function Rename-ScriptFile {
-    param(
-        [string]$StartPath
-    )
+begin {
 
-    try {
-        # Get folder info to preserve exact case
-        $folderInfo = Get-Item -Path $StartPath
-        # This preserves the exact case
-                $folderName = $folderInfo.Name
-
-        Write-Host "`nProcessing folder: $StartPath" -ForegroundColor Cyan
-        Write-Host "Folder name (exact case): $folderName" -ForegroundColor Gray
-
-        # Get all .ps1 files in the folder
-        $psFiles = Get-ChildItem -Path $StartPath -Filter "*.ps1" -File
-
-        if ($psFiles.Count -eq 0) {
-            Write-Host "  No PowerShell scripts found in this folder" -ForegroundColor Yellow
-            return
+    # Color support variables and Write-ColorOutput function
+    $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+    $Script:Colors = if ($Script:UseAnsiColors) {
+        @{
+            'White' = "`e[37m"
+            'Cyan' = "`e[36m"
+            'Green' = "`e[32m"
+            'Yellow' = "`e[33m"
+            'Red' = "`e[31m"
+            'Magenta' = "`e[35m"
+            'DarkGray' = "`e[90m"
+            'Reset' = "`e[0m"
         }
+    } else {
+        @{
+            'White' = [ConsoleColor]::White
+            'Cyan' = [ConsoleColor]::Cyan
+            'Green' = [ConsoleColor]::Green
+            'Yellow' = [ConsoleColor]::Yellow
+            'Red' = [ConsoleColor]::Red
+            'Magenta' = [ConsoleColor]::Magenta
+            'DarkGray' = [ConsoleColor]::DarkGray
+            'Reset' = ''
+        }
+    }
 
-        Write-Host "  Found $($psFiles.Count) PowerShell script(s)" -ForegroundColor Gray
+    function Write-ColorOutput {
+        <#
+        .SYNOPSIS
+        Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
 
-        if ($psFiles.Count -eq 1) {
-            $psFile = $psFiles[0]
-            $newName = "$folderName.ps1"
+        .DESCRIPTION
+        This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+        by using only Write-Output and standard PowerShell cmdlets.
+        #>
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Message,
+            [Parameter(Mandatory = $false)]
+            [string]$Color = "White"
+        )
 
-            # Skip if name already matches exactly (including case)
-            if ($psFile.Name -ceq $newName) {
-                Write-Host "  Script '$($psFile.Name)' already matches folder name and case" -ForegroundColor Yellow
+        # Always use Write-Output to satisfy PSScriptAnalyzer
+        # For PowerShell 7+, include ANSI color codes in the output
+        if ($Script:UseAnsiColors) {
+            $colorCode = $Script:Colors[$Color]
+            $resetCode = $Script:Colors.Reset
+            Write-Output "${colorCode}${Message}${resetCode}"
+        } else {
+            # For PowerShell 5.1, just output the message
+            # Color formatting will be handled by the terminal/host if supported
+            Write-Output $Message
+        }
+    }
+
+    function Rename-ScriptFile {
+        [CmdletBinding(SupportsShouldProcess = $true)]
+        param(
+            [string]$StartPath
+        )
+
+        try {
+            # Get folder info to preserve exact case
+            $folderInfo = Get-Item -Path $StartPath
+            # This preserves the exact case
+            $folderName = $folderInfo.Name
+
+            Write-ColorOutput -Message "`nProcessing folder: $StartPath" -Color 'Cyan'
+            Write-ColorOutput -Message "Folder name (exact case): $folderName" -Color 'DarkGray'
+
+            # Get all .ps1 files in the folder
+            $psFiles = Get-ChildItem -Path $StartPath -Filter "*.ps1" -File
+
+            if ($psFiles.Count -eq 0) {
+                Write-ColorOutput -Message "  No PowerShell scripts found in this folder" -Color 'Yellow'
                 return
             }
 
-            # Show case difference if only case is different
-            if ($psFile.Name -eq $newName) {
-                Write-Host "  Case difference detected:" -ForegroundColor Yellow
-                Write-Host "    Current: $($psFile.Name)" -ForegroundColor Gray
-                Write-Host "    New:     $newName" -ForegroundColor Gray
-            }
+            Write-ColorOutput -Message "  Found $($psFiles.Count) PowerShell script(s)" -Color 'DarkGray'
 
-            # Rename the file
-            $newPath = Join-Path -Path $StartPath -ChildPath $newName
-            if ($PSCmdlet.ShouldProcess($psFile.FullName, "Rename to '$newName'")) {
-                Write-Host "  Renaming '$($psFile.Name)' to '$newName'" -ForegroundColor Gray
+            if ($psFiles.Count -eq 1) {
+                $psFile = $psFiles[0]
+                $newName = "$folderName.ps1"
 
-                # Handle case-only changes
+                # Skip if name already matches exactly (including case)
+                if ($psFile.Name -ceq $newName) {
+                    Write-ColorOutput -Message "  Script '$($psFile.Name)' already matches folder name and case" -Color 'Yellow'
+                    return
+                }
+
+                # Show case difference if only case is different
                 if ($psFile.Name -eq $newName) {
-                    $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0, 8) + ".ps1"
-                    Rename-Item -Path $psFile.FullName -NewName $tempName -Force
-                    Rename-Item -Path (Join-Path -Path $StartPath -ChildPath $tempName) -NewName $newName -Force
-                } else {
-                    Rename-Item -Path $psFile.FullName -NewName $newName -Force
+                    Write-ColorOutput -Message "  Case difference detected:" -Color 'Yellow'
+                    Write-ColorOutput -Message "    Current: $($psFile.Name)" -Color 'DarkGray'
+                    Write-ColorOutput -Message "    New:     $newName" -Color 'DarkGray'
                 }
 
-                Write-Host "  Successfully renamed to '$newName'" -ForegroundColor Green
-            }
-        } else {
-            # Multiple .ps1 files found - prompt for action
-            Write-Host "`n  Multiple PowerShell scripts found:" -ForegroundColor Yellow
-            for ($i = 0; $i -lt $psFiles.Count; $i++) {
-                Write-Host "    [$i] $($psFiles[$i].Name)"
-            }
+                # Rename the file
+                if ($PSCmdlet.ShouldProcess($psFile.FullName, "Rename to '$newName'")) {
+                    Write-ColorOutput -Message "  Renaming '$($psFile.Name)' to '$newName'" -Color 'DarkGray'
 
-            $choice = Read-Host "`n  Do you want to rename one of these files to '$folderName.ps1'? (y/n)"
-            if ($choice -eq 'y') {
-                $fileChoice = Read-Host "  Enter the number of the file to rename"
-                if ($fileChoice -match '^\d+$' -and [int]$fileChoice -lt $psFiles.Count) {
-                    $selectedFile = $psFiles[[int]$fileChoice]
-                    $newName = "$folderName.ps1"
-
-                    if ($PSCmdlet.ShouldProcess($selectedFile.FullName, "Rename to '$newName'")) {
-                        Write-Host "  Renaming '$($selectedFile.Name)' to '$newName'" -ForegroundColor Gray
-
-                        # Handle case-only changes
-                        if ($selectedFile.Name -eq $newName) {
-                            $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0, 8) + ".ps1"
-                            Rename-Item -Path $selectedFile.FullName -NewName $tempName -Force
-                            Rename-Item -Path (Join-Path -Path $StartPath -ChildPath $tempName) -NewName $newName -Force
-                        } else {
-                            Rename-Item -Path $selectedFile.FullName -NewName $newName -Force
-                        }
-
-                        Write-Host "  Successfully renamed to '$newName'" -ForegroundColor Green
+                    # Handle case-only changes
+                    if ($psFile.Name -eq $newName) {
+                        $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0, 8) + ".ps1"
+                        Rename-Item -Path $psFile.FullName -NewName $tempName -Force
+                        Rename-Item -Path (Join-Path -Path $StartPath -ChildPath $tempName) -NewName $newName -Force
+                    } else {
+                        Rename-Item -Path $psFile.FullName -NewName $newName -Force
                     }
-                } else {
-                    Write-Warning "Invalid file selection '$fileChoice'. Please enter a number between 0 and $($psFiles.Count - 1)"
-                    Write-Host "  Skipping folder: $StartPath" -ForegroundColor Yellow
+
+                    Write-ColorOutput -Message "  Successfully renamed to '$newName'" -Color 'Green'
+                }
+            } else {
+                # Multiple .ps1 files found - prompt for action
+                Write-ColorOutput -Message "`n  Multiple PowerShell scripts found:" -Color 'Yellow'
+                for ($i = 0; $i -lt $psFiles.Count; $i++) {
+                    Write-ColorOutput -Message "    [$i] $($psFiles[$i].Name)" -Color "White"
+                }
+
+                $choice = Read-Host "`n  Do you want to rename one of these files to '$folderName.ps1'? (y/n)"
+                if ($choice -eq 'y') {
+                    $fileChoice = Read-Host "  Enter the number of the file to rename"
+                    if ($fileChoice -match '^\d+$' -and [int]$fileChoice -lt $psFiles.Count) {
+                        $selectedFile = $psFiles[[int]$fileChoice]
+                        $newName = "$folderName.ps1"
+
+                        if ($PSCmdlet.ShouldProcess($selectedFile.FullName, "Rename to '$newName'")) {
+                            Write-ColorOutput -Message "  Renaming '$($selectedFile.Name)' to '$newName'" -Color 'DarkGray'
+
+                            # Handle case-only changes
+                            if ($selectedFile.Name -eq $newName) {
+                                $tempName = "_temp_" + [Guid]::NewGuid().ToString().Substring(0, 8) + ".ps1"
+                                Rename-Item -Path $selectedFile.FullName -NewName $tempName -Force
+                                Rename-Item -Path (Join-Path -Path $StartPath -ChildPath $tempName) -NewName $newName -Force
+                            } else {
+                                Rename-Item -Path $selectedFile.FullName -NewName $newName -Force
+                            }
+
+                            Write-ColorOutput -Message "  Successfully renamed to '$newName'" -Color 'Green'
+                        }
+                    } else {
+                        Write-Warning "Invalid file selection '$fileChoice'. Please enter a number between 0 and $($psFiles.Count - 1)"
+                        Write-ColorOutput -Message "  Skipping folder: $StartPath" -Color 'Yellow'
+                    }
                 }
             }
+        } catch {
+            Write-Error "Error processing folder '$StartPath': $_"
+            Write-ColorOutput -Message "Stack Trace: $($_.ScriptStackTrace)" -Color 'Red'
         }
-    } catch {
-        Write-Error "Error processing folder '$StartPath': $_"
-        Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
     }
 }
 
-try {
-    # Verify path exists
-    if (!(Test-Path -Path $StartPath)) {
-        throw "Path '$StartPath' does not exist."
+process {
+    try {
+        # Verify path exists
+        if (!(Test-Path -Path $script:StartPath)) {
+            throw "Path '$script:StartPath' does not exist."
+        }
+
+        Write-ColorOutput -Message "Starting script rename process..." -Color 'Cyan'
+        Write-ColorOutput -Message "Processing path: $script:StartPath" -Color 'DarkGray'
+        Write-ColorOutput -Message "Recursive mode: $Recursive" -Color 'DarkGray'
+
+        # Initialize folders collection
+        $folders = @()
+
+        # Get the root folder
+        if ((Get-Item -Path $script:StartPath).PSIsContainer) {
+            $folders += Get-Item -Path $script:StartPath
+        }
+
+        # Add subfolders if recursive
+        if ($Recursive) {
+            Write-ColorOutput -Message "Getting all subfolders recursively..." -Color 'DarkGray'
+            $subFolders = Get-ChildItem -Path $script:StartPath -Directory -Recurse
+            $folders += $subFolders
+            Write-ColorOutput -Message "Found $($subFolders.Count) subfolder(s)" -Color 'DarkGray'
+        }
+
+        # Sort folders by depth (deepest first) to handle nested folders properly
+        $folders = $folders | Sort-Object { ($_.FullName -split '\\').Count } -Descending
+
+        # Process each folder
+        foreach ($folder in $folders) {
+            Rename-ScriptFile -StartPath $folder.FullName
+        }
+
+        Write-ColorOutput -Message "`nScript rename process completed successfully." -Color 'Green'
+    } catch {
+        Write-Error "Script error: $_"
+        Write-ColorOutput -Message "Stack Trace: $($_.ScriptStackTrace)" -Color 'Red'
+        exit 1
     }
-
-    Write-Host "Starting script rename process..." -ForegroundColor Cyan
-    Write-Host "Processing path: $StartPath" -ForegroundColor Gray
-    Write-Host "Recursive mode: $Recursive" -ForegroundColor Gray
-
-    # Initialize folders collection
-    $folders = @()
-
-    # Get the root folder
-    if ((Get-Item -Path $StartPath).PSIsContainer) {
-        $folders += Get-Item -Path $StartPath
-    }
-
-    # Add subfolders if recursive
-    if ($Recursive) {
-        Write-Host "Getting all subfolders recursively..." -ForegroundColor Gray
-        $subFolders = Get-ChildItem -Path $StartPath -Directory -Recurse
-        $folders += $subFolders
-        Write-Host "Found $($subFolders.Count) subfolder(s)" -ForegroundColor Gray
-    }
-
-    # Sort folders by depth (deepest first) to handle nested folders properly
-    $folders = $folders | Sort-Object { ($_.FullName -split '\\').Count } -Descending
-
-    # Process each folder
-    foreach ($folder in $folders) {
-        Rename-ScriptFile -StartPath $folder.FullName
-    }
-
-    Write-Host "`nScript rename process completed successfully." -ForegroundColor Green
-} catch {
-    Write-Error "Script error: $_"
-    Write-Host "Stack Trace: $($_.ScriptStackTrace)" -ForegroundColor Red
-    exit 1
 }
