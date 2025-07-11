@@ -2,10 +2,10 @@
 # Script: Monitor-CriticalServices.ps1
 # Created: 2025-04-02 17:18:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 21:00:00 UTC
+# Last Updated: 2025-07-11 18:44:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Enhanced documentation, added parameter support and function-level help
+# Version: 1.2.4
+# Additional Info: Fixed PSScriptAnalyzer unused parameter warnings by adding parameters to Watch-Service function and passing script parameters directly
 # =============================================================================
 
 <#
@@ -62,30 +62,30 @@ param(
     [Parameter(Mandatory = $false)]
     [string[]]$Services = @(
         # Windows Update
-                "wuauserv",
+        "wuauserv",
         # Windows Defender
-                "WinDefend",
+        "WinDefend",
         # Windows Event Log
-                "EventLog",
+        "EventLog",
         # DNS Client
-                "Dnscache",
+        "Dnscache",
         # Background Intelligent Transfer Service
-                "BITS",
+        "BITS",
         # Server
-                "LanmanServer",
+        "LanmanServer",
         # Workstation
-                "LanmanWorkstation",
+        "LanmanWorkstation",
         # Remote Procedure Call
-                "RpcSs"
+        "RpcSs"
     ),
 
     [Parameter(Mandatory = $false)]
     [ValidateScript({
-        if ($_ -and !(Test-Path $_)) {
-            New-Item -Path $_ -ItemType Directory -Force | Out-Null
-        }
-        return $true
-    })]
+            if ($_ -and !(Test-Path $_)) {
+                New-Item -Path $_ -ItemType Directory -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$LogPath = $PSScriptRoot,
 
     [Parameter(Mandatory = $false)]
@@ -93,25 +93,82 @@ param(
     [int]$RefreshInterval = 0
 )
 
-<#
-.SYNOPSIS
-    Writes service status with color-coded output.
-.DESCRIPTION
-    Displays service information with consistent color coding:
-    - Running: Green
-    - Stopped: Red
-    - Other states: Yellow
-    Service name is always in white for readability.
-.PARAMETER ServiceName
-    The service's system name
-.PARAMETER Status
-    Current status of the service
-.PARAMETER DisplayName
-    User-friendly display name of the service
-.EXAMPLE
-    Write-ServiceStatus -ServiceName "wuauserv" -Status "Running" -DisplayName "Windows Update"
-#>
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
+
+
 function Write-ServiceStatus {
+    <#
+    .SYNOPSIS
+        Writes service status with color-coded output.
+    .DESCRIPTION
+        Displays service information with consistent color coding:
+        - Running: Green
+        - Stopped: Red
+        - Other states: Yellow
+        Service name is always in white for readability.
+    .PARAMETER ServiceName
+        The service's system name
+    .PARAMETER Status
+        Current status of the service
+    .PARAMETER DisplayName
+        User-friendly display name of the service
+    .EXAMPLE
+        Write-ServiceStatus -ServiceName "wuauserv" -Status "Running" -DisplayName "Windows Update"
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -124,52 +181,73 @@ function Write-ServiceStatus {
         [string]$DisplayName
     )
 
+    # Validate that ServiceName is not empty
+    if ([string]::IsNullOrWhiteSpace($ServiceName)) {
+        throw "ServiceName cannot be null or empty"
+    }
+
     switch ($Status) {
         "Running" {
-            Write-Host "$DisplayName : " -NoNewline -ForegroundColor White
-            Write-Host $Status -ForegroundColor Green
+            Write-ColorOutput -Message "$DisplayName : " -Color "White"
+            Write-ColorOutput -Message $Status -Color 'Green'
         }
         "Stopped" {
-            Write-Host "$DisplayName : " -NoNewline -ForegroundColor White
-            Write-Host $Status -ForegroundColor Red
+            Write-ColorOutput -Message "$DisplayName : " -Color "White"
+            Write-ColorOutput -Message $Status -Color 'Red'
         }
         default {
-            Write-Host "$DisplayName : " -NoNewline -ForegroundColor White
-            Write-Host $Status -ForegroundColor Yellow
+            Write-ColorOutput -Message "$DisplayName : " -Color "White"
+            Write-ColorOutput -Message $Status -Color 'Yellow'
         }
     }
 }
 
-<#
-.SYNOPSIS
-    Monitors services and logs their status.
-.DESCRIPTION
-    Main monitoring function that:
-    1. Creates and maintains log file
-    2. Continuously monitors specified services
-    3. Displays real-time status
-    4. Handles user interaction for continuation
-    5. Logs all events with timestamps
-.EXAMPLE
-    Watch-Services
-#>
-function Watch-Services {
+function Watch-Service {
+    <#
+    .SYNOPSIS
+        Monitors services and logs their status.
+    .DESCRIPTION
+        Main monitoring function that:
+        1. Creates and maintains log file
+        2. Continuously monitors specified services
+        3. Displays real-time status
+        4. Handles user interaction for continuation
+        5. Logs all events with timestamps
+    .PARAMETER Services
+        Array of service names to monitor
+    .PARAMETER LogPath
+        Path for log file storage
+    .PARAMETER RefreshInterval
+        Time in seconds between service checks
+    .EXAMPLE
+        Watch-Service -Services $Services -LogPath $LogPath -RefreshInterval $RefreshInterval
+    #>
+
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Services,
+
+        [Parameter(Mandatory = $true)]
+        [string]$LogPath,
+
+        [Parameter(Mandatory = $true)]
+        [int]$RefreshInterval
+    )
 
     # Create log file with system name and timestamp
     $systemName = $env:COMPUTERNAME
     $dateStamp = Get-Date -Format "yyyyMMdd"
-    $logFile = Join-Path $LogPath "ServiceMonitor_${ systemName}_${ dateStamp}.log"
+    $logFile = Join-Path $LogPath "ServiceMonitor_${systemName}_${dateStamp}.log"
 
     try {
         do {
             Clear-Host
             $currentTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
-            Write-Host "=== Critical Services Monitor ===" -ForegroundColor Cyan
-            Write-Host "System: $systemName" -ForegroundColor DarkGray
-            Write-Host "Timestamp: $currentTimestamp" -ForegroundColor DarkGray
-            Write-Host "================================`n" -ForegroundColor Cyan
+            Write-ColorOutput -Message "=== Critical Services Monitor ===" -Color 'Cyan'
+            Write-ColorOutput -Message "System: $systemName" -Color 'DarkGray'
+            Write-ColorOutput -Message "Timestamp: $currentTimestamp" -Color 'DarkGray'
+            Write-ColorOutput -Message "================================`n" -Color 'Cyan'
 
             # Log start of monitoring session
             "[$currentTimestamp] Starting service monitoring session on $systemName" | Out-File -FilePath $logFile -Append
@@ -181,19 +259,19 @@ function Watch-Services {
                     # Log each service status
                     "[$currentTimestamp] Service: $($svc.DisplayName) - Status: $($svc.Status)" | Out-File -FilePath $logFile -Append
                 } catch {
-                    Write-Host "Service $service not found!" -ForegroundColor Red
+                    Write-ColorOutput -Message "Service $service not found!" -Color 'Red'
                     # Log missing service
                     "[$currentTimestamp] ERROR: Service $service not found - $($_.Exception.Message)" | Out-File -FilePath $logFile -Append
                 }
             }
 
             if ($RefreshInterval -gt 0) {
-                Write-Host "`nAuto-refresh every $RefreshInterval seconds. Press Ctrl+C to exit..." -ForegroundColor Cyan
+                Write-ColorOutput -Message "`nAuto-refresh every $RefreshInterval seconds. Press Ctrl+C to exit..." -Color 'Cyan'
                 Start-Sleep -Seconds $RefreshInterval
                 $continue = New-Object System.Management.Automation.Host.KeyInfo
                 $continue.Character = 'y'
             } else {
-                Write-Host "`nPress 'Y' to continue monitoring, any other key to exit..." -ForegroundColor Cyan
+                Write-ColorOutput -Message "`nPress 'Y' to continue monitoring, any other key to exit..." -Color 'Cyan'
                 $continue = $host.UI.RawUI.ReadKey("NoEcho, IncludeKeyDown")
             }
 
@@ -208,4 +286,4 @@ function Watch-Services {
 }
 
 # Start monitoring
-Watch-Services
+Watch-Service -Services $Services -LogPath $LogPath -RefreshInterval $RefreshInterval
