@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-03-17 21:00:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-24 04:01:0 UTC
+# Last Updated: 2025-07-11 05:25:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.7
-# Additional Info: Updated transcript logging to use Write-Output for proper log capture
+# Version: 2.0.8
+# Additional Info: Fixed PSScriptAnalyzer warnings by correcting variable expansion syntax in log filename
 # =============================================================================
 
 <#
@@ -90,7 +90,7 @@ function Write-ColorOutput {
 # Initialize logging
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $systemName = $env:COMPUTERNAME
-$logFile = Join-Path $PSScriptRoot "Search-ContentRecursively_${ systemName}_${ timestamp}.log"
+$logFile = Join-Path $PSScriptRoot "Search-ContentRecursively_${systemName}_${timestamp}.log"
 $null = Start-Transcript -Path $logFile
 
 try {
@@ -122,39 +122,39 @@ try {
                     # Escape the search term for regex pattern matching
                     $escapedSearchTerm = [regex]::Escape($searchTerm)
                     $props = $metadata.PSObject.Properties |
-                            Where-Object { $_.Value -is [string] -and $_.Value -imatch $escapedSearchTerm }
-                    if ($props) {
-                        foreach ($prop in $props) {
-                            [PSCustomObject]@{
-                                File = $item.FullName
-                                Property = $prop.Name
-                                Value = $prop.Value
-                                SearchTerm = $searchTerm
+                        Where-Object { $_.Value -is [string] -and $_.Value -imatch $escapedSearchTerm }
+                        if ($props) {
+                            foreach ($prop in $props) {
+                                [PSCustomObject]@{
+                                    File = $item.FullName
+                                    Property = $prop.Name
+                                    Value = $prop.Value
+                                    SearchTerm = $searchTerm
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        if ($metadataMatches) {
-            Write-ColorOutput "Found matches in metadata:" -ForegroundColor Green
-            $metadataMatches | ForEach-Object {
-                Write-ColorOutput "`nFile: $($_.File)" -ForegroundColor Yellow
-                Write-ColorOutput "$($_.Property): $($_.Value)" -ForegroundColor White
+            if ($metadataMatches) {
+                Write-ColorOutput "Found matches in metadata:" -ForegroundColor Green
+                $metadataMatches | ForEach-Object {
+                    Write-ColorOutput "`nFile: $($_.File)" -ForegroundColor Yellow
+                    Write-ColorOutput "$($_.Property): $($_.Value)" -ForegroundColor White
+                }
+            } else {
+                Write-ColorOutput "No matches found in metadata." -ForegroundColor DarkGray
             }
-        } else {
-            Write-ColorOutput "No matches found in metadata." -ForegroundColor DarkGray
+        } catch {
+            Write-ColorOutput "Error occurred while searching metadata: $_" -ForegroundColor Red
         }
-    } catch {
-        Write-ColorOutput "Error occurred while searching metadata: $_" -ForegroundColor Red
-    }
-    # Search in file and directory names
-    Write-ColorOutput "`nSearching in file and directory names..." -ForegroundColor White
-    $nameMatches = @()
-    foreach ($searchTerm in $SearchReplacePairs.Keys) {
-        $foundItems = Get-ChildItem -Path $StartPath -Recurse -Force |
-            Where-Object { $_.Name -ilike "*$searchTerm*" }
+        # Search in file and directory names
+        Write-ColorOutput "`nSearching in file and directory names..." -ForegroundColor White
+        $nameMatches = @()
+        foreach ($searchTerm in $SearchReplacePairs.Keys) {
+            $foundItems = Get-ChildItem -Path $StartPath -Recurse -Force |
+                Where-Object { $_.Name -ilike "*$searchTerm*" }
 
         if ($foundItems) {
             foreach ($match in $foundItems) {
@@ -277,38 +277,38 @@ try {
                             (Get-Content $filePath) |
                                 ForEach-Object { $_ -replace [regex]::Escape($searchTerm), $replaceWith } |
                                 Set-Content $filePath
-                            Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
-                        } catch {
-                            Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
+                                Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
+                            } catch {
+                                Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
+                            }
+                        }
+                    }
+
+                    # Rename files and folders
+                    $termNameMatches = $nameMatches | Where-Object { $_.SearchTerm -eq $searchTerm }
+                    if ($termNameMatches) {
+                        $termNameMatches | ForEach-Object {
+                            try {
+                                $newName = $_.Name -replace [regex]::Escape($searchTerm), $replaceWith
+                                $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
+                                Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
+                                Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
+                            } catch {
+                                Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
+                            }
                         }
                     }
                 }
 
-                # Rename files and folders
-                $termNameMatches = $nameMatches | Where-Object { $_.SearchTerm -eq $searchTerm }
-                if ($termNameMatches) {
-                    $termNameMatches | ForEach-Object {
-                        try {
-                            $newName = $_.Name -replace [regex]::Escape($searchTerm), $replaceWith
-                            $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
-                            Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
-                            Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
-                        } catch {
-                            Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
-                        }
-                    }
-                }
+                Write-ColorOutput "`nReplacement operation completed." -ForegroundColor Cyan
+            } else {
+                Write-ColorOutput "`nReplacement operation cancelled." -ForegroundColor Yellow
             }
-
-            Write-ColorOutput "`nReplacement operation completed." -ForegroundColor Cyan
-        } else {
-            Write-ColorOutput "`nReplacement operation cancelled." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-ColorOutput "Error: $_" -ForegroundColor Red
+    } finally {
+        if ($logFile) {
+            Stop-Transcript
         }
     }
-} catch {
-    Write-ColorOutput "Error: $_" -ForegroundColor Red
-} finally {
-    if ($logFile) {
-        Stop-Transcript
-    }
-}
