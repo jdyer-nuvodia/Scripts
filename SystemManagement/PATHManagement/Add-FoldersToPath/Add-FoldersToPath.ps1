@@ -2,10 +2,10 @@
 # Script: Add-FoldersToPath.ps1
 # Created: 2025-02-05 22:15:38 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-06-13 23:50:00 UTC
+# Last Updated: 2025-07-11 00:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.1
-# Additional Info: Removed System.Environment.Exit(0) call that was causing terminal window to close
+# Version: 2.4.0
+# Additional Info: Added functionality to skip hidden folders (those starting with a dot)
 # =============================================================================
 
 <#
@@ -21,6 +21,7 @@
      - Checks for duplicates in PATH
      - Supports recursive folder addition
      - Provides verbose logging
+     - Skips hidden folders (those starting with a dot)
 
     Dependencies:
      - PowerShell 5.1 or higher
@@ -30,6 +31,7 @@
      - Requires admin rights for Machine scope
      - Validates all paths before addition
      - Uses secure environment variable methods
+     - Excludes hidden directories for security
 
     Performance impact:
      - Minimal for single folders
@@ -55,10 +57,10 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory = $true,
-               Position = 0,
-               ValueFromPipeline = $true,
-               HelpMessage = "Root directory to add to PATH")]
-    [ValidateScript({ Test-Path $_ -PathType Container})]
+        Position = 0,
+        ValueFromPipeline = $true,
+        HelpMessage = "Root directory to add to PATH")]
+    [ValidateScript({ Test-Path $_ -PathType Container })]
     [string]$StartPath,
 
     [Parameter(Mandatory = $false)]
@@ -84,7 +86,7 @@ begin {
             [ValidateSet('INFO', 'WARNING', 'ERROR', 'DEBUG', 'SUCCESS')]
             [string]$Level = 'INFO'
         )
-          $TimeStamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss UTC")
+        $TimeStamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss UTC")
         $LogEntry = "$TimeStamp [$Level] $Message"
         Add-Content -Path $LogFile -Value $LogEntry
 
@@ -103,7 +105,7 @@ begin {
             default { Write-Output $LogEntry }
         }
     }    Write-LogEntry "Starting script execution" -Level INFO
-    Write-LogEntry "Script version: 2.3.1" -Level INFO
+    Write-LogEntry "Script version: 2.4.0" -Level INFO
 
     # Verify running as administrator for Machine scope
     if ($Scope -eq 'Machine' -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -168,13 +170,14 @@ process {
 
         # Using a more efficient method to get subdirectories
         if (-not $NoRecurse) {
-            Write-LogEntry "Getting subdirectories for $StartPath" -Level INFO
-            # Use -Force to include hidden directories, limit depth if too many subfolders
+            Write-LogEntry "Getting subdirectories for $StartPath (skipping hidden folders)" -Level INFO
+            # Use -Force to include hidden directories, then filter out those starting with a dot
             $startTime = Get-Date
-            $subDirs = Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop
+            $subDirs = Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop |
+            Where-Object { -not ($_.Name.StartsWith('.')) }
             $endTime = Get-Date
             $processingTime = ($endTime - $startTime).TotalSeconds
-            Write-LogEntry "Found $($subDirs.Count) subdirectories in $processingTime seconds" -Level INFO
+            Write-LogEntry "Found $($subDirs.Count) subdirectories (excluding hidden) in $processingTime seconds" -Level INFO
             $directories += $subDirs.FullName
         }
 
@@ -214,14 +217,14 @@ process {
             if ($PSCmdlet.ShouldProcess("PATH Environment Variable", "Add $($newPaths.Count) new directories")) {
                 Write-LogEntry "Updating PATH variable with $($newPaths.Count) new entries" -Level INFO
                 [System.Environment]::SetEnvironmentVariable("Path", $newPathString, [System.EnvironmentVariableTarget]::$Scope)
-                  Write-LogEntry "Successfully added $($newPaths.Count) directories to PATH ($Scope scope)" -Level SUCCESS
+                Write-LogEntry "Successfully added $($newPaths.Count) directories to PATH ($Scope scope)" -Level SUCCESS
                 $newPaths | ForEach-Object {
                     Write-LogEntry "  + $_" -Level SUCCESS
                 }
             } else {
                 Write-LogEntry "WhatIf: Would add $($newPaths.Count) directories to PATH" -Level INFO
             }
-        }        else {
+        } else {
             Write-LogEntry "No new directories needed to be added to PATH" -Level WARNING
         }
     } catch {
