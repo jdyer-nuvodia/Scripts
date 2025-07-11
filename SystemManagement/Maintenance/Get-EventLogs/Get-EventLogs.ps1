@@ -41,22 +41,22 @@ param(
 
     [Parameter()]
     [ValidateScript({
-        if ($_ -match '^\d { 14}$') {
-            $true
-        } else {
-            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"
-        }
-    })]
+            if ($_ -match '^\d { 14}$') {
+                $true
+            } else {
+                throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"
+            }
+        })]
     [string]$StartDate,
 
     [Parameter()]
     [ValidateScript({
-        if ($_ -match '^\d { 14}$') {
-            $true
-        } else {
-            throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"
-        }
-    })]
+            if ($_ -match '^\d { 14}$') {
+                $true
+            } else {
+                throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"
+            }
+        })]
     [string]$EndDate
 )
 
@@ -106,7 +106,7 @@ try {
 
     foreach ($logName in $LogNames) {
         Write-Verbose "Exporting events from $logName"
-        $outputFile = "C:\Temp\${ systemName}_${ logName}_$(Get-TimeStamp).evtx"
+        $outputFile = "C:\Temp\${systemName}_${ logName}_$(Get-TimeStamp).evtx"
 
         # Create query string for time filter
         $timeQuery = "*[System[TimeCreated[@SystemTime>=`'$startTimeFormatted`'] and TimeCreated[@SystemTime<=`'$endTimeFormatted`']]]"
