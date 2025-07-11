@@ -89,7 +89,8 @@ The current month is June, the current year is 2025.
 
 10. **Variable Scoping and Parameter Usage**
     - Use explicit scoping or correct passing of parameters to functions for all script parameters within functions when necessary to avoid PSScriptAnalyzer "unused parameter" warnings.
-    - Use `$script:ParameterName` when referencing script parameters from within functions.
+    - Pass parameters to functions explicitly.
+    - Use `$script:` scope for script-level variables when needed.
     - **Never** reference parameters without explicit scope (`$ParameterName` alone) from within functions, but script functions can reference global variables directly.
     - Examples: `$script:VM`, `$script:ReportPath`, `$script:DaysToAnalyze`, `$script:CriticalServices`
 
