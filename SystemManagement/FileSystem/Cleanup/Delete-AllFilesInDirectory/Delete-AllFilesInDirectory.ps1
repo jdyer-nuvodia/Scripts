@@ -2,10 +2,10 @@
 # Script: Delete-AllFilesInDirectory.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-05-29 20:22:00 UTC
+# Last Updated: 2025-07-11 00:39:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.2
-# Additional Info: Fixed incorrect takeown command (switched from icacls to takeown.exe)
+# Version: 1.3.5
+# Additional Info: Added OutputType attribute to Set-Ownership function for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -44,104 +44,167 @@ param(
     [string]$TargetPath
 )
 
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
+
 # Function to take ownership of files and folders
 function Set-Ownership {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([System.Boolean])]
     param (
         [Parameter(Mandatory = $true)]
         [string]$StartPath
     )
 
-    Write-Host "Taking ownership of path: $StartPath" -ForegroundColor Cyan
-      try {
-        # Take ownership using takeown command
-        $takeOwnResult = Start-Process -FilePath "takeown.exe" -ArgumentList "/F `"$StartPath`" /R /D Y" -NoNewWindow -PassThru -Wait
-        if ($takeOwnResult.ExitCode -ne 0) {
-            Write-Host "Warning: Failed to take ownership of $StartPath (Exit code: $($takeOwnResult.ExitCode))" -ForegroundColor Yellow
-        }
+    if ($PSCmdlet.ShouldProcess($StartPath, "Take ownership of path and set permissions")) {
+        Write-ColorOutput -Message "Taking ownership of path: $StartPath" -Color 'Cyan'
+        try {
+            # Take ownership using takeown command
+            $takeOwnResult = Start-Process -FilePath "takeown.exe" -ArgumentList "/F `"$StartPath`" /R /D Y" -NoNewWindow -PassThru -Wait
+            if ($takeOwnResult.ExitCode -ne 0) {
+                Write-ColorOutput -Message "Warning: Failed to take ownership of $StartPath (Exit code: $($takeOwnResult.ExitCode))" -Color 'Yellow'
+            }
 
-        # Grant full control to the current user/system
-        $grantResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$StartPath`" /grant *S-1-5-18:F /T /C /Q" -NoNewWindow -PassThru -Wait
-        if ($grantResult.ExitCode -ne 0) {
-            Write-Host "Warning: Failed to grant permissions on $StartPath (Exit code: $($grantResult.ExitCode))" -ForegroundColor Yellow
-        }
+            # Grant full control to the current user/system
+            $grantResult = Start-Process -FilePath "icacls.exe" -ArgumentList "`"$StartPath`" /grant *S-1-5-18:F /T /C /Q" -NoNewWindow -PassThru -Wait
+            if ($grantResult.ExitCode -ne 0) {
+                Write-ColorOutput -Message "Warning: Failed to grant permissions on $StartPath (Exit code: $($grantResult.ExitCode))" -Color 'Yellow'
+            }
 
+            return $true
+        } catch {
+            Write-ColorOutput -Message "Error taking ownership of $StartPath`: $($_.Exception.Message)" -Color 'Yellow'
+            return $false
+        }
+    } else {
+        Write-ColorOutput -Message "Would take ownership of path: $StartPath" -Color 'Cyan'
         return $true
-    } catch {
-        Write-Host "Error taking ownership of $StartPath`: $($_.Exception.Message)" -ForegroundColor Yellow
-        return $false
     }
 }
 
-Write-Host "Starting directory cleanup process..." -ForegroundColor Cyan
-Write-Host "Target directory: $TargetPath" -ForegroundColor Cyan
+Write-ColorOutput -Message "Starting directory cleanup process..." -Color 'Cyan'
+Write-ColorOutput -Message "Target directory: $TargetPath" -Color 'Cyan'
 
 try {
     # Step 1: Take ownership of the target directory and all contents
-    Write-Host "Taking ownership of all files and folders..." -ForegroundColor Cyan
-    $ownershipResult = Set-Ownership -StartPath $TargetPath
+    Write-ColorOutput -Message "Taking ownership of all files and folders..." -Color 'Cyan'
+    $ownershipResult = Set-Ownership -StartPath $script:TargetPath -WhatIf:$WhatIfPreference -Confirm:$ConfirmPreference
 
     if (-not $ownershipResult) {
-        Write-Host "Continuing with deletion despite ownership issues. Some files may be skipped." -ForegroundColor Yellow
+        Write-ColorOutput -Message "Continuing with deletion despite ownership issues. Some files may be skipped." -Color 'Yellow'
     }
 
     # Remove all files
-    Write-Host "Removing files..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Removing files..." -Color 'Cyan'
     Get-ChildItem -Path $TargetPath -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
         try {
             if ($PSCmdlet.ShouldProcess($_.FullName, "Delete file")) {
-                Write-Host "Deleting file: $($_.FullName)" -ForegroundColor Yellow
+                Write-ColorOutput -Message "Deleting file: $($_.FullName)" -Color 'Yellow'
                 Remove-Item -Path $_.FullName -Force -ErrorAction Stop
             }
         } catch {
-            Write-Host "Failed to delete file $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-ColorOutput -Message "Failed to delete file $($_.FullName): $($_.Exception.Message)" -Color 'Yellow'
         }
     }
 
     # Remove all folders with improved error handling and long path support
-    Write-Host "Removing folders..." -ForegroundColor Cyan
+    Write-ColorOutput -Message "Removing folders..." -Color 'Cyan'
     Get-ChildItem -Path $TargetPath -Directory -Recurse -ErrorAction SilentlyContinue |
-        Sort-Object -Property FullName -Descending |
-        ForEach-Object {
-            $StartPath = $_.FullName
-            if ($PSCmdlet.ShouldProcess($StartPath, "Delete folder")) {
-                Write-Host "Attempting to delete folder: $StartPath" -ForegroundColor Yellow
-                try {
-                    # Enable long path support if needed
-                    if ($StartPath.Length -ge 260) {
-                        $StartPath = "\\?\$StartPath"
-                        Write-Host "Using long path format: $StartPath" -ForegroundColor Yellow
-                    }
+    Sort-Object -Property FullName -Descending |
+    ForEach-Object {
+        $StartPath = $_.FullName
+        if ($PSCmdlet.ShouldProcess($StartPath, "Delete folder")) {
+            Write-ColorOutput -Message "Attempting to delete folder: $StartPath" -Color 'Yellow'
+            try {
+                # Enable long path support if needed
+                if ($StartPath.Length -ge 260) {
+                    $StartPath = "\\?\$StartPath"
+                    Write-ColorOutput -Message "Using long path format: $StartPath" -Color 'Yellow'
+                }
 
-                    # Try up to 3 times with a small delay between attempts
-                    $maxAttempts = 3
-                    $attempt = 1
-                    $success = $false
+                # Try up to 3 times with a small delay between attempts
+                $maxAttempts = 3
+                $attempt = 1
+                $success = $false
 
-                    while (-not $success -and $attempt -le $maxAttempts) {
-                        try {
-                            Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
-                            $success = $true
-                            Write-Host "Successfully deleted folder: $($_.FullName)" -ForegroundColor Green
-                        } catch {
-                            if ($attempt -lt $maxAttempts) {
-                                Write-Host "Attempt $attempt failed, retrying in 2 seconds..." -ForegroundColor Yellow
-                                Start-Sleep -Seconds 2
-                                $attempt++
-                            } else {
-                                Write-Host "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -ForegroundColor Yellow
-                                Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Yellow
-                                # Continue with other folders instead of stopping
-                            }
+                while (-not $success -and $attempt -le $maxAttempts) {
+                    try {
+                        Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
+                        $success = $true
+                        Write-ColorOutput -Message "Successfully deleted folder: $($_.FullName)" -Color 'Green'
+                    } catch {
+                        if ($attempt -lt $maxAttempts) {
+                            Write-ColorOutput -Message "Attempt $attempt failed, retrying in 2 seconds..." -Color 'Yellow'
+                            Start-Sleep -Seconds 2
+                            $attempt++
+                        } else {
+                            Write-ColorOutput -Message "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -Color 'Yellow'
+                            Write-ColorOutput -Message "Error: $($_.Exception.Message)" -Color 'Yellow'
+                            # Continue with other folders instead of stopping
                         }
                     }
-                } catch {
-                    Write-Host "Error processing folder $($_.FullName): $($_.Exception.Message)" -ForegroundColor Yellow
-                    # Continue with other folders
                 }
+            } catch {
+                Write-ColorOutput -Message "Error processing folder $($_.FullName): $($_.Exception.Message)" -Color 'Yellow'
+                # Continue with other folders
             }
         }
+    }
 
-    Write-Host "Directory cleanup completed successfully!" -ForegroundColor Green
+    Write-ColorOutput -Message "Directory cleanup completed successfully!" -Color 'Green'
 } catch {
     Write-Error "An error occurred during the cleanup process: $_"
     exit 1
@@ -153,22 +216,22 @@ function Show-DriveInfo {
         [object]$Volume
     )
 
-    Write-Host "`nDrive Volume Details:" -ForegroundColor Green
-    Write-Host "------------------------" -ForegroundColor Green
-    Write-Host "Drive Letter: $($Volume.DriveLetter)" -ForegroundColor Cyan
-    Write-Host "Drive Label: $($Volume.FileSystemLabel)" -ForegroundColor Cyan
-    Write-Host "File System: $($Volume.FileSystem)" -ForegroundColor Cyan
-    Write-Host "Drive Type: $($Volume.DriveType)" -ForegroundColor Cyan
-    Write-Host "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -ForegroundColor Cyan
-    Write-Host "Health Status: $($Volume.HealthStatus)" -ForegroundColor Cyan
+    Write-ColorOutput -Message "`nDrive Volume Details:" -Color 'Green'
+    Write-ColorOutput -Message "------------------------" -Color 'Green'
+    Write-ColorOutput -Message "Drive Letter: $($Volume.DriveLetter)" -Color 'Cyan'
+    Write-ColorOutput -Message "Drive Label: $($Volume.FileSystemLabel)" -Color 'Cyan'
+    Write-ColorOutput -Message "File System: $($Volume.FileSystem)" -Color 'Cyan'
+    Write-ColorOutput -Message "Drive Type: $($Volume.DriveType)" -Color 'Cyan'
+    Write-ColorOutput -Message "Size: $([math]::Round($Volume.Size/1GB, 2)) GB" -Color 'Cyan'
+    Write-ColorOutput -Message "Free Space: $([math]::Round($Volume.SizeRemaining/1GB, 2)) GB" -Color 'Cyan'
+    Write-ColorOutput -Message "Health Status: $($Volume.HealthStatus)" -Color 'Cyan'
 }
 
 try {
     # Get all available volumes with drive letters and sort them
     $volumes = Get-Volume |
-        Where-Object { $_.DriveLetter } |
-        Sort-Object DriveLetter
+    Where-Object { $_.DriveLetter } |
+    Sort-Object DriveLetter
 
     if ($volumes.Count -eq 0) {
         Write-Error "No drives with letters found on the system."
@@ -178,7 +241,7 @@ try {
     # Select the volume with lowest drive letter
     $lowestVolume = $volumes[0]
 
-    Write-Host "Found lowest drive letter: $($lowestVolume.DriveLetter)" -ForegroundColor Yellow
+    Write-ColorOutput -Message "Found lowest drive letter: $($lowestVolume.DriveLetter)" -Color 'Yellow'
     Show-DriveInfo -Volume $lowestVolume
 } catch {
     Write-Error "Error accessing drive information. Error: $_"
