@@ -68,6 +68,7 @@ The current month is June, the current year is 2025.
 
 7. **Naming Conventions and Readability**
    - Use Verb-Noun format for functions and scripts.
+   - **NEVER** use plural nouns.
    - Avoid aliases; use full cmdlet and parameter names.
    - Include clear comments and documentation headers.
    - Do **NOT** use non-ascii characters in script names or content.
