@@ -168,9 +168,9 @@ try {
         $percentComplete = [math]::Round(($currentDir / $totalDirs) * 100, 2)
 
         Write-Progress -Activity "Analyzing User Directories" `
-                      -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
-                      -PercentComplete $percentComplete `
-                      -CurrentOperation $userDir.Name
+            -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
+            -PercentComplete $percentComplete `
+            -CurrentOperation $userDir.Name
 
         # Always skip system exclusions
         if ($systemExclusions -contains $userDir.Name) {
@@ -228,9 +228,9 @@ try {
         $percentComplete = [math]::Round(($currentTarget / $totalTarget) * 100, 2)
 
         Write-Progress -Activity "Processing User Directories for Deletion" `
-                      -Status "Processing $currentTarget of $totalTarget directories ($percentComplete%)" `
-                      -PercentComplete $percentComplete `
-                      -CurrentOperation $targetDir.Name
+            -Status "Processing $currentTarget of $totalTarget directories ($percentComplete%)" `
+            -PercentComplete $percentComplete `
+            -CurrentOperation $targetDir.Name
 
         try {
             if ($PSCmdlet.ShouldProcess($targetDir.FullName, "Delete user directory and all contents")) {
@@ -282,8 +282,8 @@ try {
         # Show space reclaimed
         $spaceReclaimed = $volumeAfter.SizeRemaining - $volumeBefore.SizeRemaining
         if ($spaceReclaimed -gt 0) {
-            $spaceReclaimedMB = [math]::Round($spaceReclaimed/1MB, 2)
-            $spaceReclaimedGB = [math]::Round($spaceReclaimed/1GB, 2)
+            $spaceReclaimedMB = [math]::Round($spaceReclaimed / 1MB, 2)
+            $spaceReclaimedGB = [math]::Round($spaceReclaimed / 1GB, 2)
             Write-Information "`nSpace reclaimed: $spaceReclaimedMB MB ($spaceReclaimedGB GB)" -InformationAction Continue
             Write-LogEntry -Message "Space reclaimed: $spaceReclaimedMB MB ($spaceReclaimedGB GB)" -LogPath $detailLogPath -Level "SUCCESS"
         } else {
