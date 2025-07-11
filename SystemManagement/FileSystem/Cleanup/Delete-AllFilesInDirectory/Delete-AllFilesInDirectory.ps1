@@ -163,46 +163,46 @@ try {
     # Remove all folders with improved error handling and long path support
     Write-ColorOutput -Message "Removing folders..." -Color 'Cyan'
     Get-ChildItem -Path $TargetPath -Directory -Recurse -ErrorAction SilentlyContinue |
-    Sort-Object -Property FullName -Descending |
-    ForEach-Object {
-        $StartPath = $_.FullName
-        if ($PSCmdlet.ShouldProcess($StartPath, "Delete folder")) {
-            Write-ColorOutput -Message "Attempting to delete folder: $StartPath" -Color 'Yellow'
-            try {
-                # Enable long path support if needed
-                if ($StartPath.Length -ge 260) {
-                    $StartPath = "\\?\$StartPath"
-                    Write-ColorOutput -Message "Using long path format: $StartPath" -Color 'Yellow'
-                }
+        Sort-Object -Property FullName -Descending |
+        ForEach-Object {
+            $StartPath = $_.FullName
+            if ($PSCmdlet.ShouldProcess($StartPath, "Delete folder")) {
+                Write-ColorOutput -Message "Attempting to delete folder: $StartPath" -Color 'Yellow'
+                try {
+                    # Enable long path support if needed
+                    if ($StartPath.Length -ge 260) {
+                        $StartPath = "\\?\$StartPath"
+                        Write-ColorOutput -Message "Using long path format: $StartPath" -Color 'Yellow'
+                    }
 
-                # Try up to 3 times with a small delay between attempts
-                $maxAttempts = 3
-                $attempt = 1
-                $success = $false
+                    # Try up to 3 times with a small delay between attempts
+                    $maxAttempts = 3
+                    $attempt = 1
+                    $success = $false
 
-                while (-not $success -and $attempt -le $maxAttempts) {
-                    try {
-                        Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
-                        $success = $true
-                        Write-ColorOutput -Message "Successfully deleted folder: $($_.FullName)" -Color 'Green'
-                    } catch {
-                        if ($attempt -lt $maxAttempts) {
-                            Write-ColorOutput -Message "Attempt $attempt failed, retrying in 2 seconds..." -Color 'Yellow'
-                            Start-Sleep -Seconds 2
-                            $attempt++
-                        } else {
-                            Write-ColorOutput -Message "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -Color 'Yellow'
-                            Write-ColorOutput -Message "Error: $($_.Exception.Message)" -Color 'Yellow'
-                            # Continue with other folders instead of stopping
+                    while (-not $success -and $attempt -le $maxAttempts) {
+                        try {
+                            Remove-Item -LiteralPath $StartPath -Recurse -Force -ErrorAction Stop
+                            $success = $true
+                            Write-ColorOutput -Message "Successfully deleted folder: $($_.FullName)" -Color 'Green'
+                        } catch {
+                            if ($attempt -lt $maxAttempts) {
+                                Write-ColorOutput -Message "Attempt $attempt failed, retrying in 2 seconds..." -Color 'Yellow'
+                                Start-Sleep -Seconds 2
+                                $attempt++
+                            } else {
+                                Write-ColorOutput -Message "Failed to delete folder after $maxAttempts attempts: $($_.FullName)" -Color 'Yellow'
+                                Write-ColorOutput -Message "Error: $($_.Exception.Message)" -Color 'Yellow'
+                                # Continue with other folders instead of stopping
+                            }
                         }
                     }
+                } catch {
+                    Write-ColorOutput -Message "Error processing folder $($_.FullName): $($_.Exception.Message)" -Color 'Yellow'
+                    # Continue with other folders
                 }
-            } catch {
-                Write-ColorOutput -Message "Error processing folder $($_.FullName): $($_.Exception.Message)" -Color 'Yellow'
-                # Continue with other folders
             }
         }
-    }
 
     Write-ColorOutput -Message "Directory cleanup completed successfully!" -Color 'Green'
 } catch {
@@ -230,8 +230,8 @@ function Show-DriveInfo {
 try {
     # Get all available volumes with drive letters and sort them
     $volumes = Get-Volume |
-    Where-Object { $_.DriveLetter } |
-    Sort-Object DriveLetter
+        Where-Object { $_.DriveLetter } |
+        Sort-Object DriveLetter
 
     if ($volumes.Count -eq 0) {
         Write-Error "No drives with letters found on the system."
