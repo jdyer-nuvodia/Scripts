@@ -160,9 +160,9 @@ try {
         $percentComplete = [math]::Round(($currentDir / $totalDirs) * 100, 2)
 
         Write-Progress -Activity "Analyzing User Directories" `
-                      -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
-                      -PercentComplete $percentComplete `
-                      -CurrentOperation $userDir.Name
+            -Status "Checking directory $currentDir of $totalDirs ($percentComplete%)" `
+            -PercentComplete $percentComplete `
+            -CurrentOperation $userDir.Name
 
         # Skip excluded users (case-insensitive)
         if ($allExcludedUsers -contains $userDir.Name) {
@@ -175,7 +175,7 @@ try {
             Write-LogEntry -Message "Analyzing user directory: $($userDir.FullName)" -LogPath $detailLogPath -Level "INFO"
 
             $recentItems = Get-ChildItem -Path $userDir.FullName -Recurse -Force -ErrorAction SilentlyContinue |
-                          Where-Object { $_.LastWriteTime -ge $cutoffDate }
+                Where-Object { $_.LastWriteTime -ge $cutoffDate }
 
             if (-not $recentItems) {
                 # No items newer than cutoff, directory is inactive
@@ -214,9 +214,9 @@ try {
         $percentComplete = [math]::Round(($currentInactive / $totalInactive) * 100, 2)
 
         Write-Progress -Activity "Processing Inactive User Directories" `
-                      -Status "Processing $currentInactive of $totalInactive directories ($percentComplete%)" `
-                      -PercentComplete $percentComplete `
-                      -CurrentOperation $inactiveDir.Name
+            -Status "Processing $currentInactive of $totalInactive directories ($percentComplete%)" `
+            -PercentComplete $percentComplete `
+            -CurrentOperation $inactiveDir.Name
 
         try {
             if ($PSCmdlet.ShouldProcess($inactiveDir.FullName, "Delete inactive user directory and all contents")) {
@@ -268,8 +268,8 @@ try {
         # Show space reclaimed
         $spaceReclaimed = $volumeAfter.SizeRemaining - $volumeBefore.SizeRemaining
         if ($spaceReclaimed -gt 0) {
-            $spaceReclaimedMB = [math]::Round($spaceReclaimed/1MB, 2)
-            $spaceReclaimedGB = [math]::Round($spaceReclaimed/1GB, 2)
+            $spaceReclaimedMB = [math]::Round($spaceReclaimed / 1MB, 2)
+            $spaceReclaimedGB = [math]::Round($spaceReclaimed / 1GB, 2)
             Write-Information "`nSpace reclaimed: $spaceReclaimedMB MB ($spaceReclaimedGB GB)" -InformationAction Continue
             Write-LogEntry -Message "Space reclaimed: $spaceReclaimedMB MB ($spaceReclaimedGB GB)" -LogPath $detailLogPath -Level "SUCCESS"
         } else {
