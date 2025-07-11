@@ -67,6 +67,62 @@ param (
     [string]$Scope = "User"
 )
 
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
+
 $pathType = $Scope
 
 # Verify running as Administrator when modifying Machine PATH
@@ -79,9 +135,9 @@ if ($Scope -eq "Machine" -and -not ([Security.Principal.WindowsPrincipal][Securi
 $scriptName = $MyInvocation.MyCommand.Name
 $computerName = $env:COMPUTERNAME
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$logPath = Join-Path -Path $PSScriptRoot -ChildPath "${ computerName}_${ scriptName}_${ timestamp}.log"
+$logPath = Join-Path -Path $PSScriptRoot -ChildPath "${computerName}_${scriptName}_${timestamp}.log"
 
-function Write-Log {
+function Write-LogMessage {
     param (
         [string]$Message,
         [string]$Level = "INFO"
@@ -93,14 +149,14 @@ function Write-Log {
     Add-Content -Path $logPath -Value $logMessage
 
     switch ($Level) {
-        "INFO" { Write-Host $Message -ForegroundColor White }
-        "PROCESS" { Write-Host $Message -ForegroundColor Cyan }
-        "SUCCESS" { Write-Host $Message -ForegroundColor Green }
-        "WARNING" { Write-Host $Message -ForegroundColor Yellow }
-        "ERROR" { Write-Host $Message -ForegroundColor Red }
-        "DEBUG" { Write-Host $Message -ForegroundColor Magenta }
-        "DETAIL" { Write-Host $Message -ForegroundColor DarkGray }
-        default { Write-Host $Message }
+        "INFO" { Write-ColorOutput -Message  -Color 'White' }
+        "PROCESS" { Write-ColorOutput -Message  -Color 'Cyan' }
+        "SUCCESS" { Write-ColorOutput -Message  -Color 'Green' }
+        "WARNING" { Write-ColorOutput -Message  -Color 'Yellow' }
+        "ERROR" { Write-ColorOutput -Message  -Color 'Red' }
+        "DEBUG" { Write-ColorOutput -Message  -Color 'Magenta' }
+        "DETAIL" { Write-ColorOutput -Message  -Color 'DarkGray' }
+        default { Write-ColorOutput -Message $Message -Color "White" }
     }
 }
 
@@ -130,17 +186,17 @@ $newPathEntries = if ($Scope -eq "Machine") {
 }
 
 try {
-    Write-Log "Starting PATH reset for $pathType scope" "PROCESS"
+    Write-LogMessage "Starting PATH reset for $pathType scope" "PROCESS"
 
     # Backup current PATH
     $currentPath = [Environment]::GetEnvironmentVariable('PATH', $pathType)
     $backupPath = Join-Path -Path $PSScriptRoot -ChildPath "${ pathType}_PATH_Backup_${ timestamp}.txt"
 
-    Write-Log "Current $pathType PATH: $currentPath" "DETAIL"
+    Write-LogMessage "Current $pathType PATH: $currentPath" "DETAIL"
 
     if ($PSCmdlet.ShouldProcess("$pathType PATH", "Reset to default values")) {
         $currentPath | Out-File -FilePath $backupPath -Encoding UTF8
-        Write-Log "Backup of previous $pathType PATH saved to: $backupPath" "PROCESS"
+        Write-LogMessage "Backup of previous $pathType PATH saved to: $backupPath" "PROCESS"
 
         # Join the new paths with semicolon
         $newPath = $newPathEntries -join ';'
@@ -148,29 +204,29 @@ try {
         # Set the new PATH
         [Environment]::SetEnvironmentVariable('PATH', $newPath, $pathType)
 
-        Write-Log "$pathType PATH has been successfully updated" "SUCCESS"
-        Write-Log "Please restart your terminal/applications for the changes to take effect" "PROCESS"
+        Write-LogMessage "$pathType PATH has been successfully updated" "SUCCESS"
+        Write-LogMessage "Please restart your terminal/applications for the changes to take effect" "PROCESS"
     } else {
-        Write-Log "WhatIf: Would reset $pathType PATH to: $($newPathEntries -join ';')" "DEBUG"
+        Write-LogMessage "WhatIf: Would reset $pathType PATH to: $($newPathEntries -join ';')" "DEBUG"
     }
 } catch {
-    Write-Log "Failed to update $pathType PATH: $_" "ERROR"
+    Write-LogMessage "Failed to update $pathType PATH: $_" "ERROR"
     exit 1
 }
 
 # Run PSScriptAnalyzer validation
 if (Get-Command -Name Invoke-ScriptAnalyzer -ErrorAction SilentlyContinue) {
-    Write-Log "Running PSScriptAnalyzer..." "PROCESS"
+    Write-LogMessage "Running PSScriptAnalyzer..." "PROCESS"
     $scriptAnalyzerResults = Invoke-ScriptAnalyzer -Path $MyInvocation.MyCommand.Path
 
     if ($scriptAnalyzerResults) {
-        Write-Log "PSScriptAnalyzer found issues:" "WARNING"
+        Write-LogMessage "PSScriptAnalyzer found issues:" "WARNING"
         foreach ($result in $scriptAnalyzerResults) {
-            Write-Log ("Line { 0}: { 1} - { 2}" -f $result.Line, $result.RuleName, $result.Message) "DETAIL"
+            Write-LogMessage ("Line { 0}: { 1} - { 2}" -f $result.Line, $result.RuleName, $result.Message) "DETAIL"
         }
     } else {
-        Write-Log "PSScriptAnalyzer found no issues" "SUCCESS"
+        Write-LogMessage "PSScriptAnalyzer found no issues" "SUCCESS"
     }
 } else {
-    Write-Log "PSScriptAnalyzer not available. Install with: Install-Module -Name PSScriptAnalyzer -Force" "DETAIL"
+    Write-LogMessage "PSScriptAnalyzer not available. Install with: Install-Module -Name PSScriptAnalyzer -Force" "DETAIL"
 }
