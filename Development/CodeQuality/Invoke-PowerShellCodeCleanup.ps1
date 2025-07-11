@@ -2,10 +2,10 @@
 # Script: Invoke-PowerShellCodeCleanup.ps1
 # Created: 2025-06-23 15:30
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 22:30:00 UTC
+# Last Updated: 2025-07-11 03:12:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.4
-# Additional Info: Changed parameter name from -ScriptPath to -FilePath for consistency with PowerShell conventions
+# Version: 1.6.6
+# Additional Info: Fixed regex patterns to avoid modifying format strings and command-line parameters
 # =============================================================================
 
 <#
@@ -534,22 +534,28 @@ function Repair-WhitespaceConsistency {
             # Fix binary and assignment operators - ensure exactly one space before and after =
             # Handle assignment operators like = += -= *= /= %=
             # Fix for hash table entries and general assignments
+            # Exclude command-line parameters that contain /parameter= or -parameter= patterns
             $modifiedLine = $modifiedLine -replace "('[\w\s]+')(\s*)=(\s*)([^=])", '$1 = $4'
-            $modifiedLine = $modifiedLine -replace '(\w)\s*=\s*([^=])', '$1 = $2'
-            $modifiedLine = $modifiedLine -replace '(\w)\s*\+=\s*(\w)', '$1 += $2'
-            $modifiedLine = $modifiedLine -replace '(\w)\s*-=\s*(\w)', '$1 -= $2'
-            $modifiedLine = $modifiedLine -replace '(\w)\s*\*=\s*(\w)', '$1 *= $2'
-            $modifiedLine = $modifiedLine -replace '(\w)\s*/=\s*(\w)', '$1 /= $2'
-            $modifiedLine = $modifiedLine -replace '(\w)\s*%=\s*(\w)', '$1 %= $2'
+            # Don't fix lines that contain command line parameters with /word= or -word= patterns
+            if ($modifiedLine -notmatch '/\w+=|vssadmin.*=') {
+                $modifiedLine = $modifiedLine -replace '(\w)\s*=\s*([^=])', '$1 = $2'
+                $modifiedLine = $modifiedLine -replace '(\w)\s*\+=\s*(\w)', '$1 += $2'
+                $modifiedLine = $modifiedLine -replace '(\w)\s*-=\s*(\w)', '$1 -= $2'
+                $modifiedLine = $modifiedLine -replace '(\w)\s*\*=\s*(\w)', '$1 *= $2'
+                $modifiedLine = $modifiedLine -replace '(\w)\s*/=\s*(\w)', '$1 /= $2'
+                $modifiedLine = $modifiedLine -replace '(\w)\s*%=\s*(\w)', '$1 %= $2'
+            }
 
             # Fix braces - ensure exactly one space before and after opening brace
             # Fix missing space before opening brace (e.g., "switch ($var){" -> "switch ($var) {")
-            $modifiedLine = $modifiedLine -replace '(\w|\)|")\{', '$1 {'
+            # But exclude format strings that start with quotes followed by format specifiers
+            $modifiedLine = $modifiedLine -replace '(\w|\))(?<!")(\{)(?![0-9]+[:\}])', '$1 $2'
             # Fix multiple spaces before opening brace (e.g., "item"    { -> "item" {)
-            $modifiedLine = $modifiedLine -replace '\s{2,}\{', ' {'
-            # Fix exactly one space after opening brace, but exclude string interpolation patterns
-            # Only match standalone braces, not those preceded by $ (string interpolation)
-            $modifiedLine = $modifiedLine -replace '(?<!\$)\{([^\s\}])', '{ $1'
+            $modifiedLine = $modifiedLine -replace '\s{2,}(?<!")\{(?![0-9]+[:\}])', ' {'
+            # Fix exactly one space after opening brace, but exclude string interpolation patterns and format strings
+            # Only match standalone braces, not those preceded by $ (string interpolation) or containing format specifiers
+            # Exclude format strings like {0:N2}, {1}, etc.
+            $modifiedLine = $modifiedLine -replace '(?<!\$)(?<!"){(?![0-9]+[:\}])([^\s\}])', '{ $1'
 
             # Fix commas - ensure exactly one space after comma
             $modifiedLine = $modifiedLine -replace ',([^\s\r\n])', ', $1'
