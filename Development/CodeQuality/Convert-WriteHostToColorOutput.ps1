@@ -2,10 +2,10 @@
 # Script: Convert-WriteHostToColorOutput.ps1
 # Created: 2025-07-09 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-09 21:50:00 UTC
+# Last Updated: 2025-07-11 00:10:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Converts Write-Host calls to Write-ColorOutput for PSScriptAnalyzer compliance. Added support for basic Write-Host calls without -ForegroundColor parameter.
+# Version: 1.1.1
+# Additional Info: Changed parameter name from -ScriptPath to -FilePath for consistency with PowerShell conventions
 # =============================================================================
 
 <#
@@ -23,7 +23,7 @@ calls to ensure PSScriptAnalyzer compliance. The script handles various Write-Ho
 The script also adds the required Write-ColorOutput function and color support variables to the
 target script if they do not already exist.
 
-.PARAMETER ScriptPath
+.PARAMETER FilePath
 The path to the PowerShell script file to process. Can be a single file or multiple files.
 
 .PARAMETER BackupOriginal
@@ -33,22 +33,22 @@ Creates a backup of the original file before making changes. Default is $true.
 Shows what changes would be made without actually modifying files.
 
 .EXAMPLE
-.\Convert-WriteHostToColorOutput.ps1 -ScriptPath "C:\Scripts\MyScript.ps1"
+.\Convert-WriteHostToColorOutput.ps1 -FilePath "C:\Scripts\MyScript.ps1"
 Converts Write-Host calls to Write-ColorOutput in the specified script.
 
 .EXAMPLE
-.\Convert-WriteHostToColorOutput.ps1 -ScriptPath "C:\Scripts\*.ps1" -BackupOriginal $false
+.\Convert-WriteHostToColorOutput.ps1 -FilePath "C:\Scripts\*.ps1" -BackupOriginal $false
 Converts Write-Host calls in all PowerShell scripts in the directory without creating backups.
 
 .EXAMPLE
-.\Convert-WriteHostToColorOutput.ps1 -ScriptPath ".\MyScript.ps1" -WhatIf
+.\Convert-WriteHostToColorOutput.ps1 -FilePath ".\MyScript.ps1" -WhatIf
 Shows what changes would be made without actually modifying the file.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory = $true)]
-    [string[]]$ScriptPath,
+    [string[]]$FilePath,
 
     [Parameter(Mandatory = $false)]
     [bool]$BackupOriginal = $true
@@ -184,17 +184,17 @@ function Convert-WriteHostCall {
 
     # Define color mapping from ForegroundColor to our Color parameter
     $colorMap = @{
-        'Cyan' = 'Cyan'
-        'Green' = 'Green'
-        'Yellow' = 'Yellow'
-        'Red' = 'Red'
+        'Cyan'     = 'Cyan'
+        'Green'    = 'Green'
+        'Yellow'   = 'Yellow'
+        'Red'      = 'Red'
         'DarkGray' = 'DarkGray'
-        'Magenta' = 'Magenta'
-        'White' = 'White'
+        'Magenta'  = 'Magenta'
+        'White'    = 'White'
         # Map Blue to Cyan as fallback
-        'Blue' = 'Cyan'
+        'Blue'     = 'Cyan'
         # Map Gray to DarkGray as fallback
-        'Gray' = 'DarkGray'
+        'Gray'     = 'DarkGray'
     }
 
     $replacementCount = 0
@@ -271,7 +271,7 @@ function Convert-WriteHostCall {
     $replacementCount += ($beforeCount - $afterCount)
 
     return @{
-        Content = $modifiedContent
+        Content          = $modifiedContent
         ReplacementCount = $replacementCount
     }
 }
@@ -342,7 +342,7 @@ function ConvertScript {
 }
 
 # Main execution
-foreach ($path in $ScriptPath) {
+foreach ($path in $FilePath) {
     # Handle wildcards and multiple files
     $resolvedPaths = Get-ChildItem -Path $path -Filter "*.ps1" -ErrorAction SilentlyContinue
 
