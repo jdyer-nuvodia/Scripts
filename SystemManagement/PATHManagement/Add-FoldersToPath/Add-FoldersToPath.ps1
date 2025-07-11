@@ -2,10 +2,10 @@
 # Script: Add-FoldersToPath.ps1
 # Created: 2025-02-05 22:15:38 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 00:16:00 UTC
+# Last Updated: 2025-07-10 00:18:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.4.0
-# Additional Info: Added functionality to skip hidden folders (those starting with a dot)
+# Version: 2.5.0
+# Additional Info: Fixed hidden folder filtering to properly exclude .git and other hidden directories and their subdirectories
 # =============================================================================
 
 <#
@@ -104,8 +104,10 @@ begin {
             'SUCCESS' { Write-Information "$Message" -InformationAction Continue }
             default { Write-Output $LogEntry }
         }
-    }    Write-LogEntry "Starting script execution" -Level INFO
-    Write-LogEntry "Script version: 2.4.0" -Level INFO
+    }
+
+    Write-LogEntry "Starting script execution" -Level INFO
+    Write-LogEntry "Script version: 2.5.0" -Level INFO
 
     # Verify running as administrator for Machine scope
     if ($Scope -eq 'Machine' -and -not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -171,10 +173,14 @@ process {
         # Using a more efficient method to get subdirectories
         if (-not $NoRecurse) {
             Write-LogEntry "Getting subdirectories for $StartPath (skipping hidden folders)" -Level INFO
-            # Use -Force to include hidden directories, then filter out those starting with a dot
+            # Filter out hidden directories and any subdirectories within hidden directories
             $startTime = Get-Date
             $subDirs = Get-ChildItem -Path $StartPath -Directory -Recurse -ErrorAction Stop |
-            Where-Object { -not ($_.Name.StartsWith('.')) }
+                Where-Object {
+                    # Exclude directories that start with a dot or are within a hidden directory path
+                    -not ($_.Name.StartsWith('.')) -and
+                    -not ($_.FullName -match '\\\.[\w\-_]+\\')
+                }
             $endTime = Get-Date
             $processingTime = ($endTime - $startTime).TotalSeconds
             Write-LogEntry "Found $($subDirs.Count) subdirectories (excluding hidden) in $processingTime seconds" -Level INFO
