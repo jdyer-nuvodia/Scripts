@@ -2,10 +2,10 @@
 # Script: Manage-RDPSessions.ps1
 # Created: 2025-04-16 14:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-16 23:30:00 UTC
+# Last Updated: 2025-07-11 21:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.2
-# Additional Info: Fixed unused variable warning
+# Version: 1.1.1
+# Additional Info: Removed anti-pattern script scope assignments, fixed syntax errors and PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -90,7 +90,7 @@ if (-not (Test-Path -Path $LogFolder)) {
 $LogFileName = "RDPSessions_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $LogPath = Join-Path -Path $LogFolder -ChildPath $LogFileName
 
-function Write-Log {
+function Write-LogMessage {
     param (
         [Parameter(Mandatory = $true)]
         [string]$Message,
@@ -116,16 +116,16 @@ function Write-Log {
         default { "White" }
     }
 
-    Write-Host $LogMessage -ForegroundColor $ConsoleColor
+    Write-Output $LogMessage -ForegroundColor $ConsoleColor
 }
 
-function Get-RDPSessions {
+function Get-RDPSession {
     param (
         [Parameter(Mandatory = $true)]
         [string]$ComputerName
     )
 
-    Write-Log -Message "Retrieving RDP sessions from $ComputerName" -Level "INFO"
+    Write-LogMessage -Message "Retrieving RDP sessions from $ComputerName" -Level "INFO"
 
     try {
         # Run qwinsta to get session information
@@ -133,8 +133,8 @@ function Get-RDPSessions {
 
         if ($LASTEXITCODE -ne 0) {
             throw "Error executing qwinsta: $Output"
-        # Parse the output into objects
-                }
+            # Parse the output into objects
+        }
         $Sessions = @()
         # Skip the header line (index 0) and start processing from line 1
 
@@ -196,56 +196,51 @@ function Get-RDPSessions {
 
         return $Sessions
     } catch {
-        Write-Log -Message "Error retrieving RDP sessions: $_" -Level "ERROR"
+        Write-LogMessage -Message "Error retrieving RDP sessions: $_" -Level "ERROR"
         throw
     }
 }
 
 function Remove-RDPSession {
     [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([bool])]
     param (
         [Parameter(Mandatory = $true)]
         [string]$ComputerName,
 
         [Parameter(Mandatory = $true)]
-        [string]$SessionId,
-
-        [Parameter(Mandatory = $false)]
-        [switch]$WhatIf
+        [string]$SessionId
     )
 
     try {
         $SessionInfo = "Session ID $SessionId on $ComputerName"
 
         if ($PSCmdlet.ShouldProcess($SessionInfo, "Terminate RDP session")) {
-            if (-not $WhatIf) {
-                Write-Log -Message "Terminating $SessionInfo" -Level "INFO"
-                $Output = rwinsta $SessionId /server:$ComputerName 2>&1
+            Write-LogMessage -Message "Terminating $SessionInfo" -Level "INFO"
+            $Output = rwinsta $SessionId /server:$ComputerName 2>&1
 
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Error executing rwinsta: $Output"
-                }
-
-                Write-Log -Message "Successfully terminated $SessionInfo" -Level "SUCCESS"
-                return $true
-            } else {
-                Write-Log -Message "WhatIf: Would terminate $SessionInfo" -Level "DEBUG"
-                return $true
+            if ($LASTEXITCODE -ne 0) {
+                throw "Error executing rwinsta: $Output"
             }
+
+            Write-LogMessage -Message "Successfully terminated $SessionInfo" -Level "SUCCESS"
+            return $true
+        } else {
+            Write-LogMessage -Message "WhatIf: Would terminate $SessionInfo" -Level "DEBUG"
+            return $true
         }
-        return $false
     } catch {
-        Write-Log -Message "Error terminating RDP session: $_" -Level "ERROR"
+        Write-LogMessage -Message "Error terminating session: $_" -Level "ERROR"
         return $false
     }
 }
 
 # Main script execution
 try {
-    Write-Log -Message "Script started. Target server: $ComputerName" -Level "INFO"
+    Write-LogMessage -Message "Script started. Target server: $ComputerName" -Level "INFO"
 
     # Get all RDP sessions
-    $AllSessions = Get-RDPSessions -ComputerName $ComputerName
+    $AllSessions = Get-RDPSession -ComputerName $ComputerName
 
     # Filter sessions based on state
     $FilteredSessions = switch ($State) {
@@ -255,8 +250,8 @@ try {
     }
 
     # Display all sessions
-    Write-Log -Message "RDP Sessions on ${ ComputerName}:" -Level "INFO"
-    $FilteredSessions | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Log -Message $_ -Level "INFO" }
+    Write-LogMessage -Message "RDP Sessions on ${ComputerName}:" -Level "INFO"
+    $FilteredSessions | Format-Table -AutoSize | Out-String | ForEach-Object { Write-LogMessage -Message $_ -Level "INFO" }
 
     # Handle termination if requested
     if ($TerminateInactiveSessions) {
@@ -266,10 +261,10 @@ try {
         }
 
         if ($SessionsToTerminate.Count -eq 0) {
-            Write-Log -Message "No eligible sessions to terminate based on current criteria." -Level "WARNING"
+            Write-LogMessage -Message "No eligible sessions to terminate based on current criteria." -Level "WARNING"
         } else {
-            Write-Log -Message "Sessions eligible for termination:" -Level "WARNING"
-            $SessionsToTerminate | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Log -Message $_ -Level "WARNING" }
+            Write-LogMessage -Message "Sessions eligible for termination:" -Level "WARNING"
+            $SessionsToTerminate | Format-Table -AutoSize | Out-String | ForEach-Object { Write-LogMessage -Message $_ -Level "WARNING" }
 
             $ConfirmAll = $Force
 
@@ -290,17 +285,17 @@ try {
                 }
 
                 if ($ShouldTerminate) {
-                    $Result = Remove-RDPSession -ComputerName $ComputerName -SessionId $Session.SessionId -WhatIf:$WhatIf
+                    $Result = Remove-RDPSession -ComputerName $ComputerName -SessionId $Session.SessionId
                     if ($Result) {
-                        Write-Log -Message "Action taken on $SessionInfo" -Level "SUCCESS"
+                        Write-LogMessage -Message "Action taken on $SessionInfo" -Level "SUCCESS"
                     }
                 }
             }
         }
     }
 
-    Write-Log -Message "Script completed successfully" -Level "SUCCESS"
+    Write-LogMessage -Message "Script completed successfully" -Level "SUCCESS"
 } catch {
-    Write-Log -Message "Script execution failed: $_" -Level "ERROR"
+    Write-LogMessage -Message "Script execution failed: $_" -Level "ERROR"
     exit 1
 }
