@@ -2,10 +2,10 @@
 # Script: Monitor-SystemResources.ps1
 # Created: 2025-04-02 15:18:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-02 21:03:00 UTC
+# Last Updated: 2025-07-11 21:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Enhanced documentation, added error handling and validation
+# Version: 1.1.1
+# Additional Info: Fixed PSScriptAnalyzer OutputType compliance for Get-SystemMetric function
 # =============================================================================
 
 <#
@@ -89,11 +89,11 @@ param(
 
     [Parameter()]
     [ValidateScript({
-        if (-not (Test-Path $_)) {
-            New-Item -ItemType Directory -Path $_ -Force | Out-Null
-        }
-        return $true
-    })]
+            if (-not (Test-Path $_)) {
+                New-Item -ItemType Directory -Path $_ -Force | Out-Null
+            }
+            return $true
+        })]
     [string]$LogPath = $PSScriptRoot,
 
     [Parameter()]
@@ -138,14 +138,15 @@ function Write-LogMessage {
     $LogMessage = "[$TimeStamp] [$Level] $Message"
 
     # Write to console with color
-    Write-Host $Message -ForegroundColor $ConsoleColor
+    Write-Output $Message -ForegroundColor $ConsoleColor
 
     # Write to log file
     Add-Content -Path $logFile -Value $LogMessage
 }
 
-function Get-SystemMetrics {
+function Get-SystemMetric {
     [CmdletBinding()]
+    [OutputType([System.Collections.Hashtable])]
     param()
 
     try {
@@ -198,25 +199,25 @@ try {
     Write-LogMessage "----------------------------------------" -Level Information -ConsoleColor DarkGray
 
     while ($true) {
-        $metrics = Get-SystemMetrics
+        $metrics = Get-SystemMetric
 
         # CPU Status
         $cpuColor = if ($metrics.CPU -ge $ThresholdCPU) { "Red" }
-                   elseif ($metrics.CPU -ge ($ThresholdCPU * 0.8)) { "Yellow" }
-                   else { "Green" }
+        elseif ($metrics.CPU -ge ($ThresholdCPU * 0.8)) { "Yellow" }
+        else { "Green" }
         Write-LogMessage "CPU Usage: $($metrics.CPU)%" -Level Information -ConsoleColor $cpuColor
 
         # Memory Status
         $memColor = if ($metrics.Memory -ge $ThresholdMemory) { "Red" }
-                   elseif ($metrics.Memory -ge ($ThresholdMemory * 0.8)) { "Yellow" }
-                   else { "Green" }
+        elseif ($metrics.Memory -ge ($ThresholdMemory * 0.8)) { "Yellow" }
+        else { "Green" }
         Write-LogMessage "Memory Usage: $($metrics.Memory)%" -Level Information -ConsoleColor $memColor
 
         # Disk Status
         foreach ($disk in $metrics.Disks) {
             $diskColor = if ($disk.FreeSpace -le $ThresholdDisk) { "Red" }
-                        elseif ($disk.FreeSpace -le ($ThresholdDisk * 2)) { "Yellow" }
-                        else { "Green" }
+            elseif ($disk.FreeSpace -le ($ThresholdDisk * 2)) { "Yellow" }
+            else { "Green" }
             Write-LogMessage "Drive $($disk.Drive) - Free: $($disk.FreeSpace)% ($($disk.FreeGB)GB / $($disk.TotalGB)GB)" -Level Information -ConsoleColor $diskColor
         }
 
