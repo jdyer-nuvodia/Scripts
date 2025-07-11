@@ -2,10 +2,10 @@
 # Script: Find-LargestFolders.ps1
 # Created: 2025-06-21 00:50:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-03 21:45:00 UTC
+# Last Updated: 2025-07-11 03:06:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.3
-# Additional Info: Standardized indentation to match PowerShell best practices
+# Version: 1.5.4
+# Additional Info: Fixed PSScriptAnalyzer parameter scoping issues and unused variable warnings
 # =============================================================================
 
 <#
@@ -365,7 +365,7 @@ begin {
         try {
             $computerName = $env:COMPUTERNAME
             $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-            $logFileName = "Find-LargestFolders_${ computerName}_${ timestamp}.log"
+            $logFileName = "Find-LargestFolders_${computerName}_${timestamp}.log"
             $fullLogPath = Join-Path -Path $LogPath -ChildPath $logFileName
 
             if ($PSCmdlet.ShouldProcess($fullLogPath, "Start transcript log")) {
@@ -376,7 +376,7 @@ begin {
                 # Create header
                 $headerText = @"
 ===============================================
-FIND LARGEST FOLDERS ANALYZER v1.5.3
+FIND LARGEST FOLDERS ANALYZER v1.5.4
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -492,8 +492,8 @@ Process ID: $PID
             }
             # Execute fsutil fsinfo ntfsinfo to get comprehensive NTFS information
             try {
-                Write-DebugInfo -Message "Executing fsutil fsinfo ntfsinfo ${ DriveLetter}:" -Category "NTFS"
-                $fsutilOutput = & fsutil fsinfo ntfsinfo "${ DriveLetter}:" 2>$null
+                Write-DebugInfo -Message "Executing fsutil fsinfo ntfsinfo ${DriveLetter}:" -Category "NTFS"
+                $fsutilOutput = & fsutil fsinfo ntfsinfo "${DriveLetter}:" 2>$null
                 if ($fsutilOutput -and $fsutilOutput.Count -gt 0) {
                     Write-DebugInfo -Message "Successfully retrieved fsutil output with $($fsutilOutput.Count) lines" -Category "NTFS"
                     foreach ($line in $fsutilOutput) {
@@ -602,8 +602,8 @@ Process ID: $PID
             }
             # Execute vssadmin list shadowstorage to get VSS storage information
             try {
-                Write-DebugInfo -Message "Executing vssadmin list shadowstorage /for = ${ DriveLetter}:" -Category "VSS"
-                $vssOutput = & vssadmin list shadowstorage /for = "${ DriveLetter}:" 2>$null
+                Write-DebugInfo -Message "Executing vssadmin list shadowstorage /for=${DriveLetter}:" -Category "VSS"
+                $vssOutput = & vssadmin list shadowstorage /for="${DriveLetter}:" 2>$null
                 if ($vssOutput -and $vssOutput.Count -gt 0) {
                     Write-DebugInfo -Message "Successfully retrieved VSS output with $($vssOutput.Count) lines" -Category "VSS"
                     $foundValidStorage = $false
@@ -705,7 +705,7 @@ Process ID: $PID
                 }
             }
 
-            $drivePath = "${ DriveLetter}:"
+            $drivePath = "${DriveLetter}:"
 
             # Check for pagefile.sys
             $pageFilePath = Join-Path -Path $drivePath -ChildPath "pagefile.sys"
@@ -799,7 +799,7 @@ Process ID: $PID
             [string]$DriveLetter
         )
         Write-Output ""
-        Write-ColorOutput -Message "System Overhead Analysis for Drive ${ DriveLetter}:" -Color "Green"
+        Write-ColorOutput -Message "System Overhead Analysis for Drive ${DriveLetter}:" -Color "Green"
         Write-ColorOutput -Message "============================================" -Color "Green"
 
         # Get NTFS overhead
@@ -873,7 +873,7 @@ Process ID: $PID
         try {
             $volume = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop
             Write-Output ""
-            Write-ColorOutput -Message "Drive Volume Details for ${ DriveLetter}:" -Color "Green"
+            Write-ColorOutput -Message "Drive Volume Details for ${DriveLetter}:" -Color "Green"
             Write-ColorOutput -Message "------------------------" -Color "Green"
             Write-ColorOutput -Message "Drive Letter: $($volume.DriveLetter):" -Color "White"
             Write-ColorOutput -Message "Drive Label: $($volume.FileSystemLabel)" -Color "White"
@@ -887,7 +887,7 @@ Process ID: $PID
             Write-ColorOutput -Message "Operational Status: $($volume.OperationalStatus)" -Color "White"
             Write-Output ""
         } catch {
-            Write-ColorOutput -Message "Error retrieving drive information for ${ DriveLetter}: $($_.Exception.Message)" -Color "Red"
+            Write-ColorOutput -Message "Error retrieving drive information for ${DriveLetter}: $($_.Exception.Message)" -Color "Red"
         }
     }
 
@@ -917,7 +917,7 @@ Process ID: $PID
             # PowerShell 7+ with ANSI escape codes
             $colorCode = $Script:Colors[$Color]
             $resetCode = $Script:Colors.Reset
-            Write-Output "${ colorCode}${ Message}${ resetCode}"
+            Write-Output "${colorCode}${Message}${resetCode}"
         } else {
             # PowerShell 5.1 - Change console color, write output, then reset
             $originalColor = $Host.UI.RawUI.ForegroundColor
@@ -954,7 +954,7 @@ process {
                     $StartPath = $StartPath + '\'
                 }
             }
-            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.5.3" -Color "Green"
+            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.5.4" -Color "Green"
             Write-ColorOutput -Message "===============================================" -Color "Green"
             Write-ColorOutput -Message "Start Path: $StartPath" -Color "White"
             Write-ColorOutput -Message "Max Depth: $MaxDepth" -Color "White"
@@ -971,7 +971,7 @@ process {
             $driveLetter = if ($StartPath -match '^([A-Za-z]):') { $matches[1] } else { $null }
 
             # Show system overhead if analyzing a drive root
-            if ($driveLetter -and $StartPath -eq "${ driveLetter}:\") {
+            if ($driveLetter -and $StartPath -eq "${driveLetter}:\") {
                 $totalOverhead = Show-SystemOverhead -DriveLetter $driveLetter
                 Write-Output ""
             }
