@@ -2,10 +2,10 @@
 # Script: Invoke-PowerShellCodeCleanup.ps1
 # Created: 2025-06-23 15:30
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-08 21:15:00 UTC
+# Last Updated: 2025-07-10 22:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.3
-# Additional Info: Fixed regex pattern to exclude string interpolation from brace spacing fixes
+# Version: 1.6.4
+# Additional Info: Changed parameter name from -ScriptPath to -FilePath for consistency with PowerShell conventions
 # =============================================================================
 
 <#
@@ -21,10 +21,10 @@ This script provides six main functions for PowerShell code quality management:
 6. Repair-WhitespaceConsistency: Fixes PSUseConsistentWhitespace violations for operators, braces, and commas
 
 .DESCRIPTION
-The script can target a specific file via the ScriptPath parameter or automatically target the first .ps1 file found in the current working directory.
+The script can target a specific file via the FilePath parameter or automatically target the first .ps1 file found in the current working directory.
 These functions help maintain consistent code formatting and identify potential parsing issues.
 
-.PARAMETER ScriptPath
+.PARAMETER FilePath
 The full path to the PowerShell script file to process. If not specified, the script will automatically
 find the first .ps1 file in the current working directory.
 
@@ -33,23 +33,23 @@ find the first .ps1 file in the current working directory.
 Processes the first .ps1 file found in the current directory for whitespace cleanup and newline error detection.
 
 .EXAMPLE
-.\Invoke-PowerShellCodeCleanup.ps1 -ScriptPath "C:\Scripts\MyScript.ps1"
+.\Invoke-PowerShellCodeCleanup.ps1 -FilePath "C:\Scripts\MyScript.ps1"
 Processes the specified script file for code quality cleanup and analysis.
 
 .EXAMPLE
-Clear-TrailingWhitespace -ScriptPath "C:\Scripts\MyScript.ps1"
+Clear-TrailingWhitespace -FilePath "C:\Scripts\MyScript.ps1"
 Removes trailing whitespace from the specified script file.
 
 .EXAMPLE
-Repair-InlineComment -ScriptPath "C:\Scripts\MyScript.ps1"
+Repair-InlineComment -FilePath "C:\Scripts\MyScript.ps1"
 Automatically fixes inline comment issues by separating them into proper comment lines above the code.
 
 .EXAMPLE
-Repair-CloseBraceNewline -ScriptPath "C:\Scripts\MyScript.ps1"
+Repair-CloseBraceNewline -FilePath "C:\Scripts\MyScript.ps1"
 Fixes PSPlaceCloseBrace violations where closing braces are followed by newlines instead of being on the same line as branch statements.
 
 .EXAMPLE
-Repair-WhitespaceConsistency -ScriptPath "C:\Scripts\MyScript.ps1"
+Repair-WhitespaceConsistency -FilePath "C:\Scripts\MyScript.ps1"
 Fixes PSUseConsistentWhitespace violations including space before open brace issues.
 #>
 
@@ -57,7 +57,7 @@ Fixes PSUseConsistentWhitespace violations including space before open brace iss
 [OutputType([int])]
 param(
     [Parameter(Mandatory = $false)]
-    [string]$ScriptPath
+    [string]$FilePath
 )
 
 function Clear-TrailingWhitespace {
@@ -70,12 +70,12 @@ function Clear-TrailingWhitespace {
     and saves the cleaned content back to the file. This helps maintain consistent
     code formatting and prevents issues with version control systems.
 
-    .PARAMETER ScriptPath
+    .PARAMETER FilePath
     The path to the PowerShell script file to clean. If not specified, uses the first
     .ps1 file found in the current working directory.
 
     .EXAMPLE
-    Clear-TrailingWhitespace -ScriptPath "C:\Scripts\MyScript.ps1"
+    Clear-TrailingWhitespace -FilePath "C:\Scripts\MyScript.ps1"
     Removes trailing whitespace from MyScript.ps1
 
     .EXAMPLE
@@ -85,34 +85,34 @@ function Clear-TrailingWhitespace {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ScriptPath
+        [string]$FilePath
     )
 
     try {
         # If no script path provided, find the first .ps1 file in current directory
-        if (-not $ScriptPath) {
-            $ScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $FilePath) {
+            $FilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
 
-            if (-not $ScriptPath) {
+            if (-not $FilePath) {
                 Write-Error -Message "No PowerShell script files (.ps1) found in the current directory."
                 return
             }
 
-            Write-Information -MessageData "Processing file: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "Processing file: $FilePath" -InformationAction Continue
         }
 
         # Verify the file exists
-        if (-not (Test-Path -Path $ScriptPath)) {
-            Write-Error -Message "Script file not found: $ScriptPath"
+        if (-not (Test-Path -Path $FilePath)) {
+            Write-Error -Message "Script file not found: $FilePath"
             return
         }
 
-        Write-Information -MessageData "Clearing trailing whitespace from: $ScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Clearing trailing whitespace from: $FilePath" -InformationAction Continue
 
         # Read content, trim trailing whitespace, and save back
-        (Get-Content -Path $ScriptPath) | ForEach-Object { $_.TrimEnd() } | Set-Content -Path $ScriptPath
+        (Get-Content -Path $FilePath) | ForEach-Object { $_.TrimEnd() } | Set-Content -Path $FilePath
 
-        Write-Information -MessageData "Successfully cleared trailing whitespace from: $ScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Successfully cleared trailing whitespace from: $FilePath" -InformationAction Continue
     } catch {
         Write-Error -Message "Failed to clear trailing whitespace: $($_.Exception.Message)"
     }
@@ -129,12 +129,12 @@ function Find-NewlineError {
     - Inline comments that appear after code on the same line (which should be avoided)
     - Excludes properly formatted comment blocks and comment lines
 
-    .PARAMETER ScriptPath
+    .PARAMETER FilePath
     The path to the PowerShell script file to analyze. If not specified, uses the first
     .ps1 file found in the current working directory.
 
     .EXAMPLE
-    Find-NewlineErrors -ScriptPath "C:\Scripts\MyScript.ps1"
+    Find-NewlineErrors -FilePath "C:\Scripts\MyScript.ps1"
     Analyzes MyScript.ps1 for newline-related formatting issues
 
     .EXAMPLE
@@ -144,35 +144,35 @@ function Find-NewlineError {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ScriptPath
+        [string]$FilePath
     )
 
     try {
         # If no script path provided, find the first .ps1 file in current directory
-        if (-not $ScriptPath) {
-            $ScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $FilePath) {
+            $FilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
 
-            if (-not $ScriptPath) {
+            if (-not $FilePath) {
                 Write-Error -Message "No PowerShell script files (.ps1) found in the current directory."
                 return
             }
 
-            Write-Information -MessageData "Processing file: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "Processing file: $FilePath" -InformationAction Continue
         }
 
         # Verify the file exists
-        if (-not (Test-Path -Path $ScriptPath)) {
-            Write-Error -Message "Script file not found: $ScriptPath"
+        if (-not (Test-Path -Path $FilePath)) {
+            Write-Error -Message "Script file not found: $FilePath"
             return
         }
 
-        Write-Information -MessageData "Searching for newline errors in: $ScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Searching for newline errors in: $FilePath" -InformationAction Continue
 
         # Search for the specified patterns
         # Pattern 1: Multiple consecutive spaces not followed by comments (excluding content inside quotes)
         # Pattern 2: Inline comments after code (but exclude lines that start with whitespace + comment markers)
         # Also exclude lines that contain quoted strings with hash symbols to avoid false positives
-        $results = Select-String -Path $ScriptPath -Pattern @(
+        $results = Select-String -Path $FilePath -Pattern @(
             '(?=^(?:[^"'']*"[^"]*")*[^"'']*$)(?=^(?:[^"'']*''[^'']*'')*[^"'']*$)\S{2,}(?!#)\S',
             "^(?!\s*<#)(?!\s*#>)(?!\s*#)(?!.*'.*#.*')(?!.*`".*#.*`").*\S.*#"
         )
@@ -180,7 +180,7 @@ function Find-NewlineError {
         if ($results) {
             Write-Information -MessageData "Found potential newline/formatting issues:" -InformationAction Continue
         } else {
-            Write-Information -MessageData "No newline errors detected in: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "No newline errors detected in: $FilePath" -InformationAction Continue
         }
 
         return $results
@@ -199,12 +199,12 @@ function Find-PotentialMissingCode {
     placeholder text or incomplete code blocks that need to be filled in. This is particularly
     useful for identifying template code or documentation examples that need implementation.
 
-    .PARAMETER ScriptPath
+    .PARAMETER FilePath
     The path to the PowerShell script file to analyze. If not specified, uses the first
     .ps1 file found in the current working directory.
 
     .EXAMPLE
-    Find-PotentialMissingCode -ScriptPath "C:\Scripts\MyScript.ps1"
+    Find-PotentialMissingCode -FilePath "C:\Scripts\MyScript.ps1"
     Analyzes MyScript.ps1 for ellipses patterns that may indicate incomplete code
 
     .EXAMPLE
@@ -214,37 +214,37 @@ function Find-PotentialMissingCode {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ScriptPath
+        [string]$FilePath
     )
 
     try {
         # If no script path provided, find the first .ps1 file in current directory
-        if (-not $ScriptPath) {
-            $ScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $FilePath) {
+            $FilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
 
-            if (-not $ScriptPath) {
+            if (-not $FilePath) {
                 Write-Error -Message "No PowerShell script files (.ps1) found in the current directory."
                 return
             }
 
-            Write-Information -MessageData "Processing file: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "Processing file: $FilePath" -InformationAction Continue
         }
 
         # Verify the file exists
-        if (-not (Test-Path -Path $ScriptPath)) {
-            Write-Error -Message "Script file not found: $ScriptPath"
+        if (-not (Test-Path -Path $FilePath)) {
+            Write-Error -Message "Script file not found: $FilePath"
             return
         }
 
-        Write-Information -MessageData "Searching for potential missing code patterns in: $ScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Searching for potential missing code patterns in: $FilePath" -InformationAction Continue
 
         # Search for ellipses patterns that may indicate incomplete code (excluding content inside quotes)
-        $results = Select-String -Path $ScriptPath -Pattern '(?=^(?:[^"'']*"[^"]*")*[^"'']*$)(?=^(?:[^"'']*''[^'']*'')*[^"'']*$)\.{3,}'
+        $results = Select-String -Path $FilePath -Pattern '(?=^(?:[^"'']*"[^"]*")*[^"'']*$)(?=^(?:[^"'']*''[^'']*'')*[^"'']*$)\.{3,}'
 
         if ($results) {
             Write-Information -MessageData "Found potential missing code indicators (ellipses):" -InformationAction Continue
         } else {
-            Write-Information -MessageData "No potential missing code patterns detected in: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "No potential missing code patterns detected in: $FilePath" -InformationAction Continue
         }
 
         return $results
@@ -263,12 +263,12 @@ function Repair-CloseBraceNewline {
     (catch, else, elseif, finally, etc.) and reformats them to place the brace and branch statement
     on the same line. This fixes PSScriptAnalyzer PSPlaceCloseBrace violations.
 
-    .PARAMETER ScriptPath
+    .PARAMETER FilePath
     The path to the PowerShell script file to fix. If not specified, uses the first
     .ps1 file found in the current working directory.
 
     .EXAMPLE
-    Repair-CloseBraceNewline -ScriptPath "C:\Scripts\MyScript.ps1"
+    Repair-CloseBraceNewline -FilePath "C:\Scripts\MyScript.ps1"
     Fixes close brace newline issues in the specified script file
 
     .EXAMPLE
@@ -279,32 +279,32 @@ function Repair-CloseBraceNewline {
     [OutputType([int])]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ScriptPath
+        [string]$FilePath
     )
 
     try {
         # If no script path provided, find the first .ps1 file in current directory
-        if (-not $ScriptPath) {
-            $ScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $FilePath) {
+            $FilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
 
-            if (-not $ScriptPath) {
+            if (-not $FilePath) {
                 Write-Error -Message "No PowerShell script files (.ps1) found in the current directory."
                 return
             }
 
-            Write-Information -MessageData "Processing file: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "Processing file: $FilePath" -InformationAction Continue
         }
 
         # Verify the file exists
-        if (-not (Test-Path -Path $ScriptPath)) {
-            Write-Error -Message "Script file not found: $ScriptPath"
+        if (-not (Test-Path -Path $FilePath)) {
+            Write-Error -Message "Script file not found: $FilePath"
             return
         }
 
-        Write-Information -MessageData "Fixing close brace newline issues in: $ScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Fixing close brace newline issues in: $FilePath" -InformationAction Continue
 
         # Read the file content
-        $content = Get-Content -Path $ScriptPath
+        $content = Get-Content -Path $FilePath
         $fixedContent = @()
         $fixCount = 0
         $i = 0
@@ -346,14 +346,14 @@ function Repair-CloseBraceNewline {
 
         if ($fixCount -gt 0) {
             # Write the fixed content back to the file
-            $fixedContent | Set-Content -Path $ScriptPath
-            Write-Information -MessageData "Fixed $fixCount close brace newline issue(s) in: $ScriptPath" -InformationAction Continue
+            $fixedContent | Set-Content -Path $FilePath
+            Write-Information -MessageData "Fixed $fixCount close brace newline issue(s) in: $FilePath" -InformationAction Continue
 
             # Clean up trailing whitespace after the fixes
             Write-Information -MessageData "Cleaning up trailing whitespace after fixes..." -InformationAction Continue
-            Clear-TrailingWhitespace -ScriptPath $ScriptPath
+            Clear-TrailingWhitespace -FilePath $FilePath
         } else {
-            Write-Information -MessageData "No close brace newline issues found to fix in: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "No close brace newline issues found to fix in: $FilePath" -InformationAction Continue
         }
 
         return $fixCount
@@ -372,12 +372,12 @@ function Repair-InlineComment {
     and reformats them by placing the comment on a separate line above the code. This helps
     maintain clean code formatting and follows PowerShell best practices.
 
-    .PARAMETER ScriptPath
+    .PARAMETER FilePath
     The path to the PowerShell script file to fix. If not specified, uses the first
     .ps1 file found in the current working directory.
 
     .EXAMPLE
-    Repair-InlineComment -ScriptPath "C:\Scripts\MyScript.ps1"
+    Repair-InlineComment -FilePath "C:\Scripts\MyScript.ps1"
     Fixes inline comments in the specified script file
 
     .EXAMPLE
@@ -388,32 +388,32 @@ function Repair-InlineComment {
     [OutputType([int])]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ScriptPath
+        [string]$FilePath
     )
 
     try {
         # If no script path provided, find the first .ps1 file in current directory
-        if (-not $ScriptPath) {
-            $ScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $FilePath) {
+            $FilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
 
-            if (-not $ScriptPath) {
+            if (-not $FilePath) {
                 Write-Error -Message "No PowerShell script files (.ps1) found in the current directory."
                 return
             }
 
-            Write-Information -MessageData "Processing file: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "Processing file: $FilePath" -InformationAction Continue
         }
 
         # Verify the file exists
-        if (-not (Test-Path -Path $ScriptPath)) {
-            Write-Error -Message "Script file not found: $ScriptPath"
+        if (-not (Test-Path -Path $FilePath)) {
+            Write-Error -Message "Script file not found: $FilePath"
             return
         }
 
-        Write-Information -MessageData "Fixing inline comments in: $ScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Fixing inline comments in: $FilePath" -InformationAction Continue
 
         # Read the file content
-        $content = Get-Content -Path $ScriptPath
+        $content = Get-Content -Path $FilePath
         $fixedContent = @()
         $fixCount = 0
 
@@ -447,14 +447,14 @@ function Repair-InlineComment {
 
         if ($fixCount -gt 0) {
             # Write the fixed content back to the file
-            $fixedContent | Set-Content -Path $ScriptPath
-            Write-Information -MessageData "Fixed $fixCount inline comment(s) in: $ScriptPath" -InformationAction Continue
+            $fixedContent | Set-Content -Path $FilePath
+            Write-Information -MessageData "Fixed $fixCount inline comment(s) in: $FilePath" -InformationAction Continue
 
             # Clean up trailing whitespace after the fixes
             Write-Information -MessageData "Cleaning up trailing whitespace after fixes..." -InformationAction Continue
-            Clear-TrailingWhitespace -ScriptPath $ScriptPath
+            Clear-TrailingWhitespace -FilePath $FilePath
         } else {
-            Write-Information -MessageData "No inline comments found to fix in: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "No inline comments found to fix in: $FilePath" -InformationAction Continue
         }
 
         return $fixCount
@@ -476,12 +476,12 @@ function Repair-WhitespaceConsistency {
     - Ensures exactly one space after commas
     - Preserves existing proper spacing and avoids over-correcting
 
-    .PARAMETER ScriptPath
+    .PARAMETER FilePath
     The path to the PowerShell script file to fix. If not specified, uses the first
     .ps1 file found in the current working directory.
 
     .EXAMPLE
-    Repair-WhitespaceConsistency -ScriptPath "C:\Scripts\MyScript.ps1"
+    Repair-WhitespaceConsistency -FilePath "C:\Scripts\MyScript.ps1"
     Fixes whitespace consistency issues in the specified script file
 
     .EXAMPLE
@@ -492,32 +492,32 @@ function Repair-WhitespaceConsistency {
     [OutputType([int])]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ScriptPath
+        [string]$FilePath
     )
 
     try {
         # If no script path provided, find the first .ps1 file in current directory
-        if (-not $ScriptPath) {
-            $ScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+        if (-not $FilePath) {
+            $FilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
 
-            if (-not $ScriptPath) {
+            if (-not $FilePath) {
                 Write-Error -Message "No PowerShell script files (.ps1) found in the current directory."
                 return
             }
 
-            Write-Information -MessageData "Processing file: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "Processing file: $FilePath" -InformationAction Continue
         }
 
         # Verify the file exists
-        if (-not (Test-Path -Path $ScriptPath)) {
-            Write-Error -Message "Script file not found: $ScriptPath"
+        if (-not (Test-Path -Path $FilePath)) {
+            Write-Error -Message "Script file not found: $FilePath"
             return
         }
 
-        Write-Information -MessageData "Fixing whitespace consistency issues in: $ScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Fixing whitespace consistency issues in: $FilePath" -InformationAction Continue
 
         # Read the file content
-        $content = Get-Content -Path $ScriptPath
+        $content = Get-Content -Path $FilePath
         $fixedContent = @()
         $fixCount = 0
 
@@ -533,6 +533,8 @@ function Repair-WhitespaceConsistency {
 
             # Fix binary and assignment operators - ensure exactly one space before and after =
             # Handle assignment operators like = += -= *= /= %=
+            # Fix for hash table entries and general assignments
+            $modifiedLine = $modifiedLine -replace "('[\w\s]+')(\s*)=(\s*)([^=])", '$1 = $4'
             $modifiedLine = $modifiedLine -replace '(\w)\s*=\s*([^=])', '$1 = $2'
             $modifiedLine = $modifiedLine -replace '(\w)\s*\+=\s*(\w)', '$1 += $2'
             $modifiedLine = $modifiedLine -replace '(\w)\s*-=\s*(\w)', '$1 -= $2'
@@ -562,14 +564,14 @@ function Repair-WhitespaceConsistency {
 
         # Write the fixed content back to the file if changes were made
         if ($fixCount -gt 0) {
-            $fixedContent | Set-Content -Path $ScriptPath
-            Write-Information -MessageData "Fixed $fixCount whitespace consistency issue(s) in: $ScriptPath" -InformationAction Continue
+            $fixedContent | Set-Content -Path $FilePath
+            Write-Information -MessageData "Fixed $fixCount whitespace consistency issue(s) in: $FilePath" -InformationAction Continue
 
             # Clean up trailing whitespace after the fixes
             Write-Information -MessageData "Cleaning up trailing whitespace after fixes..." -InformationAction Continue
-            Clear-TrailingWhitespace -ScriptPath $ScriptPath
+            Clear-TrailingWhitespace -FilePath $FilePath
         } else {
-            Write-Information -MessageData "No whitespace consistency issues found to fix in: $ScriptPath" -InformationAction Continue
+            Write-Information -MessageData "No whitespace consistency issues found to fix in: $FilePath" -InformationAction Continue
         }
 
         return $fixCount
@@ -581,51 +583,51 @@ function Repair-WhitespaceConsistency {
 # Main execution block
 if ($MyInvocation.InvocationName -ne '.') {
     # Determine the target script path
-    if ($ScriptPath) {
+    if ($FilePath) {
         # Use the provided script path
-        if (-not (Test-Path -Path $ScriptPath)) {
-            Write-Error -Message "Specified script file not found: $ScriptPath"
+        if (-not (Test-Path -Path $FilePath)) {
+            Write-Error -Message "Specified script file not found: $FilePath"
             exit 1
         }
 
-        if (-not ($ScriptPath -like "*.ps1")) {
-            Write-Error -Message "Specified file is not a PowerShell script (.ps1): $ScriptPath"
+        if (-not ($FilePath -like "*.ps1")) {
+            Write-Error -Message "Specified file is not a PowerShell script (.ps1): $FilePath"
             exit 1
         }
 
-        $targetScriptPath = $ScriptPath
-        Write-Information -MessageData "Using specified PowerShell script: $targetScriptPath" -InformationAction Continue
+        $targetFilePath = $FilePath
+        Write-Information -MessageData "Using specified PowerShell script: $targetFilePath" -InformationAction Continue
     } else {
         # Get the first .ps1 file in the current working directory
-        $targetScriptPath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
+        $targetFilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
 
-        if (-not $targetScriptPath) {
+        if (-not $targetFilePath) {
             Write-Warning -Message "No PowerShell script files (.ps1) found in the current directory."
             exit 1
         }
 
-        Write-Information -MessageData "Found PowerShell script in current directory: $targetScriptPath" -InformationAction Continue
+        Write-Information -MessageData "Found PowerShell script in current directory: $targetFilePath" -InformationAction Continue
     }
 
     # Execute all functions on the target script
-    Clear-TrailingWhitespace -ScriptPath $targetScriptPath
-    $inlineCommentResults = Find-NewlineError -ScriptPath $targetScriptPath
-    Find-PotentialMissingCode -ScriptPath $targetScriptPath
+    Clear-TrailingWhitespace -FilePath $targetFilePath
+    $inlineCommentResults = Find-NewlineError -FilePath $targetFilePath
+    Find-PotentialMissingCode -FilePath $targetFilePath
 
     # Automatically fix close brace newline issues
     Write-Information -MessageData "Checking for close brace newline issues..." -InformationAction Continue
-    Repair-CloseBraceNewline -ScriptPath $targetScriptPath
+    Repair-CloseBraceNewline -FilePath $targetFilePath
 
     # Automatically fix whitespace consistency issues
     Write-Information -MessageData "Checking for whitespace consistency issues..." -InformationAction Continue
-    Repair-WhitespaceConsistency -ScriptPath $targetScriptPath
+    Repair-WhitespaceConsistency -FilePath $targetFilePath
 
     # Automatically fix inline comments if found
     if ($inlineCommentResults) {
         Write-Information -MessageData "Inline comments detected. Automatically fixing..." -InformationAction Continue
-        Repair-InlineComment -ScriptPath $targetScriptPath
+        Repair-InlineComment -FilePath $targetFilePath
         Write-Information -MessageData "Re-running analysis after fixes..." -InformationAction Continue
-        Find-NewlineError -ScriptPath $targetScriptPath
+        Find-NewlineError -FilePath $targetFilePath
     }
-    Repair-InlineComment -ScriptPath $targetScriptPath
+    Repair-InlineComment -FilePath $targetFilePath
 }
