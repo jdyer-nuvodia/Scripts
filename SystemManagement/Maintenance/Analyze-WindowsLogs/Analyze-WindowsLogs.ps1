@@ -2,10 +2,10 @@
 # Script: Analyze-WindowsLogs.ps1
 # Created: 2025-04-02 21:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-03 21:50:00 UTC
+# Last Updated: 2025-07-11 21:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Fixed PSScriptAnalyzer indentation and operator spacing issues
+# Version: 1.1.4
+# Additional Info: Fixed PSScriptAnalyzer unused parameter warnings by using proper parameter referencing
 # =============================================================================
 
 <#
@@ -68,8 +68,8 @@ param(
 # Initialize logging
 $SystemName = $env:COMPUTERNAME
 $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$LogFile = Join-Path $ReportPath "LogAnalysis_${ SystemName}_${ TimeStamp}.log"
-$ReportFile = Join-Path $ReportPath "LogAnalysis_${ SystemName}_${ TimeStamp}.html"
+$LogFile = Join-Path $ReportPath "LogAnalysis_$SystemName_$TimeStamp.log"
+$ReportFile = Join-Path $ReportPath "LogAnalysis_$SystemName_$TimeStamp.html"
 
 # Initialize color support
 $Script:UseAnsiColors = ($PSVersionTable.PSVersion.Major -ge 7)
@@ -109,7 +109,7 @@ function Write-ColorOutput {
         # PowerShell 7+ with ANSI escape codes
         $colorCode = $Script:Colors[$Color]
         $resetCode = $Script:Colors.Reset
-        Write-Output "${ colorCode}${ Message}${ resetCode}"
+        Write-Output "$colorCode$Message$resetCode"
     } else {
         # PowerShell 5.1 - Change console color, write output, then reset
         $originalColor = $Host.UI.RawUI.ForegroundColor
@@ -167,7 +167,6 @@ function Get-LogStatistic {
         [Parameter(Mandatory = $true)]
         [string]$LogName
     )
-
     try {
         $StartTime = (Get-Date).AddDays(-$script:DaysToAnalyze)
 
@@ -226,17 +225,17 @@ function Get-LogStatistic {
 
             # Get top error sources with enhanced error handling
             $TopErrors = $Events |
-            Where-Object { $_.Level -eq 2 } |
-            Group-Object {
-                try {
-                    if ($_.ProviderName) { $_.ProviderName }
-                    else { "Unknown Provider" }
-                } catch {
-                    "Unknown Provider"
-                }
-            } |
-            Sort-Object Count -Descending |
-            Select-Object -First 5
+                Where-Object { $_.Level -eq 2 } |
+                Group-Object {
+                    try {
+                        if ($_.ProviderName) { $_.ProviderName }
+                        else { "Unknown Provider" }
+                    } catch {
+                        "Unknown Provider"
+                    }
+                } |
+                Sort-Object Count -Descending |
+                Select-Object -First 5
 
             # Calculate daily entry rate
             $DailyRate = if ($script:DaysToAnalyze -gt 0) {
@@ -256,8 +255,7 @@ function Get-LogStatistic {
             }
         }
     } catch {
-        $ErrorMessage = $_.Exception.Message
-        Write-LogMessage "Error processing ${ LogName}: ${ ErrorMessage}" -Level Error
+        Write-LogMessage "Error processing $LogName : $_" -Level Error
         return $null
     }
 }
@@ -278,16 +276,16 @@ function Get-SecurityEvent {
 
         # Analyze login attempts
         $FailedLogins = $SecurityEvents |
-        Where-Object { $_.Id -eq 4625 } |
-        Group-Object { $_.Properties[5].Value } |
-        Sort-Object Count -Descending |
-        Select-Object -First 5
+            Where-Object { $_.Id -eq 4625 } |
+            Group-Object { $_.Properties[5].Value } |
+            Sort-Object Count -Descending |
+            Select-Object -First 5
 
         # Analyze account modifications
         $AccountChanges = $SecurityEvents |
-        Where-Object { $_.Id -in @(4720, 4722, 4725, 4726) } |
-        Group-Object Id |
-        Sort-Object Count -Descending
+            Where-Object { $_.Id -in @(4720, 4722, 4725, 4726) } |
+            Group-Object Id |
+            Sort-Object Count -Descending
 
         return @{
             FailedLogins = $FailedLogins
@@ -359,7 +357,7 @@ function New-HTMLReport {
     <table>
         <tr><th>Metric</th><th>Value</th></tr>
         <tr><td>Total Entries</td><td>$($stat.TotalEntries)</td></tr>
-        <tr><td>Recent Entries (${ script:DaysToAnalyze}d)</td><td>$($stat.RecentEntries)</td></tr>
+        <tr><td>Recent Entries ($script:DaysToAnalyze d)</td><td>$($stat.RecentEntries)</td></tr>
         <tr><td>Error Count</td><td>$($stat.ErrorCount)</td></tr>
         <tr><td>Warning Count</td><td>$($stat.WarningCount)</td></tr>
         <tr><td>Daily Entry Rate</td><td>$($stat.DailyRate)</td></tr>
