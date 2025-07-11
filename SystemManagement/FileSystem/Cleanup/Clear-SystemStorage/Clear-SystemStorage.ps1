@@ -46,42 +46,42 @@ param (
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        'Black' = "`e[30m"
-        'DarkBlue' = "`e[34m"
-        'DarkGreen' = "`e[32m"
-        'DarkCyan' = "`e[36m"
-        'DarkRed' = "`e[31m"
+        'Black'       = "`e[30m"
+        'DarkBlue'    = "`e[34m"
+        'DarkGreen'   = "`e[32m"
+        'DarkCyan'    = "`e[36m"
+        'DarkRed'     = "`e[31m"
         'DarkMagenta' = "`e[35m"
-        'DarkYellow' = "`e[33m"
-        'Gray' = "`e[37m"
-        'DarkGray' = "`e[90m"
-        'Blue' = "`e[94m"
-        'Green' = "`e[92m"
-        'Cyan' = "`e[96m"
-        'Red' = "`e[91m"
-        'Magenta' = "`e[95m"
-        'Yellow' = "`e[93m"
-        'White' = "`e[97m"
-        'Reset' = "`e[0m"
+        'DarkYellow'  = "`e[33m"
+        'Gray'        = "`e[37m"
+        'DarkGray'    = "`e[90m"
+        'Blue'        = "`e[94m"
+        'Green'       = "`e[92m"
+        'Cyan'        = "`e[96m"
+        'Red'         = "`e[91m"
+        'Magenta'     = "`e[95m"
+        'Yellow'      = "`e[93m"
+        'White'       = "`e[97m"
+        'Reset'       = "`e[0m"
     }
 } else {
     @{
-        'Black' = [System.ConsoleColor]::Black
-        'DarkBlue' = [System.ConsoleColor]::DarkBlue
-        'DarkGreen' = [System.ConsoleColor]::DarkGreen
-        'DarkCyan' = [System.ConsoleColor]::DarkCyan
-        'DarkRed' = [System.ConsoleColor]::DarkRed
+        'Black'       = [System.ConsoleColor]::Black
+        'DarkBlue'    = [System.ConsoleColor]::DarkBlue
+        'DarkGreen'   = [System.ConsoleColor]::DarkGreen
+        'DarkCyan'    = [System.ConsoleColor]::DarkCyan
+        'DarkRed'     = [System.ConsoleColor]::DarkRed
         'DarkMagenta' = [System.ConsoleColor]::DarkMagenta
-        'DarkYellow' = [System.ConsoleColor]::DarkYellow
-        'Gray' = [System.ConsoleColor]::Gray
-        'DarkGray' = [System.ConsoleColor]::DarkGray
-        'Blue' = [System.ConsoleColor]::Blue
-        'Green' = [System.ConsoleColor]::Green
-        'Cyan' = [System.ConsoleColor]::Cyan
-        'Red' = [System.ConsoleColor]::Red
-        'Magenta' = [System.ConsoleColor]::Magenta
-        'Yellow' = [System.ConsoleColor]::Yellow
-        'White' = [System.ConsoleColor]::White
+        'DarkYellow'  = [System.ConsoleColor]::DarkYellow
+        'Gray'        = [System.ConsoleColor]::Gray
+        'DarkGray'    = [System.ConsoleColor]::DarkGray
+        'Blue'        = [System.ConsoleColor]::Blue
+        'Green'       = [System.ConsoleColor]::Green
+        'Cyan'        = [System.ConsoleColor]::Cyan
+        'Red'         = [System.ConsoleColor]::Red
+        'Magenta'     = [System.ConsoleColor]::Magenta
+        'Yellow'      = [System.ConsoleColor]::Yellow
+        'White'       = [System.ConsoleColor]::White
     }
 }
 
@@ -197,11 +197,11 @@ function Remove-TempFile {
     }
 
     $lockedFiles = @{
-        Count = 0
+        Count     = 0
         TotalSize = 0
     }
     $removedFiles = @{
-        Count = 0
+        Count     = 0
         TotalSize = 0
     }
 
@@ -248,78 +248,78 @@ function Remove-TempFile {
 
                 try {
                     Get-ChildItem -Path $downloadPath -File -Force -ErrorAction SilentlyContinue |
-                        Where-Object { $_.LastWriteTime -lt $cutoffDate } |
-                        ForEach-Object {
-                            try {
-                                $fileSize = $_.Length
-                                [System.IO.File]::Delete($_.FullName)
-                                $removedFiles.Count++
-                                $removedFiles.TotalSize += $fileSize
-                                Write-ScriptLog "Deleted old file: $_" -Color DarkGray -NoConsole
-                            } catch {
-                                $lockedFiles.Count++
-                                $lockedFiles.TotalSize += $fileSize
-                            }
+                    Where-Object { $_.LastWriteTime -lt $cutoffDate } |
+                    ForEach-Object {
+                        try {
+                            $fileSize = $_.Length
+                            [System.IO.File]::Delete($_.FullName)
+                            $removedFiles.Count++
+                            $removedFiles.TotalSize += $fileSize
+                            Write-ScriptLog "Deleted old file: $_" -Color DarkGray -NoConsole
+                        } catch {
+                            $lockedFiles.Count++
+                            $lockedFiles.TotalSize += $fileSize
                         }
-                        Write-StatusMessage "Processed $downloadPath" -Color Green
-                    } catch {
-                        Write-ScriptLog "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
                     }
+                    Write-StatusMessage "Processed $downloadPath" -Color Green
+                } catch {
+                    Write-ScriptLog "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
                 }
             }
-        } catch {
-            Write-ScriptLog "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
         }
-
-        # Format sizes for display
-        $removedSizeGB = [math]::Round($removedFiles.TotalSize / 1GB, 2)
-        $lockedSizeGB = [math]::Round($lockedFiles.TotalSize / 1GB, 2)
-
-        Write-StatusMessage "Temp file cleanup completed:" -Color Cyan
-        Write-ScriptLog "- Files removed: $($removedFiles.Count) ($($removedSizeGB) GB)" -Color Green
-        Write-ScriptLog "- Files locked: $($lockedFiles.Count) ($($lockedSizeGB) GB)" -Color Yellow
-
-        return $removedFiles.Count
+    } catch {
+        Write-ScriptLog "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
     }
 
-    function Clear-RecycleBinContent {
-        Write-StatusMessage "Clearing Recycle Bin..." -Color Cyan
-        try {
-            # Use the built-in cmdlet if available (PowerShell 5.1 and later)
-            if (Get-Command -Name Clear-RecycleBin -ErrorAction SilentlyContinue) {
-                Clear-RecycleBin -Force -ErrorAction Stop
-            } else {
-                # Fallback for older PowerShell versions
-                $shell = New-Object -ComObject Shell.Application
-                $recycleBin = $shell.NameSpace(0xa)
-                $recycleBin.Items() | ForEach-Object {
-                    Remove-Item $_.Path -Force -Recurse
-                }
-                if ($null -ne $shell) {
-                    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
-                }
+    # Format sizes for display
+    $removedSizeGB = [math]::Round($removedFiles.TotalSize / 1GB, 2)
+    $lockedSizeGB = [math]::Round($lockedFiles.TotalSize / 1GB, 2)
+
+    Write-StatusMessage "Temp file cleanup completed:" -Color Cyan
+    Write-ScriptLog "- Files removed: $($removedFiles.Count) ($($removedSizeGB) GB)" -Color Green
+    Write-ScriptLog "- Files locked: $($lockedFiles.Count) ($($lockedSizeGB) GB)" -Color Yellow
+
+    return $removedFiles.Count
+}
+
+function Clear-RecycleBinContent {
+    Write-StatusMessage "Clearing Recycle Bin..." -Color Cyan
+    try {
+        # Use the built-in cmdlet if available (PowerShell 5.1 and later)
+        if (Get-Command -Name Clear-RecycleBin -ErrorAction SilentlyContinue) {
+            Clear-RecycleBin -Force -ErrorAction Stop
+        } else {
+            # Fallback for older PowerShell versions
+            $shell = New-Object -ComObject Shell.Application
+            $recycleBin = $shell.NameSpace(0xa)
+            $recycleBin.Items() | ForEach-Object {
+                Remove-Item $_.Path -Force -Recurse
             }
-            Write-StatusMessage "Recycle Bin cleared successfully." -Color Green
-        } catch {
-            Write-StatusMessage "Error clearing Recycle Bin: $_" -Color Yellow
+            if ($null -ne $shell) {
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+            }
         }
+        Write-StatusMessage "Recycle Bin cleared successfully." -Color Green
+    } catch {
+        Write-StatusMessage "Error clearing Recycle Bin: $_" -Color Yellow
     }
+}
 
-    function Clear-ShadowCopy {
-        Write-StatusMessage "Managing Volume Shadow Copies..." -Color Cyan
-        try {
-            # Get current shadow copies using vssadmin
-            $tempFile = [System.IO.Path]::GetTempFileName()
-            $process = Start-Process -FilePath "vssadmin" -ArgumentList "list shadows" -NoNewWindow -Wait -RedirectStandardOutput $tempFile -PassThru
-            if ($process.ExitCode -ne 0) {
-                throw "vssadmin failed with exit code $($process.ExitCode)"
-            }
-            $shadowList = [System.IO.File]::ReadAllText($tempFile)
-            [System.IO.File]::Delete($tempFile)
+function Clear-ShadowCopy {
+    Write-StatusMessage "Managing Volume Shadow Copies..." -Color Cyan
+    try {
+        # Get current shadow copies using vssadmin
+        $tempFile = [System.IO.Path]::GetTempFileName()
+        $process = Start-Process -FilePath "vssadmin" -ArgumentList "list shadows" -NoNewWindow -Wait -RedirectStandardOutput $tempFile -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "vssadmin failed with exit code $($process.ExitCode)"
+        }
+        $shadowList = [System.IO.File]::ReadAllText($tempFile)
+        [System.IO.File]::Delete($tempFile)
 
-            # Parse shadow copies
-            $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: { (.*?)}" -AllMatches |
-                    ForEach-Object { $_.Matches.Groups[1].Value })
+        # Parse shadow copies
+        $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: { (.*?)}" -AllMatches |
+            ForEach-Object { $_.Matches.Groups[1].Value })
 
         $totalCopies = $shadowCopies.Count
 
@@ -380,9 +380,9 @@ function Clear-BrowserCache {
 
         # Define browser cache paths for this user
         $browserPaths = @{
-            'Chrome' = [System.IO.Path]::Combine($userFolder, "AppData\Local\Google\Chrome\User Data\Default\Cache")
+            'Chrome'  = [System.IO.Path]::Combine($userFolder, "AppData\Local\Google\Chrome\User Data\Default\Cache")
             'Firefox' = [System.IO.Path]::Combine($userFolder, "AppData\Local\Mozilla\Firefox\Profiles")
-            'Edge' = [System.IO.Path]::Combine($userFolder, "AppData\Local\Microsoft\Edge\User Data\Default\Cache")
+            'Edge'    = [System.IO.Path]::Combine($userFolder, "AppData\Local\Microsoft\Edge\User Data\Default\Cache")
         }
 
         foreach ($browser in $browserPaths.Keys) {
