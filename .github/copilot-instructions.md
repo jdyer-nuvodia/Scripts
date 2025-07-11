@@ -87,10 +87,9 @@ The current month is June, the current year is 2025.
    - For whitespace and formatting issues, use `/run-powershell-code-cleanup` prompt to execute the cleanup process safely.
 
 10. **Variable Scoping and Parameter Usage**
-    - **Always** use explicit scoping or correct passing of parameters to functions for all script parameters within functions to avoid PSScriptAnalyzer "unused parameter" warnings.
+    - Use explicit scoping or correct passing of parameters to functions for all script parameters within functions when necessary to avoid PSScriptAnalyzer "unused parameter" warnings.
     - Use `$script:ParameterName` when referencing script parameters from within functions.
-    - **Never** reference parameters without explicit scope (`$ParameterName` alone) from within functions.
-    - Apply explicit scoping consistently across all script parameters to ensure proper variable access and PSScriptAnalyzer compliance.
+    - **Never** reference parameters without explicit scope (`$ParameterName` alone) from within functions, but script functions can reference global variables directly.
     - Examples: `$script:VM`, `$script:ReportPath`, `$script:DaysToAnalyze`, `$script:CriticalServices`
 
 11. **Whitespace and Formatting**
