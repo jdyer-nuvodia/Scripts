@@ -2,10 +2,10 @@
 # Script: Create-ADUser.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:29:00 UTC
+# Last Updated: 2025-07-12 11:33:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added SupportsShouldProcess for safer user creation
+# Version: 1.4.0
+# Additional Info: Converted Write-Host to Write-ColorOutput for PSScriptAnalyzer compliance and code quality improvements
 # =============================================================================
 
 <#
@@ -119,6 +119,62 @@ param(
     [string[]]$Groups = @()
 )
 
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
+
 # Initialize logging
 $LogPath = Join-Path $PSScriptRoot "ADUserCreation_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $ErrorActionPreference = "Stop"
@@ -131,10 +187,10 @@ function Write-LogMessage {
     Add-Content -Path $LogPath -Value $LogMessage
 
     switch ($Level) {
-        "Information" { Write-Host $Message -ForegroundColor White }
-        "Success" { Write-Host $Message -ForegroundColor Green }
-        "Warning" { Write-Host $Message -ForegroundColor Yellow }
-        "Error" { Write-Host $Message -ForegroundColor Red }
+        "Information" { Write-ColorOutput -Message $Message -Color 'White' }
+        "Success" { Write-ColorOutput -Message $Message -Color 'Green' }
+        "Warning" { Write-ColorOutput -Message $Message -Color 'Yellow' }
+        "Error" { Write-ColorOutput -Message $Message -Color 'Red' }
     }
 }
 
