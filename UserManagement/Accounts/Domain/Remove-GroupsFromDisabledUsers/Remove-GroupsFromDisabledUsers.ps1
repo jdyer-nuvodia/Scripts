@@ -2,10 +2,10 @@
 # Script: Remove-GroupsFromDisabledUsers.ps1
 # Created: 2024-02-20 17:15:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-08 19:36:00 UTC
+# Last Updated: 2025-07-12 11:54:50 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.5.1
-# Additional Info: Fixed unapproved verb warning in function name
+# Version: 3.5.2
+# Additional Info: Converted Write-Host to Write-ColorOutput for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -43,6 +43,62 @@
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param()
 
+
+# Color support variables and Write-ColorOutput function
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        'White' = "`e[37m"
+        'Cyan' = "`e[36m"
+        'Green' = "`e[32m"
+        'Yellow' = "`e[33m"
+        'Red' = "`e[31m"
+        'Magenta' = "`e[35m"
+        'DarkGray' = "`e[90m"
+        'Reset' = "`e[0m"
+    }
+} else {
+    @{
+        'White' = [ConsoleColor]::White
+        'Cyan' = [ConsoleColor]::Cyan
+        'Green' = [ConsoleColor]::Green
+        'Yellow' = [ConsoleColor]::Yellow
+        'Red' = [ConsoleColor]::Red
+        'Magenta' = [ConsoleColor]::Magenta
+        'DarkGray' = [ConsoleColor]::DarkGray
+        'Reset' = ''
+    }
+}
+
+function Write-ColorOutput {
+    <#
+    .SYNOPSIS
+    Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+    .DESCRIPTION
+    This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+    by using only Write-Output and standard PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    # Always use Write-Output to satisfy PSScriptAnalyzer
+    # For PowerShell 7+, include ANSI color codes in the output
+    if ($Script:UseAnsiColors) {
+        $colorCode = $Script:Colors[$Color]
+        $resetCode = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # For PowerShell 5.1, just output the message
+        # Color formatting will be handled by the terminal/host if supported
+        Write-Output $Message
+    }
+}
+
 # Import required assembly for MessageBox
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -58,24 +114,24 @@ $logfilename = "C:\Temp\DisabledUsers_" + (Get-Date).ToString("yyyy-MM-dd_HH-mm-
 Start-Transcript -Path $logfilename
 
 # Display script header
-Write-Host "=======================================================" -ForegroundColor White
-Write-Host "Remove-GroupsFromDisabledUsers.ps1" -ForegroundColor White
-Write-Host "=======================================================" -ForegroundColor White
+Write-ColorOutput -Message "=======================================================" -Color 'White'
+Write-ColorOutput -Message "Remove-GroupsFromDisabledUsers.ps1" -Color 'White'
+Write-ColorOutput -Message "=======================================================" -Color 'White'
 
 # Display environment information
-Write-Host "CONFIGURATION:" -ForegroundColor White
-Write-Host "Current domain: $($CurrentDomain.DNSRoot)" -ForegroundColor Cyan
-Write-Host "Start time: $(Get-Date)" -ForegroundColor White
-Write-Host "Log file: $logfilename" -ForegroundColor DarkGray
-Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
+Write-ColorOutput -Message "CONFIGURATION:" -Color 'White'
+Write-ColorOutput -Message "Current domain: $($CurrentDomain.DNSRoot)" -Color 'Cyan'
+Write-ColorOutput -Message "Start time: $(Get-Date)" -Color 'White'
+Write-ColorOutput -Message "Log file: $logfilename" -Color 'DarkGray'
+Write-ColorOutput -Message "-------------------------------------------------------" -Color 'DarkGray'
 
 # Get Domain Users group information
 try {
     $DomainUsersInfo = Get-ADGroup -Identity $DomainUsersGroup -Properties primaryGroupToken
     $DomainUsersPGID = $DomainUsersInfo.primaryGroupToken
-    Write-Host "Domain Users group token: $DomainUsersPGID" -ForegroundColor DarkGray
+    Write-ColorOutput -Message "Domain Users group token: $DomainUsersPGID" -Color 'DarkGray'
 } catch {
-    Write-Host "Error retrieving Domain Users group info: $($_.Exception.Message)" -ForegroundColor Red
+    Write-ColorOutput -Message "Error retrieving Domain Users group info: $($_.Exception.Message)" -Color 'Red'
     Stop-Transcript
     exit
 }
@@ -85,21 +141,21 @@ $DisabledUsers = Search-ADAccount -AccountDisabled -UsersOnly -ResultPageSize 20
 $DisabledUsersCount = $DisabledUsers.Count
 
 # Output the total number of users identified
-Write-Host "PROCESSING:" -ForegroundColor White
-Write-Host "Identified $DisabledUsersCount disabled user accounts" -ForegroundColor Cyan
-Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
+Write-ColorOutput -Message "PROCESSING:" -Color 'White'
+Write-ColorOutput -Message "Identified $DisabledUsersCount disabled user accounts" -Color 'Cyan'
+Write-ColorOutput -Message "-------------------------------------------------------" -Color 'DarkGray'
 
 # Counter for tracking progress
 $UserCounter = 0
 $GroupsRemovedCounter = 0
 
-Try {
+try {
     # Loop through all users from Disabled Users search
     Foreach ($User in $DisabledUsers.SamAccountName) {
         $UserCounter++
         # Calculate and display progress percentage
         $PercentComplete = [math]::Round(($UserCounter / $DisabledUsersCount) * 100, 1)
-        Write-Host "Processing user $UserCounter of $DisabledUsersCount ($PercentComplete%): ${ User}" -ForegroundColor Cyan
+        Write-ColorOutput -Message "Processing user $UserCounter of $DisabledUsersCount ($PercentComplete%): ${ User}" -Color 'Cyan'
 
         try {
             # Get user details
@@ -108,7 +164,7 @@ Try {
             # Get all group memberships
             $UserGroups = Get-ADPrincipalGroupMembership $User
             $GroupCount = $UserGroups.Count
-            Write-Host "User is a member of $GroupCount groups" -ForegroundColor DarkGray
+            Write-ColorOutput -Message "User is a member of $GroupCount groups" -Color 'DarkGray'
 
             # Process group removals
             if ($GroupCount -gt 0) {
@@ -123,11 +179,11 @@ Try {
                         }
                         # Set Domain Users as primary group
                         if ($PSCmdlet.ShouldProcess($User, "Set Domain Users as primary group")) {
-                            Set-ADUser -Identity $User -Replace @{ primaryGroupID = $DomainUsersPGID}
-                            Write-Host "Reset primary group to Domain Users" -ForegroundColor Green
+                            Set-ADUser -Identity $User -Replace @{ primaryGroupID = $DomainUsersPGID }
+                            Write-ColorOutput -Message "Reset primary group to Domain Users" -Color 'Green'
                         }
                     } catch {
-                        Write-Host "Error setting Domain Users as primary group: $($_.Exception.Message)" -ForegroundColor Red
+                        Write-ColorOutput -Message "Error setting Domain Users as primary group: $($_.Exception.Message)" -Color 'Red'
                     }
                 }
 
@@ -138,16 +194,16 @@ Try {
                         try {
                             if ($PSCmdlet.ShouldProcess($User, "Remove from group '$($Group.Name)'")) {
                                 Remove-ADGroupMember -Identity $Group.Name -Members $User -Confirm:$false
-                                Write-Host "Removed from group: $($Group.Name)" -ForegroundColor Green
+                                Write-ColorOutput -Message "Removed from group: $($Group.Name)" -Color 'Green'
                                 $GroupsRemovedCounter++
                             }
                         } catch {
-                            Write-Host "Error removing from group $($Group.Name) - $($_.Exception.Message)" -ForegroundColor Red
+                            Write-ColorOutput -Message "Error removing from group $($Group.Name) - $($_.Exception.Message)" -Color 'Red'
                         }
                     }
                 }
             } else {
-                Write-Host "User is not a member of any groups" -ForegroundColor Yellow
+                Write-ColorOutput -Message "User is not a member of any groups" -Color 'Yellow'
             }
 
             # Update User Description
@@ -156,31 +212,31 @@ Try {
                 try {
                     if ($PSCmdlet.ShouldProcess($User, "Update description to 'User disabled $DisabledDate'")) {
                         Set-ADUser -Identity $User -Description "User disabled $DisabledDate"
-                        Write-Host "Updated user description" -ForegroundColor Green
+                        Write-ColorOutput -Message "Updated user description" -Color 'Green'
                     }
                 } catch {
-                    Write-Host "Error updating description: $($_.Exception.Message)" -ForegroundColor Red
+                    Write-ColorOutput -Message "Error updating description: $($_.Exception.Message)" -Color 'Red'
                 }
             } else {
-                Write-Host "User description already indicates disabled status" -ForegroundColor Green
+                Write-ColorOutput -Message "User description already indicates disabled status" -Color 'Green'
             }
         } catch {
-            Write-Host "Error processing user ${ User} - $($_.Exception.Message)" -ForegroundColor Red
+            Write-ColorOutput -Message "Error processing user ${ User} - $($_.Exception.Message)" -Color 'Red'
         }
 
-        Write-Host "-------------------------------------------------------" -ForegroundColor DarkGray
+        Write-ColorOutput -Message "-------------------------------------------------------" -Color 'DarkGray'
     }
 } catch {
-    Write-Host "Critical error in main processing loop: $($_.Exception.Message)" -ForegroundColor Red
+    Write-ColorOutput -Message "Critical error in main processing loop: $($_.Exception.Message)" -Color 'Red'
 }
 
 # End logging transcript
-Write-Host "SUMMARY:" -ForegroundColor White
-Write-Host "End time: $(Get-Date)" -ForegroundColor White
-Write-Host "Total users processed: $UserCounter of $DisabledUsersCount" -ForegroundColor Cyan
-Write-Host "Total group memberships removed: $GroupsRemovedCounter" -ForegroundColor Green
-Write-Host "Log file saved to: $logfilename" -ForegroundColor DarkGray
-Write-Host "=======================================================" -ForegroundColor White
+Write-ColorOutput -Message "SUMMARY:" -Color 'White'
+Write-ColorOutput -Message "End time: $(Get-Date)" -Color 'White'
+Write-ColorOutput -Message "Total users processed: $UserCounter of $DisabledUsersCount" -Color 'Cyan'
+Write-ColorOutput -Message "Total group memberships removed: $GroupsRemovedCounter" -Color 'Green'
+Write-ColorOutput -Message "Log file saved to: $logfilename" -Color 'DarkGray'
+Write-ColorOutput -Message "=======================================================" -Color 'White'
 Stop-Transcript
 
 # Prompt end of script with log location
@@ -194,10 +250,10 @@ try {
 }
 
 # Keep console window open regardless of how script was launched
-Write-Host "`n`n" -NoNewline
-Write-Host "Script execution complete." -ForegroundColor Green
-Write-Host "Window will remain open for your review." -ForegroundColor Cyan
-Write-Host "Press any key to close this window..." -ForegroundColor Yellow
+Write-ColorOutput -Message "`n`n" -Color "White" -NoNewline
+Write-ColorOutput -Message "Script execution complete." -Color 'Green'
+Write-ColorOutput -Message "Window will remain open for your review." -Color 'Cyan'
+Write-ColorOutput -Message "Press any key to close this window..." -Color 'Yellow'
 
 # This technique works better with "Run with PowerShell" than Read-Host
 function Wait-ForKey {
@@ -206,7 +262,7 @@ function Wait-ForKey {
         $null = Read-Host "Press Enter to continue..."
     } else {
         # Running in console or "Run with PowerShell"
-        Write-Host "Press any key to continue..."
+        Write-ColorOutput -Message "Press any key to continue..." -Color "White"
         $host.UI.RawUI.ReadKey("NoEcho, IncludeKeyDown") | Out-Null
     }
 }
