@@ -2,10 +2,10 @@
 # Script: Convert-WriteHostToColorOutput.ps1
 # Created: 2025-07-09 21:45:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 17:35:00 UTC
+# Last Updated: 2025-07-12 11:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Removed noisy output when Write-ColorOutput function already exists in target script
+# Version: 1.4.2
+# Additional Info: Fixed regex dollar sign escaping - single backslash instead of double escape
 # =============================================================================
 
 <#
@@ -220,8 +220,8 @@ function Convert-WriteHostCall {
         $replacementCount += ($beforeCount - $afterCount)
 
         # Pattern 3: Write-Host $variable -ForegroundColor Color
-        $pattern3 = "Write-Host\s+(\`$[a-zA-Z_][a-zA-Z0-9_]*)\s+-ForegroundColor\s+$color"
-        $replacement3 = "Write-ColorOutput -Message $1 -Color '$($colorMap[$color])'"
+        $pattern3 = "Write-Host\s+(\$[a-zA-Z_][a-zA-Z0-9_]*)\s+-ForegroundColor\s+$color"
+        $replacement3 = "Write-ColorOutput -Message `$1 -Color '$($colorMap[$color])'"
         $beforeCount = ($modifiedContent | Select-String -Pattern $pattern3 -AllMatches).Matches.Count
         $modifiedContent = $modifiedContent -replace $pattern3, $replacement3
         $afterCount = ($modifiedContent | Select-String -Pattern $pattern3 -AllMatches).Matches.Count
