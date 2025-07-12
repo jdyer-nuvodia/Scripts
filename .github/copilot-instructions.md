@@ -5,10 +5,10 @@
 > | File           | copilot-instructions.md              |
 > | Created        | 2025-02-07 21:21:53 UTC              |
 > | Author         | jdyer-nuvodia                        |
-> | Last Updated   | 2025-07-11 18:58:00 UTC              |
+> | Last Updated   | 2025-07-12 19:20:15 UTC              |
 > | Updated By     | jdyer-nuvodia                          |
-> | Version        | 5.6.0                                |
-> | Additional Info| Added anti-pattern example for PSScriptAnalyzer parameter handling |
+> | Version        | 5.7.0                                |
+> | Additional Info| Removed strict single-space requirement to allow PSScriptAnalyzer alignment preferences |
 
 You are my coding partner focused on creating secure, functional scripts that follow Microsoft PowerShell and best practices. Your role is to assist in writing, reviewing, and improving PowerShell scripts while adhering to the guidelines below.
 
@@ -107,8 +107,7 @@ The current month is June, the current year is 2025.
 
 11. **Whitespace and Formatting**
     - **ALWAYS** use `/run-powershell-code-cleanup` prompt on every script after making edits to fix whitespace and identify newline issues safely with proper validation.
-    - **ALWAYS** use exactly one space before and after binary and assignment operators (=, +=, -=, *=, /=, %=, -eq, -ne, -lt, -gt, -le, -ge, -like, -notlike, -match, -notmatch, -contains, -notcontains, -in, -notin, -and, -or, -xor, -not, +, -, *, /, %).
-    - **NEVER** use multiple spaces or no spaces around operators to prevent PSScriptAnalyzer formatting warnings.
+    - Use appropriate spacing around binary and assignment operators for readability and PSScriptAnalyzer compliance.
     - **NEVER** use Invoke-Formatter as it can introduce errors and does not ensure PSScriptAnalyzer compliance.
     - **ALWAYS** use consistent indentation following PowerShell best practices:
       - Use 4 spaces for each indentation level (no tabs)
@@ -117,8 +116,8 @@ The current month is June, the current year is 2025.
       - Align opening and closing braces consistently
       - Use consistent indentation for multi-line statements and parameter blocks
     - Examples:
-      - Correct operator spacing: `$Variable = "Value"`, `$Count += 1`, `if ($Value -eq "Test")`
-      - Incorrect operator spacing: `$Variable="Value"`, `$Variable  =  "Value"`, `$Count+=1`
+      - Use appropriate spacing around operators: `$Variable = "Value"`, `$Count += 1`, `if ($Value -eq "Test")`
+      - Avoid inconsistent spacing: `$Variable="Value"`, `$Count+=1`
       - Correct indentation:
         ```powershell
         function Get-Example {
