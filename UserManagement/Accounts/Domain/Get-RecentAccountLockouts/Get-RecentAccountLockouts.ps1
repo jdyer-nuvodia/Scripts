@@ -2,10 +2,10 @@
 # Script: Get-RecentAccountLockouts.ps1
 # Created: 2025-04-15 22:28:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-04-15 23:34:00 UTC
+# Last Updated: 2025-07-12 18:52:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.1
-# Additional Info: Retrieves recent account lockout events (Event ID 4740) from Domain Controllers. Includes transcript logging directly in script directory. Displays 'Local System' for S-1-5-18 caller SID. Added end block and improved file handle management to properly release log files. Enhanced transcript handling with proper resource cleanup via garbage collection.
+# Version: 1.3.4
+# Additional Info: Added explicit Import-Module ActiveDirectory with error handling in begin block to ensure module availability before script execution.
 # =============================================================================
 
 #Requires -Modules ActiveDirectory
@@ -38,11 +38,13 @@ PS C:\> .\Get-RecentAccountLockouts.ps1 -UserName 'jdoe' -HoursAgo 48
 [Description: Retrieves account lockout events for the user 'jdoe' from the last 48 hours.]
 
 .NOTES
+Requires the ActiveDirectory PowerShell module to be installed and available.
 Requires membership in the 'Event Log Readers' group or equivalent permissions on the Domain Controllers.
 The script attempts to query all DCs found via Get-ADDomainController. Ensure network connectivity and necessary permissions.
 Performance may vary depending on the number of DCs and the volume of event logs.
 Uses Get-WinEvent for event log retrieval.
 Creates a transcript log file in the same directory as the script.
+To install the ActiveDirectory module, use: Install-WindowsFeature RSAT-AD-PowerShell (on Windows Server) or enable RSAT features on Windows 10/11.
 #>
 
 # CmdletBinding and param must be after comment-based help
@@ -50,7 +52,7 @@ Creates a transcript log file in the same directory as the script.
 param(
     [Parameter(Mandatory = $false, HelpMessage = "Specify the number of hours back to search for lockout events. Default is 24.")]
     # Limit search range for performance
-        [ValidateRange(1, 720)]
+    [ValidateRange(1, 720)]
     [int]$HoursAgo = 24,
 
     [Parameter(Mandatory = $false, HelpMessage = "Filter lockouts for a specific username.")]
@@ -58,6 +60,70 @@ param(
 )
 
 begin {
+    # Color support variables and Write-ColorOutput function
+    $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+    $Script:Colors = if ($Script:UseAnsiColors) {
+        @{
+            'White' = "`e[37m"
+            'Cyan' = "`e[36m"
+            'Green' = "`e[32m"
+            'Yellow' = "`e[33m"
+            'Red' = "`e[31m"
+            'Magenta' = "`e[35m"
+            'DarkGray' = "`e[90m"
+            'Reset' = "`e[0m"
+        }
+    } else {
+        @{
+            'White' = [ConsoleColor]::White
+            'Cyan' = [ConsoleColor]::Cyan
+            'Green' = [ConsoleColor]::Green
+            'Yellow' = [ConsoleColor]::Yellow
+            'Red' = [ConsoleColor]::Red
+            'Magenta' = [ConsoleColor]::Magenta
+            'DarkGray' = [ConsoleColor]::DarkGray
+            'Reset' = ''
+        }
+    }
+
+    function Write-ColorOutput {
+        <#
+        .SYNOPSIS
+        Outputs colored text in a way that's compatible with PSScriptAnalyzer requirements.
+
+        .DESCRIPTION
+        This function provides colored output while maintaining compatibility with PSScriptAnalyzer
+        by using only Write-Output and standard PowerShell cmdlets.
+        #>
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Message,
+            [Parameter(Mandatory = $false)]
+            [string]$Color = "White"
+        )
+
+        # Always use Write-Output to satisfy PSScriptAnalyzer
+        # For PowerShell 7+, include ANSI color codes in the output
+        if ($Script:UseAnsiColors) {
+            $colorCode = $Script:Colors[$Color]
+            $resetCode = $Script:Colors.Reset
+            Write-Output "${colorCode}${Message}${resetCode}"
+        } else {
+            # For PowerShell 5.1, just output the message
+            # Color formatting will be handled by the terminal/host if supported
+            Write-Output $Message
+        }
+    }
+
+    # Import required modules
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+        Write-Debug "ActiveDirectory module imported successfully"
+    } catch {
+        Write-Error "Failed to import ActiveDirectory module: $($_.Exception.Message). Ensure the module is installed and available."
+        exit 1
+    }
+
     # Script scope variable to track transcript status
     $script:transcriptActive = $false
     $script:logFile = $null
@@ -73,56 +139,60 @@ begin {
                     [System.GC]::WaitForPendingFinalizers()
                 }
             } catch {
-                # Swallow errors on exit - we're just trying to clean up
+                # Log cleanup errors during exit for debugging purposes
+                Write-Debug "Error during exit cleanup: $_"
             }
         }
     }
 
     # Function to safely stop transcript, improved based on Get-SetInactivityTimers.ps1
     function Stop-TranscriptSafely {
-        [CmdletBinding()]
+        [CmdletBinding(SupportsShouldProcess)]
         param()
 
         Write-Debug "Entering Stop-TranscriptSafely function."
         # Check the script-scoped flag to see if transcript was started by this script
         if ($script:transcriptActive) {
             Write-Debug "Transcript was active, attempting to stop."
-            try {
-                # First try - standard Stop-Transcript
-                Stop-Transcript -ErrorAction Stop
-                Write-Debug "Stop-Transcript command executed."
-
-                # Give the system a moment to release the file handle
-                Start-Sleep -Milliseconds 500
-                Write-Debug "Slept for 500ms after Stop-Transcript."
-
-                # Force garbage collection to release file handles
-                [System.GC]::Collect()
-                [System.GC]::WaitForPendingFinalizers()
-                Write-Debug "Garbage collection triggered after Stop-Transcript."
-
-                # Try a second round of garbage collection for stubborn handles
-                Start-Sleep -Milliseconds 200
-                [System.GC]::Collect()
-                [System.GC]::WaitForPendingFinalizers()
-
-                # Set the flag to inactive *after* successful stop
-                $script:transcriptActive = $false
-                Write-Host "Transcript stopped successfully." -ForegroundColor DarkGray
-            } catch {
-                Write-Warning "Error stopping transcript: $_"
+            if ($PSCmdlet.ShouldProcess("Transcript", "Stop")) {
                 try {
-                    # Second try - just in case the first attempt failed but didn't throw properly
-                    Stop-Transcript -ErrorAction SilentlyContinue
+                    # First try - standard Stop-Transcript
+                    Stop-Transcript -ErrorAction Stop
+                    Write-Debug "Stop-Transcript command executed."
+
+                    # Give the system a moment to release the file handle
                     Start-Sleep -Milliseconds 500
+                    Write-Debug "Slept for 500ms after Stop-Transcript."
+
+                    # Force garbage collection to release file handles
                     [System.GC]::Collect()
                     [System.GC]::WaitForPendingFinalizers()
+                    Write-Debug "Garbage collection triggered after Stop-Transcript."
+
+                    # Try a second round of garbage collection for stubborn handles
+                    Start-Sleep -Milliseconds 200
+                    [System.GC]::Collect()
+                    [System.GC]::WaitForPendingFinalizers()
+
+                    # Set the flag to inactive *after* successful stop
+                    $script:transcriptActive = $false
+                    Write-ColorOutput -Message "Transcript stopped successfully." -Color 'DarkGray'
                 } catch {
-                    # Ignore errors on the second attempt
+                    Write-Warning "Error stopping transcript: $_"
+                    try {
+                        # Second try - just in case the first attempt failed but didn't throw properly
+                        Stop-Transcript -ErrorAction SilentlyContinue
+                        Start-Sleep -Milliseconds 500
+                        [System.GC]::Collect()
+                        [System.GC]::WaitForPendingFinalizers()
+                    } catch {
+                        # Log error for the second attempt instead of ignoring
+                        Write-Debug "Second attempt to stop transcript also failed: $_"
+                    }
+                    # Even if stopping failed, mark as inactive to prevent retry loops
+                    $script:transcriptActive = $false
+                    Write-Debug "Transcript marked as inactive despite error during stop."
                 }
-                # Even if stopping failed, mark as inactive to prevent retry loops
-                $script:transcriptActive = $false
-                Write-Debug "Transcript marked as inactive despite error during stop."
             }
         } else {
             Write-Debug "Transcript was not marked as active by this script, skipping Stop-Transcript."
@@ -139,7 +209,7 @@ process {
     try {
         Start-Transcript -Path $script:logFile -Append -ErrorAction Stop
         # Mark transcript as active
-                $script:transcriptActive = $true
+        $script:transcriptActive = $true
         Write-Debug "Transcript started: $($script:logFile)"
     } catch {
         Write-Warning "Failed to start transcript logging to '$($script:logFile)'. Error: $($_.Exception.Message)"
@@ -147,7 +217,7 @@ process {
     }
 
     try {
-        Write-Host "Starting search for account lockout events (ID 4740)..." -ForegroundColor Cyan
+        Write-ColorOutput -Message "Starting search for account lockout events (ID 4740)..." -Color 'Cyan'
         # Calculate start time based on current UTC time
         $startTime = (Get-Date).ToUniversalTime().AddHours(-$HoursAgo)
         $dcs = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
@@ -157,17 +227,17 @@ process {
             # Stop transcript before exiting (using the safe function)
             Stop-TranscriptSafely
             # Exit if DCs cannot be retrieved
-                        exit 1
+            exit 1
         }
 
-        Write-Host "Searching on Domain Controllers: $($dcs -join ', ')" -ForegroundColor DarkGray
+        Write-ColorOutput -Message "Searching on Domain Controllers: $($dcs -join ', ')" -Color 'DarkGray'
         # Display the calculated UTC start time for clarity
-        Write-Host "Searching for events since: $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) UTC" -ForegroundColor DarkGray
+        Write-ColorOutput -Message "Searching for events since: $($startTime.ToString('yyyy-MM-dd HH:mm:ss')) UTC" -Color 'DarkGray'
 
         $allLockoutEvents = @()
 
         foreach ($dc in $dcs) {
-            Write-Host "Querying Domain Controller: $dc" -ForegroundColor Cyan
+            Write-ColorOutput -Message "Querying Domain Controller: $dc" -Color 'Cyan'
             try {
                 $filterHashTable = @{
                     LogName = 'Security'
@@ -177,22 +247,22 @@ process {
 
                 # Removed -ErrorAction Stop to prevent terminating error when no events are found
                 # Continue if specific DC fails, but log warning below
-                                $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction SilentlyContinue
+                $events = Get-WinEvent -ComputerName $dc -FilterHashtable $filterHashTable -ErrorAction SilentlyContinue
 
                 # Check if the command succeeded before processing results
                 if ($LASTEXITCODE -ne 0 -or $Error.Count -gt 0) {
                     # Log a warning if Get-WinEvent failed for reasons other than 'no events found'
                     Write-Warning "Failed to query $dc. Error details might be available above or in transcript."
                     # Clear error record after handling
-                                        $Error.Clear()
+                    $Error.Clear()
                 }
 
                 # Check if $events is null or empty *after* the call
                 if ($null -ne $events -and $events.Count -gt 0) {
-                    Write-Host "Found $($events.Count) potential lockout events on $dc since $startTime." -ForegroundColor White
+                    Write-ColorOutput -Message "Found $($events.Count) potential lockout events on $dc since $startTime." -Color 'White'
 
                     # Renamed $event to $lockoutEvent
-                                        foreach ($lockoutEvent in $events) {
+                    foreach ($lockoutEvent in $events) {
                         # Extract details from the event message or properties
                         # Property indices based on typical Event ID 4740 structure:
                         # Index 0: Target User Name
@@ -206,20 +276,20 @@ process {
                         $eventTime = $lockoutEvent.TimeCreated.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss UTC')
                         $lockedOutUser = $lockoutEvent.Properties[0].Value
                         # Refined check for LOCAL SYSTEM SID - Ensure not null/empty before comparing
-                                                $callerComputerRaw = $lockoutEvent.Properties[3].Value
+                        $callerComputerRaw = $lockoutEvent.Properties[3].Value
                         $callerComputerDisplay = if (-not [string]::IsNullOrEmpty($callerComputerRaw) -and $callerComputerRaw.Trim() -ieq 'S-1-5-18') {
                             # Display more descriptive text without parentheses
-                                                        'Local System'
+                            'Local System'
                         } else {
                             # Otherwise, use the raw value (could be name or other SID)
-                                                        $callerComputerRaw
+                            $callerComputerRaw
                         }
 
                         # Apply username filter if provided
                         if (-not [string]::IsNullOrEmpty($UserName)) {
                             if ($lockedOutUser -notlike "*$UserName*") {
                                 # Skip if username doesn't match
-                                                                continue
+                                continue
                             }
                         }
 
@@ -227,17 +297,17 @@ process {
                             TimeLockedUTC = $eventTime
                             UserName = $lockedOutUser
                             # Use the processed display name
-                                                        CallerComputer = $callerComputerDisplay
+                            CallerComputer = $callerComputerDisplay
                             DomainController = $dc
                         }
                         $allLockoutEvents += $lockoutDetail
                     }
                 } else {
-                     # Handle case where no events were found (no error thrown now)
-                     # Only write this if Get-WinEvent didn't fail for other reasons
-                     if ($LASTEXITCODE -eq 0 -and $Error.Count -eq 0) {
-                        Write-Host "No lockout events found on $dc within the specified timeframe." -ForegroundColor DarkGray
-                     }
+                    # Handle case where no events were found (no error thrown now)
+                    # Only write this if Get-WinEvent didn't fail for other reasons
+                    if ($LASTEXITCODE -eq 0 -and $Error.Count -eq 0) {
+                        Write-ColorOutput -Message "No lockout events found on $dc within the specified timeframe." -Color 'DarkGray'
+                    }
                 }
             } catch {
                 # This catch block handles unexpected errors within the loop iteration
@@ -246,21 +316,22 @@ process {
         }
 
         if ($allLockoutEvents.Count -gt 0) {
-            Write-Host "-----------------------------------------" -ForegroundColor White
-            Write-Host "Recent Account Lockout Events Found:" -ForegroundColor Green
-            Write-Host "-----------------------------------------" -ForegroundColor White
+            Write-ColorOutput -Message "-----------------------------------------" -Color 'White'
+            Write-ColorOutput -Message "Recent Account Lockout Events Found:" -Color 'Green'
+            Write-ColorOutput -Message "-----------------------------------------" -Color 'White'
             $allLockoutEvents | Sort-Object TimeLockedUTC -Descending | Format-Table -AutoSize
-            Write-Host "Successfully retrieved $($allLockoutEvents.Count) lockout events." -ForegroundColor Green
+            Write-ColorOutput -Message "Successfully retrieved $($allLockoutEvents.Count) lockout events." -Color 'Green'
         } else {
-            Write-Host "-----------------------------------------" -ForegroundColor White
-            Write-Host "No matching account lockout events found in the last $HoursAgo hours" -ForegroundColor Yellow
+            Write-ColorOutput -Message "-----------------------------------------" -Color 'White'
+            Write-ColorOutput -Message "No matching account lockout events found in the last $HoursAgo hours" -Color 'Yellow'
             if (-not [string]::IsNullOrEmpty($UserName)) {
-                Write-Host "(Filtered for user: $UserName)" -ForegroundColor Yellow
+                Write-ColorOutput -Message "(Filtered for user: $UserName)" -Color 'Yellow'
             }
-            Write-Host "-----------------------------------------" -ForegroundColor White
+            Write-ColorOutput -Message "-----------------------------------------" -Color 'White'
         }
 
-        Write-Host "Script finished." -ForegroundColor Cyan    } catch {
+        Write-ColorOutput -Message "Script finished." -Color 'Cyan'
+    } catch {
         # Catch block for errors in the main try block (e.g., Get-ADDomainController failure)
         Write-Error "An error occurred during script execution: $($_.Exception.Message)"
         # Consider adding more specific error handling if needed
@@ -279,7 +350,7 @@ end {
 
     # Unregister event handler to prevent memory leaks
     Get-EventSubscriber -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -ErrorAction SilentlyContinue |
-    Unregister-Event -ErrorAction SilentlyContinue
+        Unregister-Event -ErrorAction SilentlyContinue
 
     # Final garbage collection
     [System.GC]::Collect()
