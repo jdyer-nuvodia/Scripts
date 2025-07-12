@@ -108,11 +108,11 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateScript({
-        if (-not (Test-Path "AD:$_")) {
-            throw "OU path does not exist in Active Directory"
-        }
-        return $true
-    })]
+            if (-not (Test-Path "AD:$_")) {
+                throw "OU path does not exist in Active Directory"
+            }
+            return $true
+        })]
     [string]$OUPath,
 
     [Parameter(Mandatory = $false)]
@@ -123,7 +123,7 @@ param(
 $LogPath = Join-Path $PSScriptRoot "ADUserCreation_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 $ErrorActionPreference = "Stop"
 
-function Write-Log {
+function Write-LogMessage {
     param($Message, $Level = "Information")
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
@@ -139,21 +139,21 @@ function Write-Log {
 }
 
 try {
-    Write-Log "Starting user creation process for: $Name" "Information"
+    Write-LogMessage "Starting user creation process for: $Name" "Information"
 
     # Verify AD module is loaded
     if (-not (Get-Module -Name ActiveDirectory)) {
         Import-Module ActiveDirectory -ErrorAction Stop
-        Write-Log "Loaded Active Directory module" "Success"
+        Write-LogMessage "Loaded Active Directory module" "Success"
     }
 
     # Verify SamAccountName is unique
-    if (Get-ADUser -Filter { SamAccountName -eq $SamAccountName} -ErrorAction SilentlyContinue) {
+    if (Get-ADUser -Filter { SamAccountName -eq $SamAccountName } -ErrorAction SilentlyContinue) {
         throw "SamAccountName '$SamAccountName' already exists"
     }
 
     # Create the new user
-    Write-Log "Creating new AD user account..." "Information"
+    Write-LogMessage "Creating new AD user account..." "Information"
     if ($PSCmdlet.ShouldProcess($Name, "Create new AD user with SamAccountName '$SamAccountName'")) {
         New-ADUser -Name $Name `
             -GivenName $GivenName `
@@ -165,29 +165,28 @@ try {
             -Path $OUPath `
             -ErrorAction Stop
 
-        Write-Log "Successfully created user account: $Name" "Success"
+        Write-LogMessage "Successfully created user account: $Name" "Success"
 
         # Add user to specified groups
         if ($Groups.Count -gt 0) {
-            Write-Log "Adding user to specified groups..." "Information"
+            Write-LogMessage "Adding user to specified groups..." "Information"
             foreach ($Group in $Groups) {
                 try {
                     if ($PSCmdlet.ShouldProcess($SamAccountName, "Add to group '$Group'")) {
                         Add-ADGroupMember -Identity $Group -Members $SamAccountName -ErrorAction Stop
-                        Write-Log "Added to group: $Group" "Success"
+                        Write-LogMessage "Added to group: $Group" "Success"
                     }
                 } catch {
-                    Write-Log "Failed to add to group $Group`: $_" "Warning"
+                    Write-LogMessage "Failed to add to group $Group`: $_" "Warning"
                 }
             }
         }
     }
 
-    Write-Log "User creation process completed successfully" "Success"
+    Write-LogMessage "User creation process completed successfully" "Success"
 } catch {
-    Write-Log "Error creating user: $_" "Error"
+    Write-LogMessage "Error creating user: $_" "Error"
     throw
 } finally {
-    Write-Log "Script execution finished" "Information"
+    Write-LogMessage "Script execution finished" "Information"
 }
-
