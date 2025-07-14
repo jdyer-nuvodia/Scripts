@@ -61,25 +61,25 @@ $Script:ColorSupportCode = @'
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        'White' = "`e[37m"
-        'Cyan' = "`e[36m"
-        'Green' = "`e[32m"
-        'Yellow' = "`e[33m"
-        'Red' = "`e[31m"
-        'Magenta' = "`e[35m"
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
         'DarkGray' = "`e[90m"
-        'Reset' = "`e[0m"
+        'Reset'    = "`e[0m"
     }
 } else {
     @{
-        'White' = [ConsoleColor]::White
-        'Cyan' = [ConsoleColor]::Cyan
-        'Green' = [ConsoleColor]::Green
-        'Yellow' = [ConsoleColor]::Yellow
-        'Red' = [ConsoleColor]::Red
-        'Magenta' = [ConsoleColor]::Magenta
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
         'DarkGray' = [ConsoleColor]::DarkGray
-        'Reset' = ''
+        'Reset'    = ''
     }
 }
 
@@ -139,7 +139,8 @@ function Add-ColorSupportToScript {
         if ($line -match '^param\s*\(') {
             $inParamBlock = $true
             $braceCount = ($line.ToCharArray() | Where-Object { $_ -eq '(' }).Count - ($line.ToCharArray() | Where-Object { $_ -eq ')' }).Count
-        } elseif ($inParamBlock) {
+        }
+        elseif ($inParamBlock) {
             # Count braces to find end of param block
             $braceCount += ($line.ToCharArray() | Where-Object { $_ -eq '(' }).Count - ($line.ToCharArray() | Where-Object { $_ -eq ')' }).Count
 
@@ -156,7 +157,8 @@ function Add-ColorSupportToScript {
         $beforeLines = $lines[0..($insertIndex - 1)]
         $afterLines = $lines[$insertIndex..($lines.Count - 1)]
         $newContent = ($beforeLines + "" + $Script:ColorSupportCode.Split("`n") + "" + $afterLines) -join "`n"
-    } else {
+    }
+    else {
         # Insert at the beginning after any initial comments
         $lines = $Content -split "`n"
         $insertIndex = 0
@@ -185,17 +187,17 @@ function Convert-WriteHostCall {
 
     # Define color mapping from ForegroundColor to our Color parameter
     $colorMap = @{
-        'Cyan' = 'Cyan'
-        'Green' = 'Green'
-        'Yellow' = 'Yellow'
-        'Red' = 'Red'
+        'Cyan'     = 'Cyan'
+        'Green'    = 'Green'
+        'Yellow'   = 'Yellow'
+        'Red'      = 'Red'
         'DarkGray' = 'DarkGray'
-        'Magenta' = 'Magenta'
-        'White' = 'White'
+        'Magenta'  = 'Magenta'
+        'White'    = 'White'
         # Map Blue to Cyan as fallback
-        'Blue' = 'Cyan'
+        'Blue'     = 'Cyan'
         # Map Gray to DarkGray as fallback
-        'Gray' = 'DarkGray'
+        'Gray'     = 'DarkGray'
     }
 
     $replacementCount = 0
@@ -328,7 +330,9 @@ function ConvertScript {
         if (-not $writeHostMatches.Matches) {
             Write-Output "No Write-Host calls found in ${FilePath}"
             return
-        }        Write-Output "Found $($writeHostMatches.Matches.Count) Write-Host call(s) in ${FilePath}"
+        }
+
+        Write-Output "Found $($writeHostMatches.Matches.Count) Write-Host call(s) in ${FilePath}"
 
         # Create backup if requested
         if ($BackupOriginal) {
@@ -354,7 +358,8 @@ function ConvertScript {
             Write-Output "Successfully converted $replacementCount Write-Host call(s) in ${FilePath}"
         }
 
-    } catch {
+    }
+    catch {
         Write-Error "Error processing ${FilePath}`: $_"
     }
 }
@@ -368,7 +373,8 @@ foreach ($path in ${FilePath}) {
         foreach ($resolvedPath in $resolvedPaths) {
             ConvertScript -FilePath $resolvedPath.FullName -BackupOriginal $BackupOriginal
         }
-    } else {
+    }
+    else {
         # Try as direct file path
         ConvertScript -FilePath $path -BackupOriginal $BackupOriginal
     }
