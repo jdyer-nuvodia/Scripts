@@ -142,17 +142,17 @@ function Initialize-NetworkTestResult {
 
     return @{
         Target = $Target
-        Description = ""
-        Priority = "Medium"
-        PingResults = @{}
-        DNSResults = @{}
-        PortResults = @{}
-        MTUResults = @{}
+        Description   = ""
+        Priority      = "Medium"
+        PingResults   = @{}
+        DNSResults    = @{}
+        PortResults   = @{}
+        MTUResults    = @{}
         TestStartTime = Get-Date
-        TestEndTime = $null
-        Status = "Running"
-        Errors = @()
-        LogBuffer = @()
+        TestEndTime   = $null
+        Status        = "Running"
+        Errors        = @()
+        LogBuffer     = @()
     }
 }
 
@@ -409,9 +409,9 @@ function Test-PortConnectivity {
 
     $portResults = @{
         TestedPorts = @()
-        OpenPorts = @()
+        OpenPorts   = @()
         ClosedPorts = @()
-        Results = @{}
+        Results     = @{}
     }
 
     Write-LogMessage -Message "Starting port connectivity test for $TargetHost on ports: $($PortList -join ', ')" -LogBuffer $LogBuffer
@@ -506,12 +506,12 @@ function Test-SingleTarget {
     param(
         [string]$TargetHost,
         [string]$Description = "",
-        [string]$Priority = "Medium",
+        [string]$Priority    = "Medium",
         [string[]]$TestTypes = @("Ping", "DNS"),
-        [int]$TestCount = 10,
-        [int]$TestTimeout = 5000,
-        [int[]]$TestPorts = @(80, 443, 53),
-        [int]$TestMaxMTU = 1500
+        [int]$TestCount      = 10,
+        [int]$TestTimeout    = 5000,
+        [int[]]$TestPorts    = @(80, 443, 53),
+        [int]$TestMaxMTU     = 1500
     )
 
     $testResult = Initialize-NetworkTestResult -Target $TargetHost
@@ -563,30 +563,30 @@ function Update-AggregatedStatistic {
             if (-not $script:aggregatedResults.ContainsKey($targetName)) {
                 $script:aggregatedResults[$targetName] = @{
                     Target = $result.Target
-                    TotalTests = 0
+                    TotalTests      = 0
                     SuccessfulTests = 0
-                    FailedTests = 0
-                    PingStats = @{
-                        TotalSent = 0
+                    FailedTests     = 0
+                    PingStats       = @{
+                        TotalSent     = 0
                         TotalReceived = 0
-                        TotalLost = 0
-                        TotalTime = 0
-                        MinTime = [int]::MaxValue
-                        MaxTime = 0
+                        TotalLost     = 0
+                        TotalTime     = 0
+                        MinTime       = [int]::MaxValue
+                        MaxTime       = 0
                     }
                     DNSStats = @{
-                        TotalAttempts = 0
-                        SuccessfulAttempts = 0
+                        TotalAttempts       = 0
+                        SuccessfulAttempts  = 0
                         TotalResolutionTime = 0
                     }
                     PortStats = @{
-                        TotalPortTests = 0
+                        TotalPortTests      = 0
                         SuccessfulPortTests = 0
                     }
                     MTUStats = @{
-                        TotalMTUTests = 0
+                        TotalMTUTests      = 0
                         SuccessfulMTUTests = 0
-                        MaxMTUFound = 0
+                        MaxMTUFound        = 0
                     }
                 }
             }
@@ -832,10 +832,10 @@ function Test-TracerouteConnectivity {
     $traceResults = @{
         Target = $TargetHost
         Hops = @()
-        TotalHops = 0
-        Success = $false
+        TotalHops      = 0
+        Success        = $false
         CompletionTime = 0
-        FailedHops = 0
+        FailedHops     = 0
     }
 
     Write-LogMessage -Message "Starting traceroute to $TargetHost (max $MaxHops hops)" -LogBuffer $LogBuffer
@@ -852,10 +852,10 @@ function Test-TracerouteConnectivity {
         if ($traceRoute.TraceRoute) {
             $hopNumber = 1
             foreach ($hop in $traceRoute.TraceRoute) {
-                $hopInfo = @{
-                    HopNumber = $hopNumber
-                    IPAddress = $hop
-                    HostName = ""
+                $hopInfo  = @{
+                    HopNumber    = $hopNumber
+                    IPAddress    = $hop
+                    HostName     = ""
                     ResponseTime = 0
                 }
 
@@ -977,10 +977,10 @@ function Get-NetworkHealthScore {
     param([hashtable]$TestResult)
 
     $scores = @{
-        PingScore = 0
-        DNSScore = 0
-        PortScore = 0
-        MTUScore = 0
+        PingScore    = 0
+        DNSScore     = 0
+        PortScore    = 0
+        MTUScore     = 0
         OverallScore = 0
         HealthStatus = "Unknown"
     }
@@ -1331,18 +1331,18 @@ Timeout: $Timeout ms
                             param([string]$Target)
 
                             return @{
-                                Target = $Target
-                                Description = ""
-                                Priority = "Medium"
-                                PingResults = @{}
-                                DNSResults = @{}
-                                PortResults = @{}
-                                MTUResults = @{}
+                                Target        = $Target
+                                Description   = ""
+                                Priority      = "Medium"
+                                PingResults   = @{}
+                                DNSResults    = @{}
+                                PortResults   = @{}
+                                MTUResults    = @{}
                                 TestStartTime = Get-Date
-                                TestEndTime = $null
-                                Status = "Running"
-                                Errors = @()
-                                LogBuffer = @()
+                                TestEndTime   = $null
+                                Status        = "Running"
+                                Errors        = @()
+                                LogBuffer     = @()
                             }
                         }
 
@@ -1378,15 +1378,15 @@ Timeout: $Timeout ms
                             )
 
                             $pingResults = @{
-                                Sent = 0
-                                Received = 0
-                                Lost = 0
-                                MinTime = [int]::MaxValue
-                                MaxTime = 0
-                                AvgTime = 0
-                                TotalTime = 0
+                                Sent       = 0
+                                Received   = 0
+                                Lost       = 0
+                                MinTime    = [int]::MaxValue
+                                MaxTime    = 0
+                                AvgTime    = 0
+                                TotalTime  = 0
                                 PacketLoss = 0
-                                Details = @()
+                                Details    = @()
                             }
 
                             Write-LogMessage -Message "Starting ping test for $TargetHost ($PingCount packets)" -LogBuffer $LogBuffer
@@ -1439,11 +1439,11 @@ Timeout: $Timeout ms
                             )
 
                             $dnsResults = @{
-                                HostName = $TargetHost
-                                IPAddresses = @()
+                                HostName       = $TargetHost
+                                IPAddresses    = @()
                                 ResolutionTime = 0
-                                Success = $false
-                                ErrorMessage = ""
+                                Success        = $false
+                                ErrorMessage   = ""
                             }
 
                             Write-LogMessage -Message "Starting DNS resolution test for $TargetHost" -LogBuffer $LogBuffer
@@ -1481,10 +1481,10 @@ Timeout: $Timeout ms
                             )
 
                             $portResults = @{
-                                TestedPorts = @()
-                                OpenPorts = @()
-                                ClosedPorts = @()
-                                Results = @{}
+                                TestedPorts  = @()
+                                OpenPorts    = @()
+                                ClosedPorts  = @()
+                                Results      = @{}
                             }
 
                             Write-LogMessage -Message "Starting port connectivity test for $TargetHost on ports: $($PortList -join ', ')" -LogBuffer $LogBuffer
@@ -1532,10 +1532,10 @@ Timeout: $Timeout ms
                             )
 
                             $mtuResults = @{
-                                MaxMTU = 0
-                                OptimalMTU = 0
-                                TestResults = @()
-                                Success = $false
+                                MaxMTU       = 0
+                                OptimalMTU   = 0
+                                TestResults  = @()
+                                Success      = $false
                             }
 
                             Write-LogMessage -Message "Starting MTU discovery for $TargetHost (max size: $MaxMTUSize)" -LogBuffer $LogBuffer
@@ -1580,13 +1580,13 @@ Timeout: $Timeout ms
                         function Test-SingleTarget {
                             param(
                                 [string]$TargetHost,
-                                [string]$Description = "",
-                                [string]$Priority = "Medium",
-                                [string[]]$TestTypes = @("Ping", "DNS"),
-                                [int]$TestCount = 10,
-                                [int]$TestTimeout = 5000,
-                                [int[]]$TestPorts = @(80, 443, 53),
-                                [int]$TestMaxMTU = 1500
+                                [string]$Description  = "",
+                                [string]$Priority     = "Medium",
+                                [string[]]$TestTypes  = @("Ping", "DNS"),
+                                [int]$TestCount       = 10,
+                                [int]$TestTimeout     = 5000,
+                                [int[]]$TestPorts     = @(80, 443, 53),
+                                [int]$TestMaxMTU      = 1500
                             )
 
                             $testResult = Initialize-NetworkTestResult -Target $TargetHost
