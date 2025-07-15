@@ -21,7 +21,6 @@
             CheckInnerBrace = $true
             CheckOpenBrace = $true
             CheckOpenParen = $true
-            CheckOperator = $true
             CheckPipe = $true
             CheckPipeForRedundantWhitespace = $false
             CheckSeparator = $true
