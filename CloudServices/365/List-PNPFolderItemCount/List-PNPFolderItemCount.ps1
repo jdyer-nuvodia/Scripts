@@ -49,7 +49,7 @@ $currentTime = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $computerName = $env:COMPUTERNAME
 $scriptPath = $PSScriptRoot
 $logFile = Join-Path -Path $scriptPath -ChildPath "PNPCrawl_${ computerName}_${ currentTime}.log"
-$csvOutputFile = Join-Path -Path $scriptPath -ChildPath "PNPCrawl_Results_${ computerName}_${ currentTime}.csv"
+$csvOutputFile = Join-Path -Path $scriptPath -ChildPath "PNPCrawl_Results_${computerName}_${currentTime}.csv"
 $results = [System.Collections.ArrayList]@()
 
 # Start logging

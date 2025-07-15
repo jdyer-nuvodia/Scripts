@@ -139,8 +139,7 @@ function Add-ColorSupportToScript {
         if ($line -match '^param\s*\(') {
             $inParamBlock = $true
             $braceCount = ($line.ToCharArray() | Where-Object { $_ -eq '(' }).Count - ($line.ToCharArray() | Where-Object { $_ -eq ')' }).Count
-        }
-        elseif ($inParamBlock) {
+        } elseif ($inParamBlock) {
             # Count braces to find end of param block
             $braceCount += ($line.ToCharArray() | Where-Object { $_ -eq '(' }).Count - ($line.ToCharArray() | Where-Object { $_ -eq ')' }).Count
 
@@ -157,8 +156,7 @@ function Add-ColorSupportToScript {
         $beforeLines = $lines[0..($insertIndex - 1)]
         $afterLines = $lines[$insertIndex..($lines.Count - 1)]
         $newContent = ($beforeLines + "" + $Script:ColorSupportCode.Split("`n") + "" + $afterLines) -join "`n"
-    }
-    else {
+    } else {
         # Insert at the beginning after any initial comments
         $lines = $Content -split "`n"
         $insertIndex = 0
@@ -358,8 +356,7 @@ function ConvertScript {
             Write-Output "Successfully converted $replacementCount Write-Host call(s) in ${FilePath}"
         }
 
-    }
-    catch {
+    } catch {
         Write-Error "Error processing ${FilePath}`: $_"
     }
 }
@@ -373,8 +370,7 @@ foreach ($path in ${FilePath}) {
         foreach ($resolvedPath in $resolvedPaths) {
             ConvertScript -FilePath $resolvedPath.FullName -BackupOriginal $BackupOriginal
         }
-    }
-    else {
+    } else {
         # Try as direct file path
         ConvertScript -FilePath $path -BackupOriginal $BackupOriginal
     }

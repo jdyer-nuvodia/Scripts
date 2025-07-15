@@ -151,7 +151,7 @@ $GroupsRemovedCounter = 0
 
 try {
     # Loop through all users from Disabled Users search
-    Foreach ($User in $DisabledUsers.SamAccountName) {
+    foreach ($User in $DisabledUsers.SamAccountName) {
         $UserCounter++
         # Calculate and display progress percentage
         $PercentComplete = [math]::Round(($UserCounter / $DisabledUsersCount) * 100, 1)
