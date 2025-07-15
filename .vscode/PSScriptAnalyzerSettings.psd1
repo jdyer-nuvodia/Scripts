@@ -21,9 +21,10 @@
             CheckInnerBrace = $true
             CheckOpenBrace = $true
             CheckOpenParen = $true
+            CheckOperator = $false # Disabled to allow vertical alignment
             CheckPipe = $true
             CheckPipeForRedundantWhitespace = $false
-            CheckSeparator = $true
+            CheckSeparator = $false # Disabled to allow vertical alignment
             CheckParameter = $false
         }
 
