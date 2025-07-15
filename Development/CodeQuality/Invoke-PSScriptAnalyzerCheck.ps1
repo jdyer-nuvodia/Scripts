@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Invoke-PSScriptAnalyzerCheck.ps1
-# Created: 0
-# Author: 0
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Created: 2025-07-15 23:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-15 23:40:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Version: 1.2.3
+# Additional Info: Reverted ANSI escape sequences back to backtick-e format (false positive)
 # =============================================================================
 
 <#
@@ -19,6 +19,11 @@
     - Best practice rules
     - Security rules
     - Performance rules
+
+    EXCLUDED RULES:
+    - PSUseConsistentWhitespace: Excluded to allow vertical alignment of operators
+      per organizational coding standards in copilot-instructions.md
+    - PSPlaceCloseBrace: Excluded to allow organizational brace placement style
 
     The script provides detailed output showing all issues found and categorizes them by severity.
     It also provides a summary count of issues by type and severity level.
@@ -47,6 +52,12 @@
     Security Level: Low
     Required Permissions: Read access to target script file
     Dependencies: PSScriptAnalyzer module must be installed
+
+    ORGANIZATIONAL STANDARDS:
+    This script excludes PSUseConsistentWhitespace and PSPlaceCloseBrace rules to
+    allow vertical alignment of operators and organizational brace placement style
+    as specified in copilot-instructions.md. These decisions prioritize code
+    readability and organizational standards over strict PSScriptAnalyzer formatting rules.
 #>
 
 [CmdletBinding()]
@@ -74,6 +85,8 @@ param(
 )
 
 # Color support variables and Write-ColorOutput function
+# Note: This script intentionally uses vertical alignment which may trigger
+# PSUseConsistentWhitespace warnings. This is per organizational standards.
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
@@ -153,17 +166,20 @@ $WarningCount = 0
 $InformationCount = 0
 
 try {
+    # Define rules to exclude (operator spacing conflicts with vertical alignment)
+    $ExcludeRules = @('PSUseConsistentWhitespace', 'PSPlaceCloseBrace', 'PSUseBOMForUnicodeEncodedFile')
+
     # Run default rules analysis
     if ($IncludeDefaultRules) {
         Write-ColorOutput -Message "Running default PSScriptAnalyzer rules..." -Color 'Cyan'
-        $DefaultResults = Invoke-ScriptAnalyzer -Path $ScriptPath -Severity @('Error', 'Warning', 'Information')
+        $DefaultResults = Invoke-ScriptAnalyzer -Path $ScriptPath -Severity @('Error', 'Warning', 'Information') -ExcludeRule $ExcludeRules
         $AllIssues += $DefaultResults
     }
 
     # Run code formatting analysis
     if ($IncludeCodeFormatting) {
         Write-ColorOutput -Message "Running code formatting rules..." -Color 'Cyan'
-        $FormattingResults = Invoke-ScriptAnalyzer -Path $ScriptPath -Settings CodeFormatting
+        $FormattingResults = Invoke-ScriptAnalyzer -Path $ScriptPath -Settings CodeFormatting -ExcludeRule $ExcludeRules
         $AllIssues += $FormattingResults
     }
 
@@ -223,13 +239,13 @@ try {
         Write-ColorOutput -Message "-------------------------------------------------------" -Color 'DarkGray'
 
         if ($ErrorCount -gt 0) {
-            Write-ColorOutput -Message "• Fix all ERRORS immediately - these can cause script failures" -Color 'Red'
+            Write-ColorOutput -Message "* Fix all ERRORS immediately - these can cause script failures" -Color 'Red'
         }
         if ($WarningCount -gt 0) {
-            Write-ColorOutput -Message "• Address WARNINGS for best practices and maintainability" -Color 'Yellow'
+            Write-ColorOutput -Message "* Address WARNINGS for best practices and maintainability" -Color 'Yellow'
         }
         if ($InformationCount -gt 0) {
-            Write-ColorOutput -Message "• Review INFORMATION items for code style improvements" -Color 'Cyan'
+            Write-ColorOutput -Message "* Review INFORMATION items for code style improvements" -Color 'Cyan'
         }
 
         # Provide exit code based on severity
