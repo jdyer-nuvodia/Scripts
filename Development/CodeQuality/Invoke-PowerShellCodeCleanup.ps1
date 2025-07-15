@@ -2,23 +2,22 @@
 # Script: Invoke-PowerShellCodeCleanup.ps1
 # Created: 2025-06-23 15:30
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 03:12:00 UTC
+# Last Updated: 2025-07-15 16:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.6
-# Additional Info: Fixed regex patterns to avoid modifying format strings and command-line parameters
+# Version: 1.6.7
+# Additional Info: Removed whitespace detection and removal for spacing around operators and assignments
 # =============================================================================
 
 <#
 .SYNOPSIS
 Performs code quality cleanup and analysis on PowerShell scripts.
 
-This script provides six main functions for PowerShell code quality management:
+This script provides five main functions for PowerShell code quality management:
 1. Clear-TrailingWhitespace: Removes trailing whitespace from PowerShell script files
 2. Find-NewlineError: Identifies common newline-related formatting issues in PowerShell scripts
 3. Find-PotentialMissingCode: Detects ellipses patterns that may indicate incomplete code blocks
 4. Repair-InlineComment: Automatically fixes inline comment issues by separating them into proper comment lines
 5. Repair-CloseBraceNewline: Fixes PSPlaceCloseBrace issues where closing braces are followed by newlines instead of being on the same line as branch statements
-6. Repair-WhitespaceConsistency: Fixes PSUseConsistentWhitespace violations for operators, braces, and commas
 
 .DESCRIPTION
 The script can target a specific file via the FilePath parameter or automatically target the first .ps1 file found in the current working directory.
@@ -47,10 +46,6 @@ Automatically fixes inline comment issues by separating them into proper comment
 .EXAMPLE
 Repair-CloseBraceNewline -FilePath "C:\Scripts\MyScript.ps1"
 Fixes PSPlaceCloseBrace violations where closing braces are followed by newlines instead of being on the same line as branch statements.
-
-.EXAMPLE
-Repair-WhitespaceConsistency -FilePath "C:\Scripts\MyScript.ps1"
-Fixes PSUseConsistentWhitespace violations including space before open brace issues.
 #>
 
 [CmdletBinding()]
@@ -463,129 +458,6 @@ function Repair-InlineComment {
     }
 }
 
-function Repair-WhitespaceConsistency {
-    <#
-    .SYNOPSIS
-    Fixes PSUseConsistentWhitespace violations in PowerShell scripts.
-
-    .DESCRIPTION
-    Identifies and fixes common whitespace consistency issues that violate PSScriptAnalyzer PSUseConsistentWhitespace rules:
-    - Ensures exactly one space before and after binary and assignment operators (=, +=, -=, *=, /=, %=, -eq, -ne, -lt, -gt, -le, -ge, -like, -notlike, -match, -notmatch, -contains, -notcontains, -in, -notin, -and, -or, -xor, -not, +, -, *, /, %)
-    - Ensures exactly one space before opening braces { (e.g., switch statements, function definitions)
-    - Ensures exactly one space after opening braces { and before closing braces }
-    - Ensures exactly one space after commas
-    - Preserves existing proper spacing and avoids over-correcting
-
-    .PARAMETER FilePath
-    The path to the PowerShell script file to fix. If not specified, uses the first
-    .ps1 file found in the current working directory.
-
-    .EXAMPLE
-    Repair-WhitespaceConsistency -FilePath "C:\Scripts\MyScript.ps1"
-    Fixes whitespace consistency issues in the specified script file
-
-    .EXAMPLE
-    Repair-WhitespaceConsistency
-    Fixes whitespace consistency issues in the first .ps1 file in the current directory
-    #>
-    [CmdletBinding()]
-    [OutputType([int])]
-    param(
-        [Parameter(Mandatory = $false)]
-        [string]$FilePath
-    )
-
-    try {
-        # If no script path provided, find the first .ps1 file in current directory
-        if (-not $FilePath) {
-            $FilePath = Get-ChildItem -Path (Get-Location) -Filter "*.ps1" | Select-Object -First 1 -ExpandProperty FullName
-
-            if (-not $FilePath) {
-                Write-Error -Message "No PowerShell script files (.ps1) found in the current directory."
-                return
-            }
-
-            Write-Information -MessageData "Processing file: $FilePath" -InformationAction Continue
-        }
-
-        # Verify the file exists
-        if (-not (Test-Path -Path $FilePath)) {
-            Write-Error -Message "Script file not found: $FilePath"
-            return
-        }
-
-        Write-Information -MessageData "Fixing whitespace consistency issues in: $FilePath" -InformationAction Continue
-
-        # Read the file content
-        $content = Get-Content -Path $FilePath
-        $fixedContent = @()
-        $fixCount = 0
-
-        foreach ($line in $content) {
-            $originalLine = $line
-            $modifiedLine = $line
-
-            # Skip comment lines and empty lines
-            if ($line -match '^\s*#' -or $line -match '^\s*$') {
-                $fixedContent += $line
-                continue
-            }
-
-            # Fix binary and assignment operators - ensure exactly one space before and after =
-            # Handle assignment operators like = += -= *= /= %=
-            # Fix for hash table entries and general assignments
-            # Exclude command-line parameters that contain /parameter= or -parameter= patterns
-            $modifiedLine = $modifiedLine -replace "('[\w\s]+')(\s*)=(\s*)([^=])", '$1 = $4'
-            # Don't fix lines that contain command line parameters with /word= or -word= patterns
-            if ($modifiedLine -notmatch '/\w+=|vssadmin.*=') {
-                $modifiedLine = $modifiedLine -replace '(\w)\s*=\s*([^=])', '$1 = $2'
-                $modifiedLine = $modifiedLine -replace '(\w)\s*\+=\s*(\w)', '$1 += $2'
-                $modifiedLine = $modifiedLine -replace '(\w)\s*-=\s*(\w)', '$1 -= $2'
-                $modifiedLine = $modifiedLine -replace '(\w)\s*\*=\s*(\w)', '$1 *= $2'
-                $modifiedLine = $modifiedLine -replace '(\w)\s*/=\s*(\w)', '$1 /= $2'
-                $modifiedLine = $modifiedLine -replace '(\w)\s*%=\s*(\w)', '$1 %= $2'
-            }
-
-            # Fix braces - ensure exactly one space before and after opening brace
-            # Fix missing space before opening brace (e.g., "switch ($var){" -> "switch ($var) {")
-            # But exclude format strings that start with quotes followed by format specifiers
-            $modifiedLine = $modifiedLine -replace '(\w|\))(?<!")(\{)(?![0-9]+[:\}])', '$1 $2'
-            # Fix multiple spaces before opening brace (e.g., "item"    { -> "item" {)
-            $modifiedLine = $modifiedLine -replace '\s{2,}(?<!")\{(?![0-9]+[:\}])', ' {'
-            # Fix exactly one space after opening brace, but exclude string interpolation patterns and format strings
-            # Only match standalone braces, not those preceded by $ (string interpolation) or containing format specifiers
-            # Exclude format strings like {0:N2}, {1}, etc.
-            $modifiedLine = $modifiedLine -replace '(?<!\$)(?<!"){(?![0-9]+[:\}])([^\s\}])', '{ $1'
-
-            # Fix commas - ensure exactly one space after comma
-            $modifiedLine = $modifiedLine -replace ',([^\s\r\n])', ', $1'
-
-            if ($modifiedLine -ne $originalLine) {
-                $fixCount++
-                Write-Information -MessageData "Fixed whitespace: '$originalLine' -> '$modifiedLine'" -InformationAction Continue
-            }
-
-            $fixedContent += $modifiedLine
-        }
-
-        # Write the fixed content back to the file if changes were made
-        if ($fixCount -gt 0) {
-            $fixedContent | Set-Content -Path $FilePath
-            Write-Information -MessageData "Fixed $fixCount whitespace consistency issue(s) in: $FilePath" -InformationAction Continue
-
-            # Clean up trailing whitespace after the fixes
-            Write-Information -MessageData "Cleaning up trailing whitespace after fixes..." -InformationAction Continue
-            Clear-TrailingWhitespace -FilePath $FilePath
-        } else {
-            Write-Information -MessageData "No whitespace consistency issues found to fix in: $FilePath" -InformationAction Continue
-        }
-
-        return $fixCount
-    } catch {
-        Write-Error -Message "Failed to fix whitespace consistency: $($_.Exception.Message)"
-    }
-}
-
 # Main execution block
 if ($MyInvocation.InvocationName -ne '.') {
     # Determine the target script path
@@ -623,10 +495,6 @@ if ($MyInvocation.InvocationName -ne '.') {
     # Automatically fix close brace newline issues
     Write-Information -MessageData "Checking for close brace newline issues..." -InformationAction Continue
     Repair-CloseBraceNewline -FilePath $targetFilePath
-
-    # Automatically fix whitespace consistency issues
-    Write-Information -MessageData "Checking for whitespace consistency issues..." -InformationAction Continue
-    Repair-WhitespaceConsistency -FilePath $targetFilePath
 
     # Automatically fix inline comments if found
     if ($inlineCommentResults) {
