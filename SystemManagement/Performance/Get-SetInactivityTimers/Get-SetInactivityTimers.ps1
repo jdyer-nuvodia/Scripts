@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-SetInactivityTimers.ps1
-# Created: 2025-04-08 21:45:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 19:01:46 UTC
-# Updated By: GitHub Copilot
-# Version: 1.5.2
-# Additional Info: Fixed PSScriptAnalyzer compliance issues - resolved syntax errors, replaced WMI with CIM cmdlets, added ShouldProcess support, fixed function naming, and added OutputType attributes.
+# Created: 5
+# Author: 2
+# Last Updated: 2025-07-15 23:30:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.5.3
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -34,25 +34,25 @@ param()
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        'White' = "`e[37m"
-        'Cyan' = "`e[36m"
-        'Green' = "`e[32m"
-        'Yellow' = "`e[33m"
-        'Red' = "`e[31m"
-        'Magenta' = "`e[35m"
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
         'DarkGray' = "`e[90m"
-        'Reset' = "`e[0m"
+        'Reset'    = "`e[0m"
     }
 } else {
     @{
-        'White' = [ConsoleColor]::White
-        'Cyan' = [ConsoleColor]::Cyan
-        'Green' = [ConsoleColor]::Green
-        'Yellow' = [ConsoleColor]::Yellow
-        'Red' = [ConsoleColor]::Red
-        'Magenta' = [ConsoleColor]::Magenta
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
         'DarkGray' = [ConsoleColor]::DarkGray
-        'Reset' = ''
+        'Reset'    = ''
     }
 }
 

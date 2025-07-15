@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Remove-AdobeAcrobatReader.ps1
-# Created: 2025-02-27 18:52:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 21:15:00 UTC
+# Created: 2
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Fixed PSScriptAnalyzer compliance by renaming Write-Log to Write-LogMessage to avoid built-in cmdlet conflict, converted Write-Host to Write-ColorOutput for unattended execution
+# Version: 1.2.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-FullMailboxAttributes.ps1
-# Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-08 20:30:00 UTC
+# Created: 2
+# Author: 2
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.2
-# Additional Info: Renamed Write-Log function to Write-ScriptLog to avoid PSScriptAnalyzer warning about overwriting built-in cmdlet
+# Version: 1.2.3
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

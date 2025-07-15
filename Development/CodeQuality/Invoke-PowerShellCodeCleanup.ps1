@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Invoke-PowerShellCodeCleanup.ps1
-# Created: 2025-06-23 15:30
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-15 16:30:00 UTC
+# Created: 6
+# Author: 7
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.7
-# Additional Info: Removed whitespace detection and removal for spacing around operators and assignments
+# Version: 1.6.8
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

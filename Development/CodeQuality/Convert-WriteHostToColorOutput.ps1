@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Convert-WriteHostToColorOutput.ps1
-# Created: 2025-07-09 21:45:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-12 11:45:00 UTC
+# Created: 4
+# Author: 3
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.2
-# Additional Info: Fixed regex dollar sign escaping - single backslash instead of double escape
+# Version: 1.4.4
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

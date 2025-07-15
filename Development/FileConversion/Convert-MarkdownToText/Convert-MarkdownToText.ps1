@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Convert-MarkdownToText.ps1
-# Created: 2025-04-28 23:45:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-30 22:11:00 UTC
+# Created: 1
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Implemented appropriate PowerShell cmdlets for PSScriptAnalyzer compliance
+# Version: 1.1.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

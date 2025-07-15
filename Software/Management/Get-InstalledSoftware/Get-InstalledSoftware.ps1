@@ -1,11 +1,11 @@
-﻿# =============================================================================
+# =============================================================================
 # Script: Get-InstalledSoftware.ps1
-# Created: 2024-01-18 15:30:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 00:37:00 UTC
+# Created: 1
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.1.1
-# Additional Info: Fixed PSScriptAnalyzer compliance issues - indentation, empty catch block, and variable usage warnings
+# Version: 2.1.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -294,8 +294,8 @@ Write-ColorOutput -Message "Scanning running processes for software..." -Color '
 try {
     # Get all running processes with file paths
     $processes = Get-Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -ne $null -and $_.Path -ne "" } |
-    Select-Object Name, Path -Unique
+        Where-Object { $_.Path -ne $null -and $_.Path -ne "" } |
+        Select-Object Name, Path -Unique
 
     foreach ($process in $processes) {
         try {
@@ -375,8 +375,8 @@ foreach ($directory in $appDirectories) {
 
                 # Look for executable files
                 $exeFiles = Get-ChildItem -Path $subdir.FullName -Filter "*.exe" -File -Recurse -Depth 2 -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notlike "*uninstall*" -and $_.Name -notlike "*setup*" -and $_.Name -notlike "*installer*" } |
-                Select-Object -First 1
+                    Where-Object { $_.Name -notlike "*uninstall*" -and $_.Name -notlike "*setup*" -and $_.Name -notlike "*installer*" } |
+                    Select-Object -First 1
 
                 foreach ($exeFile in $exeFiles) {
                     try {

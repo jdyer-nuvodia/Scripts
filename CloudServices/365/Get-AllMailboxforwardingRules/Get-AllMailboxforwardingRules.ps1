@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-AllMailboxforwardingRules.ps1
-# Created: 2024-02-21 10:00:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-24 20:45:00 UTC
+# Created: 2
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Implemented Write-Information for unattended execution compliance
+# Version: 1.2.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

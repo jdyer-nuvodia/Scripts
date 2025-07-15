@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Monitor-CriticalServices.ps1
-# Created: 2025-04-02 17:18:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 18:44:00 UTC
+# Created: 2
+# Author: 5
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.4
-# Additional Info: Fixed PSScriptAnalyzer unused parameter warnings by adding parameters to Watch-Service function and passing script parameters directly
+# Version: 1.2.6
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -97,25 +97,25 @@ param(
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        'White' = "`e[37m"
-        'Cyan' = "`e[36m"
-        'Green' = "`e[32m"
-        'Yellow' = "`e[33m"
-        'Red' = "`e[31m"
-        'Magenta' = "`e[35m"
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
         'DarkGray' = "`e[90m"
-        'Reset' = "`e[0m"
+        'Reset'    = "`e[0m"
     }
 } else {
     @{
-        'White' = [ConsoleColor]::White
-        'Cyan' = [ConsoleColor]::Cyan
-        'Green' = [ConsoleColor]::Green
-        'Yellow' = [ConsoleColor]::Yellow
-        'Red' = [ConsoleColor]::Red
-        'Magenta' = [ConsoleColor]::Magenta
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
         'DarkGray' = [ConsoleColor]::DarkGray
-        'Reset' = ''
+        'Reset'    = ''
     }
 }
 
@@ -138,8 +138,8 @@ function Write-ColorOutput {
     # Always use Write-Output to satisfy PSScriptAnalyzer
     # For PowerShell 7+, include ANSI color codes in the output
     if ($Script:UseAnsiColors) {
-        $colorCode = $Script:Colors[$Color]
-        $resetCode = $Script:Colors.Reset
+        $colorCode      = $Script:Colors[$Color]
+        $resetCode      = $Script:Colors.Reset
         Write-Output "${colorCode}${Message}${resetCode}"
     } else {
         # For PowerShell 5.1, just output the message
@@ -236,9 +236,9 @@ function Watch-Service {
     )
 
     # Create log file with system name and timestamp
-    $systemName = $env:COMPUTERNAME
-    $dateStamp = Get-Date -Format "yyyyMMdd"
-    $logFile = Join-Path $LogPath "ServiceMonitor_${systemName}_${dateStamp}.log"
+    $systemName     = $env:COMPUTERNAME
+    $dateStamp      = Get-Date -Format "yyyyMMdd"
+    $logFile        = Join-Path $LogPath "ServiceMonitor_${systemName}_${dateStamp}.log"
 
     try {
         do {

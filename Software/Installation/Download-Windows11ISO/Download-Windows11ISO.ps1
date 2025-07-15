@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Download-Windows11ISO.ps1
-# Created: 2025-05-14 18:31:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-08 21:00:00 UTC
+# Created: 2
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Fixed PSScriptAnalyzer errors in Write-ColorOutput function string interpolation
+# Version: 1.2.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -68,26 +68,26 @@ $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 if ($Script:UseAnsiColors) {
     # PowerShell 7+ ANSI escape codes
     $Script:Colors = @{
-        White = "`e[37m"
-        Cyan = "`e[36m"
-        Green = "`e[32m"
-        Yellow = "`e[33m"
-        Red = "`e[31m"
-        Magenta = "`e[35m"
+        White    = "`e[37m"
+        Cyan     = "`e[36m"
+        Green    = "`e[32m"
+        Yellow   = "`e[33m"
+        Red      = "`e[31m"
+        Magenta  = "`e[35m"
         DarkGray = "`e[90m"
-        Reset = "`e[0m"
+        Reset    = "`e[0m"
     }
 } else {
     # PowerShell 5.1 console colors
     $Script:Colors = @{
-        White = "White"
-        Cyan = "Cyan"
-        Green = "Green"
-        Yellow = "Yellow"
-        Red = "Red"
-        Magenta = "Magenta"
+        White    = "White"
+        Cyan     = "Cyan"
+        Green    = "Green"
+        Yellow   = "Yellow"
+        Red      = "Red"
+        Magenta  = "Magenta"
         DarkGray = "DarkGray"
-        Reset = ""
+        Reset    = ""
     }
 }
 

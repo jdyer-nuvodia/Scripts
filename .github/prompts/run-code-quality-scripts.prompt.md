@@ -1,10 +1,11 @@
 # Run Code Quality Scripts
 
-Run all three CodeQuality scripts on the specified PowerShell script file:
+Run all four CodeQuality scripts on the specified PowerShell script file:
 
-1. First run `Convert-WriteHostToColorOutput.ps1` to convert any Write-Host calls to Write-ColorOutput
-2. Then run `Invoke-PowerShellCodeCleanup.ps1` to perform whitespace and formatting cleanup
-3. Finally run `Invoke-PSScriptAnalyzerCheck.ps1` to perform comprehensive PSScriptAnalyzer analysis and identify any remaining code quality issues
+1. First run `Align-OperatorsVertically.ps1 -FilePath <ScriptPath>` to identify operator alignment opportunities for improved readability
+2. Then run `Convert-WriteHostToColorOutput.ps1` to convert any Write-Host calls to Write-ColorOutput
+3. Next run `Invoke-PowerShellCodeCleanup.ps1` to perform whitespace and formatting cleanup
+4. Finally run `Invoke-PSScriptAnalyzerCheck.ps1` to perform comprehensive PSScriptAnalyzer analysis and identify any remaining code quality issues
 
 ## Fix All PSScriptAnalyzer Issues
 

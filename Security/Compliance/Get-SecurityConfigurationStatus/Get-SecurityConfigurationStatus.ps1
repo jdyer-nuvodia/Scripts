@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-SecurityConfigurationStatus.ps1
-# Created: 2024-03-17 17:35:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-08 21:45:00 UTC
+# Created: 9
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.9.0
-# Additional Info: Fixed PSScriptAnalyzer compliance issues - replaced WMI cmdlets with CIM cmdlets and changed function names to singular nouns
+# Version: 1.9.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

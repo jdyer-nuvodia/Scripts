@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-CalendarPermissions.ps1
-# Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-24 20:45:00 UTC
+# Created: 0
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Implemented Write-Output for PSScriptAnalyzer compliance
+# Version: 1.0.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

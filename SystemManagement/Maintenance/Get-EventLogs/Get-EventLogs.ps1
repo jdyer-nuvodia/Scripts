@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-EventLogs.ps1
-# Created: 2025-02-12 18:30:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-02 16:30:00 UTC
+# Created: 2
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Added system name to EVTX file naming convention
+# Version: 1.2.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

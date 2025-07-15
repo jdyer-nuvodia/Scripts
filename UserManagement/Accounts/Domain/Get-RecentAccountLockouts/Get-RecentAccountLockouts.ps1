@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-RecentAccountLockouts.ps1
-# Created: 2025-04-15 22:28:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-12 18:52:00 UTC
+# Created: 3
+# Author: 5
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.4
-# Additional Info: Added explicit Import-Module ActiveDirectory with error handling in begin block to ensure module availability before script execution.
+# Version: 1.3.6
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 #Requires -Modules ActiveDirectory
@@ -64,25 +64,25 @@ begin {
     $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
     $Script:Colors = if ($Script:UseAnsiColors) {
         @{
-            'White' = "`e[37m"
-            'Cyan' = "`e[36m"
-            'Green' = "`e[32m"
-            'Yellow' = "`e[33m"
-            'Red' = "`e[31m"
-            'Magenta' = "`e[35m"
+            'White'    = "`e[37m"
+            'Cyan'     = "`e[36m"
+            'Green'    = "`e[32m"
+            'Yellow'   = "`e[33m"
+            'Red'      = "`e[31m"
+            'Magenta'  = "`e[35m"
             'DarkGray' = "`e[90m"
-            'Reset' = "`e[0m"
+            'Reset'    = "`e[0m"
         }
     } else {
         @{
-            'White' = [ConsoleColor]::White
-            'Cyan' = [ConsoleColor]::Cyan
-            'Green' = [ConsoleColor]::Green
-            'Yellow' = [ConsoleColor]::Yellow
-            'Red' = [ConsoleColor]::Red
-            'Magenta' = [ConsoleColor]::Magenta
+            'White'    = [ConsoleColor]::White
+            'Cyan'     = [ConsoleColor]::Cyan
+            'Green'    = [ConsoleColor]::Green
+            'Yellow'   = [ConsoleColor]::Yellow
+            'Red'      = [ConsoleColor]::Red
+            'Magenta'  = [ConsoleColor]::Magenta
             'DarkGray' = [ConsoleColor]::DarkGray
-            'Reset' = ''
+            'Reset'    = ''
         }
     }
 
@@ -105,8 +105,8 @@ begin {
         # Always use Write-Output to satisfy PSScriptAnalyzer
         # For PowerShell 7+, include ANSI color codes in the output
         if ($Script:UseAnsiColors) {
-            $colorCode = $Script:Colors[$Color]
-            $resetCode = $Script:Colors.Reset
+            $colorCode      = $Script:Colors[$Color]
+            $resetCode      = $Script:Colors.Reset
             Write-Output "${colorCode}${Message}${resetCode}"
         } else {
             # For PowerShell 5.1, just output the message
@@ -219,8 +219,8 @@ process {
     try {
         Write-ColorOutput -Message "Starting search for account lockout events (ID 4740)..." -Color 'Cyan'
         # Calculate start time based on current UTC time
-        $startTime = (Get-Date).ToUniversalTime().AddHours(-$HoursAgo)
-        $dcs = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
+        $startTime      = (Get-Date).ToUniversalTime().AddHours(-$HoursAgo)
+        $dcs            = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
 
         if ($null -eq $dcs) {
             Write-Error "Could not retrieve list of Domain Controllers. Ensure the Active Directory module is available and you have permissions."

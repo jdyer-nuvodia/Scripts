@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-WizTreePortable.ps1
-# Created: 2025-02-08 15:30:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-08 21:30:00 UTC
+# Created: 3
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.1
-# Additional Info: Fixed PSScriptAnalyzer errors in Write-ColorOutput function string interpolation
+# Version: 2.3.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

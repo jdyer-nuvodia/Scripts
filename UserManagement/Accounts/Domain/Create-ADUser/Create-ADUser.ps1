@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Create-ADUser.ps1
-# Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-12 11:33:00 UTC
+# Created: 4
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.0
-# Additional Info: Converted Write-Host to Write-ColorOutput for PSScriptAnalyzer compliance and code quality improvements
+# Version: 1.4.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -123,25 +123,25 @@ param(
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        'White' = "`e[37m"
-        'Cyan' = "`e[36m"
-        'Green' = "`e[32m"
-        'Yellow' = "`e[33m"
-        'Red' = "`e[31m"
-        'Magenta' = "`e[35m"
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
         'DarkGray' = "`e[90m"
-        'Reset' = "`e[0m"
+        'Reset'    = "`e[0m"
     }
 } else {
     @{
-        'White' = [ConsoleColor]::White
-        'Cyan' = [ConsoleColor]::Cyan
-        'Green' = [ConsoleColor]::Green
-        'Yellow' = [ConsoleColor]::Yellow
-        'Red' = [ConsoleColor]::Red
-        'Magenta' = [ConsoleColor]::Magenta
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
         'DarkGray' = [ConsoleColor]::DarkGray
-        'Reset' = ''
+        'Reset'    = ''
     }
 }
 
@@ -176,8 +176,8 @@ function Write-ColorOutput {
 
 
 # Initialize logging
-$LogPath = Join-Path $PSScriptRoot "ADUserCreation_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$ErrorActionPreference = "Stop"
+$LogPath                = Join-Path $PSScriptRoot "ADUserCreation_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$ErrorActionPreference  = "Stop"
 
 function Write-LogMessage {
     param($Message, $Level = "Information")

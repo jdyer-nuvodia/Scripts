@@ -1,11 +1,11 @@
 # =============================================================================
-# Script: List-PNPCrawl.ps1
-# Created: 2025-06-12 14:30:00 UTC
-# Author: pwhitcomb-nuvodia
-# Last Updated: 2025-06-12 18:22:00 UTC
+# Script: List-PNPFolderItemCount.ps1
+# Created: 1
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Lists all files and folders in a SharePoint Online site
+# Version: 1.1.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

@@ -108,6 +108,7 @@ The current month is June, the current year is 2025.
 11. **Whitespace and Formatting**
     - **ALWAYS** use `/run-powershell-code-cleanup` prompt on every script after making edits to fix whitespace and identify newline issues safely with proper validation.
     - Use appropriate spacing around binary and assignment operators for readability and PSScriptAnalyzer compliance.
+    - Ignore single-space-only requirements to allow PSScriptAnalyzer vertical alignment preferences. This means ignoring the 'use space before and after binary and assignment operators' rule when it conflicts with alignment preferences.
     - **NEVER** use Invoke-Formatter as it can introduce errors and does not ensure PSScriptAnalyzer compliance.
     - **ALWAYS** use consistent indentation following PowerShell best practices:
       - Use 4 spaces for each indentation level (no tabs)
@@ -237,7 +238,8 @@ Use the following standardized prompts for common development tasks:
 
 1. **Create New PowerShell Script**: Use `/create-powershell-script` prompt for generating new scripts with complete organizational standards compliance
 2. **PSScriptAnalyzer Review**: Use `/review-psscriptanalyzer-compliance` prompt for comprehensive code review and compliance checking
-3. **Code Cleanup**: Use `/run-powershell-code-cleanup` prompt for safe whitespace and formatting fixes
+3. **Complete Code Quality**: Use `/run-code-quality-scripts` prompt for comprehensive code quality processing including alignment analysis, Write-Host conversion, cleanup, and PSScriptAnalyzer checks
+4. **Code Cleanup**: Use `/run-powershell-code-cleanup` prompt for safe whitespace and formatting fixes
 
 These prompts ensure consistent adherence to all organizational standards and automate the development workflow.
 

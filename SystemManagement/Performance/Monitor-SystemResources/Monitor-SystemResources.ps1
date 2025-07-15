@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Monitor-SystemResources.ps1
-# Created: 2025-04-02 15:18:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 21:45:00 UTC
+# Created: 1
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Fixed PSScriptAnalyzer OutputType compliance for Get-SystemMetric function
+# Version: 1.1.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

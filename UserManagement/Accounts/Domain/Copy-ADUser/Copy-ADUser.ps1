@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Copy-ADUser.ps1
-# Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-07 16:19:00 UTC
+# Created: 2
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Fixed security issues - changed password parameter to SecureString, removed unsafe ConvertTo-SecureString usage
+# Version: 1.2.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

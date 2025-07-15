@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Add-FoldersToPath.ps1
-# Created: 2025-02-05 22:15:38 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 00:18:00 UTC
+# Created: 5
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.5.0
-# Additional Info: Fixed hidden folder filtering to properly exclude .git and other hidden directories and their subdirectories
+# Version: 2.5.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

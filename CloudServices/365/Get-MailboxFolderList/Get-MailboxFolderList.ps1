@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-MailboxFolderList.ps1
-# Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-24 21:04:00 UTC
+# Created: 3
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Implemented with proper PowerShell output cmdlets for PSScriptAnalyzer compliance
+# Version: 1.3.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

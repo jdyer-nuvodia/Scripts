@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Manage-RDPSessions.ps1
-# Created: 2025-04-16 14:30:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 21:35:00 UTC
+# Created: 1
+# Author: 2
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.1
-# Additional Info: Removed anti-pattern script scope assignments, fixed syntax errors and PSScriptAnalyzer compliance
+# Version: 1.1.3
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -87,8 +87,8 @@ if (-not (Test-Path -Path $LogFolder)) {
     New-Item -Path $LogFolder -ItemType Directory -Force | Out-Null
 }
 
-$LogFileName = "RDPSessions_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-$LogPath = Join-Path -Path $LogFolder -ChildPath $LogFileName
+$LogFileName        = "RDPSessions_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+$LogPath            = Join-Path -Path $LogFolder -ChildPath $LogFileName
 
 function Write-LogMessage {
     param (
@@ -100,8 +100,8 @@ function Write-LogMessage {
         [string]$Level = "INFO"
     )
 
-    $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $LogMessage = "[$TimeStamp] [$Level] $Message"
+    $TimeStamp      = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogMessage     = "[$TimeStamp] [$Level] $Message"
 
     # Write to log file
     Add-Content -Path $LogPath -Value $LogMessage
@@ -139,8 +139,8 @@ function Get-RDPSession {
         # Skip the header line (index 0) and start processing from line 1
 
         for ($i = 1; $i -lt $Output.Count; $i++) {
-            $Line = $Output[$i] -replace '\s+', ' ' -replace '^\s', ''
-            $Values = $Line -split ' '
+            $Line           = $Output[$i] -replace '\s+', ' ' -replace '^\s', ''
+            $Values         = $Line -split ' '
 
             # Check if session ID is numeric (skip console session if needed)
             if ($Values[1] -match '^\d+$') {

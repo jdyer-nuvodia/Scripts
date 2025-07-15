@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Create-LocalUserAccount.ps1
-# Created: 2025-01-23 15:30:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-30 20:42:00 UTC
+# Created: 2
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Fixed PSScriptAnalyzer issues - changed password parameter to SecureString, replaced Write-Host with Write-Output, replaced net user with PowerShell cmdlets
+# Version: 1.2.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

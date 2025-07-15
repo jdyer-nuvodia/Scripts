@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Remove-GroupsFromDisabledUsers.ps1
-# Created: 2024-02-20 17:15:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-12 11:54:50 UTC
+# Created: 5
+# Author: 3
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.5.2
-# Additional Info: Converted Write-Host to Write-ColorOutput for PSScriptAnalyzer compliance
+# Version: 3.5.4
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -48,25 +48,25 @@ param()
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        'White' = "`e[37m"
-        'Cyan' = "`e[36m"
-        'Green' = "`e[32m"
-        'Yellow' = "`e[33m"
-        'Red' = "`e[31m"
-        'Magenta' = "`e[35m"
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
         'DarkGray' = "`e[90m"
-        'Reset' = "`e[0m"
+        'Reset'    = "`e[0m"
     }
 } else {
     @{
-        'White' = [ConsoleColor]::White
-        'Cyan' = [ConsoleColor]::Cyan
-        'Green' = [ConsoleColor]::Green
-        'Yellow' = [ConsoleColor]::Yellow
-        'Red' = [ConsoleColor]::Red
-        'Magenta' = [ConsoleColor]::Magenta
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
         'DarkGray' = [ConsoleColor]::DarkGray
-        'Reset' = ''
+        'Reset'    = ''
     }
 }
 
@@ -103,12 +103,12 @@ function Write-ColorOutput {
 Add-Type -AssemblyName System.Windows.Forms
 
 # Get the current domain
-$CurrentDomain = Get-ADDomain
+$CurrentDomain       = Get-ADDomain
 # Default primary group
-$DomainUsersGroup = "Domain Users"
+$DomainUsersGroup    = "Domain Users"
 
 # Set log file location
-$logfilename = "C:\Temp\DisabledUsers_" + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".log"
+$logfilename         = "C:\Temp\DisabledUsers_" + (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss") + ".log"
 
 # Begin Logging
 Start-Transcript -Path $logfilename
@@ -127,8 +127,8 @@ Write-ColorOutput -Message "----------------------------------------------------
 
 # Get Domain Users group information
 try {
-    $DomainUsersInfo = Get-ADGroup -Identity $DomainUsersGroup -Properties primaryGroupToken
-    $DomainUsersPGID = $DomainUsersInfo.primaryGroupToken
+    $DomainUsersInfo     = Get-ADGroup -Identity $DomainUsersGroup -Properties primaryGroupToken
+    $DomainUsersPGID     = $DomainUsersInfo.primaryGroupToken
     Write-ColorOutput -Message "Domain Users group token: $DomainUsersPGID" -Color 'DarkGray'
 } catch {
     Write-ColorOutput -Message "Error retrieving Domain Users group info: $($_.Exception.Message)" -Color 'Red'
@@ -137,8 +137,8 @@ try {
 }
 
 # Get all disabled users
-$DisabledUsers = Search-ADAccount -AccountDisabled -UsersOnly -ResultPageSize 2000 -ResultSetSize $null
-$DisabledUsersCount = $DisabledUsers.Count
+$DisabledUsers       = Search-ADAccount -AccountDisabled -UsersOnly -ResultPageSize 2000 -ResultSetSize $null
+$DisabledUsersCount  = $DisabledUsers.Count
 
 # Output the total number of users identified
 Write-ColorOutput -Message "PROCESSING:" -Color 'White'
@@ -146,7 +146,7 @@ Write-ColorOutput -Message "Identified $DisabledUsersCount disabled user account
 Write-ColorOutput -Message "-------------------------------------------------------" -Color 'DarkGray'
 
 # Counter for tracking progress
-$UserCounter = 0
+$UserCounter          = 0
 $GroupsRemovedCounter = 0
 
 try {

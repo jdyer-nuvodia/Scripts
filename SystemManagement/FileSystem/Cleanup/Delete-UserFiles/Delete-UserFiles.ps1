@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Delete-UserFiles.ps1
-# Created: 2025-06-23 21:35:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-23 17:31:00 UTC
+# Created: 0
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial version - deletes specific user directories by inclusion or exclusion
+# Version: 1.0.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

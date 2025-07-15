@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Test-AdvancedNetworkConnectivity.ps1
-# Created: 2025-06-23 21:45:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-27 20:06:00 UTC
+# Created: 7
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.1
-# Additional Info: Fixed PSScriptAnalyzer issues - renamed functions to use singular nouns and added ShouldProcess support to Update-AggregatedStatistic
+# Version: 1.7.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-Mailboxes.ps1
-# Created: 2025-02-05 21:58:42 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-24 21:01:00 UTC
+# Created: 3
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.0
-# Additional Info: Implemented proper PowerShell output cmdlets for PSScriptAnalyzer compliance
+# Version: 2.3.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

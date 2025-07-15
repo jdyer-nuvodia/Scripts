@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Test-NetworkConnectivity.ps1
-# Created: 2025-02-06 21:24:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-03 18:12:00 UTC
+# Created: 16
+# Author: 5
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.16.4
-# Additional Info: Filter out disconnected network adapters from configuration display
+# Version: 2.16.6
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -82,8 +82,8 @@ function Write-FinalStatistic {
 
     if ($script:logFile) {
         try {
-            $packetLoss = if ($script:sent -gt 0) { 100 - ($script:received / $script:sent * 100) } else { 0 }
-            $avgTime = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
+            $packetLoss     = if ($script:sent -gt 0) { 100 - ($script:received / $script:sent * 100) } else { 0 }
+            $avgTime        = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
 
             $finalStats = @"
 
@@ -146,9 +146,9 @@ function Write-LogMessage {
 function Get-FormattedSize {
     param([int64]$Size)
 
-    if ($Size -gt 1GB) { return " { 0:N2} GB" -f ($Size / 1GB) }
-    if ($Size -gt 1MB) { return " { 0:N2} MB" -f ($Size / 1MB) }
-    if ($Size -gt 1KB) { return " { 0:N2} KB" -f ($Size / 1KB) }
+    if ($Size -gt 1GB) { return "{0:N2} GB" -f ($Size / 1GB) }
+    if ($Size -gt 1MB) { return "{0:N2} MB" -f ($Size / 1MB) }
+    if ($Size -gt 1KB) { return "{0:N2} KB" -f ($Size / 1KB) }
     return "$Size Bytes"
 }
 
@@ -240,9 +240,9 @@ try {
     }
 
     # Create timestamp and filename
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $computerName = $env:COMPUTERNAME
-    $fileName = "PingTest_${ computerName}_${ timestamp}.log"
+    $timestamp      = Get-Date -Format "yyyyMMdd_HHmmss"
+    $computerName   = $env:COMPUTERNAME
+    $fileName       = "PingTest_${computerName}_${timestamp}.log"
     $script:logFile = Join-Path $OutputPath $fileName
 
     # Create log file with header
@@ -270,9 +270,9 @@ Mode: $(if($Count -eq 0) { "Continuous"}else { "Count: $Count"})
     try {
         $ipConfig = & ipconfig /all
         if ($ipConfig) {
-            $filteredConfig = @()
-            $currentAdapter = @()
-            $skipAdapter = $false
+            $filteredConfig     = @()
+            $currentAdapter     = @()
+            $skipAdapter        = $false
 
             foreach ($line in $ipConfig) {
                 # Check if we're starting a new adapter section
@@ -284,8 +284,8 @@ Mode: $(if($Count -eq 0) { "Continuous"}else { "Count: $Count"})
                         }
                     }
                     # Start new adapter
-                    $currentAdapter = @($line)
-                    $skipAdapter = $false
+                    $currentAdapter     = @($line)
+                    $skipAdapter        = $false
                 } elseif ($line -match "Media State.*Media disconnected") {
                     # Mark this adapter to be skipped
                     $skipAdapter = $true
@@ -364,8 +364,8 @@ Mode: $(if($Count -eq 0) { "Continuous"}else { "Count: $Count"})
 
             # Update statistics every 10 pings
             if ($script:sent % 10 -eq 0) {
-                $packetLoss = 100 - ($script:received / $script:sent * 100)
-                $avgTime = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
+                $packetLoss     = 100 - ($script:received / $script:sent * 100)
+                $avgTime        = if ($script:received -gt 0) { $script:totalTime / $script:received } else { 0 }
 
                 $stats = @"
 

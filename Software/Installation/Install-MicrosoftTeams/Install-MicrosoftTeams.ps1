@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Install-MicrosoftTeams.ps1
-# Created: 2025-04-08 15:00:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 00:01:00 UTC
+# Created: 8
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.8.0
-# Additional Info: Replaced Write-Host with Write-ColorOutput function for PSScriptAnalyzer compliance
+# Version: 1.8.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -213,7 +213,7 @@ function Uninstall-TeamsApp {
 
                     # First terminate any running Teams processes from WindowsApps
                     $teamsProcesses = Get-Process -Name "*Teams*" -ErrorAction SilentlyContinue |
-                    Where-Object { $null -ne $_.Path -and $_.Path -like "*WindowsApps*" }
+                        Where-Object { $null -ne $_.Path -and $_.Path -like "*WindowsApps*" }
 
                     if ($teamsProcesses) {
                         Write-ColorOutput -Message "  Terminating Teams processes from Windows Store..." -Color 'Yellow'
@@ -239,7 +239,7 @@ function Uninstall-TeamsApp {
     Write-ColorOutput -Message 'Checking for Teams installations via WMI/CIM...' -Color 'DarkGray'
     try {
         $cimProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "*Teams*" -or ($_.Vendor -like "*Microsoft*" -and $_.Name -like "*Teams*") }
+            Where-Object { $_.Name -like "*Teams*" -or ($_.Vendor -like "*Microsoft*" -and $_.Name -like "*Teams*") }
 
         foreach ($product in $cimProducts) {
             if ($PSCmdlet.ShouldProcess("WMI Product: $($product.Name) v$($product.Version)", "Uninstall")) {
@@ -1085,6 +1085,7 @@ function Test-TeamsInstallationHealth {
 
 function Stop-TeamsProcess {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+    [OutputType([bool])]
     param()
 
     Write-ColorOutput -Message "Checking for running Teams processes..." -Color 'Cyan'
@@ -1248,7 +1249,7 @@ foreach ($path in $uninstallPaths) {
 # Check WMI/CIM for Teams
 try {
     $cimProducts = Get-CimInstance -ClassName Win32_Product -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -like "*Teams*" -or ($_.Vendor -like "*Microsoft*" -and $_.Name -like "*Teams*") }
+        Where-Object { $_.Name -like "*Teams*" -or ($_.Vendor -like "*Microsoft*" -and $_.Name -like "*Teams*") }
     foreach ($product in $cimProducts) {
         Write-ColorOutput -Message "Microsoft Teams found in WMI: $($product.Name) v$($product.Version)" -Color 'Green'
         $script:teamsInstalled = $true
@@ -1279,8 +1280,8 @@ $teamsLocations = @(
 foreach ($location in $teamsLocations) {
     if (Test-Path -Path $location) {
         $exeFiles = Get-ChildItem -Path $location -Filter "Teams*.exe" -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } |
-        Select-Object -First 1
+            Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } |
+            Select-Object -First 1
         if ($exeFiles) {
             $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exeFiles[0].FullName)
             Write-ColorOutput -Message "Microsoft Teams executable found: $($exeFiles[0].FullName) v$($fileInfo.FileVersion)" -Color 'Green'
@@ -1295,8 +1296,8 @@ foreach ($location in $teamsLocations) {
 $perUserPath = "$env:LOCALAPPDATA\Microsoft\Teams"
 if (Test-Path -Path $perUserPath) {
     $exeFiles = Get-ChildItem -Path $perUserPath -Filter "Teams*.exe" -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } |
-    Select-Object -First 1
+        Where-Object { $_.Name -notlike "*uninst*" -and $_.Name -notlike "*setup*" } |
+        Select-Object -First 1
 
     if ($exeFiles) {
         $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exeFiles[0].FullName)

@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Rename-ScriptToFolderName.ps1
-# Created: 2025-02-05 23:22:49 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 05:18:00 UTC
+# Created: 3
+# Author: 7
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.7
-# Additional Info: Fixed PSScriptAnalyzer unused parameter warning by adding explicit parameter reference in begin block
+# Version: 1.3.8
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

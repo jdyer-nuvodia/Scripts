@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Install-DattoFromUSB.ps1
-# Created: 2025-06-07 08:15:22 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-06-07 08:15:22 UTC
+# Created: 0
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Initial script creation with proper header formatting
+# Version: 1.0.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

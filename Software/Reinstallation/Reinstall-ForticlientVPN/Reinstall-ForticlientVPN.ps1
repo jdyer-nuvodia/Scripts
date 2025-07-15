@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Reinstall-ForticlientVPN.ps1
-# Created: 2024-02-13 18:30:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 01:00:00 UTC
+# Created: 2
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Script to remove and reinstall Forticlient VPN. Fixed PSScriptAnalyzer compliance, converted Write-Host to Write-ColorOutput, removed ExecutionPolicy Bypass, fixed parameter usage.
+# Version: 1.2.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -47,25 +47,25 @@ param(
 $Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        'White' = "`e[37m"
-        'Cyan' = "`e[36m"
-        'Green' = "`e[32m"
-        'Yellow' = "`e[33m"
-        'Red' = "`e[31m"
-        'Magenta' = "`e[35m"
+        'White'    = "`e[37m"
+        'Cyan'     = "`e[36m"
+        'Green'    = "`e[32m"
+        'Yellow'   = "`e[33m"
+        'Red'      = "`e[31m"
+        'Magenta'  = "`e[35m"
         'DarkGray' = "`e[90m"
-        'Reset' = "`e[0m"
+        'Reset'    = "`e[0m"
     }
 } else {
     @{
-        'White' = [ConsoleColor]::White
-        'Cyan' = [ConsoleColor]::Cyan
-        'Green' = [ConsoleColor]::Green
-        'Yellow' = [ConsoleColor]::Yellow
-        'Red' = [ConsoleColor]::Red
-        'Magenta' = [ConsoleColor]::Magenta
+        'White'    = [ConsoleColor]::White
+        'Cyan'     = [ConsoleColor]::Cyan
+        'Green'    = [ConsoleColor]::Green
+        'Yellow'   = [ConsoleColor]::Yellow
+        'Red'      = [ConsoleColor]::Red
+        'Magenta'  = [ConsoleColor]::Magenta
         'DarkGray' = [ConsoleColor]::DarkGray
-        'Reset' = ''
+        'Reset'    = ''
     }
 }
 

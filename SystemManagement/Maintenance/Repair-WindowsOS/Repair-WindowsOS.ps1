@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Repair-WindowsOS.ps1
-# Created: 2025-02-06 00:00:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-04 07:13:00 UTC
+# Created: 1
+# Author: 4
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.4
-# Additional Info: Fixed DISM exit code logic and process monitoring to correctly detect successful operations
+# Version: 1.1.5
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

@@ -133,6 +133,7 @@ This repository includes standardized GitHub Copilot prompts for consistent deve
 
 - **`/create-powershell-script`** - Generate new scripts with complete organizational standards compliance
 - **`/review-psscriptanalyzer-compliance`** - Comprehensive code review and compliance checking
+- **`/run-code-quality-scripts`** - Execute all code quality scripts including alignment analysis, Write-Host conversion, cleanup, and PSScriptAnalyzer checks
 - **`/run-powershell-code-cleanup`** - Safe whitespace and formatting fixes
 
 These prompts ensure adherence to all organizational standards and automate the development workflow.

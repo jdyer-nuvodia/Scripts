@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Search-ContentRecursively.ps1
-# Created: 2025-03-17 21:00:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 05:25:00 UTC
+# Created: 0
+# Author: 8
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.8
-# Additional Info: Fixed PSScriptAnalyzer warnings by correcting variable expansion syntax in log filename
+# Version: 2.0.9
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

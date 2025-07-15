@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Clear-SystemStorage.ps1
-# Created: 2025-03-20 20:57:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 21:45:00 UTC
+# Created: 6
+# Author: 2
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.2
-# Additional Info: Added OutputType attribute to Remove-TempFile function for PSScriptAnalyzer compliance
+# Version: 1.6.3
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

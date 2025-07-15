@@ -1,11 +1,11 @@
-﻿# =============================================================================
+# =============================================================================
 # Script: Invoke-PSScriptAnalyzerCheck.ps1
-# Created: 2025-07-12 11:58:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-12 11:58:00 UTC
+# Created: 0
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.0
-# Additional Info: Comprehensive PSScriptAnalyzer check for code quality compliance
+# Version: 1.0.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

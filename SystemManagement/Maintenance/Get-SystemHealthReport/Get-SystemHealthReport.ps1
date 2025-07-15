@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-SystemHealthReport.ps1
-# Created: 2025-04-02 20:23:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-03 16:25:00 UTC
+# Created: 5
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.1
-# Additional Info: Fixed Write-LogMessage error handling and Test-Connection property compatibility for newer PowerShell versions
+# Version: 1.5.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

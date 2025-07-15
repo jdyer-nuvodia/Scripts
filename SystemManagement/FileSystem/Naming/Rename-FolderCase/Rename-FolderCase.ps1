@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Rename-FolderCase.ps1
-# Created: 2025-02-05 22:33:29 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 20:55:23 UTC
+# Created: 4
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.4.1
-# Additional Info: Converted Write-Host to Write-ColorOutput for PSScriptAnalyzer compliance and applied code cleanup
+# Version: 1.4.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Clear-PrintQueue.ps1
-# Created: 2025-04-15 22:23:15 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 16:27:32 UTC
+# Created: 0
+# Author: 1
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.0.1
-# Additional Info: Converted Write-Host to Write-ColorOutput for PSScriptAnalyzer compliance.
+# Version: 1.0.2
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#

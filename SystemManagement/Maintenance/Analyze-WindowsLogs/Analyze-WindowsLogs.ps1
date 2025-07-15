@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Analyze-WindowsLogs.ps1
-# Created: 2025-04-02 21:15:00 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-11 21:15:00 UTC
+# Created: 1
+# Author: 4
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.4
-# Additional Info: Fixed PSScriptAnalyzer unused parameter warnings by using proper parameter referencing
+# Version: 1.1.5
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
@@ -75,25 +75,25 @@ $ReportFile = Join-Path $ReportPath "LogAnalysis_$SystemName_$TimeStamp.html"
 $Script:UseAnsiColors = ($PSVersionTable.PSVersion.Major -ge 7)
 $Script:Colors = if ($Script:UseAnsiColors) {
     @{
-        White = "`e[37m"
-        Cyan = "`e[36m"
-        Green = "`e[32m"
-        Yellow = "`e[33m"
-        Red = "`e[31m"
-        Magenta = "`e[35m"
+        White    = "`e[37m"
+        Cyan     = "`e[36m"
+        Green    = "`e[32m"
+        Yellow   = "`e[33m"
+        Red      = "`e[31m"
+        Magenta  = "`e[35m"
         DarkGray = "`e[90m"
-        Reset = "`e[0m"
+        Reset    = "`e[0m"
     }
 } else {
     @{
-        White = "White"
-        Cyan = "Cyan"
-        Green = "Green"
-        Yellow = "Yellow"
-        Red = "Red"
-        Magenta = "Magenta"
+        White    = "White"
+        Cyan     = "Cyan"
+        Green    = "Green"
+        Yellow   = "Yellow"
+        Red      = "Red"
+        Magenta  = "Magenta"
         DarkGray = "DarkGray"
-        Reset = ""
+        Reset    = ""
     }
 }
 

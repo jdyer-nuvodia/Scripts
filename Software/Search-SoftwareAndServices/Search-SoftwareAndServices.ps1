@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Search-SoftwareAndServices.ps1
-# Created: 2025-04-17 19:54:45 UTC
-# Author: jdyer-nuvodia
-# Last Updated: 2025-07-10 21:21:33 UTC
+# Created: 1
+# Author: 0
+# Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.0
-# Additional Info: Fixed PSScriptAnalyzer compliance issues - replaced Write-Host with Write-ColorOutput and Get-WmiObject with Get-CimInstance
+# Version: 1.1.1
+# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================
 
 <#
