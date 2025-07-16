@@ -248,78 +248,78 @@ function Remove-TempFile {
 
                 try {
                     Get-ChildItem -Path $downloadPath -File -Force -ErrorAction SilentlyContinue |
-                    Where-Object { $_.LastWriteTime -lt $cutoffDate } |
-                    ForEach-Object {
-                        try {
-                            $fileSize = $_.Length
-                            [System.IO.File]::Delete($_.FullName)
-                            $removedFiles.Count++
-                            $removedFiles.TotalSize += $fileSize
-                            Write-ScriptLog "Deleted old file: $_" -Color DarkGray -NoConsole
-                        } catch {
-                            $lockedFiles.Count++
-                            $lockedFiles.TotalSize += $fileSize
+                        Where-Object { $_.LastWriteTime -lt $cutoffDate } |
+                        ForEach-Object {
+                            try {
+                                $fileSize = $_.Length
+                                [System.IO.File]::Delete($_.FullName)
+                                $removedFiles.Count++
+                                $removedFiles.TotalSize += $fileSize
+                                Write-ScriptLog "Deleted old file: $_" -Color DarkGray -NoConsole
+                            } catch {
+                                $lockedFiles.Count++
+                                $lockedFiles.TotalSize += $fileSize
+                            }
                         }
+                        Write-StatusMessage "Processed $downloadPath" -Color Green
+                    } catch {
+                        Write-ScriptLog "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
                     }
-                    Write-StatusMessage "Processed $downloadPath" -Color Green
-                } catch {
-                    Write-ScriptLog "Error accessing Downloads folder for $([System.IO.Path]::GetFileName($_)): $($_.Exception.Message)" -Color Yellow
                 }
             }
+        } catch {
+            Write-ScriptLog "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
         }
-    } catch {
-        Write-ScriptLog "Error accessing Users directory: $($_.Exception.Message)" -Color Yellow
+
+        # Format sizes for display
+        $removedSizeGB = [math]::Round($removedFiles.TotalSize / 1GB, 2)
+        $lockedSizeGB = [math]::Round($lockedFiles.TotalSize / 1GB, 2)
+
+        Write-StatusMessage "Temp file cleanup completed:" -Color Cyan
+        Write-ScriptLog "- Files removed: $($removedFiles.Count) ($($removedSizeGB) GB)" -Color Green
+        Write-ScriptLog "- Files locked: $($lockedFiles.Count) ($($lockedSizeGB) GB)" -Color Yellow
+
+        return $removedFiles.Count
     }
 
-    # Format sizes for display
-    $removedSizeGB = [math]::Round($removedFiles.TotalSize / 1GB, 2)
-    $lockedSizeGB = [math]::Round($lockedFiles.TotalSize / 1GB, 2)
-
-    Write-StatusMessage "Temp file cleanup completed:" -Color Cyan
-    Write-ScriptLog "- Files removed: $($removedFiles.Count) ($($removedSizeGB) GB)" -Color Green
-    Write-ScriptLog "- Files locked: $($lockedFiles.Count) ($($lockedSizeGB) GB)" -Color Yellow
-
-    return $removedFiles.Count
-}
-
-function Clear-RecycleBinContent {
-    Write-StatusMessage "Clearing Recycle Bin..." -Color Cyan
-    try {
-        # Use the built-in cmdlet if available (PowerShell 5.1 and later)
-        if (Get-Command -Name Clear-RecycleBin -ErrorAction SilentlyContinue) {
-            Clear-RecycleBin -Force -ErrorAction Stop
-        } else {
-            # Fallback for older PowerShell versions
-            $shell = New-Object -ComObject Shell.Application
-            $recycleBin = $shell.NameSpace(0xa)
-            $recycleBin.Items() | ForEach-Object {
-                Remove-Item $_.Path -Force -Recurse
+    function Clear-RecycleBinContent {
+        Write-StatusMessage "Clearing Recycle Bin..." -Color Cyan
+        try {
+            # Use the built-in cmdlet if available (PowerShell 5.1 and later)
+            if (Get-Command -Name Clear-RecycleBin -ErrorAction SilentlyContinue) {
+                Clear-RecycleBin -Force -ErrorAction Stop
+            } else {
+                # Fallback for older PowerShell versions
+                $shell = New-Object -ComObject Shell.Application
+                $recycleBin = $shell.NameSpace(0xa)
+                $recycleBin.Items() | ForEach-Object {
+                    Remove-Item $_.Path -Force -Recurse
+                }
+                if ($null -ne $shell) {
+                    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+                }
             }
-            if ($null -ne $shell) {
-                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
-            }
+            Write-StatusMessage "Recycle Bin cleared successfully." -Color Green
+        } catch {
+            Write-StatusMessage "Error clearing Recycle Bin: $_" -Color Yellow
         }
-        Write-StatusMessage "Recycle Bin cleared successfully." -Color Green
-    } catch {
-        Write-StatusMessage "Error clearing Recycle Bin: $_" -Color Yellow
     }
-}
 
-function Clear-ShadowCopy {
-    Write-StatusMessage "Managing Volume Shadow Copies..." -Color Cyan
-    try {
-        # Get current shadow copies using vssadmin
-        $tempFile = [System.IO.Path]::GetTempFileName()
-        $process = Start-Process -FilePath "vssadmin" -ArgumentList "list shadows" -NoNewWindow -Wait -RedirectStandardOutput $tempFile -PassThru
-        if ($process.ExitCode -ne 0) {
-            throw "vssadmin failed with exit code $($process.ExitCode)"
-        }
-        $shadowList = [System.IO.File]::ReadAllText($tempFile)
-        [System.IO.File]::Delete($tempFile)
+    function Clear-ShadowCopy {
+        Write-StatusMessage "Managing Volume Shadow Copies..." -Color Cyan
+        try {
+            # Get current shadow copies using vssadmin
+            $tempFile = [System.IO.Path]::GetTempFileName()
+            $process = Start-Process -FilePath "vssadmin" -ArgumentList "list shadows" -NoNewWindow -Wait -RedirectStandardOutput $tempFile -PassThru
+            if ($process.ExitCode -ne 0) {
+                throw "vssadmin failed with exit code $($process.ExitCode)"
+            }
+            $shadowList = [System.IO.File]::ReadAllText($tempFile)
+            [System.IO.File]::Delete($tempFile)
 
-        # Parse shadow copies
-        $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: { (.*?)}" -AllMatches |
-            ForEach-Object { $_.Matches.Groups[1].Value })
+            # Parse shadow copies
+            $shadowCopies = @($shadowList | Select-String -Pattern "Shadow Copy ID: { (.*?)}" -AllMatches |
+                    ForEach-Object { $_.Matches.Groups[1].Value })
 
         $totalCopies = $shadowCopies.Count
 
