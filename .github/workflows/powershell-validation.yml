@@ -45,7 +45,14 @@ jobs:
         foreach ($script in $scriptFiles) {
           Write-Output "Analyzing: $($script.FullName)"
 
-          $results = Invoke-ScriptAnalyzer -Path $script.FullName -Settings ".vscode/PSScriptAnalyzerSettings.psd1"
+          # Use absolute path for settings file to ensure it's found in CI environment
+          $settingsPath = Join-Path $PWD ".vscode/PSScriptAnalyzerSettings.psd1"
+          if (Test-Path $settingsPath) {
+            $results = Invoke-ScriptAnalyzer -Path $script.FullName -Settings $settingsPath
+          } else {
+            # Fallback to default rules if settings file not found
+            $results = Invoke-ScriptAnalyzer -Path $script.FullName
+          }
 
           if ($results) {
             $allResults += $results
