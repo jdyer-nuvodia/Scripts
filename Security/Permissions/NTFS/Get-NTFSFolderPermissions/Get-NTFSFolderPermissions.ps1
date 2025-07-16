@@ -935,8 +935,8 @@ process {
 
         if ($script:WellKnownSIDs.Values -contains $Sid) {
             $name = $script:WellKnownSIDs.GetEnumerator() |
-            Where-Object { $_.Value -eq $Sid } |
-            Select-Object -First 1 -ExpandProperty Key
+                Where-Object { $_.Value -eq $Sid } |
+                Select-Object -First 1 -ExpandProperty Key
             return $name
         }
         return $null
