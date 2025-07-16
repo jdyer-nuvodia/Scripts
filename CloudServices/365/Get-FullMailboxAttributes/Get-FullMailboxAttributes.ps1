@@ -1,11 +1,11 @@
 # =============================================================================
 # Script: Get-FullMailboxAttributes.ps1
-# Created: 2
-# Author: 2
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Created: 2025-07-15 23:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-16 21:16:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.3
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Version: 1.2.4
+# Additional Info: Fixed PSScriptAnalyzer CI/CD issues and implemented Write-ColorOutput function
 # =============================================================================
 
 <#
@@ -90,6 +90,59 @@ param(
     [string[]]$Mailboxes
 )
 
+# Initialize color support and logging
+$Script:UseAnsiColors = $PSVersionTable.PSVersion.Major -ge 7
+$Script:Colors = if ($Script:UseAnsiColors) {
+    @{
+        Red       = "`e[31m"
+        Green     = "`e[32m"
+        Yellow    = "`e[33m"
+        Cyan      = "`e[36m"
+        White     = "`e[37m"
+        Magenta   = "`e[35m"
+        DarkGray  = "`e[90m"
+        Reset     = "`e[0m"
+    }
+} else {
+    @{
+        Red       = "Red"
+        Green     = "Green"
+        Yellow    = "Yellow"
+        Cyan      = "Cyan"
+        White     = "White"
+        Magenta   = "Magenta"
+        DarkGray  = "DarkGray"
+        Reset     = ""
+    }
+}
+
+function Write-ColorOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [string]$Color = "White"
+    )
+
+    if ($Script:UseAnsiColors) {
+        # PowerShell 7+ with ANSI escape codes
+        $colorCode = $Script:Colors[$Color]
+        $resetCode  = $Script:Colors.Reset
+        Write-Output "${colorCode}${Message}${resetCode}"
+    } else {
+        # PowerShell 5.1 - Change console color, write output, then reset
+        $originalColor = $Host.UI.RawUI.ForegroundColor
+        try {
+            if ($Script:Colors[$Color] -and $Script:Colors[$Color] -ne "") {
+                $Host.UI.RawUI.ForegroundColor = $Script:Colors[$Color]
+            }
+            Write-Output $Message
+        } finally {
+            $Host.UI.RawUI.ForegroundColor = $originalColor
+        }
+    }
+}
+
 # Initialize logging
 $LogFile = Join-Path -Path $OutputPath -ChildPath "MailboxAttributes_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
 
@@ -101,11 +154,11 @@ function Write-ScriptLog {
     Add-Content -Path $LogFile -Value $LogMessage
 
     switch ($Level) {
-        "Information" { Write-Information -MessageData $Message -InformationAction Continue }
-        "Success" { Write-Information -MessageData $Message -InformationAction Continue }
-        "Warning" { Write-Warning -Message $Message }
-        "Error" { Write-Error -Message $Message }
-        "Process" { Write-Information -MessageData $Message -InformationAction Continue }
+        "Information" { Write-ColorOutput -Message $Message -Color "White" }
+        "Success" { Write-ColorOutput -Message $Message -Color "Green" }
+        "Warning" { Write-ColorOutput -Message $Message -Color "Yellow" }
+        "Error" { Write-ColorOutput -Message $Message -Color "Red" }
+        "Process" { Write-ColorOutput -Message $Message -Color "Cyan" }
     }
 }
 
