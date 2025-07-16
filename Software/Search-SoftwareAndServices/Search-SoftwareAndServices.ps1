@@ -189,11 +189,11 @@ function Search-WindowsService {
     try {
         # Capture non-terminating errors using ErrorVariable
         $services = Get-Service -ErrorAction SilentlyContinue -ErrorVariable serviceErrors |
-        Where-Object {
-            $_.DisplayName -like "*$Keyword*" -or
-            $_.Name -like "*$Keyword*" -or
-            ($null -ne $_.Description -and $_.Description -like "*$Keyword*")
-        }
+            Where-Object {
+                $_.DisplayName -like "*$Keyword*" -or
+                $_.Name -like "*$Keyword*" -or
+                ($null -ne $_.Description -and $_.Description -like "*$Keyword*")
+            }
 
         # Log permission errors if verbose
         if ($serviceErrors) {
