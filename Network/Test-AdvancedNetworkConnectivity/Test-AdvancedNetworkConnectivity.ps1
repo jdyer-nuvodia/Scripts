@@ -1252,7 +1252,7 @@ try {
     # Create log file
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $computerName = $env:COMPUTERNAME
-    $fileName = "AdvancedNetworkTest_${ computerName}_${ timestamp}.log"
+    $fileName = "AdvancedNetworkTest_${computerName}_${timestamp}.log"
     $script:logFile = Join-Path -Path $OutputPath -ChildPath $fileName
 
     # Create log header
