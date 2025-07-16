@@ -290,12 +290,12 @@ function Get-SystemAccessControl {
                 if (Test-Path $StartPath) {
                     Write-StatusMessage "Registry Path: $StartPath" -Type "Success"
                     Get-ItemProperty -Path $StartPath |
-                    Select-Object -Property * -ExcludeProperty PS* |
-                    ForEach-Object {
-                        $_.PSObject.Properties | ForEach-Object {
-                            Write-StatusMessage "  $($_.Name): $($_.Value)" -Type "Detail"
+                        Select-Object -Property * -ExcludeProperty PS* |
+                        ForEach-Object {
+                            $_.PSObject.Properties | ForEach-Object {
+                                Write-StatusMessage "  $($_.Name): $($_.Value)" -Type "Detail"
+                            }
                         }
-                    }
                 }
             }
         }
@@ -403,15 +403,15 @@ function Get-AdvancedRegistrySetting {
                 try {
                     $properties = Get-ItemProperty -Path $StartPath -ErrorAction Stop
                     $properties.PSObject.Properties |
-                    Where-Object { $_.Name -notlike 'PS*' } |
-                    ForEach-Object {
-                        $value = if ($_.Value -is [byte[]]) {
-                            [System.BitConverter]::ToString($_.Value)
-                        } else {
-                            $_.Value
+                        Where-Object { $_.Name -notlike 'PS*' } |
+                        ForEach-Object {
+                            $value = if ($_.Value -is [byte[]]) {
+                                [System.BitConverter]::ToString($_.Value)
+                            } else {
+                                $_.Value
+                            }
+                            Write-StatusMessage "  $($_.Name): $value" -Type "Detail"
                         }
-                        Write-StatusMessage "  $($_.Name): $value" -Type "Detail"
-                    }
                 } catch {
                     Write-StatusMessage "  Error reading properties: $($_.Exception.Message)" -Type "Warning"
                 }
