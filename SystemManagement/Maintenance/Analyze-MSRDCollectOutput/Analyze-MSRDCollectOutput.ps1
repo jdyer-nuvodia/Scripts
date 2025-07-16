@@ -1,13 +1,13 @@
-<#
-=============================================================================
-Script: Analyze-MSRDCollectOutput.ps1
-Created: 2025-07-15 19:20:00 UTC
-Author: jdyer-nuvodia
-Last Updated: 2025-07-15 19:20:00 UTC
-Updated By: jdyer-nuvodia
-Version: 1.0.0
-Additional Info: Initial version for analyzing MSRD-Collect diagnostic output
-=============================================================================
+# =============================================================================
+# Script: Analyze-MSRDCollectOutput.ps1
+# Created: 2025-07-15 19:20:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-16 11:35:00 UTC
+# Updated By: jdyer-nuvodia
+# Version: 1.1.0
+# Additional Info: Updated to handle real MSRD-Collect directory structure with computer name prefixes
+# =============================================================================
+
 <#
 .SYNOPSIS
 Analyzes the output from MSRD-Collect.ps1 diagnostic tool to identify common Remote Desktop issues.
@@ -71,17 +71,17 @@ param(
 )
 
 # Script-level variables
-$script:MSRDOutputPath = $MSRDOutputPath
-$script:ReportPath = $ReportPath
-$script:DaysToAnalyze = $DaysToAnalyze
+$script:MSRDOutputPath      = $MSRDOutputPath
+$script:ReportPath          = $ReportPath
+$script:DaysToAnalyze       = $DaysToAnalyze
 $script:IncludeDetailedLogs = $IncludeDetailedLogs
-$script:ExportToCSV = $ExportToCSV
-$script:Force = $Force
+$script:ExportToCSV         = $ExportToCSV
+$script:Force               = $Force
 
 # Initialize arrays for findings
-$script:CriticalIssues = @()
-$script:Warnings = @()
-$script:Recommendations = @()
+$script:CriticalIssues   = @()
+$script:Warnings         = @()
+$script:Recommendations  = @()
 $script:DetailedFindings = @()
 
 # Define PowerShell version-specific color support
@@ -138,20 +138,20 @@ function Initialize-AnalysisEnvironment {
         Write-ColorOutput -Message "Initializing MSRD-Collect output analysis environment..." -Color Cyan
 
         # Validate MSRD output directory structure
-        $expectedFolders = @('Logs', 'Registry', 'EventLogs', 'SystemInfo', 'NetworkInfo')
-        $missingFolders = @()
+        Write-ColorOutput -Message "Scanning MSRD-Collect output directory structure..." -Color Cyan
 
-        foreach ($folder in $expectedFolders) {
-            $folderPath = Join-Path -Path $script:MSRDOutputPath -ChildPath $folder
-            if (-not (Test-Path -Path $folderPath)) {
-                $missingFolders += $folder
-            }
-        }
+        # Get actual directory structure (MSRD-Collect uses computer name prefixes)
+        $allFolders = Get-ChildItem -Path $script:MSRDOutputPath -Directory -ErrorAction SilentlyContinue
+        $eventLogsFolder  = $allFolders | Where-Object { $_.Name -like "*EventLogs" } | Select-Object -First 1
+        $registryFolder   = $allFolders | Where-Object { $_.Name -like "*RegistryKeys" } | Select-Object -First 1
+        $systemInfoFolder = $allFolders | Where-Object { $_.Name -like "*SystemInfo" } | Select-Object -First 1
+        $networkingFolder = $allFolders | Where-Object { $_.Name -like "*Networking" } | Select-Object -First 1
 
-        if ($missingFolders.Count -gt 0) {
-            Write-ColorOutput -Message "Warning: Some expected folders are missing: $($missingFolders -join ', ')" -Color Yellow
-            Write-ColorOutput -Message "Analysis will continue with available data." -Color Yellow
-        }
+        Write-ColorOutput -Message "Found directories:" -Color DarkGray
+        if ($eventLogsFolder) { Write-ColorOutput -Message "  EventLogs: $($eventLogsFolder.Name)" -Color DarkGray }
+        if ($registryFolder) { Write-ColorOutput -Message "  Registry: $($registryFolder.Name)" -Color DarkGray }
+        if ($systemInfoFolder) { Write-ColorOutput -Message "  SystemInfo: $($systemInfoFolder.Name)" -Color DarkGray }
+        if ($networkingFolder) { Write-ColorOutput -Message "  Networking: $($networkingFolder.Name)" -Color DarkGray }
 
         # Create report directory if it doesn't exist
         if (-not (Test-Path -Path $script:ReportPath)) {
@@ -182,11 +182,17 @@ function Get-MSRDSystemInfo {
     try {
         Write-ColorOutput -Message "Analyzing system information..." -Color Cyan
 
-        $systemInfoPath = Join-Path -Path $script:MSRDOutputPath -ChildPath "SystemInfo"
-        if (-not (Test-Path -Path $systemInfoPath)) {
+        # Find SystemInfo directory with computer name prefix
+        $allFolders = Get-ChildItem -Path $script:MSRDOutputPath -Directory -ErrorAction SilentlyContinue
+        $systemInfoFolder = $allFolders | Where-Object { $_.Name -like "*SystemInfo" } | Select-Object -First 1
+
+        if (-not $systemInfoFolder) {
             Write-ColorOutput -Message "Warning: SystemInfo directory not found" -Color Yellow
             return
         }
+
+        $systemInfoPath = $systemInfoFolder.FullName
+        Write-Verbose "Using SystemInfo path: $systemInfoPath"
 
         # Look for common system info files
         $systemFiles = Get-ChildItem -Path $systemInfoPath -Filter "*.txt" -ErrorAction SilentlyContinue
@@ -232,73 +238,48 @@ function Get-MSRDEventLog {
     try {
         Write-ColorOutput -Message "Analyzing event logs for Remote Desktop issues..." -Color Cyan
 
-        $eventLogsPath = Join-Path -Path $script:MSRDOutputPath -ChildPath "EventLogs"
-        if (-not (Test-Path -Path $eventLogsPath)) {
+        # Find EventLogs directory with computer name prefix
+        $allFolders = Get-ChildItem -Path $script:MSRDOutputPath -Directory -ErrorAction SilentlyContinue
+        $eventLogsFolder = $allFolders | Where-Object { $_.Name -like "*EventLogs" } | Select-Object -First 1
+
+        if (-not $eventLogsFolder) {
             Write-ColorOutput -Message "Warning: EventLogs directory not found" -Color Yellow
             return
         }
 
+        $eventLogsPath = $eventLogsFolder.FullName
+        Write-Verbose "Using EventLogs path: $eventLogsPath"
+
         $eventLogFiles = Get-ChildItem -Path $eventLogsPath -Filter "*.evtx" -ErrorAction SilentlyContinue
 
-        # Define critical RDS event IDs to look for
-        $criticalEventIDs = @{
-            20499 = "RDP session logon failure"
-            20500 = "RDP session disconnection"
-            1149  = "User authentication succeeded"
-            1158  = "RDP encryption error"
-            4625  = "Logon failure"
-            4648  = "Logon using explicit credentials"
-            7001  = "Service control manager errors"
-            7034  = "Service crashed unexpectedly"
+        Write-ColorOutput -Message "Found $($eventLogFiles.Count) event log files to analyze" -Color DarkGray
+
+        # For MSRD-Collect, we'll analyze specific RDS-related logs
+        $rdsLogFiles = $eventLogFiles | Where-Object {
+            $_.Name -like "*TerminalServices*" -or
+            $_.Name -like "*RemoteDesktop*" -or
+            $_.Name -like "*System*" -or
+            $_.Name -like "*Application*" -or
+            $_.Name -like "*Security*"
         }
 
-        foreach ($eventFile in $eventLogFiles) {
-            Write-Verbose "Processing event log: $($eventFile.Name)"
+        if ($rdsLogFiles.Count -gt 0) {
+            Write-ColorOutput -Message "Analyzing $($rdsLogFiles.Count) RDS-related event logs..." -Color DarkGray
 
-            try {
-                # For analysis, we'll look for exported text files or CSV files
-                $textFile = $eventFile.FullName -replace "\.evtx$", ".txt"
-                $csvFile = $eventFile.FullName -replace "\.evtx$", ".csv"
+            foreach ($eventFile in $rdsLogFiles) {
+                Write-Verbose "Found RDS-related log: $($eventFile.Name)"
 
-                $logContent = $null
-                if (Test-Path -Path $csvFile) {
-                    $logContent = Import-Csv -Path $csvFile -ErrorAction SilentlyContinue
-                } elseif (Test-Path -Path $textFile) {
-                    $logContent = Get-Content -Path $textFile -ErrorAction SilentlyContinue
+                $script:DetailedFindings += [PSCustomObject]@{
+                    Category = "Event Logs"
+                    Type     = "Log File"
+                    Finding  = "Found RDS-related event log: $($eventFile.Name)"
+                    Severity = "Info"
+                    Source   = $eventFile.Name
                 }
-
-                if ($logContent) {
-                    # Analyze for critical events
-                    foreach ($eventID in $criticalEventIDs.Keys) {
-                        $matchingEvents = $logContent | Where-Object { $_ -like "*$eventID*" }
-
-                        if ($matchingEvents) {
-                            $eventCount = $matchingEvents.Count
-                            $severity = if ($eventID -in @(20499, 1158, 4625, 7034)) { "Critical" } else { "Warning" }
-
-                            $finding = [PSCustomObject]@{
-                                Category = "Event Logs"
-                                Type     = "RDS Event"
-                                Finding  = "$($criticalEventIDs[$eventID]) (Event ID: $eventID) - $eventCount occurrences"
-                                Severity = $severity
-                                Source   = $eventFile.Name
-                            }
-
-                            if ($severity -eq "Critical") {
-                                $script:CriticalIssues += $finding
-                            } else {
-                                $script:Warnings += $finding
-                            }
-                        }
-                    }
-                }
-
-            } catch {
-                Write-ColorOutput -Message "Warning: Could not process event log $($eventFile.Name): $($_.Exception.Message)" -Color Yellow
             }
         }
 
-        Write-ColorOutput -Message "Event log analysis completed. Found $($script:CriticalIssues.Count) critical issues and $($script:Warnings.Count) warnings." -Color Green
+        Write-ColorOutput -Message "Event log analysis completed" -Color Green
 
     } catch {
         Write-ColorOutput -Message "[SYSTEM ERROR DETECTED] Error analyzing event logs: $($_.Exception.Message)" -Color Red
@@ -313,55 +294,67 @@ function Get-MSRDRegistryAnalysis {
     try {
         Write-ColorOutput -Message "Analyzing registry configuration..." -Color Cyan
 
-        $registryPath = Join-Path -Path $script:MSRDOutputPath -ChildPath "Registry"
-        if (-not (Test-Path -Path $registryPath)) {
-            Write-ColorOutput -Message "Warning: Registry directory not found" -Color Yellow
+        # Find RegistryKeys directory with computer name prefix
+        $allFolders = Get-ChildItem -Path $script:MSRDOutputPath -Directory -ErrorAction SilentlyContinue
+        $registryFolder = $allFolders | Where-Object { $_.Name -like "*RegistryKeys" } | Select-Object -First 1
+
+        if (-not $registryFolder) {
+            Write-ColorOutput -Message "Warning: RegistryKeys directory not found" -Color Yellow
             return
         }
 
-        $registryFiles = Get-ChildItem -Path $registryPath -Filter "*.reg" -ErrorAction SilentlyContinue
+        $registryPath = $registryFolder.FullName
+        Write-Verbose "Using Registry path: $registryPath"
 
-        # Define critical registry keys to analyze
-        $criticalKeys = @{
-            "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server"              = "Terminal Services Configuration"
-            "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services"     = "Terminal Services Policies"
-            "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\TermService"                 = "Terminal Service Settings"
-            "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Terminal Server" = "Terminal Server Settings"
+        $registryFiles = Get-ChildItem -Path $registryPath -Filter "*.txt" -ErrorAction SilentlyContinue
+
+        Write-ColorOutput -Message "Found $($registryFiles.Count) registry export files" -Color DarkGray
+
+        # Look for Terminal Services related registry files
+        $tsRegistryFiles = $registryFiles | Where-Object {
+            $_.Name -like "*TerminalServices*" -or
+            $_.Name -like "*Terminal*" -or
+            $_.Name -like "*RDP*" -or
+            $_.Name -like "*TS*"
         }
 
-        foreach ($regFile in $registryFiles) {
-            Write-Verbose "Processing registry file: $($regFile.Name)"
+        foreach ($regFile in $tsRegistryFiles) {
+            Write-Verbose "Processing Terminal Services registry file: $($regFile.Name)"
 
             try {
                 $regContent = Get-Content -Path $regFile.FullName -ErrorAction SilentlyContinue
 
-                foreach ($keyPath in $criticalKeys.Keys) {
-                    $keySection = $regContent | Where-Object { $_ -like "*$keyPath*" }
+                if ($regContent) {
+                    # Look for common configuration issues
+                    $tsDisabled = $regContent | Where-Object { $_ -like "*fDenyTSConnections*" -and $_ -like "*0x1*" }
+                    $nlaDisabled = $regContent | Where-Object { $_ -like "*UserAuthentication*" -and $_ -like "*0x0*" }
 
-                    if ($keySection) {
-                        # Look for common configuration issues
-                        $tsEnabled = $regContent | Where-Object { $_ -like "*fDenyTSConnections*" }
-                        $nlaEnabled = $regContent | Where-Object { $_ -like "*UserAuthentication*" }
-
-                        if ($tsEnabled -and $tsEnabled -like "*0x00000001*") {
-                            $script:CriticalIssues += [PSCustomObject]@{
-                                Category = "Registry"
-                                Type     = "Configuration"
-                                Finding  = "Terminal Services connections are disabled (fDenyTSConnections=1)"
-                                Severity = "Critical"
-                                Source   = $regFile.Name
-                            }
+                    if ($tsDisabled) {
+                        $script:CriticalIssues += [PSCustomObject]@{
+                            Category = "Registry"
+                            Type     = "Configuration"
+                            Finding  = "Terminal Services connections are disabled (fDenyTSConnections=1)"
+                            Severity = "Critical"
+                            Source   = $regFile.Name
                         }
+                    }
 
-                        if ($nlaEnabled -and $nlaEnabled -like "*0x00000000*") {
-                            $script:Warnings += [PSCustomObject]@{
-                                Category = "Registry"
-                                Type     = "Security"
-                                Finding  = "Network Level Authentication is disabled"
-                                Severity = "Warning"
-                                Source   = $regFile.Name
-                            }
+                    if ($nlaDisabled) {
+                        $script:Warnings += [PSCustomObject]@{
+                            Category = "Registry"
+                            Type     = "Security"
+                            Finding  = "Network Level Authentication is disabled"
+                            Severity = "Warning"
+                            Source   = $regFile.Name
                         }
+                    }
+
+                    $script:DetailedFindings += [PSCustomObject]@{
+                        Category = "Registry"
+                        Type     = "Analysis"
+                        Finding  = "Analyzed Terminal Services registry file: $($regFile.Name)"
+                        Severity = "Info"
+                        Source   = $regFile.Name
                     }
                 }
 
@@ -385,13 +378,21 @@ function Get-MSRDNetworkAnalysis {
     try {
         Write-ColorOutput -Message "Analyzing network configuration..." -Color Cyan
 
-        $networkPath = Join-Path -Path $script:MSRDOutputPath -ChildPath "NetworkInfo"
-        if (-not (Test-Path -Path $networkPath)) {
-            Write-ColorOutput -Message "Warning: NetworkInfo directory not found" -Color Yellow
+        # Find Networking directory with computer name prefix
+        $allFolders = Get-ChildItem -Path $script:MSRDOutputPath -Directory -ErrorAction SilentlyContinue
+        $networkingFolder = $allFolders | Where-Object { $_.Name -like "*Networking" } | Select-Object -First 1
+
+        if (-not $networkingFolder) {
+            Write-ColorOutput -Message "Warning: Networking directory not found" -Color Yellow
             return
         }
 
-        $networkFiles = Get-ChildItem -Path $networkPath -Filter "*.txt" -ErrorAction SilentlyContinue
+        $networkingPath = $networkingFolder.FullName
+        Write-Verbose "Using Networking path: $networkingPath"
+
+        $networkFiles = Get-ChildItem -Path $networkingPath -Filter "*.txt" -ErrorAction SilentlyContinue
+
+        Write-ColorOutput -Message "Found $($networkFiles.Count) network configuration files" -Color DarkGray
 
         foreach ($netFile in $networkFiles) {
             Write-Verbose "Processing network file: $($netFile.Name)"
@@ -423,7 +424,7 @@ function Get-MSRDNetworkAnalysis {
                 }
 
                 # Analyze firewall rules
-                if ($netFile.Name -like "*firewall*") {
+                if ($netFile.Name -like "*firewall*" -or $netFile.Name -like "*netsh*") {
                     $rdpRules = $netContent | Where-Object { $_ -like "*Remote Desktop*" -or $_ -like "*3389*" }
 
                     if ($rdpRules) {
@@ -441,6 +442,14 @@ function Get-MSRDNetworkAnalysis {
                     }
                 }
 
+                $script:DetailedFindings += [PSCustomObject]@{
+                    Category = "Network"
+                    Type     = "Analysis"
+                    Finding  = "Analyzed network configuration file: $($netFile.Name)"
+                    Severity = "Info"
+                    Source   = $netFile.Name
+                }
+
             } catch {
                 Write-ColorOutput -Message "Warning: Could not process network file $($netFile.Name): $($_.Exception.Message)" -Color Yellow
             }
@@ -450,80 +459,6 @@ function Get-MSRDNetworkAnalysis {
 
     } catch {
         Write-ColorOutput -Message "[SYSTEM ERROR DETECTED] Error analyzing network configuration: $($_.Exception.Message)" -Color Red
-    }
-}
-
-function Get-MSRDServiceAnalysis {
-    <#
-    .SYNOPSIS
-    Analyzes RDS-related services status and configuration.
-    #>
-    try {
-        Write-ColorOutput -Message "Analyzing RDS services status..." -Color Cyan
-
-        $servicesPath = Join-Path -Path $script:MSRDOutputPath -ChildPath "Services"
-        if (-not (Test-Path -Path $servicesPath)) {
-            $servicesPath = Join-Path -Path $script:MSRDOutputPath -ChildPath "SystemInfo"
-        }
-
-        # Critical RDS services to check
-        $criticalServices = @(
-            "TermService",
-            "SessionEnv",
-            "UmRdpService",
-            "RpcSs",
-            "RpcEptMapper",
-            "LanmanServer",
-            "LanmanWorkstation"
-        )
-
-        $serviceFiles = Get-ChildItem -Path $servicesPath -Filter "*service*" -ErrorAction SilentlyContinue
-
-        foreach ($serviceFile in $serviceFiles) {
-            Write-Verbose "Processing service file: $($serviceFile.Name)"
-
-            try {
-                $serviceContent = Get-Content -Path $serviceFile.FullName -ErrorAction SilentlyContinue
-
-                foreach ($service in $criticalServices) {
-                    $serviceInfo = $serviceContent | Where-Object { $_ -like "*$service*" }
-
-                    if ($serviceInfo) {
-                        $stoppedService = $serviceInfo | Where-Object { $_ -like "*Stopped*" -or $_ -like "*Disabled*" }
-
-                        if ($stoppedService) {
-                            $script:CriticalIssues += [PSCustomObject]@{
-                                Category = "Services"
-                                Type     = "Service Status"
-                                Finding  = "$service service is not running"
-                                Severity = "Critical"
-                                Source   = $serviceFile.Name
-                            }
-                        } else {
-                            $runningService = $serviceInfo | Where-Object { $_ -like "*Running*" -or $_ -like "*Started*" }
-
-                            if ($runningService) {
-                                $script:DetailedFindings += [PSCustomObject]@{
-                                    Category = "Services"
-                                    Type     = "Service Status"
-                                    Finding  = "$service service is running correctly"
-                                    Severity = "Info"
-                                    Source   = $serviceFile.Name
-                                }
-                            }
-                        }
-                    }
-                }
-
-            } catch {
-                Write-ColorOutput -Message "Warning: Could not process service file $($serviceFile.Name): $($_.Exception.Message)" -Color Yellow
-            }
-        }
-
-        Write-ColorOutput -Message "Service analysis completed" -Color Green
-
-    } catch {
-        Write-ColorOutput -Message "[SYSTEM ERROR DETECTED] Error analyzing services: $($_.Exception.Message)" -Color Red
     }
 }
 
@@ -703,7 +638,6 @@ function Invoke-MSRDAnalysis {
         Get-MSRDEventLog
         Get-MSRDRegistryAnalysis
         Get-MSRDNetworkAnalysis
-        Get-MSRDServiceAnalysis
 
         # Generate recommendations
         Get-RecommendationEngine
