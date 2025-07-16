@@ -805,7 +805,7 @@ function New-PSTFileWithData {
 try {
     # Initialize log file
     Write-ColoredOutput -Message "=== New-FakePSTFile.ps1 Execution Started ==="
-    Write-ColoredOutput -Message "Script Version: 2.9.2"
+    Write-ColoredOutput -Message "Script Version: 2.9.4"
     Write-ColoredOutput -Message "Execution Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
     Write-ColoredOutput -Message "System: $systemName"
     Write-ColoredOutput -Message "Log File: $logPath"
