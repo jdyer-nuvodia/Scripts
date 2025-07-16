@@ -130,13 +130,13 @@ $foundInstallations = $false
 foreach ($key in $uninstallKeys) {
     Write-LogMessage "Searching for Adobe Reader in $key"
     $adobeReaderEntries = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
-    Get-ItemProperty |
-    Where-Object {
-        $_.DisplayName -like "*Adobe Acrobat Reader*" -or
-        $_.DisplayName -like "*Adobe Reader*" -and
-        $_.DisplayName -notlike "*Standard*" -and
-        $_.DisplayName -notlike "*Professional*"
-    }
+        Get-ItemProperty |
+        Where-Object {
+            $_.DisplayName -like "*Adobe Acrobat Reader*" -or
+            $_.DisplayName -like "*Adobe Reader*" -and
+            $_.DisplayName -notlike "*Standard*" -and
+            $_.DisplayName -notlike "*Professional*"
+        }
 
     if ($adobeReaderEntries) {
         $foundInstallations = $true
