@@ -169,19 +169,19 @@ try {
                         $escapedSearchTerm = [regex]::Escape($searchTerm)
                         $props = $metadata.PSObject.Properties |
                             Where-Object { $_.Value -is [string] -and $_.Value -imatch $escapedSearchTerm }
-                        if ($props) {
-                            foreach ($prop in $props) {
-                                [PSCustomObject]@{
-                                    File       = $item.FullName
-                                    Property   = $prop.Name
-                                    Value      = $prop.Value
-                                    SearchTerm = $searchTerm
+                            if ($props) {
+                                foreach ($prop in $props) {
+                                    [PSCustomObject]@{
+                                        File       = $item.FullName
+                                        Property   = $prop.Name
+                                        Value      = $prop.Value
+                                        SearchTerm = $searchTerm
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
     } catch {
         Write-ColorOutput "Error occurred while searching metadata: $_" -ForegroundColor Red
     }
@@ -328,37 +328,37 @@ try {
                             (Get-Content $filePath) |
                                 ForEach-Object { $_ -replace [regex]::Escape($searchTerm), $replaceWith } |
                                 Set-Content $filePath
-                            Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
-                        } catch {
-                            Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
+                                Write-ColorOutput "Updated content in: $filePath" -ForegroundColor Green
+                            } catch {
+                                Write-ColorOutput "Error updating $filePath : $_" -ForegroundColor Red
+                            }
                         }
                     }
-                }
 
-                # Rename files and folders
-                $termNameMatches = $nameMatches | Where-Object { $_.SearchTerm -eq $searchTerm }
-                if ($termNameMatches) {
-                    $termNameMatches | ForEach-Object {
-                        try {
-                            $newName = $_.Name -replace [regex]::Escape($searchTerm), $replaceWith
-                            $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
-                            Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
-                            Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
-                        } catch {
-                            Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
+                    # Rename files and folders
+                    $termNameMatches = $nameMatches | Where-Object { $_.SearchTerm -eq $searchTerm }
+                    if ($termNameMatches) {
+                        $termNameMatches | ForEach-Object {
+                            try {
+                                $newName = $_.Name -replace [regex]::Escape($searchTerm), $replaceWith
+                                $newPath = Join-Path (Split-Path $_.FullName -Parent) $newName
+                                Rename-Item -Path $_.FullName -NewName $newName -ErrorAction Stop
+                                Write-ColorOutput "Renamed: $($_.FullName) to $newPath" -ForegroundColor Green
+                            } catch {
+                                Write-ColorOutput "Error renaming $($_.FullName): $_" -ForegroundColor Red
+                            }
                         }
                     }
                 }
+                Write-ColorOutput "`nReplacement operation completed." -ForegroundColor Cyan
+            } else {
+                Write-ColorOutput "`nReplacement operation cancelled." -ForegroundColor Yellow
             }
-            Write-ColorOutput "`nReplacement operation completed." -ForegroundColor Cyan
-        } else {
-            Write-ColorOutput "`nReplacement operation cancelled." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-ColorOutput "Error: $_" -ForegroundColor Red
+    } finally {
+        if ($logFile) {
+            Stop-Transcript
         }
     }
-} catch {
-    Write-ColorOutput "Error: $_" -ForegroundColor Red
-} finally {
-    if ($logFile) {
-        Stop-Transcript
-    }
-}
