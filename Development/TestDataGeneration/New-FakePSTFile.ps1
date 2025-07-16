@@ -2,7 +2,7 @@
 # Script: New-FakePSTFile.ps1
 # Created: 2025-07-16 19:35:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-16 19:35:00 UTC
+# Last Updated: 2025-07-16 20:48:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 2.9.4
 # Additional Info: Fixed header corruption and PSScriptAnalyzer syntax issues
@@ -83,7 +83,7 @@ $scriptName = $MyInvocation.MyCommand.Name
 $scriptPath = $MyInvocation.MyCommand.Path | Split-Path -Parent
 $systemName = $env:COMPUTERNAME
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$logFileName = " { 0}_ { 1}_ { 2}_UTC.log" -f $scriptName.Replace('.ps1', ''), $systemName, $timestamp
+$logFileName = "{0}_{1}_{2}_UTC.log" -f $scriptName.Replace('.ps1', ''), $systemName, $timestamp
 $logPath = Join-Path -Path $scriptPath -ChildPath $logFileName
 $startTime = Get-Date
 
