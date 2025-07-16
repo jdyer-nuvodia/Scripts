@@ -2,10 +2,10 @@
 # Script: Search-ContentRecursively.ps1
 # Created: 2025-07-16 19:26:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-16 20:30:00 UTC
+# Last Updated: 2025-07-16 21:15:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.3.0
-# Additional Info: Fixed syntax error in try-catch block around line 335 by removing extra closing brace
+# Version: 2.5.0
+# Additional Info: Fixed all indentation inconsistencies using 4-space indentation throughout
 # =============================================================================
 
 <#
@@ -169,19 +169,19 @@ try {
                         $escapedSearchTerm = [regex]::Escape($searchTerm)
                         $props = $metadata.PSObject.Properties |
                             Where-Object { $_.Value -is [string] -and $_.Value -imatch $escapedSearchTerm }
-                            if ($props) {
-                                foreach ($prop in $props) {
-                                    [PSCustomObject]@{
-                                        File       = $item.FullName
-                                        Property   = $prop.Name
-                                        Value      = $prop.Value
-                                        SearchTerm = $searchTerm
-                                    }
+                        if ($props) {
+                            foreach ($prop in $props) {
+                                [PSCustomObject]@{
+                                    File       = $item.FullName
+                                    Property   = $prop.Name
+                                    Value      = $prop.Value
+                                    SearchTerm = $searchTerm
                                 }
                             }
                         }
                     }
                 }
+            }
     } catch {
         Write-ColorOutput "Error occurred while searching metadata: $_" -ForegroundColor Red
     }
