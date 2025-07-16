@@ -2,13 +2,13 @@
 # Script: Get-NTFSFolderPermissions.ps1
 # Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-08 15:30:00 UTC
+# Last Updated: 2025-07-16 18:45:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 3.4.1
-# Additional Info: Fixed PSScriptAnalyzer compliance issues for unused variables:
-#   - Removed intermediate $logBase variable and directly constructed log file paths
-#   - Fixed string interpolation in Write-NTFSLog function to properly use memoryInfo and categoryInfo variables
-#   - All variables now properly utilized eliminating PSUseDeclaredVarsMoreThanAssignments warnings
+# Version: 3.4.2
+# Additional Info: Fixed syntax error causing PSScriptAnalyzer null reference exception:
+#   - Added proper line break between cancellationTokenSource and processingTimeout variable assignments
+#   - Separated comment from variable assignment to prevent parsing errors
+#   - Fixed script structure to ensure proper PSScriptAnalyzer compliance checking
 # =============================================================================
 
 <#
@@ -115,8 +115,9 @@ process {
 
     # Add script-level cancellation token
     $script:cancellationTokenSource = New-Object System.Threading.CancellationTokenSource
-    # Function to get domain controllers and domain information
     $script:processingTimeout = New-TimeSpan -Minutes $TimeoutMinutes
+
+    # Function to get domain controllers and domain information
     function Get-DomainController {
         try {
             # Try to get domain information using .NET first
