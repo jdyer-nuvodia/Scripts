@@ -1,12 +1,12 @@
 # =============================================================================
 # Script: New-FakePSTFile.ps1
-# Created: 9
-# Author: 2
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Created: 2025-07-16 19:35:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-16 19:35:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.9.3
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
-# ===================================================================================================================================================
+# Version: 2.9.4
+# Additional Info: Fixed header corruption and PSScriptAnalyzer syntax issues
+# =============================================================================
 
 <#
 .SYNOPSIS
@@ -118,7 +118,8 @@ function New-RandomFile {
 
         [Parameter(Mandatory = $true)]
         [long]$SizeInBytes
-    )    try {
+    )
+    try {
         # Ensure directory exists
         $directory = Split-Path -Path $FilePath -Parent
         if (-not (Test-Path -Path $directory)) {
