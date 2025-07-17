@@ -1,6 +1,5 @@
 # =============================================================================
 # Script: New-FakePSTFile.ps1
-# Created: 2025-07-16 19:35:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-07-16 20:48:00 UTC
 # Updated By: jdyer-nuvodia

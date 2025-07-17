@@ -1,6 +1,5 @@
 # =============================================================================
 # Script: Get-NTFSFolderPermissions.ps1
-# Created: 2025-03-15 18:30:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-07-16 18:45:00 UTC
 # Updated By: jdyer-nuvodia

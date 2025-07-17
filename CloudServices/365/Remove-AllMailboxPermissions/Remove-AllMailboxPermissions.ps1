@@ -1,11 +1,10 @@
 # =============================================================================
 # Script: Remove-AllMailboxPermissions.ps1
-# Created: 3
-# Author: 1
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-17 16:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.2
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Version: 1.3.3
+# Additional Info: Fixed header metadata for workflow validation
 # =============================================================================
 
 <#

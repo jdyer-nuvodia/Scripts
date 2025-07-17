@@ -1,9 +1,7 @@
 # =============================================================================
 # Script: Remove-GroupsFromDisabledUsers.ps1
-# Created: 5
-# Author: 3
-# Last Updated: 2025-07-15 23:30:00 UTC
-# Updated By: jdyer-nuvodia
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-17 16:50:00 UTC
 # Version: 3.5.4
 # Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
 # =============================================================================

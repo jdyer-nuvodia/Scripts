@@ -1,8 +1,7 @@
 # =============================================================================
 # Script: Remove-WindowsBloatware.ps1
-# Created: 3
-# Author: 1
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-17 16:50:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 3.3.2
 # Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
@@ -331,14 +330,14 @@ function Uninstall-Win32App {
 
     foreach ($key in $uninstallKeys) {
         $apps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
-        Get-ItemProperty |
-        Where-Object {
-            if ($ExactMatch) {
-                $_.DisplayName -eq $DisplayName
-            } else {
-                $_.DisplayName -like "*$DisplayName*"
+            Get-ItemProperty |
+            Where-Object {
+                if ($ExactMatch) {
+                    $_.DisplayName -eq $DisplayName
+                } else {
+                    $_.DisplayName -like "*$DisplayName*"
+                }
             }
-        }
 
         foreach ($app in $apps) {
             $found = $true
@@ -429,13 +428,13 @@ function Remove-DellBloatware {
     foreach ($key in $uninstallKeys) {
         # Look for Dell apps and specific apps like Partner Promo that might not have "Dell" in the name
         $dellApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
-        Get-ItemProperty |
-        Where-Object {
-            $_.DisplayName -like "*Dell*" -or
-            $_.DisplayName -like "*Partner Promo*" -or
-            $_.DisplayName -like "*SupportAssist OS Recovery*" -or
-            $_.Publisher -like "*Dell*"
-        }
+            Get-ItemProperty |
+            Where-Object {
+                $_.DisplayName -like "*Dell*" -or
+                $_.DisplayName -like "*Partner Promo*" -or
+                $_.DisplayName -like "*SupportAssist OS Recovery*" -or
+                $_.Publisher -like "*Dell*"
+            }
 
         if ($dellApps) {
             $foundDellApps = $true
@@ -506,7 +505,7 @@ function Remove-DellBloatware {
                                     Write-LogEntry "Using special uninstall method for Dell Pair" "INFO"
                                     # Try to find and use the specific uninstaller for Dell Pair
                                     $dellPairPath = Get-ChildItem -Path "C:\Program Files\Dell\*\*\Uninstall.exe" -ErrorAction SilentlyContinue |
-                                    Where-Object { $_.Directory.Name -like "*Pair*" }
+                                        Where-Object { $_.Directory.Name -like "*Pair*" }
 
                                     if ($dellPairPath) {
                                         Write-LogEntry "Found Dell Pair uninstaller at: $($dellPairPath.FullName)" "INFO"
@@ -600,8 +599,8 @@ function Remove-LenovoBloatware {
 
     foreach ($key in $uninstallKeys) {
         $lenovoApps = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
-        Get-ItemProperty |
-        Where-Object { $_.DisplayName -like "*Lenovo*" }
+            Get-ItemProperty |
+            Where-Object { $_.DisplayName -like "*Lenovo*" }
 
         if ($lenovoApps -and $lenovoApps.Count -gt 0) {
             $foundLenovoApps = $true
@@ -661,8 +660,8 @@ function Uninstall-DellPair {
     # First attempt: Find Dell Pair in registry and use its uninstall string
     foreach ($key in $uninstallRegistryKeys) {
         $dellPairs = Get-ChildItem -Path $key -ErrorAction SilentlyContinue |
-        Get-ItemProperty -ErrorAction SilentlyContinue |
-        Where-Object { $_.DisplayName -like "*Dell Pair*" }
+            Get-ItemProperty -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like "*Dell Pair*" }
 
         if ($null -ne $dellPairs) {
             foreach ($app in $dellPairs) {
@@ -752,13 +751,13 @@ function Uninstall-DellPair {
 
             foreach ($regPath in $regPaths) {
                 Get-ChildItem -Path $regPath -ErrorAction SilentlyContinue |
-                Get-ItemProperty -ErrorAction SilentlyContinue |
-                Where-Object { $_.DisplayName -like "*Dell Pair*" } |
-                ForEach-Object {
-                    $keyPath = $_.PSPath
-                    Write-LogEntry "Removing registry key: $keyPath" "INFO"
-                    Remove-Item -Path $keyPath -Force -Confirm:$false -ErrorAction SilentlyContinue
-                }
+                    Get-ItemProperty -ErrorAction SilentlyContinue |
+                    Where-Object { $_.DisplayName -like "*Dell Pair*" } |
+                    ForEach-Object {
+                        $keyPath = $_.PSPath
+                        Write-LogEntry "Removing registry key: $keyPath" "INFO"
+                        Remove-Item -Path $keyPath -Force -Confirm:$false -ErrorAction SilentlyContinue
+                    }
             }
             # Remove program files
             $filePaths = @(

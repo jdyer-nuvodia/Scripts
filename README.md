@@ -1,7 +1,6 @@
 <!--
 =============================================================================
 File: README.md
-Created: 2025-02-07 21:21:53 UTC
 Author: jdyer-nuvodia
 Last Updated: 2025-07-03 21:55:00 UTC
 Updated By: jdyer-nuvodia

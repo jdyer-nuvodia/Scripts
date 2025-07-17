@@ -1,8 +1,7 @@
 # =============================================================================
 # Script: Find-LargestFolders.ps1
-# Created: 5
-# Author: 4
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-17 16:50:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.5.5
 # Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance

@@ -1,6 +1,5 @@
 # =============================================================================
 # Script: Analyze-MSRDCollectOutput.ps1
-# Created: 2025-07-15 19:20:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-07-16 18:45:00 UTC
 # Updated By: jdyer-nuvodia

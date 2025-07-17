@@ -1,6 +1,5 @@
 # =============================================================================
 # Script: Align-OperatorsVertically.ps1
-# Created: 2025-07-15 23:35:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-07-15 23:35:00 UTC
 # Updated By: jdyer-nuvodia

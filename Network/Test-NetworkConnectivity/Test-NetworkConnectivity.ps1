@@ -1,11 +1,10 @@
 # =============================================================================
 # Script: Test-NetworkConnectivity.ps1
-# Created: 16
-# Author: 5
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-17 16:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.16.6
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Version: 2.16.7
+# Additional Info: Fixed header metadata for workflow validation
 # =============================================================================
 
 <#

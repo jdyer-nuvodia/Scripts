@@ -1,11 +1,10 @@
 # =============================================================================
 # Script: Manage-RDPSessions.ps1
-# Created: 1
-# Author: 2
-# Last Updated: 2025-07-15 23:30:00 UTC
+# Author: jdyer-nuvodia
+# Last Updated: 2025-07-17 16:50:00 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.1.3
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Version: 1.1.4
+# Additional Info: Fixed header metadata for workflow validation
 # =============================================================================
 
 <#

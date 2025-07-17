@@ -1,9 +1,5 @@
-# ==# Last Updated: 2025-07-07 19:00:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Fixed all PSScriptAnalyzer issues - improved password security, fixed indentation and spacing=======================================================================
+# =======================================================================
 # Script: Remediate-365Account.ps1
-# Created: 2024-02-21 10:00:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-07-07 16:19:00 UTC
 # Updated By: jdyer-nuvodia

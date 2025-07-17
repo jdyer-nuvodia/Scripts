@@ -207,7 +207,6 @@ All scripts must run fully unattended, pass static code analysis, and handle sen
 
 # =============================================================================
 # Script: <ScriptName>.ps1
-# Created: <YYYY-MM-DD HH:MM:SS UTC>
 # Author: <AuthorName>
 # Last Updated: <YYYY-MM-DD HH:MM:SS UTC>
 # Updated By: <AuthorName or Collaborator>

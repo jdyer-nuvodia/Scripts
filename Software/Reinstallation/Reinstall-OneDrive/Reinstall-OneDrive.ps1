@@ -1,7 +1,6 @@
 # =============================================================================
 # Script: Reinstall-OneDrive.ps1
-# Created: 2025-02-27 18:50:00 UTC
-# Author: jdyer-nuvodia
+# Author: jdyer-nuvodia
 # Last Updated: 2025-07-15 23:30:00 UTC
 # Updated By: jdyer-nuvodia
 # Version: 1.0.1

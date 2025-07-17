@@ -1,6 +1,5 @@
 # =============================================================================
 # Script: Search-ContentRecursively.ps1
-# Created: 2025-07-16 19:26:00 UTC
 # Author: jdyer-nuvodia
 # Last Updated: 2025-07-16 21:15:00 UTC
 # Updated By: jdyer-nuvodia
