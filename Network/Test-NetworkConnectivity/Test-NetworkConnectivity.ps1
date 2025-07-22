@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Test-NetworkConnectivity.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-17 16:50:00 UTC
+# Last Updated: 2025-07-22 00:25:07 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.16.7
-# Additional Info: Fixed header metadata for workflow validation
+# Version: 2.17.6
+# Additional Info: Updated header with accurate UTC timestamp
 # =============================================================================
 
 <#
@@ -34,7 +34,7 @@
 .PARAMETER Count
     Number of pings to send. 0 means continuous mode. Default is 0
 .PARAMETER OutputPath
-    Directory path for log files. Default is C:\Temp
+    Directory path for log files. Default is the script's directory. When run from a module, defaults to the location where the script is stored
 .PARAMETER DetailedOutput
     Enables detailed verbose output showing full ping response information
 .EXAMPLE
@@ -61,13 +61,27 @@ param(
     [int]$Count = 0,
     # 0 means continuous
     [Parameter()]
-    [string]$OutputPath = "C:\Temp",
+    [string]$OutputPath,
 
     [Parameter()]
     [switch]$DetailedOutput
 )
 
-# Initialize script variables
+# Initialize script variables and ensure OutputPath is set correctly
+if (-not $OutputPath) {
+    # If script is run as a module or from another location, $PSScriptRoot might be empty
+    if (-not $PSScriptRoot) {
+        $scriptPath = $MyInvocation.MyCommand.Path
+        if ($scriptPath) {
+            $OutputPath = Split-Path -Parent $scriptPath
+        } else {
+            # Fallback if we cannot determine script path
+            $OutputPath = $PWD.Path
+        }
+    } else {
+        $OutputPath = $PSScriptRoot
+    }
+}
 $script:logFile = $null
 $script:sent = 0
 $script:received = 0
@@ -172,27 +186,27 @@ function Get-DetailedPingResult {
         if ($DetailedOutput) {
             $result.DetailedOutput = $pingOutput
         }
-
         # Parse ping output for detailed information
         $lines = $pingOutput -split "`r?`n"
 
         foreach ($line in $lines) {
             $line = $line.Trim()
 
-            # Check for successful reply
-            if ($line -match "Reply from ([0-9\.]+): bytes = \d+ time = (\d+)ms TTL = \d+") {
+            # Check for ANY reply format from ping
+            if ($line -match "Reply from ([0-9\.]+):") {
                 $result.Success = $true
                 $result.IPAddress = $matches[1]
-                $result.ResponseTime = [int]$matches[2]
                 $result.ResponseMessage = $line
-                break
-            }
-            # Check for reply with time<1ms
-            elseif ($line -match "Reply from ([0-9\.]+): bytes = \d+ time<(\d+)ms TTL = \d+") {
-                $result.Success = $true
-                $result.IPAddress = $matches[1]
-                $result.ResponseTime = 1
-                $result.ResponseMessage = $line
+
+                # Try to extract the time
+                if ($line -match "time=(\d+)ms" -or $line -match "time=(\d+) ms" -or $line -match "time = (\d+)ms" -or $line -match "time = (\d+) ms") {
+                    $result.ResponseTime = [int]$matches[1]
+                } elseif ($line -match "time<(\d+)ms" -or $line -match "time<(\d+) ms" -or $line -match "time < (\d+)ms" -or $line -match "time < (\d+) ms") {
+                    $result.ResponseTime = 1
+                } else {
+                    # Default if we can't extract time
+                    $result.ResponseTime = 1
+                }
                 break
             }
             # Check for destination host unreachable
