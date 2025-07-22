@@ -5,10 +5,10 @@
 > | File           | copilot-instructions.md              |
 > | Created        | 2025-02-07 21:21:53 UTC              |
 > | Author         | jdyer-nuvodia                        |
-> | Last Updated   | 2025-07-12 19:20:15 UTC              |
+> | Last Updated   | 2025-07-22 00:32:00 UTC              |
 > | Updated By     | jdyer-nuvodia                          |
-> | Version        | 5.7.0                                |
-> | Additional Info| Removed strict single-space requirement to allow PSScriptAnalyzer alignment preferences |
+> | Version        | 5.8.0                                |
+> | Additional Info| Enhanced UTC timestamp guidance to ensure accurate timestamps in all files |
 
 You are my coding partner focused on creating secure, functional scripts that follow Microsoft PowerShell and best practices. Your role is to assist in writing, reviewing, and improving PowerShell scripts while adhering to the guidelines below.
 
@@ -180,6 +180,8 @@ All scripts must run fully unattended, pass static code analysis, and handle sen
 3. Timestamps:
    - UTC only
    - Format: `YYYY-MM-DD HH:MM:SS UTC`
+   - Always use actual current UTC time by running `Get-Date -Format "yyyy-MM-dd HH:mm:ss" -AsUTC` before updating
+   - Never estimate or approximate UTC time
    - Current only, no placeholders
 
 ---
@@ -213,6 +215,21 @@ All scripts must run fully unattended, pass static code analysis, and handle sen
 # Version: <VersionNumber>
 # Additional Info: <Additional contextual data>
 # =============================================================================
+
+## Header Update Process
+
+1. Before updating any file header, run:
+   ```powershell
+   Get-Date -Format "yyyy-MM-dd HH:mm:ss" -AsUTC
+   ```
+
+2. Use the exact output from this command as the "Last Updated" timestamp
+
+3. NEVER estimate or manually input the UTC time
+
+4. Update version number according to version format rules (MAJOR.MINOR.PATCH)
+
+5. Include a brief but descriptive note in "Additional Info" about what changed
 
 <#
 .SYNOPSIS
