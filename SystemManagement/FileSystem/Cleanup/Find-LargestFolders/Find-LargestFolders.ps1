@@ -1,24 +1,25 @@
 # =============================================================================
 # Script: Find-LargestFolders.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-17 16:50:00 UTC
+# Last Updated: 2025-07-30 17:47:11 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.5.5
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Version: 1.6.1
+# Additional Info: Fixed OneDrive online-only file size calculation by excluding reparse points
 # =============================================================================
 
 <#
 .SYNOPSIS
-Efficiently finds the largest folders by recursively drilling down into only the largest subdirectories, showing size and last write time.
+Efficiently finds the largest folders by recursively drilling down into only the largest subdirectories, showing size and last write time while accurately handling OneDrive online-only files.
 
 .DESCRIPTION
 This script scans a directory and identifies the largest subdirectories and files without scanning the entire drive.
-It now includes comprehensive system overhead detection including:
+It now includes comprehensive system overhead detection and accurate OneDrive online-only file handling including:
 - NTFS file system overhead (MFT, reserved clusters)
 - Volume Shadow Copy (VSS) storage overhead
 - System files (pagefile.sys, hiberfil.sys, System Volume Information, Recycle Bin)
 - Hidden and system files/directories using the -Force parameter
 - Last write time for both files and folders to help identify unused space consumers
+- OneDrive online-only file exclusion to report accurate local disk usage (files with ReparsePoint attribute are excluded)
 
 The script works by:
 1. Scanning the top-level directories in the specified path (including hidden/system directories)
@@ -84,36 +85,36 @@ param(
 
 begin {
     # Script variables
-    $Script:StartTime = Get-Date
-    $Script:ProcessedFolders = 0
-    $Script:CurrentDepth = 0
-    $Script:LargestFileFound = $null
+    $Script:StartTime          = Get-Date
+    $Script:ProcessedFolders   = 0
+    $Script:CurrentDepth       = 0
+    $Script:LargestFileFound   = $null
     # Color codes for different PowerShell versions
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         $Script:Colors = @{
-            Reset = "`e[0m"
-            White = "`e[37m"
-            Cyan = "`e[36m"
-            Green = "`e[32m"
-            Yellow = "`e[33m"
-            Red = "`e[31m"
-            Magenta = "`e[35m"
+            Reset    = "`e[0m"
+            White    = "`e[37m"
+            Cyan     = "`e[36m"
+            Green    = "`e[32m"
+            Yellow   = "`e[33m"
+            Red      = "`e[31m"
+            Magenta  = "`e[35m"
             DarkGray = "`e[90m"
-            Bold = "`e[1m"
+            Bold     = "`e[1m"
         }
         $Script:UseAnsiColors = $true
     } else {
         # PowerShell 5.1 - Use console color mapping
         $Script:Colors = @{
-            Reset = ""
-            White = "White"
-            Cyan = "Cyan"
-            Green = "Green"
-            Yellow = "Yellow"
-            Red = "Red"
-            Magenta = "Magenta"
+            Reset    = ""
+            White    = "White"
+            Cyan     = "Cyan"
+            Green    = "Green"
+            Yellow   = "Yellow"
+            Red      = "Red"
+            Magenta  = "Magenta"
             DarkGray = "DarkGray"
-            Bold = ""
+            Bold     = ""
         }
         $Script:UseAnsiColors = $false
     }
@@ -178,19 +179,19 @@ begin {
             }
 
             return [PSCustomObject]@{
-                Path = $Path
-                SizeBytes = $totalSize
-                FileCount = $files.Count
+                Path         = $Path
+                SizeBytes    = $totalSize
+                FileCount    = $files.Count
                 IsAccessible = $true
-                Error = $null
+                Error        = $null
             }
         } catch {
             return [PSCustomObject]@{
-                Path = $Path
-                SizeBytes = 0
-                FileCount = 0
+                Path         = $Path
+                SizeBytes    = 0
+                FileCount    = 0
                 IsAccessible = $false
-                Error = $_.Exception.Message
+                Error        = $_.Exception.Message
             }
         }
     }
@@ -203,13 +204,23 @@ begin {
         try {
             # Get total size including all subdirectories, hidden files, and system files using Get-ChildItem -Recurse -Force
             $files = Get-ChildItem -Path $Path -File -Recurse -Force -ErrorAction SilentlyContinue
-            $totalSize = ($files | Measure-Object -Property Length -Sum).Sum
+
+            # Filter out OneDrive online-only files (reparse points) to get accurate local disk usage
+            $localFiles = $files | Where-Object {
+                -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+            }
+
+            $totalSize = ($localFiles | Measure-Object -Property Length -Sum).Sum
+            $onlineOnlyCount = $files.Count - $localFiles.Count
 
             if ($null -eq $totalSize) {
                 $totalSize = 0
             }
 
-            Write-DebugInfo -Message "Directory '$Path' total size: $(Format-FileSize -SizeInBytes $totalSize)" -Category "SIZE"
+            if ($onlineOnlyCount -gt 0) {
+                Write-DebugInfo -Message "Directory '$Path' - Excluded $onlineOnlyCount OneDrive online-only files" -Category "ONEDRIVE"
+            }
+            Write-DebugInfo -Message "Directory '$Path' local size: $(Format-FileSize -SizeInBytes $totalSize)" -Category "SIZE"
             return $totalSize
         } catch {
             Write-Warning "Cannot access directory: $Path - $($_.Exception.Message)"
@@ -239,12 +250,12 @@ begin {
 
                 if ($totalSize -ge $minSizeBytes) {
                     $results += [PSCustomObject]@{
-                        Type = "Folder"
-                        Name = $subdir.Name
-                        Path = $subdir.FullName
-                        SizeBytes = $totalSize
-                        SizeFormatted = Format-FileSize -SizeInBytes $totalSize
-                        lastwriteTime = $subdir.lastwriteTime
+                        Type               = "Folder"
+                        Name               = $subdir.Name
+                        Path               = $subdir.FullName
+                        SizeBytes          = $totalSize
+                        SizeFormatted      = Format-FileSize -SizeInBytes $totalSize
+                        lastwriteTime      = $subdir.lastwriteTime
                         lastwriteFormatted = Format-writeTime -DateTime $subdir.lastwriteTime
                     }
                 }
@@ -252,15 +263,21 @@ begin {
 
             # Get files in current directory (including hidden and system files)
             $files = Get-ChildItem -Path $Path -File -Force -ErrorAction SilentlyContinue
-            foreach ($file in $files) {
+
+            # Filter out OneDrive online-only files (reparse points) for accurate local file sizes
+            $localFiles = $files | Where-Object {
+                -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+            }
+
+            foreach ($file in $localFiles) {
                 if ($file.Length -ge $minSizeBytes) {
                     $fileItem = [PSCustomObject]@{
-                        Type = "File"
-                        Name = $file.Name
-                        Path = $file.FullName
-                        SizeBytes = $file.Length
-                        SizeFormatted = Format-FileSize -SizeInBytes $file.Length
-                        lastwriteTime = $file.lastwriteTime
+                        Type               = "File"
+                        Name               = $file.Name
+                        Path               = $file.FullName
+                        SizeBytes          = $file.Length
+                        SizeFormatted      = Format-FileSize -SizeInBytes $file.Length
+                        lastwriteTime      = $file.lastwriteTime
                         lastwriteFormatted = Format-writeTime -DateTime $file.lastwriteTime
                     }
                     $results += $fileItem
@@ -270,6 +287,14 @@ begin {
                         $Script:LargestFileFound = $fileItem
                     }
                 }
+            }
+
+            # Report OneDrive online-only files if any were found
+            $onlineOnlyFiles = $files | Where-Object {
+                $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint
+            }
+            if ($onlineOnlyFiles.Count -gt 0) {
+                Write-DebugInfo -Message "Found $($onlineOnlyFiles.Count) OneDrive online-only files in '$Path'" -Category "ONEDRIVE"
             }
 
             # Sort by size descending and take top items
@@ -375,7 +400,7 @@ begin {
                 # Create header
                 $headerText = @"
 ===============================================
-FIND LARGEST FOLDERS ANALYZER v1.5.4
+FIND LARGEST FOLDERS ANALYZER v1.6.1
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -479,14 +504,14 @@ Process ID: $PID
         )
         try {
             $overhead = [PSCustomObject]@{
-                MFTSize = 0
-                TotalReservedClusters = 0
+                MFTSize                 = 0
+                TotalReservedClusters   = 0
                 StorageReservedClusters = 0
-                MFTZoneSize = 0
-                BytesPerCluster = 0
-                TotalOverhead = 0
-                EstimationMethod = "Unknown"
-                RawNTFSInfo = @{
+                MFTZoneSize             = 0
+                BytesPerCluster         = 0
+                TotalOverhead           = 0
+                EstimationMethod        = "Unknown"
+                RawNTFSInfo             = @{
                 }
             }
             # Execute fsutil fsinfo ntfsinfo to get comprehensive NTFS information
@@ -557,14 +582,14 @@ Process ID: $PID
             return $overhead
         } catch {
             return [PSCustomObject]@{
-                MFTSize = 0
-                TotalReservedClusters = 0
+                MFTSize                 = 0
+                TotalReservedClusters   = 0
                 StorageReservedClusters = 0
-                MFTZoneSize = 0
-                BytesPerCluster = 0
-                TotalOverhead = 0
-                EstimationMethod = "Error: $($_.Exception.Message)"
-                RawNTFSInfo = @{
+                MFTZoneSize             = 0
+                BytesPerCluster         = 0
+                TotalOverhead           = 0
+                EstimationMethod        = "Error: $($_.Exception.Message)"
+                RawNTFSInfo             = @{
                 }
             }
         }
@@ -590,13 +615,13 @@ Process ID: $PID
         )
         try {
             $vssInfo = [PSCustomObject]@{
-                AllocatedSpace = 0
-                UsedSpace = 0
-                MaxSpace = 0
-                ShadowCopyCount = 0
-                TotalOverhead = 0
+                AllocatedSpace   = 0
+                UsedSpace        = 0
+                MaxSpace         = 0
+                ShadowCopyCount  = 0
+                TotalOverhead    = 0
                 EstimationMethod = "Unknown"
-                RawVSSInfo = @{
+                RawVSSInfo       = @{
                 }
             }
             # Execute vssadmin list shadowstorage to get VSS storage information
@@ -662,13 +687,13 @@ Process ID: $PID
             return $vssInfo
         } catch {
             return [PSCustomObject]@{
-                AllocatedSpace = 0
-                UsedSpace = 0
-                MaxSpace = 0
-                ShadowCopyCount = 0
-                TotalOverhead = 0
+                AllocatedSpace   = 0
+                UsedSpace        = 0
+                MaxSpace         = 0
+                ShadowCopyCount  = 0
+                TotalOverhead    = 0
                 EstimationMethod = "Error: $($_.Exception.Message)"
-                RawVSSInfo = @{
+                RawVSSInfo       = @{
                 }
             }
         }
@@ -693,14 +718,14 @@ Process ID: $PID
         )
         try {
             $systemInfo = [PSCustomObject]@{
-                PageFileSize = 0
-                HibernationFileSize = 0
+                PageFileSize         = 0
+                HibernationFileSize  = 0
                 SystemVolumeInfoSize = 0
-                TempFilesSize = 0
-                RecycleBinSize = 0
-                TotalSystemSize = 0
-                EstimationMethod = "Get-ChildItem with -Force"
-                Details = @{
+                TempFilesSize        = 0
+                RecycleBinSize       = 0
+                TotalSystemSize      = 0
+                EstimationMethod     = "Get-ChildItem with -Force"
+                Details              = @{
                 }
             }
 
@@ -780,14 +805,14 @@ Process ID: $PID
             return $systemInfo
         } catch {
             return [PSCustomObject]@{
-                PageFileSize = 0
-                HibernationFileSize = 0
+                PageFileSize         = 0
+                HibernationFileSize  = 0
                 SystemVolumeInfoSize = 0
-                TempFilesSize = 0
-                RecycleBinSize = 0
-                TotalSystemSize = 0
-                EstimationMethod = "Error: $($_.Exception.Message)"
-                Details = @{
+                TempFilesSize        = 0
+                RecycleBinSize       = 0
+                TotalSystemSize      = 0
+                EstimationMethod     = "Error: $($_.Exception.Message)"
+                Details              = @{
                 }
             }
         }
@@ -953,7 +978,7 @@ process {
                     $StartPath = $StartPath + '\'
                 }
             }
-            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.5.4" -Color "Green"
+            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.6.1" -Color "Green"
             Write-ColorOutput -Message "===============================================" -Color "Green"
             Write-ColorOutput -Message "Start Path: $StartPath" -Color "White"
             Write-ColorOutput -Message "Max Depth: $MaxDepth" -Color "White"
