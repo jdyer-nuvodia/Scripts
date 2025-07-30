@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Find-LargestFolders.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-30 17:47:11 UTC
+# Last Updated: 2025-07-30 18:44:23 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.6.1
-# Additional Info: Fixed OneDrive online-only file size calculation by excluding reparse points
+# Version: 1.7.0
+# Additional Info: Improved reparse point filtering to distinguish OneDrive online-only files from legitimate reparse points
 # =============================================================================
 
 <#
@@ -13,13 +13,13 @@ Efficiently finds the largest folders by recursively drilling down into only the
 
 .DESCRIPTION
 This script scans a directory and identifies the largest subdirectories and files without scanning the entire drive.
-It now includes comprehensive system overhead detection and accurate OneDrive online-only file handling including:
+It now includes comprehensive system overhead detection and intelligent OneDrive online-only file handling including:
 - NTFS file system overhead (MFT, reserved clusters)
 - Volume Shadow Copy (VSS) storage overhead
 - System files (pagefile.sys, hiberfil.sys, System Volume Information, Recycle Bin)
 - Hidden and system files/directories using the -Force parameter
 - Last write time for both files and folders to help identify unused space consumers
-- OneDrive online-only file exclusion to report accurate local disk usage (files with ReparsePoint attribute are excluded)
+- Smart OneDrive online-only file detection that distinguishes between actual placeholders and legitimate reparse points (junctions, symlinks)
 
 The script works by:
 1. Scanning the top-level directories in the specified path (including hidden/system directories)
@@ -172,11 +172,8 @@ begin {
         try {
             # Get all files in the directory (not subdirectories)
             $files = Get-ChildItem -Path $Path -File -Force -ErrorAction SilentlyContinue
-            $totalSize = ($files | Measure-Object -Property Length -Sum).Sum
-
-            if ($null -eq $totalSize) {
-                $totalSize = 0
-            }
+            $totalSizeSum = $files | Measure-Object -Property Length -Sum
+            $totalSize = if ($totalSizeSum.Sum) { $totalSizeSum.Sum } else { 0 }
 
             return [PSCustomObject]@{
                 Path         = $Path
@@ -196,6 +193,59 @@ begin {
         }
     }
 
+    function Test-OneDriveOnlineOnly {
+        <#
+        .SYNOPSIS
+        Determines if a file is a OneDrive online-only file.
+        .DESCRIPTION
+        Uses multiple methods to identify OneDrive online-only files:
+        1. Checks if the file has ReparsePoint attribute
+        2. Verifies the file size is 0 or very small (placeholder)
+        3. Checks if the path contains OneDrive indicators
+        4. Uses file attributes to distinguish from other reparse points
+        .PARAMETER FileInfo
+        The FileInfo object to test.
+        .EXAMPLE
+        Test-OneDriveOnlineOnly -FileInfo $fileInfo
+        Returns $true if the file is a OneDrive online-only file, $false otherwise.
+        #>
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.FileInfo]$FileInfo
+        )
+
+        # First check if it has ReparsePoint attribute
+        if (-not ($FileInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            return $false
+        }
+
+        # Check if it's in a OneDrive path
+        $isOneDrivePath = $FileInfo.FullName -match "OneDrive|SkyDrive"
+
+        # OneDrive online-only files typically have:
+        # 1. ReparsePoint attribute
+        # 2. Very small size (0-4KB typically for placeholders)
+        # 3. Are in OneDrive folders
+        $isPlaceholderSize = $FileInfo.Length -le 4096
+
+        # Additional check: OneDrive online-only files often have specific attributes
+        $hasOnlineAttribute = ($FileInfo.Attributes -band [System.IO.FileAttributes]::Offline) -or
+                                ($FileInfo.Attributes -band [System.IO.FileAttributes]::NotContentIndexed)
+
+        # If it's in OneDrive path and has placeholder characteristics, likely online-only
+        if ($isOneDrivePath -and $isPlaceholderSize) {
+            return $true
+        }
+
+        # If it has offline attribute and reparse point, likely online-only
+        if ($hasOnlineAttribute -and $isPlaceholderSize) {
+            return $true
+        }
+
+        # Otherwise, it's probably a legitimate reparse point (junction, symlink, etc.)
+        return $false
+    }
+
     function Get-SubdirectoryTotalSize {
         param(
             [string]$Path
@@ -205,22 +255,27 @@ begin {
             # Get total size including all subdirectories, hidden files, and system files using Get-ChildItem -Recurse -Force
             $files = Get-ChildItem -Path $Path -File -Recurse -Force -ErrorAction SilentlyContinue
 
-            # Filter out OneDrive online-only files (reparse points) to get accurate local disk usage
+            # Filter out OneDrive online-only files more intelligently
             $localFiles = $files | Where-Object {
-                -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+                -not (Test-OneDriveOnlineOnly -FileInfo $_)
             }
 
-            $totalSize = ($localFiles | Measure-Object -Property Length -Sum).Sum
+            $totalSizeSum = $localFiles | Measure-Object -Property Length -Sum
+            $totalSize = if ($totalSizeSum.Sum) { $totalSizeSum.Sum } else { 0 }
             $onlineOnlyCount = $files.Count - $localFiles.Count
-
-            if ($null -eq $totalSize) {
-                $totalSize = 0
-            }
+            $reparsePointFiles = $files | Where-Object { $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint }
+            $legitimateReparsePoints = $reparsePointFiles.Count - $onlineOnlyCount
 
             if ($onlineOnlyCount -gt 0) {
                 Write-DebugInfo -Message "Directory '$Path' - Excluded $onlineOnlyCount OneDrive online-only files" -Category "ONEDRIVE"
             }
-            Write-DebugInfo -Message "Directory '$Path' local size: $(Format-FileSize -SizeInBytes $totalSize)" -Category "SIZE"
+            if ($legitimateReparsePoints -gt 0) {
+                Write-DebugInfo -Message "Directory '$Path' - Included $legitimateReparsePoints legitimate reparse points" -Category "REPARSE"
+            }
+
+            $formattedSize = Format-FileSize -SizeInBytes $totalSize
+            Write-DebugInfo -Message "Directory '$Path' local size: $formattedSize" -Category "SIZE"
+
             return $totalSize
         } catch {
             Write-Warning "Cannot access directory: $Path - $($_.Exception.Message)"
@@ -264,9 +319,9 @@ begin {
             # Get files in current directory (including hidden and system files)
             $files = Get-ChildItem -Path $Path -File -Force -ErrorAction SilentlyContinue
 
-            # Filter out OneDrive online-only files (reparse points) for accurate local file sizes
+            # Filter out OneDrive online-only files more intelligently
             $localFiles = $files | Where-Object {
-                -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+                -not (Test-OneDriveOnlineOnly -FileInfo $_)
             }
 
             foreach ($file in $localFiles) {
@@ -289,12 +344,18 @@ begin {
                 }
             }
 
-            # Report OneDrive online-only files if any were found
-            $onlineOnlyFiles = $files | Where-Object {
-                $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint
-            }
-            if ($onlineOnlyFiles.Count -gt 0) {
-                Write-DebugInfo -Message "Found $($onlineOnlyFiles.Count) OneDrive online-only files in '$Path'" -Category "ONEDRIVE"
+            # Report different types of reparse points if any were found
+            $reparsePointFiles = $files | Where-Object { $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint }
+            if ($reparsePointFiles.Count -gt 0) {
+                $onlineOnlyFiles = $reparsePointFiles | Where-Object { Test-OneDriveOnlineOnly -FileInfo $_ }
+                $legitimateReparsePoints = $reparsePointFiles | Where-Object { -not (Test-OneDriveOnlineOnly -FileInfo $_) }
+
+                if ($onlineOnlyFiles.Count -gt 0) {
+                    Write-DebugInfo -Message "Found $($onlineOnlyFiles.Count) OneDrive online-only files in '$Path'" -Category "ONEDRIVE"
+                }
+                if ($legitimateReparsePoints.Count -gt 0) {
+                    Write-DebugInfo -Message "Found $($legitimateReparsePoints.Count) legitimate reparse points in '$Path'" -Category "REPARSE"
+                }
             }
 
             # Sort by size descending and take top items
@@ -400,7 +461,7 @@ begin {
                 # Create header
                 $headerText = @"
 ===============================================
-FIND LARGEST FOLDERS ANALYZER v1.6.1
+FIND LARGEST FOLDERS ANALYZER v1.7.0
 ===============================================
 Log started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')
 Computer: $computerName
@@ -442,7 +503,8 @@ Process ID: $PID
         if ($DebugPreference -ne 'SilentlyContinue') {
             $timestamp = Get-Date -Format "HH:mm:ss.fff"
             $formattedMessage = "[$timestamp] [$Category] $Message"
-            Write-ColorOutput -Message $formattedMessage -Color "Magenta"
+            # Use Write-ColorOutput but redirect to error stream to avoid data flow interference
+            Write-ColorOutput -Message $formattedMessage -Color "Magenta" *>&1 | Out-Host
         }
     }
 
@@ -739,7 +801,8 @@ Process ID: $PID
                     if ($pageFile) {
                         $systemInfo.PageFileSize = $pageFile.Length
                         $systemInfo.Details['PageFile'] = $pageFile.Length
-                        Write-DebugInfo -Message "Found pagefile.sys: $(Format-FileSize -SizeInBytes $pageFile.Length)" -Category "SYSTEM"
+                        $formattedSize = Format-FileSize -SizeInBytes $pageFile.Length
+                        Write-DebugInfo -Message "Found pagefile.sys: $formattedSize" -Category "SYSTEM"
                     }
                 } catch {
                     Write-DebugInfo -Message "Cannot access pagefile.sys: $($_.Exception.Message)" -Category "SYSTEM"
@@ -753,7 +816,8 @@ Process ID: $PID
                     if ($hiberFile) {
                         $systemInfo.HibernationFileSize = $hiberFile.Length
                         $systemInfo.Details['HibernationFile'] = $hiberFile.Length
-                        Write-DebugInfo -Message "Found hiberfil.sys: $(Format-FileSize -SizeInBytes $hiberFile.Length)" -Category "SYSTEM"
+                        $formattedSize = Format-FileSize -SizeInBytes $hiberFile.Length
+                        Write-DebugInfo -Message "Found hiberfil.sys: $formattedSize" -Category "SYSTEM"
                     }
                 } catch {
                     Write-DebugInfo -Message "Cannot access hiberfil.sys: $($_.Exception.Message)" -Category "SYSTEM"
@@ -766,11 +830,13 @@ Process ID: $PID
                 try {
                     $sviFiles = Get-ChildItem -Path $sviPath -File -Recurse -Force -ErrorAction SilentlyContinue
                     if ($sviFiles) {
-                        $sviSize = ($sviFiles | Measure-Object -Property Length -Sum).Sum
+                        $sviSizeSum = $sviFiles | Measure-Object -Property Length -Sum
+                        $sviSize = if ($sviSizeSum.Sum) { $sviSizeSum.Sum } else { 0 }
                         if ($sviSize -gt 0) {
                             $systemInfo.SystemVolumeInfoSize = $sviSize
                             $systemInfo.Details['SystemVolumeInfo'] = $sviSize
-                            Write-DebugInfo -Message "Found System Volume Information: $(Format-FileSize -SizeInBytes $sviSize)" -Category "SYSTEM"
+                            $formattedSize = Format-FileSize -SizeInBytes $sviSize
+                            Write-DebugInfo -Message "Found System Volume Information: $formattedSize" -Category "SYSTEM"
                         }
                     }
                 } catch {
@@ -784,11 +850,13 @@ Process ID: $PID
                 try {
                     $recycleFiles = Get-ChildItem -Path $recycleBinPath -File -Recurse -Force -ErrorAction SilentlyContinue
                     if ($recycleFiles) {
-                        $recycleSize = ($recycleFiles | Measure-Object -Property Length -Sum).Sum
+                        $recycleSizeSum = $recycleFiles | Measure-Object -Property Length -Sum
+                        $recycleSize = if ($recycleSizeSum.Sum) { $recycleSizeSum.Sum } else { 0 }
                         if ($recycleSize -gt 0) {
                             $systemInfo.RecycleBinSize = $recycleSize
                             $systemInfo.Details['RecycleBin'] = $recycleSize
-                            Write-DebugInfo -Message "Found Recycle Bin contents: $(Format-FileSize -SizeInBytes $recycleSize)" -Category "SYSTEM"
+                            $formattedSize = Format-FileSize -SizeInBytes $recycleSize
+                            Write-DebugInfo -Message "Found Recycle Bin contents: $formattedSize" -Category "SYSTEM"
                         }
                     }
                 } catch {
@@ -800,7 +868,8 @@ Process ID: $PID
             $systemInfo.TotalSystemSize = $systemInfo.PageFileSize + $systemInfo.HibernationFileSize + `
                 $systemInfo.SystemVolumeInfoSize + $systemInfo.RecycleBinSize
 
-            Write-DebugInfo -Message "Total system files size: $(Format-FileSize -SizeInBytes $systemInfo.TotalSystemSize)" -Category "SYSTEM"
+            $formattedSize = Format-FileSize -SizeInBytes $systemInfo.TotalSystemSize
+            Write-DebugInfo -Message "Total system files size: $formattedSize" -Category "SYSTEM"
 
             return $systemInfo
         } catch {
@@ -978,7 +1047,7 @@ process {
                     $StartPath = $StartPath + '\'
                 }
             }
-            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.6.1" -Color "Green"
+            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.7.0" -Color "Green"
             Write-ColorOutput -Message "===============================================" -Color "Green"
             Write-ColorOutput -Message "Start Path: $StartPath" -Color "White"
             Write-ColorOutput -Message "Max Depth: $MaxDepth" -Color "White"
