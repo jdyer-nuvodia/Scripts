@@ -230,7 +230,7 @@ begin {
 
         # Additional check: OneDrive online-only files often have specific attributes
         $hasOnlineAttribute = ($FileInfo.Attributes -band [System.IO.FileAttributes]::Offline) -or
-                                ($FileInfo.Attributes -band [System.IO.FileAttributes]::NotContentIndexed)
+        ($FileInfo.Attributes -band [System.IO.FileAttributes]::NotContentIndexed)
 
         # If it's in OneDrive path and has placeholder characteristics, likely online-only
         if ($isOneDrivePath -and $isPlaceholderSize) {
