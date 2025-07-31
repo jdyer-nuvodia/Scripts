@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Find-LargestFolders.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-30 18:44:23 UTC
+# Last Updated: 2025-07-31 18:11:49 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.7.0
-# Additional Info: Improved reparse point filtering to distinguish OneDrive online-only files from legitimate reparse points
+# Version: 1.8.0
+# Additional Info: Fixed critical OneDrive online-only file detection using fsutil reparse point tags and comprehensive attribute checking to prevent massive size discrepancies
 # =============================================================================
 
 <#
@@ -196,13 +196,26 @@ begin {
     function Test-OneDriveOnlineOnly {
         <#
         .SYNOPSIS
-        Determines if a file is a OneDrive online-only file.
+        Accurately determines if a file is a OneDrive online-only placeholder file.
         .DESCRIPTION
-        Uses multiple methods to identify OneDrive online-only files:
-        1. Checks if the file has ReparsePoint attribute
-        2. Verifies the file size is 0 or very small (placeholder)
-        3. Checks if the path contains OneDrive indicators
-        4. Uses file attributes to distinguish from other reparse points
+        Uses comprehensive detection methods to identify OneDrive online-only files while preserving
+        legitimate reparse points (symbolic links, junctions, etc.). This function addresses the issue
+        where OneDrive online-only files show their full cloud size in the Length property, causing
+        massive size discrepancies (e.g., 1.94TB reported on a 235GB drive).
+
+        Detection methods:
+        1. Checks for ReparsePoint attribute (required for OneDrive placeholders)
+        2. Uses fsutil to get reparse point tag (OneDrive-specific tags: 0x9000601a, 0x9000701a)
+        3. Checks for OneDrive-specific file attributes (Offline, RecallOnOpen, RecallOnDataAccess)
+        4. Validates OneDrive path context
+        5. Uses .NET FileAttributes for additional validation
+
+        This function specifically distinguishes OneDrive placeholders from:
+        - Symbolic links (tag 0xa000000c)
+        - Junction points (tag 0xa0000003)
+        - Mount points (tag 0xa0000003)
+        - Hard links (no reparse point)
+
         .PARAMETER FileInfo
         The FileInfo object to test.
         .EXAMPLE
@@ -214,35 +227,79 @@ begin {
             [System.IO.FileInfo]$FileInfo
         )
 
-        # First check if it has ReparsePoint attribute
+        # First check if it has ReparsePoint attribute - required for all OneDrive placeholders
         if (-not ($FileInfo.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
             return $false
         }
 
-        # Check if it's in a OneDrive path
+        # Check for OneDrive-specific attributes that indicate online-only status
+        $hasOfflineAttribute = $FileInfo.Attributes -band [System.IO.FileAttributes]::Offline
+        $hasRecallOnOpenAttribute = $FileInfo.Attributes -band [System.IO.FileAttributes]::RecallOnOpen
+        $hasRecallOnDataAccessAttribute = $FileInfo.Attributes -band [System.IO.FileAttributes]::RecallOnDataAccess
+
+        # Strong indicator: Files with Offline + RecallOnOpen/RecallOnDataAccess are OneDrive online-only
+        if ($hasOfflineAttribute -and ($hasRecallOnOpenAttribute -or $hasRecallOnDataAccessAttribute)) {
+            Write-DebugInfo -Message "OneDrive online-only detected via attributes: $($FileInfo.FullName)" -Category "ONEDRIVE"
+            return $true
+        }
+
+        # Secondary check: Use fsutil to get the specific reparse point tag
+        try {
+            $reparseInfo = & fsutil reparsepoint query "$($FileInfo.FullName)" 2>$null | Out-String
+            if ($reparseInfo) {
+                # OneDrive Files On-Demand uses specific reparse point tags:
+                # 0x9000601a - OneDrive online-only file
+                # 0x9000701a - OneDrive partially downloaded file
+                if ($reparseInfo -match "Tag value: 0x9000[67]01a") {
+                    Write-DebugInfo -Message "OneDrive online-only detected via fsutil tag: $($FileInfo.FullName)" -Category "ONEDRIVE"
+                    return $true
+                }
+                # These are NOT OneDrive files (legitimate reparse points):
+                # 0xa000000c - Symbolic link
+                # 0xa0000003 - Junction point/Mount point
+                elseif ($reparseInfo -match "Tag value: 0xa000000[3c]") {
+                    Write-DebugInfo -Message "Legitimate reparse point detected (symlink/junction): $($FileInfo.FullName)" -Category "REPARSE"
+                    return $false
+                }
+            }
+        } catch {
+            # If fsutil fails, continue with other checks
+            Write-DebugInfo -Message "fsutil query failed for $($FileInfo.FullName): $($_.Exception.Message)" -Category "ONEDRIVE"
+        }
+
+        # Tertiary check: OneDrive path context with additional validation
         $isOneDrivePath = $FileInfo.FullName -match "OneDrive|SkyDrive"
+        if ($isOneDrivePath) {
+            # In OneDrive paths, files with ReparsePoint + Offline attributes are likely online-only
+            if ($hasOfflineAttribute) {
+                Write-DebugInfo -Message "OneDrive online-only detected via path+attributes: $($FileInfo.FullName)" -Category "ONEDRIVE"
+                return $true
+            }
 
-        # OneDrive online-only files typically have:
-        # 1. ReparsePoint attribute
-        # 2. Very small size (0-4KB typically for placeholders)
-        # 3. Are in OneDrive folders
-        $isPlaceholderSize = $FileInfo.Length -le 4096
-
-        # Additional check: OneDrive online-only files often have specific attributes
-        $hasOnlineAttribute = ($FileInfo.Attributes -band [System.IO.FileAttributes]::Offline) -or
-        ($FileInfo.Attributes -band [System.IO.FileAttributes]::NotContentIndexed)
-
-        # If it's in OneDrive path and has placeholder characteristics, likely online-only
-        if ($isOneDrivePath -and $isPlaceholderSize) {
-            return $true
+            # Additional OneDrive detection: Check for cloud icon overlay or sparse files
+            if ($FileInfo.Attributes -band [System.IO.FileAttributes]::SparseFile) {
+                Write-DebugInfo -Message "OneDrive sparse file detected: $($FileInfo.FullName)" -Category "ONEDRIVE"
+                return $true
+            }
         }
 
-        # If it has offline attribute and reparse point, likely online-only
-        if ($hasOnlineAttribute -and $isPlaceholderSize) {
-            return $true
+        # Final check: Use .NET File.GetAttributes for additional attribute detection
+        try {
+            $netAttributes = [System.IO.File]::GetAttributes($FileInfo.FullName)
+            $hasNotContentIndexed = $netAttributes -band [System.IO.FileAttributes]::NotContentIndexed
+
+            # NotContentIndexed + ReparsePoint + OneDrive path often indicates online-only
+            if ($isOneDrivePath -and $hasNotContentIndexed) {
+                Write-DebugInfo -Message "OneDrive online-only detected via .NET attributes: $($FileInfo.FullName)" -Category "ONEDRIVE"
+                return $true
+            }
+        } catch {
+            # Continue if .NET attributes check fails - log the error for debugging
+            Write-DebugInfo -Message ".NET File.GetAttributes failed for $($FileInfo.FullName): $($_.Exception.Message)" -Category "ONEDRIVE"
         }
 
-        # Otherwise, it's probably a legitimate reparse point (junction, symlink, etc.)
+        # If we reach here, it's likely a legitimate reparse point (symlink, junction, etc.)
+        Write-DebugInfo -Message "Legitimate reparse point preserved: $($FileInfo.FullName)" -Category "REPARSE"
         return $false
     }
 
@@ -1047,7 +1104,7 @@ process {
                     $StartPath = $StartPath + '\'
                 }
             }
-            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.7.0" -Color "Green"
+            Write-ColorOutput -Message "Find Largest Folders Analyzer v1.8.0" -Color "Green"
             Write-ColorOutput -Message "===============================================" -Color "Green"
             Write-ColorOutput -Message "Start Path: $StartPath" -Color "White"
             Write-ColorOutput -Message "Max Depth: $MaxDepth" -Color "White"
