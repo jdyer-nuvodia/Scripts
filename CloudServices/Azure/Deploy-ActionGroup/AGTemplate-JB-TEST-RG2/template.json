@@ -4,7 +4,7 @@
     "parameters": {
         "actionGroups_JB_TEST_RG_ACTIONGROUP_name": {
             "defaultValue": "JB-TEST-RG-ACTIONGROUP",
-            "type": "String"
+            "type": "string"
         }
     },
     "variables": {},
