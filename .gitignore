@@ -1,0 +1,58 @@
+# PowerShell module directories
+**/packages/*
+**/bin/*
+**/obj/*
+
+# Local configuration files
+*.user
+*.suo
+
+# Logs and temp files
+*.log
+[Ll]ogs/
+[Tt]emp/
+[Oo]utput/
+
+.vscode/*
+# Exception for PSScriptAnalyzer settings (needed for GitHub Actions)
+!.vscode/PSScriptAnalyzerSettings.psd1
+# Exception for extensions recommendations (needed for team consistency)
+!.vscode/extensions.json
+.vs/
+
+# PowerShell-specific files
+*.psm1.dll
+*.psm1.locked.json
+*.ps1xml
+
+# Test results
+**/TestResults/**
+
+# Secrets and configuration
+*.secret
+*.config
+**/Credentials/*
+
+# Runtime files
+*.tmp
+*.lnk
+
+
+
+# .marker files
+*.marker
+
+# .env files
+*.env
+
+# Ignore everything in Development\Git\Generate-GitHistory directory
+Development/Git/Generate-GitHistory
+
+# .csv files
+*.csv
+
+# .txt files
+*.txt
+
+# html files
+*.html

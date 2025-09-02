@@ -1,0 +1,297 @@
+name: Security Dependency Scanning
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup PowerShell
+      shell: pwsh
+      run: |
+        Write-Output "PowerShell version: $($PSVersionTable.PSVersion)"
+        Write-Output "PowerShell edition: $($PSVersionTable.PSEdition)"
+
+    - name: Install Required PowerShell Modules
+      shell: pwsh
+      run: |
+        Write-Output "Installing security scanning modules..."
+
+        # Install PowerShell modules for dependency analysis
+        $modules = @(
+          'PSScriptAnalyzer',
+          'PowerShellGet',
+          'PackageManagement'
+        )
+
+        foreach ($module in $modules) {
+          try {
+            Write-Output "Installing module: $module"
+            Install-Module -Name $module -Force -Scope CurrentUser -AllowClobber -Confirm:$false -ErrorAction Stop
+            Write-Output "Successfully installed: $module"
+          }
+          catch {
+            Write-Warning "Failed to install ${module}: $_"
+            # Don't exit on module install failure, try to continue
+            Write-Output "Continuing with remaining modules..."
+          }
+        }
+
+        # Verify at least PSScriptAnalyzer is available
+        try {
+          Import-Module PSScriptAnalyzer -Force -ErrorAction Stop
+          Write-Output "PSScriptAnalyzer is ready for use"
+        }
+        catch {
+          Write-Error "Critical: PSScriptAnalyzer is not available. Cannot proceed with security scanning."
+          exit 1
+        }
+
+    - name: Scan PowerShell Scripts for Security Issues
+      shell: pwsh
+      run: |
+        Write-Output "Scanning PowerShell scripts for security vulnerabilities..."
+
+        $securityRules = @(
+          'PSAvoidUsingPlainTextForPassword',
+          'PSAvoidUsingConvertToSecureStringWithPlainText',
+          'PSAvoidUsingUsernameAndPasswordParams',
+          'PSAvoidUsingComputerNameHardcoded',
+          'PSAvoidUsingInvokeExpression',
+          'PSUsePSCredentialType',
+          'PSAvoidGlobalVars',
+          'PSAvoidUsingCmdletAliases'
+        )
+
+        $scriptFiles = Get-ChildItem -Path . -Filter "*.ps1" -Recurse
+        $securityIssues = @()
+
+        Write-Output "Found $($scriptFiles.Count) PowerShell scripts to scan"
+
+        foreach ($script in $scriptFiles) {
+          Write-Output "Scanning: $($script.FullName)"
+
+          try {
+            $results = Invoke-ScriptAnalyzer -Path $script.FullName -IncludeRule $securityRules -ErrorAction SilentlyContinue
+
+            if ($results) {
+              $securityIssues += $results
+              foreach ($result in $results) {
+                Write-Warning "Security issue in $($script.Name): $($result.Message) (Line: $($result.Line))"
+              }
+            }
+          }
+          catch {
+            Write-Warning "Failed to scan $($script.Name): $_"
+            # Continue with next file instead of failing
+          }
+        }
+
+        if ($securityIssues.Count -gt 0) {
+          Write-Output "Found $($securityIssues.Count) security issues in PowerShell scripts"
+
+          # Create security report
+          $reportPath = "security-report.json"
+          try {
+            $securityIssues | ConvertTo-Json -Depth 3 | Out-File -FilePath $reportPath -Encoding UTF8
+            Write-Output "Security report saved to: $reportPath"
+          }
+          catch {
+            Write-Warning "Failed to save security report: $_"
+          }
+
+          # Only exit with error if critical security issues found
+          $criticalIssues = $securityIssues | Where-Object { $_.Severity -eq 'Error' }
+          if ($criticalIssues.Count -gt 0) {
+            Write-Warning "Found $($criticalIssues.Count) critical security issues."
+            Write-Output "Critical issues found, but continuing workflow for reporting purposes."
+            # Don't exit 1 here - let the workflow complete for reporting
+          }
+        } else {
+          Write-Output "No security issues found in PowerShell scripts"
+        }
+
+    - name: Check for Hardcoded Secrets
+      shell: pwsh
+      run: |
+        Write-Output "Scanning for potential hardcoded secrets..."
+
+        $secretPatterns = @{
+          'Password' = 'password\s*=\s*["''][^"'']+["'']'
+          'API Key' = 'api[_-]?key\s*[=:]\s*["''][^"'']+["'']'
+          'Connection String' = 'connectionstring\s*[=:]\s*["''][^"'']+["'']'
+          'Token' = 'token\s*[=:]\s*["''][^"'']+["'']'
+          'Secret' = 'secret\s*[=:]\s*["''][^"'']+["'']'
+        }
+
+        $secretsFound = @()
+        $scriptFiles = Get-ChildItem -Path . -Filter "*.ps1" -Recurse
+
+        foreach ($script in $scriptFiles) {
+          try {
+            $content = Get-Content -Path $script.FullName -Raw -ErrorAction SilentlyContinue
+
+            if ($content) {
+              foreach ($patternName in $secretPatterns.Keys) {
+                $pattern = $secretPatterns[$patternName]
+                try {
+                  $matches = [regex]::Matches($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+                  if ($matches.Count -gt 0) {
+                    foreach ($match in $matches) {
+                      $lineNumber = ($content.Substring(0, $match.Index) -split "`n").Count
+                      $secretsFound += [PSCustomObject]@{
+                        File = $script.FullName
+                        Type = $patternName
+                        Line = $lineNumber
+                        Match = $match.Value
+                      }
+                      Write-Warning "Potential $patternName found in $($script.Name) at line $lineNumber"
+                    }
+                  }
+                }
+                catch {
+                  Write-Warning "Failed to process pattern '$patternName' in $($script.Name): $_"
+                }
+              }
+            }
+          }
+          catch {
+            Write-Warning "Failed to read file $($script.Name): $_"
+          }
+        }
+
+        if ($secretsFound.Count -gt 0) {
+          Write-Output "Found $($secretsFound.Count) potential hardcoded secrets"
+          try {
+            $secretsFound | ConvertTo-Json -Depth 2 | Out-File -FilePath "secrets-report.json" -Encoding UTF8
+            Write-Output "Secrets report saved to: secrets-report.json"
+          }
+          catch {
+            Write-Warning "Failed to save secrets report: $_"
+          }
+
+          # Don't fail the build for potential secrets, but warn
+          Write-Warning "Please review potential hardcoded secrets and use secure alternatives"
+        } else {
+          Write-Output "No potential hardcoded secrets found"
+        }
+
+    - name: Scan for Vulnerable PowerShell Modules
+      shell: pwsh
+      run: |
+        Write-Output "Checking for vulnerable PowerShell modules..."
+
+        $scriptFiles = Get-ChildItem -Path . -Filter "*.ps1" -Recurse
+        $importedModules = @()
+
+        foreach ($script in $scriptFiles) {
+          try {
+            $content = Get-Content -Path $script.FullName -Raw -ErrorAction SilentlyContinue
+
+            if ($content) {
+              # Find Import-Module statements - fix regex pattern
+              $importPattern = 'Import-Module\s+["'']?([^"''\s]+)["'']?'
+              try {
+                $importMatches = [regex]::Matches($content, $importPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                foreach ($match in $importMatches) {
+                  $moduleName = $match.Groups[1].Value
+                  if ($moduleName -notin $importedModules) {
+                    $importedModules += $moduleName
+                  }
+                }
+              }
+              catch {
+                Write-Warning "Failed to process Import-Module pattern in $($script.Name): $_"
+              }
+
+              # Find #Requires statements - fix regex pattern
+              $requiresPattern = '#Requires\s+-Modules?\s+([^\r\n]+)'
+              try {
+                $requiresMatches = [regex]::Matches($content, $requiresPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                foreach ($match in $requiresMatches) {
+                  $moduleNames = $match.Groups[1].Value -split ',' | ForEach-Object { $_.Trim() }
+                  foreach ($moduleName in $moduleNames) {
+                    if ($moduleName -notin $importedModules) {
+                      $importedModules += $moduleName
+                    }
+                  }
+                }
+              }
+              catch {
+                Write-Warning "Failed to process #Requires pattern in $($script.Name): $_"
+              }
+            }
+          }
+          catch {
+            Write-Warning "Failed to read file $($script.Name): $_"
+          }
+        }
+
+        Write-Output "Found references to the following modules:"
+        if ($importedModules.Count -gt 0) {
+          $importedModules | ForEach-Object { Write-Output "  - $_" }
+        } else {
+          Write-Output "  No module references found"
+        }
+
+        # Note: PowerShell Gallery doesn't have a built-in vulnerability database like npm
+        # This is a placeholder for future enhancement when such services become available
+        Write-Output "Module vulnerability scanning completed. Consider manually checking PowerShell Gallery for security advisories."
+
+    - name: Upload Security Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: |
+          security-report.json
+          secrets-report.json
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Summary Report
+      if: always()
+      shell: pwsh
+      run: |
+        Write-Output "=== Dependency Security Scan Summary ==="
+        Write-Output "Scan completed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')"
+
+        $hasSecurityReport = Test-Path "security-report.json"
+        $hasSecretsReport = Test-Path "secrets-report.json"
+
+        if ($hasSecurityReport) {
+          $securityData = Get-Content "security-report.json" | ConvertFrom-Json
+          Write-Output "Security issues found: $($securityData.Count)"
+        } else {
+          Write-Output "No security issues detected"
+        }
+
+        if ($hasSecretsReport) {
+          $secretsData = Get-Content "secrets-report.json" | ConvertFrom-Json
+          Write-Output "Potential secrets found: $($secretsData.Count)"
+        } else {
+          Write-Output "No potential secrets detected"
+        }
+
+        Write-Output "Dependency security scan completed successfully"

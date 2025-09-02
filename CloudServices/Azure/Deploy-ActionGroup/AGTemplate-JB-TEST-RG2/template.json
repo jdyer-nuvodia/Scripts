@@ -1,0 +1,46 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "actionGroups_JB_TEST_RG_ACTIONGROUP_name": {
+            "defaultValue": "JB-TEST-RG-ACTIONGROUP",
+            "type": "String"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "microsoft.insights/actionGroups",
+            "apiVersion": "2023-09-01-preview",
+            "name": "[parameters('actionGroups_JB_TEST_RG_ACTIONGROUP_name')]",
+            "location": "Global",
+            "properties": {
+                "groupShortName": "JB TEST AG",
+                "enabled": true,
+                "emailReceivers": [
+                    {
+                        "name": "JB_-EmailAction-",
+                        "emailAddress": "jdyer@nuvodia.com",
+                        "useCommonAlertSchema": true
+                    }
+                ],
+                "smsReceivers": [
+                    {
+                        "name": "JB_-SMSAction-",
+                        "countryCode": "1",
+                        "phoneNumber": "0123456789"
+                    }
+                ],
+                "webhookReceivers": [],
+                "eventHubReceivers": [],
+                "itsmReceivers": [],
+                "azureAppPushReceivers": [],
+                "automationRunbookReceivers": [],
+                "voiceReceivers": [],
+                "logicAppReceivers": [],
+                "azureFunctionReceivers": [],
+                "armRoleReceivers": []
+            }
+        }
+    ]
+}
