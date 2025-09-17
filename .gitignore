@@ -56,3 +56,8 @@ Development/Git/Generate-GitHistory
 
 # html files
 *.html
+
+# MSRD-Collect analyzer output (AVD folders)
+# Ignore any AVD-* output directories and their contents produced by analysis runs
+SystemManagement/Maintenance/Analyze-MSRDCollectOutput/AVD-*/
+SystemManagement/Maintenance/Analyze-MSRDCollectOutput/**/AVD-*/

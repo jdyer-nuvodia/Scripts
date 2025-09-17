@@ -136,6 +136,7 @@ $script:FSLogixFindings  = @()
 $script:PerformanceIssues = @()
 $script:SecurityFindings = @()
 $script:DiskFindings     = @()
+$script:DiskEventDetails = @()
 
 # Global variables for directory paths
 $script:ComputerName     = ""
@@ -207,6 +208,37 @@ function Get-MSRDDiskAnalysis {
         }
 
         if ($diskEvents.Count -gt 0) {
+            # Capture detailed disk event entries
+            foreach ($evt in $diskEvents) {
+                $msg = $evt.Message
+                $device = $null
+                $volume = $null
+                $deviceMatch = [regex]::Match($msg, "\\\\Device\\\\Harddisk\d+\\\\DR\d+")
+                if ($deviceMatch.Success) { $device = $deviceMatch.Value }
+                $volMatch = [regex]::Match($msg, "Volume\s+([A-Z]:)")
+                if ($volMatch.Success) { $volume = $volMatch.Groups[1].Value }
+                if (-not $volume) {
+                    $volMatch2 = [regex]::Match($msg, "\b([A-Z]):\\")
+                    if ($volMatch2.Success) { $volume = $volMatch2.Groups[1].Value + ':' }
+                }
+
+                $script:DiskEventDetails += [PSCustomObject]@{
+                    TimeCreatedUtc = if ($evt.TimeCreated) { ($evt.TimeCreated.ToUniversalTime()).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
+                    LogName        = 'System'
+                    Id             = $evt.Id
+                    Provider       = $evt.ProviderName
+                    Level          = $evt.LevelDisplayName
+                    Device         = $device
+                    Volume         = $volume
+                    ServerName     = ''
+                    ShareName      = ''
+                    Path           = ''
+                    Status         = ''
+                    Message        = ($msg -replace '\s+', ' ').Trim()
+                    SourceFile     = $(if ($systemEvtx) { $systemEvtx.Name } else { 'System.evtx' })
+                }
+            }
+
             $grouped = $diskEvents | Group-Object -Property Id | Sort-Object -Property Count -Descending
             foreach ($g in $grouped) {
                 $msg = "[Disk] Event ID $($g.Name) occurred $($g.Count) time(s) in the last $($script:DaysToAnalyze) day(s)."
@@ -264,6 +296,68 @@ function Get-MSRDDiskAnalysis {
                 Select-Object -Property TimeCreated, Id, ProviderName, LevelDisplayName, Message
 
             if ($smbEvents.Count -gt 0) {
+                # Extract detailed fields from Event XML where available
+                foreach ($evt in $smbEvents) {
+                    try {
+                        [xml]$xml = $evt.ToXml()
+                        $dataNodes = $xml.Event.EventData.Data
+                        $dataMap = @{}
+                        foreach ($n in $dataNodes) {
+                            try {
+                                $attr = $n.Attributes | Where-Object -Property Name -EQ -Value 'Name'
+                                $key = if ($attr) { $attr.Value } else { '' }
+                                $val = $n.'#text'
+                                if ($key -and $val) { $dataMap[$key] = $val }
+                            } catch {
+                                Write-ColorOutput -Message "Warning: Failed to parse SMB event data node: $($_.Exception.Message)" -Color Yellow
+                            }
+                        }
+
+                        # Fallback extraction from message using UNC regex
+                        $server = $null
+                        $share  = $null
+                        $path   = $null
+                        if ($dataMap.ContainsKey('ServerName')) { $server = $dataMap['ServerName'] }
+                        if ($dataMap.ContainsKey('ShareName')) { $share  = $dataMap['ShareName'] }
+                        if ($dataMap.ContainsKey('RemotePath')) { $path   = $dataMap['RemotePath'] }
+                        if (-not $path -and $dataMap.ContainsKey('Path')) { $path = $dataMap['Path'] }
+
+                        if (-not $server -or -not $share -or -not $path) {
+                            $m = [regex]::Match($evt.Message, "\\\\\\\\([^\\]+)\\\\([^\\\s]+)([^\r\n\s]*)")
+                            if ($m.Success) {
+                                if (-not $server) { $server = $m.Groups[1].Value }
+                                if (-not $share) { $share  = $m.Groups[2].Value }
+                                if (-not $path) { $path   = "\\\\$($m.Groups[1].Value)\\$($m.Groups[2].Value)$($m.Groups[3].Value)" }
+                            }
+                        }
+
+                        $status = ''
+                        if ($dataMap.ContainsKey('Status')) { $status = $dataMap['Status'] }
+                        if (-not $status) {
+                            $statusMatch = [regex]::Match($evt.Message, 'Status[:=]\s*([^\s\.;]+)')
+                            if ($statusMatch.Success) { $status = $statusMatch.Groups[1].Value }
+                        }
+
+                        $script:DiskEventDetails += [PSCustomObject]@{
+                            TimeCreatedUtc = if ($evt.TimeCreated) { ($evt.TimeCreated.ToUniversalTime()).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
+                            LogName        = 'SMB Connectivity'
+                            Id             = $evt.Id
+                            Provider       = $evt.ProviderName
+                            Level          = $evt.LevelDisplayName
+                            Device         = ''
+                            Volume         = ''
+                            ServerName     = $server
+                            ShareName      = $share
+                            Path           = $path
+                            Status         = $status
+                            Message        = ($evt.Message -replace '\s+', ' ').Trim()
+                            SourceFile     = $smbConnEvtx.Name
+                        }
+                    } catch {
+                        Write-ColorOutput -Message "Warning: Failed to parse SMB event XML: $($_.Exception.Message)" -Color Yellow
+                    }
+                }
+
                 $gSmb = $smbEvents | Group-Object -Property Id | Sort-Object -Property Count -Descending
                 foreach ($g in $gSmb) {
                     $msg = "[SMB] Connectivity Event ID $($g.Name) occurred $($g.Count) time(s) in the last $($script:DaysToAnalyze) day(s)."
@@ -1793,6 +1887,22 @@ SYSTEM HEALTH STATUS
             }
         }
 
+        # Optional: Storage and Disk Detailed Events (Top 25)
+        if ($script:DiskEventDetails.Count -gt 0) {
+            $reportContent += "`nSTORAGE AND DISK EVENT DETAILS (Top 25)`n"
+            $reportContent += "=====================================`n"
+            $top = $script:DiskEventDetails | Sort-Object -Property TimeCreatedUtc -Descending | Select-Object -First 25
+            foreach ($d in $top) {
+                $summary = "[$($d.LogName)] Id=$($d.Id) TimeUtc=$($d.TimeCreatedUtc)"
+                if ($d.ServerName -or $d.ShareName) { $summary += " Server=$($d.ServerName) Share=$($d.ShareName)" }
+                if ($d.Path) { $summary += " Path=$($d.Path)" }
+                if ($d.Device) { $summary += " Device=$($d.Device)" }
+                if ($d.Volume) { $summary += " Volume=$($d.Volume)" }
+                if ($d.Status) { $summary += " Status=$($d.Status)" }
+                $reportContent += " - $summary`n"
+            }
+        }
+
         # Analysis Summary
         $reportContent += "`n=============================================================================`n"
         $reportContent += "ANALYSIS SUMMARY`n"
@@ -1862,6 +1972,14 @@ SYSTEM HEALTH STATUS
                 $recCsvPath = Join-Path -Path $script:ReportPath -ChildPath $recCsvFileName
                 $script:Recommendations | Export-Csv -Path $recCsvPath -NoTypeInformation -Encoding UTF8
                 Write-ColorOutput -Message "Recommendations CSV exported: $recCsvPath" -Color Green
+            }
+
+            # Export Disk Event Details to CSV
+            if ($script:DiskEventDetails.Count -gt 0) {
+                $diskCsvFileName = "MSRD-DiskEvents-$($script:ComputerName)-$timestamp.csv"
+                $diskCsvPath = Join-Path -Path $script:ReportPath -ChildPath $diskCsvFileName
+                $script:DiskEventDetails | Export-Csv -Path $diskCsvPath -NoTypeInformation -Encoding UTF8
+                Write-ColorOutput -Message "Disk event details CSV exported: $diskCsvPath" -Color Green
             }
         }
 
