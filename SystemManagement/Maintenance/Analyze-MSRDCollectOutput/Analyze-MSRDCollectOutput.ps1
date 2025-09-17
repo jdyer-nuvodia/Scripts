@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Analyze-MSRDCollectOutput.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-16 18:45:00 UTC
+# Last Updated: 2025-09-17 18:03:31 UTC
 # Updated By: jdyer-nuvodia
-# Version: 2.0.0
-# Additional Info: Enhanced comprehensive analysis with AVD, FSLogix, HTML reports, profiles, certificates, and MDM analysis
+# Version: 2.1.0
+# Additional Info: Added storage/disk health analysis, SMB connectivity checks, and true UTC timestamps in reports
 # =============================================================================
 
 <#
@@ -103,6 +103,14 @@ param(
 
     [Parameter(Mandatory = $false, HelpMessage = "Force overwrite existing reports")]
     [switch]$Force
+    ,
+    [Parameter(Mandatory = $false, HelpMessage = "Minimum free percent required on system drive (C:)")]
+    [ValidateRange(1, 100)]
+    [int]$MinSystemDriveFreePercent = 15,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Minimum free GB required on temp/system drive areas")]
+    [ValidateRange(0, 2048)]
+    [int]$MinTempFreeGB = 5
 )
 
 # Script-level variables
@@ -115,6 +123,8 @@ $script:AnalyzeHtmlReports      = $AnalyzeHtmlReports
 $script:IncludeAVDAnalysis      = if ($PSBoundParameters.ContainsKey('IncludeAVDAnalysis')) { $IncludeAVDAnalysis } else { $true }
 $script:IncludeFSLogixAnalysis  = if ($PSBoundParameters.ContainsKey('IncludeFSLogixAnalysis')) { $IncludeFSLogixAnalysis } else { $true }
 $script:Force                   = $Force
+$script:MinSystemDriveFreePercent = $MinSystemDriveFreePercent
+$script:MinTempFreeGB             = $MinTempFreeGB
 
 # Initialize arrays for findings
 $script:CriticalIssues   = @()
@@ -125,6 +135,7 @@ $script:AVDFindings      = @()
 $script:FSLogixFindings  = @()
 $script:PerformanceIssues = @()
 $script:SecurityFindings = @()
+$script:DiskFindings     = @()
 
 # Global variables for directory paths
 $script:ComputerName     = ""
@@ -150,6 +161,224 @@ $script:Colors        = @{
     'White'    = if ($script:UseAnsiColors) { "`e[37m" } else { [System.ConsoleColor]::White }
     'DarkGray' = if ($script:UseAnsiColors) { "`e[90m" } else { [System.ConsoleColor]::DarkGray }
     'Reset'    = if ($script:UseAnsiColors) { "`e[0m" } else { "" }
+}
+
+function Get-MSRDDiskAnalysis {
+    <#
+    .SYNOPSIS
+    Analyzes storage and disk reliability using offline MSRD-Collect artifacts.
+
+    .DESCRIPTION
+    Scans System and SMB Client Connectivity event logs for disk/NTFS/Storport and Azure Files issues and
+    parses SystemInfo text to estimate system drive free space. Adds findings and actionable recommendations.
+    #>
+    try {
+        Write-ColorOutput -Message "Analyzing storage and disk health..." -Color Cyan
+
+        if (-not $script:EventLogsPath -and -not $script:SystemInfoPath) {
+            Write-ColorOutput -Message "Warning: EventLogs/SystemInfo directories not found; skipping disk analysis" -Color Yellow
+            return
+        }
+
+        $startTimeUtc = (Get-Date -AsUTC).AddDays(-1 * $script:DaysToAnalyze)
+
+        # Locate event logs
+        $systemEvtx = $null
+        $smbConnEvtx = $null
+
+        if ($script:EventLogsPath -and (Test-Path -Path $script:EventLogsPath)) {
+            $systemEvtx = Get-ChildItem -Path $script:EventLogsPath -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^System.*\.evtx$' } |
+                Select-Object -First 1
+
+            $smbConnEvtx = Get-ChildItem -Path $script:EventLogsPath -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match 'SMBClient.*Connectivity.*\.evtx$' -or $_.Name -match 'Microsoft-Windows-SMBClient%4Connectivity\.evtx$' } |
+                Select-Object -First 1
+        }
+
+        # Disk-related events
+        $diskEventIds = 7, 11, 15, 51, 55, 57, 98, 129, 130, 134, 135, 153, 157
+        $diskEvents = @()
+
+        if ($systemEvtx) {
+            $diskEvents = Get-WinEvent -Path $systemEvtx.FullName -ErrorAction SilentlyContinue |
+                Where-Object { ($_.Id -in $diskEventIds) -and ($_.TimeCreated -ge $startTimeUtc) } |
+                Select-Object -Property TimeCreated, Id, ProviderName, LevelDisplayName, Message
+        }
+
+        if ($diskEvents.Count -gt 0) {
+            $grouped = $diskEvents | Group-Object -Property Id | Sort-Object -Property Count -Descending
+            foreach ($g in $grouped) {
+                $msg = "[Disk] Event ID $($g.Name) occurred $($g.Count) time(s) in the last $($script:DaysToAnalyze) day(s)."
+                $script:DiskFindings += $msg
+
+                $findingObj = [PSCustomObject]@{
+                    Category = "Disk"
+                    Type     = "Event ID"
+                    Finding  = $msg
+                    Severity = "Warning"
+                    Source   = $(if ($systemEvtx) { $systemEvtx.Name } else { "System.evtx" })
+                }
+
+                switch ([int]$g.Name) {
+                    { $_ -in 55, 7, 11, 15, 157 } { $findingObj.Severity = "Critical"; $script:CriticalIssues += $findingObj; continue }
+                    default { $script:Warnings += $findingObj }
+                }
+            }
+
+            # Tailored recommendations
+            if ($grouped.Name -contains 55) {
+                $script:Recommendations += [PSCustomObject]@{
+                    Issue          = "NTFS corruption detected (Event ID 55)"
+                    Recommendation = "Schedule offline chkdsk at next maintenance and review unexpected shutdowns"
+                    Priority       = "High"
+                    Category       = "Storage"
+                    PowerShellCmd  = "chkdsk C: /F"
+                }
+            }
+            if ($grouped.Name -contains 153) {
+                $script:Recommendations += [PSCustomObject]@{
+                    Issue          = "Storage retries detected (Event ID 153)"
+                    Recommendation = "Investigate storage performance, drivers/firmware, and VM disk throughput/IOPS limits"
+                    Priority       = "Medium"
+                    Category       = "Storage"
+                    PowerShellCmd  = "# Review Azure VM disk metrics and guest storage drivers"
+                }
+            }
+            if ($grouped.Name -contains 129) {
+                $script:Recommendations += [PSCustomObject]@{
+                    Issue          = "Storport reset detected (Event ID 129)"
+                    Recommendation = "Verify storage path stability and drivers; review host/storage incidents"
+                    Priority       = "Medium"
+                    Category       = "Storage"
+                    PowerShellCmd  = "# Check storage multipath/driver health"
+                }
+            }
+        }
+
+        # SMB Client Connectivity for Azure Files
+        if ($smbConnEvtx) {
+            $smbIds = 30805, 30806, 30807, 30810, 31017
+            $smbEvents = Get-WinEvent -Path $smbConnEvtx.FullName -ErrorAction SilentlyContinue |
+                Where-Object { ($_.Id -in $smbIds) -and ($_.TimeCreated -ge $startTimeUtc) } |
+                Select-Object -Property TimeCreated, Id, ProviderName, LevelDisplayName, Message
+
+            if ($smbEvents.Count -gt 0) {
+                $gSmb = $smbEvents | Group-Object -Property Id | Sort-Object -Property Count -Descending
+                foreach ($g in $gSmb) {
+                    $msg = "[SMB] Connectivity Event ID $($g.Name) occurred $($g.Count) time(s) in the last $($script:DaysToAnalyze) day(s)."
+                    $script:DiskFindings += $msg
+                    $script:CriticalIssues += [PSCustomObject]@{
+                        Category = "SMB Connectivity"
+                        Type     = "Event ID"
+                        Finding  = $msg
+                        Severity = "Critical"
+                        Source   = $smbConnEvtx.Name
+                    }
+                }
+
+                $script:Recommendations += @(
+                    [PSCustomObject]@{
+                        Issue          = "Azure Files connectivity instability detected"
+                        Recommendation = "Validate Kerberos for Azure Files, DNS for storage endpoint, clock skew, and NSG/Firewall"
+                        Priority       = "High"
+                        Category       = "FSLogix/Azure Files"
+                        PowerShellCmd  = "# Validate SPNs, time sync, and port 445 connectivity to <storage-account>.file.core.windows.net"
+                    },
+                    [PSCustomObject]@{
+                        Issue          = "Azure Files permissions/auth path validation"
+                        Recommendation = "Confirm share and NTFS permissions and that auth path matches FSLogix configuration"
+                        Priority       = "High"
+                        Category       = "FSLogix/Azure Files"
+                        PowerShellCmd  = "# Review effective permissions for target users/computers"
+                    }
+                )
+            }
+        }
+
+        # System drive free space from text exports
+        if ($script:SystemInfoPath -and (Test-Path -Path $script:SystemInfoPath)) {
+            $infoFiles = Get-ChildItem -Path $script:SystemInfoPath -Recurse -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -in '.txt', '.log', '.csv' }
+
+            $sysText = @()
+            foreach ($f in $infoFiles) {
+                try {
+                    $sysText += Get-Content -Path $f.FullName -ErrorAction SilentlyContinue -TotalCount 2000
+                } catch {
+                    Write-ColorOutput -Message "Warning: Could not read system info file $($f.Name): $($_.Exception.Message)" -Color Yellow
+                }
+            }
+
+            if ($sysText.Count -gt 0) {
+                $cLines = $sysText | Where-Object { $_ -match '^\s*C:\\\s' -or $_ -match '^\s*Drive\s*C:' -or $_ -match '^\s*Volume\s+C:' }
+                if (-not $cLines) {
+                    $cLines = $sysText | Where-Object { ($_ -match 'C:\\\\') -and ($_ -match 'Free') }
+                }
+
+                $freePercent = $null
+                $freeGB = $null
+
+                foreach ($line in $cLines) {
+                    if (-not $freePercent) {
+                        $m = [regex]::Match($line, '(?<pct>\d{1,3})\s*%')
+                        if ($m.Success) { $freePercent = [int]$m.Groups['pct'].Value }
+                    }
+                    if (-not $freeGB) {
+                        $m2 = [regex]::Match($line, '(?<gb>\d+(?:\.\d+)?)\s*GB', 'IgnoreCase')
+                        if ($m2.Success) { $freeGB = [double]$m2.Groups['gb'].Value }
+                    }
+                }
+
+                if ($freePercent -and ($freePercent -lt $script:MinSystemDriveFreePercent)) {
+                    $msg = "System drive free space is low: ${freePercent}% (< ${script:MinSystemDriveFreePercent}%)."
+                    $script:DiskFindings += $msg
+                    $script:CriticalIssues += [PSCustomObject]@{
+                        Category = "Disk Space"
+                        Type     = "Free Space"
+                        Finding  = $msg
+                        Severity = "Critical"
+                        Source   = "SystemInfo"
+                    }
+                    $script:Recommendations += [PSCustomObject]@{
+                        Issue          = "Low system drive free space"
+                        Recommendation = "Free space on C: to at least ${script:MinSystemDriveFreePercent}% to reduce FSLogix/AVD reliability issues"
+                        Priority       = "High"
+                        Category       = "Storage"
+                        PowerShellCmd  = "# Clean temp files; expand OS disk if needed"
+                    }
+                }
+
+                if ($freeGB -and ($freeGB -lt $script:MinTempFreeGB)) {
+                    $msg = "System drive free space in GB is low: ${freeGB} GB (< ${script:MinTempFreeGB} GB)."
+                    $script:DiskFindings += $msg
+                    $script:Warnings += [PSCustomObject]@{
+                        Category = "Disk Space"
+                        Type     = "Free Space"
+                        Finding  = $msg
+                        Severity = "Warning"
+                        Source   = "SystemInfo"
+                    }
+                }
+            }
+        }
+
+        # FSLogix linkage reminders
+        if ($script:FSLogixFindings.Count -gt 0) {
+            $script:Recommendations += [PSCustomObject]@{
+                Issue          = "FSLogix Event ID 26 and storage reliability"
+                Recommendation = "Review 'DisablePersonalDirChange' policy and ensure storage identity (Kerberos) aligns with FSLogix settings"
+                Priority       = "Medium"
+                Category       = "FSLogix"
+                PowerShellCmd  = "# Validate GPO and FSLogix configuration"
+            }
+        }
+
+        Write-ColorOutput -Message "Storage and disk health analysis completed" -Color Green
+
+    } catch {
+        Write-ColorOutput -Message "[SCRIPT ERROR] Get-MSRDDiskAnalysis failed: $($_.Exception.Message)" -Color Red
+    }
 }
 
 function Write-ColorOutput {
@@ -1408,7 +1637,7 @@ function Export-AnalysisReport {
 =============================================================================
 MSRD-Collect Comprehensive Analysis Report
 =============================================================================
-Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+Generated: $((Get-Date -AsUTC).ToString('yyyy-MM-dd HH:mm:ss')) UTC
 Target System: $($script:ComputerName)
 Analysis Period: $($script:DaysToAnalyze) days
 Source Directory: $($script:MSRDOutputPath)
@@ -1423,6 +1652,7 @@ AVD-Specific Findings: $($script:AVDFindings.Count)
 FSLogix Profile Findings: $($script:FSLogixFindings.Count)
 Security Findings: $($script:SecurityFindings.Count)
 Performance Issues: $($script:PerformanceIssues.Count)
+Storage/Disk Findings: $($script:DiskFindings.Count)
 
 SYSTEM HEALTH STATUS
 ====================
@@ -1509,6 +1739,17 @@ SYSTEM HEALTH STATUS
             }
         }
 
+        # Storage and Disk Findings Section
+        $reportContent += "`nSTORAGE AND DISK FINDINGS ($($script:DiskFindings.Count))`n"
+        $reportContent += "==========================`n"
+        if ($script:DiskFindings.Count -eq 0) {
+            $reportContent += "No storage or disk findings detected.`n"
+        } else {
+            foreach ($f in $script:DiskFindings) {
+                $reportContent += " - $f`n"
+            }
+        }
+
         # AVD-Specific Section
         if ($script:IncludeAVDAnalysis -and $script:AVDFindings.Count -gt 0) {
             $reportContent += "`nAZURE VIRTUAL DESKTOP FINDINGS ($($script:AVDFindings.Count))`n"
@@ -1572,8 +1813,8 @@ SYSTEM HEALTH STATUS
         $reportContent += "  - Detailed Logs: $(if ($script:IncludeDetailedLogs) { 'Enabled' } else { 'Disabled' })`n"
 
         $reportContent += "`n=============================================================================`n"
-        $reportContent += "Generated by MSRD-Collect Analysis Tool v2.0.0`n"
-        $reportContent += "Report Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')`n"
+        $reportContent += "Generated by MSRD-Collect Analysis Tool v2.1.0`n"
+        $reportContent += "Report Date: $((Get-Date -AsUTC).ToString('yyyy-MM-dd HH:mm:ss')) UTC`n"
         $reportContent += "=============================================================================`n"
 
         # Save report
@@ -1592,6 +1833,21 @@ SYSTEM HEALTH STATUS
             $allFindings += $script:Warnings | Select-Object *, @{ Name='FindingType';Expression= { 'Warning' } }
             $allFindings += $script:AVDFindings | Select-Object *, @{ Name='FindingType';Expression= { 'AVD Finding' } }
             $allFindings += $script:FSLogixFindings | Select-Object *, @{ Name='FindingType';Expression= { 'FSLogix Finding' } }
+
+            # Include disk findings (convert strings to objects for CSV)
+            if ($script:DiskFindings.Count -gt 0) {
+                $diskForCsv = $script:DiskFindings | ForEach-Object {
+                    [PSCustomObject]@{
+                        Category    = 'Disk'
+                        Type        = 'Summary'
+                        Finding     = $_
+                        Severity    = 'Info'
+                        Source      = 'DiskAnalysis'
+                        FindingType = 'Disk Finding'
+                    }
+                }
+                $allFindings += $diskForCsv
+            }
 
             if ($script:IncludeDetailedLogs) {
                 $allFindings += $script:DetailedFindings | Select-Object *, @{ Name='FindingType';Expression= { 'Detailed Finding' } }
@@ -1648,6 +1904,9 @@ function Invoke-MSRDAnalysis {
         if ($script:IncludeFSLogixAnalysis) {
             Get-MSRDFSLogixAnalysis
         }
+
+        # New: Storage and Disk Health
+        Get-MSRDDiskAnalysis
 
         Get-MSRDCertificateAnalysis
 
