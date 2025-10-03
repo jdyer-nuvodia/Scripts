@@ -219,17 +219,13 @@ All scripts must run fully unattended, pass static code analysis, and handle sen
 ## Header Update Process
 
 1. Before updating any file header, run:
-   ```powershell
-   Get-Date -Format "yyyy-MM-dd HH:mm:ss" -AsUTC
-   ```
+   - Always use actual current UTC time by running this **EXACT** command and **NEVER** any other (**DO NOT** precede the command with pwsh or powershell or -command AND **NEVER** run it in a background terminal, if you do, you won't be able to see the output) in a powershell terminal before updating: 'Get-Date -Format 'yyyy-MM-dd HH:mm:ss' -AsUTC'
+   - Never estimate or approximate UTC time
+   - Current only, no placeholders
 
-2. Use the exact output from this command as the "Last Updated" timestamp
+2. Update version number according to version format rules (MAJOR.MINOR.PATCH)
 
-3. NEVER estimate or manually input the UTC time
-
-4. Update version number according to version format rules (MAJOR.MINOR.PATCH)
-
-5. Include a brief but descriptive note in "Additional Info" about what changed
+3. Include a brief but descriptive note in "Additional Info" about what changed
 
 <#
 .SYNOPSIS
