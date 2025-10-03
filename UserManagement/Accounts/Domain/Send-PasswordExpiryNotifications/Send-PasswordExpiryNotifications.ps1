@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Send-PasswordExpiryNotification.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-10-03 15:48:08 UTC
-# Updated By: jdyer-nuvodia
-# Version: 2.3.0
-# Additional Info: Switched to Microsoft Graph sendMail with mandatory PS1 config; removed SMTP/PSD1 config paths
+# Last Updated: 2025-10-03 21:35:24 UTC
+# Updated By: GitHub Copilot
+# Version: 2.6.2
+# Additional Info: Include day 14 in notification window; retained fromLocal -> fromUser aliases
 # =============================================================================
 
 <#
@@ -16,9 +16,8 @@ This script queries Active Directory for enabled users with expiring passwords a
 to warn them about upcoming password expiration. The script includes filtering to exclude users in
 SharePoint-related OUs from receiving notifications.
 
-Email delivery uses Microsoft Graph API with application permissions via a mandatory external configuration file
-(`Send-PasswordExpiryNotifications-Config.ps1`) dot-sourced from the script directory. No other input methods are
-supported.
+Email delivery uses Microsoft Graph API with application permissions. Configuration values must be provided via
+Datto RMM automation job variables or as named parameters. No external config files are used.
 
 Features:
 - Configurable expiration warning period (default: 14 days)
@@ -44,6 +43,11 @@ Number of days to retain log entries before automatic cleanup (configured in scr
 .\Send-PasswordExpiryNotification.ps1
 Runs the script with default settings to check for expiring passwords and send notifications
 
+.EXAMPLE
+.\Send-PasswordExpiryNotification.ps1 -expireindays 14 -logging Enabled -testing Enabled -testRecipient "me@example.com" `
+-client_id "<appId>" -client_secret "<secret>" -tenant_ID "<tenant>" -fromEml "noreply@contoso.com" -companyName "Contoso"
+Runs the script with explicit values (useful for Datto RMM component variables)
+
 .NOTES
 - Users in OUs containing "SharePoint" (case-insensitive) will be excluded from notifications
 - Requires Active Directory PowerShell module
@@ -52,45 +56,175 @@ Runs the script with default settings to check for expiring passwords and send n
 #>
 
 ##################################################################################################################
-# Mandatory configuration import (no other input methods supported)
-$configPath = Join-Path -Path $PSScriptRoot -ChildPath 'Send-PasswordExpiryNotifications-Config.ps1'
-if (-not (Test-Path -Path $configPath)) {
-    Write-Error -Message "Required config file not found at: $configPath. Aborting."
-    return
+# Parameter and Datto RMM variable handling (no external config)
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $false)]
+    $expireindays,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('Enabled','Disabled')]
+    [string]$logging,
+
+    [Parameter(Mandatory = $false)]
+    [string]$logFile,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet('Enabled','Disabled')]
+    [string]$testing,
+
+    [Parameter(Mandatory = $false)]
+    [string]$testRecipient,
+
+    [Parameter(Mandatory = $false)]
+    $logRetentionDays,
+
+    [Parameter(Mandatory = $false)]
+    [Alias('clientId')]
+    [string]$client_id,
+
+    [Parameter(Mandatory = $false)]
+    [Alias('clientSecret')]
+    [string]$client_secret,
+
+    [Parameter(Mandatory = $false)]
+    [Alias('tenantId','tenantIdUpper')]
+    [string]$tenant_ID,
+
+    [Parameter(Mandatory = $false)]
+    [Alias('fromEmail')]
+    [string]$fromEml,
+
+    # Optional two-part email construction variables for Datto RMM UI convenience
+    [Parameter(Mandatory = $false)]
+    [Alias('fromLocal')]
+    [string]$fromUser,
+
+    [Parameter(Mandatory = $false)]
+    [string]$fromDomain,
+
+    [Parameter(Mandatory = $false)]
+    [string]$companyName
+)
+
+# Helper to resolve values with precedence: parameter -> env var -> default
+function Resolve-ConfigValue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $false)]
+        [object]$ParamValue,
+        [Parameter(Mandatory = $false)]
+        [object]$Default,
+        [Parameter(Mandatory = $false)]
+        [string[]]$AltNames
+    )
+
+    # Skip unresolved Datto placeholders like $$var$$ if ever present
+    function IsSet {
+        param([object]$v)
+        if ($null -eq $v) { return $false }
+        if ($v -is [string]) {
+            if ([string]::IsNullOrWhiteSpace($v)) { return $false }
+            if ($v -match '^\$\$.*\$\$$') { return $false }
+        }
+        return $true
+    }
+
+    $candidates = @()
+    $candidates += $ParamValue
+
+    # Environment variables (Datto RMM can inject as env vars). Try name and alt names with case variants
+    $envVal = $null
+    $namesToTry = @($Name)
+    if ($AltNames) { $namesToTry += $AltNames }
+    foreach ($baseName in $namesToTry) {
+        foreach ($n in @($baseName, $baseName.ToUpper(), $baseName.ToLower())) {
+            $tmp = (Get-Item -Path ("env:{0}" -f $n) -ErrorAction SilentlyContinue).Value
+            if (IsSet $tmp) { $envVal = $tmp; break }
+        }
+        if (IsSet $envVal) { break }
+    }
+    $candidates += $envVal
+
+    $candidates += $Default
+
+    foreach ($c in $candidates) {
+        if (IsSet $c) { return $c }
+    }
+    return $Default
 }
 
-. $configPath
+# Safely convert a possibly stringy value (e.g., "0-Default") to an integer with a fallback default
+function Convert-ToIntSafe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
+        [object]$Value,
+        [Parameter(Mandatory = $true)]
+        [int]$Default
+    )
 
-# Top-level configuration variables (all expected from the config PS1)
-# General notification settings
-$expireindays = $expireindays
-$logging = $logging
-$logFile = $logFile
-$testing = $testing
-$testRecipient = $testRecipient
-$logRetentionDays = $logRetentionDays
+    if ($null -eq $Value) { return $Default }
+    try {
+        if ($Value -is [int]) { return [int]$Value }
+        $s = [string]$Value
+        if ([string]::IsNullOrWhiteSpace($s)) { return $Default }
+        # Extract first integer-like token if the string contains extra text (e.g., "0-Default")
+        $m = [regex]::Match($s, '-?\d+')
+        if ($m.Success) { return [int]$m.Value }
+        return [int]$s
+    } catch { return $Default }
+}
+
+# Resolve top-level configuration values
+$expireindays     = Convert-ToIntSafe -Value (Resolve-ConfigValue -Name 'expireindays' -ParamValue $expireindays -Default 14) -Default 14
+$logging          = Resolve-ConfigValue -Name 'logging'         -ParamValue $logging         -Default 'Enabled'
+$logFile          = Resolve-ConfigValue -Name 'logFile'         -ParamValue $logFile         -Default (Join-Path -Path $PSScriptRoot -ChildPath 'logs\Send-PasswordExpiryNotifications.csv')
+$testing          = Resolve-ConfigValue -Name 'testing'         -ParamValue $testing         -Default 'Enabled'
+$testRecipient    = Resolve-ConfigValue -Name 'testRecipient'   -ParamValue $testRecipient   -Default ''
+$logRetentionDays = Convert-ToIntSafe -Value (Resolve-ConfigValue -Name 'logRetentionDays' -ParamValue $logRetentionDays -Default 90) -Default 90
 
 # Microsoft Graph configuration
-$clientId = $client_id
-$clientSecret = $client_secret
-$tenantId = $tenant_ID
-$fromEml = $fromEml
-${companyName} = $companyName
+$clientId    = Resolve-ConfigValue -Name 'client_id'     -ParamValue $client_id     -Default $null -AltNames @('clientId')
+$clientSecret= Resolve-ConfigValue -Name 'client_secret' -ParamValue $client_secret -Default $null -AltNames @('clientSecret')
+$tenantId    = Resolve-ConfigValue -Name 'tenant_ID'     -ParamValue $tenant_ID     -Default $null -AltNames @('tenant_id','tenantId')
+$fromEml     = Resolve-ConfigValue -Name 'fromEml'       -ParamValue $fromEml       -Default $null -AltNames @('fromEmail','fromemail','from','from_addr','from_address','fromaddress','sender','senderEmail','sender_email','mailFrom','mail_from','mailfrom')
+
+# If fromEml not supplied, try constructing from two-part variables
+if ([string]::IsNullOrWhiteSpace($fromEml)) {
+    # Resolve both legacy (fromLocal) and current (fromUser) names
+    $fromUser   = Resolve-ConfigValue -Name 'fromUser'   -ParamValue $fromUser   -Default $null -AltNames @('from_user','fromLocal','from_local','senderUser','sender_user','senderLocal','sender_local')
+    $fromDomain = Resolve-ConfigValue -Name 'fromDomain' -ParamValue $fromDomain -Default $null -AltNames @('from_domain','senderDomain','sender_domain','mailDomain','mail_domain')
+    if (-not [string]::IsNullOrWhiteSpace($fromUser) -and -not [string]::IsNullOrWhiteSpace($fromDomain)) {
+        $fromEml = ("{0}@{1}" -f $fromUser.Trim('@ '), $fromDomain.Trim('@ '))
+    }
+}
+
+# Light email validation (basic pattern)
+function Test-EmailFormat {
+    param([string]$Email)
+    if ([string]::IsNullOrWhiteSpace($Email)) { return $false }
+    return [bool]([regex]::IsMatch($Email, '^[^@\s]+@[^@\s]+\.[^@\s]+$'))
+}
+${companyName} = Resolve-ConfigValue -Name 'companyName' -ParamValue $companyName -Default ''
 
 # Validate required Graph configuration
 $missing = @()
 if ([string]::IsNullOrWhiteSpace($clientId)) { $missing += 'client_id' }
 if ([string]::IsNullOrWhiteSpace($clientSecret)) { $missing += 'client_secret' }
 if ([string]::IsNullOrWhiteSpace($tenantId)) { $missing += 'tenant_ID' }
-if ([string]::IsNullOrWhiteSpace($fromEml)) { $missing += 'fromEml' }
+if (-not (Test-EmailFormat -Email $fromEml)) { $missing += 'fromEml (invalid or missing)' }
 if ($missing.Count -gt 0) {
-    Write-Error -Message ("Missing required configuration values in config file: {0}. Aborting." -f ($missing -join ', '))
+    Write-Error -Message ("Missing required configuration values: {0}. Aborting." -f ($missing -join ', '))
     return
 }
 
 # Validate testing recipient if testing is enabled
 if ($testing -eq 'Enabled' -and [string]::IsNullOrWhiteSpace($testRecipient)) {
-    Write-Error -Message 'Testing is Enabled but testRecipient is not set in the config file. Aborting.'
+    Write-Error -Message 'Testing is Enabled but testRecipient is not set. Aborting.'
     return
 }
 
@@ -335,21 +469,25 @@ foreach ($user in $users) {
     # Email Subject Set Here
     $subject = "Your password will expire $messageDays"
 
+    # Prepare display strings (avoid PS7-only ternary)
+    $orgDisplay = if ([string]::IsNullOrWhiteSpace($companyName)) { 'organization' } else { $companyName }
+    $companyDisplay = if ([string]::IsNullOrWhiteSpace($companyName)) { 'company' } else { $companyName }
+
     # Email Body Set Here, Note You can use HTML.
     $body = @"
     <p>Dear $($name),</p>
-    <p> Your $([string]::IsNullOrWhiteSpace($companyName) ? 'organization' : $companyName) Domain password will expire $($messageDays)<p>
+    <p> Your $orgDisplay Domain password will expire $($messageDays)<p>
     In order to prevent a disruption of services (e.i. VPN, Windows Sign-in, Email, SharePoint) you will need to reset your password before that time:<p>
     <p><u><i>Employees</i></u><br>
     1. If you are off property, engage the FortiClient VPN.<br>
-    2. Once connected to the $([string]::IsNullOrWhiteSpace($companyName) ? 'company' : $companyName) network, either via VPN or while on property, press CTRL+ALT+Delete on your keyboard and choose Change a Password.<br>
+    2. Once connected to the $companyDisplay network, either via VPN or while on property, press CTRL+ALT+Delete on your keyboard and choose Change a Password.<br>
     3. Follow the prompts to enter your current password and then your desired password - twice.<br></p>
     <p>Thanks in advance,<br>
     Nuvodia Automation</p>
 "@
 
     # Send Email Message
-    if (($daystoexpire -ge 0) -and ($daystoexpire -lt $expireindays)) {
+    if (($daystoexpire -ge 0) -and ($daystoexpire -le $expireindays)) {
         $sent = "Yes"
         # If Logging is Enabled Log Details
         if ($logging -eq 'Enabled') {
