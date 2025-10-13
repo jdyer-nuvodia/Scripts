@@ -61,3 +61,7 @@ Development/Git/Generate-GitHistory
 # Ignore any AVD-* output directories and their contents produced by analysis runs
 SystemManagement/Maintenance/Analyze-MSRDCollectOutput/AVD-*/
 SystemManagement/Maintenance/Analyze-MSRDCollectOutput/**/AVD-*/
+
+# Event Viewer Log Files
+*.evtx
+
