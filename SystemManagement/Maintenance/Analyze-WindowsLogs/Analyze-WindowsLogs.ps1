@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Analyze-WindowsLogs.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-08-26 18:00:00 UTC
+# Last Updated: 2025-10-13 16:32:43 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.2.0
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Version: 1.3.0
+# Additional Info: Added detailed error/warning aggregation, offline machine name detection, and corrected HTML styling
 # =============================================================================
 
 <#
@@ -86,12 +86,10 @@ param(
     [string]$TargetName
 )
 
-# Initialize logging
-$SystemName = if ([string]::IsNullOrWhiteSpace($TargetName)) { $env:COMPUTERNAME } else { $TargetName }
-$script:SystemName = $SystemName
-$TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$LogFile = Join-Path $ReportPath "LogAnalysis_$SystemName_$TimeStamp.log"
-$ReportFile = Join-Path $ReportPath "LogAnalysis_$SystemName_$TimeStamp.html"
+# System name is resolved later (offline logs may specify a different machine)
+$script:SystemName = if ([string]::IsNullOrWhiteSpace($TargetName)) { $env:COMPUTERNAME } else { $TargetName }
+$script:LogFile     = $null
+$script:ReportFile  = $null
 
 # Initialize color support
 $Script:UseAnsiColors = ($PSVersionTable.PSVersion.Major -ge 7)
@@ -161,7 +159,9 @@ function Write-LogMessage {
 
     $TimeStamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC"
     $LogMessage = "[$TimeStamp] [$Level] $Message"
-    Add-Content -Path $script:LogFile -Value $LogMessage
+    if ($null -ne $script:LogFile) {
+        Add-Content -Path $script:LogFile -Value $LogMessage
+    }
 
     if (-not $NoConsole) {
         $ColorToUse = switch ($Level) {
@@ -182,6 +182,32 @@ function Test-AdminPrivilege {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# Attempt to resolve the machine name from offline log files when a directory is provided
+function Resolve-TargetSystemName {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Directory,
+        [Parameter()]
+        [switch]$Recurse
+    )
+
+    try {
+        $sampleFile = Get-ChildItem -Path (Join-Path -Path $Directory -ChildPath '*') -Include *.evtx,*.evt -File -Recurse:$Recurse | Select-Object -First 1
+        if ($null -eq $sampleFile) { return $null }
+
+        $sampleEvent = Get-WinEvent -Path $sampleFile.FullName -MaxEvents 1 -ErrorAction Stop
+        if ($sampleEvent -and $sampleEvent.MachineName) {
+            return $sampleEvent.MachineName
+        }
+    } catch {
+        # Log and fall through to null if detection fails
+        Write-LogMessage -Message "Failed to resolve target system name from offline logs: $_" -Level Debug -NoConsole
+    }
+    return $null
 }
 
 function Get-LogStatistic {
@@ -247,8 +273,112 @@ function Get-LogStatistic {
     }
 }
 
+function Get-EventDetailKey {
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Event
+    )
+
+    $provider = $Event.ProviderName
+    $eventId  = $Event.Id
+    $message  = $Event.Message
+
+    $detail = $null
+
+    try {
+        switch ($provider) {
+            'Service Control Manager' {
+                if ($message) {
+                    $patterns = @(
+                        'The\s+(?<name>[^\.]*)\s+service\s',
+                        'service name:\s*(?<name>[^\r\n\.,]+)'
+                    )
+                    foreach ($p in $patterns) {
+                        $m = [regex]::Match($message, $p, 'IgnoreCase')
+                        if ($m.Success) { $detail = $m.Groups['name'].Value.Trim(); break }
+                    }
+                }
+                if (-not $detail -and $Event.Properties.Count -gt 0) { $detail = [string]$Event.Properties[0].Value }
+            }
+            '.NET Runtime' {
+                if ($message) {
+                    $patterns = @(
+                        'Application:\s*(?<name>[^\r\n]+)',
+                        'Description:\s*(?<name>[^\r\n]+)'
+                    )
+                    foreach ($p in $patterns) {
+                        $m = [regex]::Match($message, $p, 'IgnoreCase')
+                        if ($m.Success) { $detail = $m.Groups['name'].Value.Trim(); break }
+                    }
+                }
+                if (-not $detail -and $Event.Properties.Count -gt 0) { $detail = [string]$Event.Properties[0].Value }
+            }
+            'Application Error' {
+                if ($message) {
+                    $m = [regex]::Match($message, 'Faulting application name:\s*(?<name>[^,\r\n]+)', 'IgnoreCase')
+                    if ($m.Success) { $detail = $m.Groups['name'].Value.Trim() }
+                }
+                if (-not $detail -and $Event.Properties.Count -gt 0) { $detail = [string]$Event.Properties[0].Value }
+            }
+            'MsiInstaller' {
+                if ($message) {
+                    $m = [regex]::Match($message, 'Product:\s*(?<name>[^\-\r\n]+)', 'IgnoreCase')
+                    if ($m.Success) { $detail = $m.Groups['name'].Value.Trim() }
+                }
+            }
+            default {
+                if ($Event.Properties -and $Event.Properties.Count -gt 0) {
+                    $detail = [string]$Event.Properties[0].Value
+                }
+                if (-not $detail -and $message) {
+                    $detail = ($message -split "\r?\n")[0]
+                    if ($detail.Length -gt 80) { $detail = $detail.Substring(0, 80) + '...' }
+                }
+            }
+        }
+    } catch {
+        $detail = $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($detail)) { $detail = 'Unspecified' }
+    $key = "$provider ($eventId): $detail"
+    return [PSCustomObject]@{ Key = $key; Provider = $provider; EventId = $eventId; Detail = $detail }
+}
+
+function Get-EventDetailCount {
+    [CmdletBinding()]
+    [OutputType([System.Object[]])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [array]$Events,
+        [Parameter(Mandatory = $true)]
+        [int]$Level,
+        [Parameter()]
+        [int]$TopN = 10
+    )
+
+    $filtered = $Events | Where-Object { $_.Level -eq $Level }
+    if (-not $filtered) { return @() }
+
+    $keys = $filtered | ForEach-Object { Get-EventDetailKey -Event $_ }
+    $groups = $keys | Group-Object -Property Key | Sort-Object -Property Count -Descending | Select-Object -First $TopN
+    $results = foreach ($g in $groups) {
+        $sample = $keys | Where-Object { $_.Key -eq $g.Name } | Select-Object -First 1
+        [PSCustomObject]@{
+            Provider = $sample.Provider
+            EventId  = $sample.EventId
+            Detail   = $sample.Detail
+            Count    = $g.Count
+        }
+    }
+    return $results
+}
+
 function Convert-EventToStatistic {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $true)]
         [string]$LogName,
@@ -257,8 +387,8 @@ function Convert-EventToStatistic {
     )
 
     # Continue with existing event processing logic
-    $TotalEntries = ($Events | Measure-Object).Count
-    $ErrorEntries = ($Events | Where-Object { $_.Level -eq 2 } | Measure-Object).Count
+    $TotalEntries   = ($Events | Measure-Object).Count
+    $ErrorEntries   = ($Events | Where-Object { $_.Level -eq 2 } | Measure-Object).Count
     $WarningEntries = ($Events | Where-Object { $_.Level -eq 3 } | Measure-Object).Count
 
     # Get top error sources with enhanced error handling
@@ -275,6 +405,24 @@ function Convert-EventToStatistic {
         Sort-Object Count -Descending |
         Select-Object -First 5
 
+    # Top warning sources
+    $TopWarnings = $Events |
+        Where-Object { $_.Level -eq 3 } |
+        Group-Object {
+            try {
+                if ($_.ProviderName) { $_.ProviderName }
+                else { "Unknown Provider" }
+            } catch {
+                "Unknown Provider"
+            }
+        } |
+        Sort-Object -Property Count -Descending |
+        Select-Object -First 5
+
+    # Detailed aggregation for recurring issues (errors/warnings)
+    $TopErrorDetails   = Get-EventDetailCount -Events $Events -Level 2 -TopN 10
+    $TopWarningDetails = Get-EventDetailCount -Events $Events -Level 3 -TopN 10
+
     # Calculate daily entry rate
     $DailyRate = if ($script:DaysToAnalyze -gt 0) {
         [math]::Round($TotalEntries / $script:DaysToAnalyze, 2)
@@ -283,18 +431,22 @@ function Convert-EventToStatistic {
     }
 
     return @{
-        Name = $LogName
-        TotalEntries = $TotalEntries
-        RecentEntries = $TotalEntries
-        ErrorCount = $ErrorEntries
-        WarningCount = $WarningEntries
-        DailyRate = $DailyRate
-        TopErrorSources = $TopErrors
+        Name               = $LogName
+        TotalEntries       = $TotalEntries
+        RecentEntries      = $TotalEntries
+        ErrorCount         = $ErrorEntries
+        WarningCount       = $WarningEntries
+        DailyRate          = $DailyRate
+        TopErrorSources    = $TopErrors
+        TopWarningSources  = $TopWarnings
+        TopErrorDetails    = $TopErrorDetails
+        TopWarningDetails  = $TopWarningDetails
     }
 }
 
 function Get-SecurityEvent {
     [CmdletBinding(DefaultParameterSetName = 'Live')]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $true, ParameterSetName = 'Live')]
         [datetime]$StartTime,
@@ -353,6 +505,7 @@ function Get-SecurityEvent {
 
 function Get-DirectoryLogEvent {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $true)]
         [string]$Directory,
@@ -418,17 +571,14 @@ function New-HTMLReport {
     <title>Windows Log Analysis Report - $script:SystemName</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
-        h1, h2 { color: #2c3e50; }
+        h1, h2, h3 { color: #2c3e50; }
         table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-        # ddd; }
-                th, td { padding: 8px; text-align: left; border: 1px solid
-        # f5f5f5; }
-                th { background-color:
-        # e74c3c; }
-                .error { color:
-        # f39c12; }
-                .warning { color:
+        th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
+        th { background-color: #f5f5f5; }
+        .error { color: #e74c3c; }
+        .warning { color: #f39c12; }
         .success { color: #27ae60; }
+        .muted { color: #7f8c8d; }
     </style>
 </head>
 <body>
@@ -462,6 +612,39 @@ function New-HTMLReport {
                 $HTMLBody += "<tr><td>$($errorSource.Name)</td><td>$($errorSource.Count)</td></tr>"
             }
 
+            $HTMLBody += "</table>"
+
+            # Top Warning Sources
+            $HTMLBody += @"
+    <h3>Top Warning Sources</h3>
+    <table>
+        <tr><th>Source</th><th>Count</th></tr>
+"@
+            foreach ($warnSource in $stat.TopWarningSources) {
+                $HTMLBody += "<tr><td>$($warnSource.Name)</td><td>$($warnSource.Count)</td></tr>"
+            }
+            $HTMLBody += "</table>"
+
+            # Detailed Error Breakdown
+            $HTMLBody += @"
+    <h3>Top Error Details</h3>
+    <table>
+        <tr><th>Provider</th><th>Event ID</th><th>Detail</th><th>Count</th></tr>
+"@
+            foreach ($err in $stat.TopErrorDetails) {
+                $HTMLBody += "<tr><td>$($err.Provider)</td><td>$($err.EventId)</td><td>$([System.Web.HttpUtility]::HtmlEncode($err.Detail))</td><td>$($err.Count)</td></tr>"
+            }
+            $HTMLBody += "</table>"
+
+            # Detailed Warning Breakdown
+            $HTMLBody += @"
+    <h3>Top Warning Details</h3>
+    <table>
+        <tr><th>Provider</th><th>Event ID</th><th>Detail</th><th>Count</th></tr>
+"@
+            foreach ($wd in $stat.TopWarningDetails) {
+                $HTMLBody += "<tr><td>$($wd.Provider)</td><td>$($wd.EventId)</td><td>$([System.Web.HttpUtility]::HtmlEncode($wd.Detail))</td><td>$($wd.Count)</td></tr>"
+            }
             $HTMLBody += "</table>"
         }
 
@@ -511,7 +694,21 @@ function New-HTMLReport {
 
 # Main execution
 try {
-    Write-LogMessage "Starting Windows log analysis..." -Level Process
+    # Resolve final system name and initialize log/report files before first log write
+    $TimeStamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+    if ($PSBoundParameters.ContainsKey('LogDirectory') -and -not [string]::IsNullOrWhiteSpace($LogDirectory)) {
+        # If no explicit TargetName was provided, try to read machine name from offline logs
+        if (-not $PSBoundParameters.ContainsKey('TargetName') -or [string]::IsNullOrWhiteSpace($TargetName)) {
+            $resolved = Resolve-TargetSystemName -Directory $LogDirectory -Recurse:$Recurse
+            if ($resolved) { $script:SystemName = $resolved }
+        }
+    }
+
+    $script:LogFile    = Join-Path -Path $ReportPath -ChildPath ("LogAnalysis_{0}_{1}.log" -f $script:SystemName, $TimeStamp)
+    $script:ReportFile = Join-Path -Path $ReportPath -ChildPath ("LogAnalysis_{0}_{1}.html" -f $script:SystemName, $TimeStamp)
+
+    Write-LogMessage -Message "Starting Windows log analysis..." -Level Process
 
     $StartTime = (Get-Date).AddDays(-$DaysToAnalyze)
     $LogStatistics = @()
@@ -520,7 +717,7 @@ try {
 
     if ($PSBoundParameters.ContainsKey('LogDirectory') -and -not [string]::IsNullOrWhiteSpace($LogDirectory)) {
         # Directory (offline) mode - skip admin requirement
-        Write-LogMessage "Running in offline directory mode against: $LogDirectory" -Level Info
+        Write-LogMessage -Message "Running in offline directory mode against: $LogDirectory" -Level Info
 
         $eventsByLog = Get-DirectoryLogEvent -Directory $LogDirectory -StartTime $StartTime -Recurse:$Recurse
         if (-not $eventsByLog.Keys -or $eventsByLog.Keys.Count -eq 0) {
@@ -545,12 +742,12 @@ try {
                 continue
             }
 
-            Write-LogMessage "Analyzing $log (offline) ..." -Level Process
+            Write-LogMessage -Message "Analyzing $log (offline) ..." -Level Process
             $stats = Convert-EventToStatistic -LogName $log -Events $logEvents
             if ($null -ne $stats) {
                 $LogStatistics += $stats
                 $hasValidData   = $true
-                Write-LogMessage "Completed analysis of $log (offline)" -Level Success
+                Write-LogMessage -Message "Completed analysis of $log (offline)" -Level Success
             }
         }
 
@@ -558,54 +755,54 @@ try {
         if ($eventsByLog.ContainsKey('Security')) {
             $secEvents = $eventsByLog['Security']
             if ($secEvents -and (($secEvents | Measure-Object).Count -gt 0)) {
-                Write-LogMessage "Analyzing security events (offline) ..." -Level Process
+                Write-LogMessage -Message "Analyzing security events (offline) ..." -Level Process
                 $SecurityStats = Get-SecurityEvent -Events $secEvents
             } else {
-                Write-LogMessage "Security log present but no events in the specified time range; skipping security analysis." -Level Warning
+                Write-LogMessage -Message "Security log present but no events in the specified time range; skipping security analysis." -Level Warning
             }
         } else {
-            Write-LogMessage "No 'Security' log data found in directory; skipping security analysis." -Level Warning
+            Write-LogMessage -Message "No 'Security' log data found in directory; skipping security analysis." -Level Warning
         }
     } else {
         # Live mode - requires admin
         if (-not (Test-AdminPrivilege)) {
-            Write-LogMessage "This script requires administrator privileges. Please run as administrator." -Level Error
+            Write-LogMessage -Message "This script requires administrator privileges. Please run as administrator." -Level Error
             exit 1
         }
 
-        Write-LogMessage "System: $SystemName" -Level Info
-        Write-LogMessage "Analysis period: $DaysToAnalyze days" -Level Info
+        Write-LogMessage -Message "System: $script:SystemName" -Level Info
+        Write-LogMessage -Message "Analysis period: $DaysToAnalyze days" -Level Info
 
         foreach ($LogName in $LogNames) {
-            Write-LogMessage "Analyzing $LogName log..." -Level Process
+            Write-LogMessage -Message "Analyzing $LogName log..." -Level Process
             $Stats = Get-LogStatistic -LogName $LogName
             if ($null -ne $Stats) {
                 $LogStatistics += $Stats
                 $hasValidData = $true
-                Write-LogMessage "Completed analysis of $LogName log" -Level Success
+                Write-LogMessage -Message "Completed analysis of $LogName log" -Level Success
             }
         }
 
-        Write-LogMessage "Analyzing security events..." -Level Process
+        Write-LogMessage -Message "Analyzing security events..." -Level Process
         $SecurityStats = Get-SecurityEvent -StartTime $StartTime
     }
 
     if (-not $hasValidData) {
-        Write-LogMessage "No valid log data could be collected. Please check inputs and try again." -Level Error
+        Write-LogMessage -Message "No valid log data could be collected. Please check inputs and try again." -Level Error
         exit 1
     }
 
-    Write-LogMessage "Generating HTML report..." -Level Process
+    Write-LogMessage -Message "Generating HTML report..." -Level Process
     if ($null -eq $SecurityStats) {
         $SecurityStats = @{ FailedLogins = @(); AccountChanges = @() }
     }
     New-HTMLReport -LogStats $LogStatistics -SecurityStats $SecurityStats
 
-    Write-LogMessage "Analysis completed successfully" -Level Success
-    Write-LogMessage "Report saved to: $ReportFile" -Level Success
-    Write-LogMessage "Log file saved to: $LogFile" -Level Success
+    Write-LogMessage -Message "Analysis completed successfully" -Level Success
+    Write-LogMessage -Message "Report saved to: $script:ReportFile" -Level Success
+    Write-LogMessage -Message "Log file saved to: $script:LogFile" -Level Success
 } catch {
-    Write-LogMessage "Script execution failed: $($_.Exception.Message)" -Level Error
-    Write-LogMessage "Stack trace: $($_.ScriptStackTrace)" -Level Debug
+    Write-LogMessage -Message "Script execution failed: $($_.Exception.Message)" -Level Error
+    Write-LogMessage -Message "Stack trace: $($_.ScriptStackTrace)" -Level Debug
     exit 1
 }
