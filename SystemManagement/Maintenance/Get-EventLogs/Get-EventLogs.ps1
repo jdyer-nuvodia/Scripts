@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Get-EventLogs.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-07-17 16:50:00 UTC
-# Updated By: jdyer-nuvodia
-# Version: 1.2.1
-# Additional Info: Aligned operators vertically for PSScriptAnalyzer compliance
+# Last Updated: 2025-11-10 22:03:52 UTC
+# Updated By: GitHub Copilot
+# Version: 1.2.2
+# Additional Info: Fixed StartDate/EndDate regex to ^\d{14}$ for proper validation
 # =============================================================================
 
 <#
@@ -40,7 +40,7 @@ param(
 
     [Parameter()]
     [ValidateScript({
-            if ($_ -match '^\d { 14}$') {
+            if ($_ -match '^\d{14}$') {
                 $true
             } else {
                 throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"
@@ -50,7 +50,7 @@ param(
 
     [Parameter()]
     [ValidateScript({
-            if ($_ -match '^\d { 14}$') {
+            if ($_ -match '^\d{14}$') {
                 $true
             } else {
                 throw "Date must be exactly 14 digits in format YYYYMMDDHHMMSS. Example: 20240221235959"

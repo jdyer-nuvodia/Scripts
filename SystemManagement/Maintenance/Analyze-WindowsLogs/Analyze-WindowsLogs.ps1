@@ -1,10 +1,10 @@
 # =============================================================================
 # Script: Analyze-WindowsLogs.ps1
 # Author: jdyer-nuvodia
-# Last Updated: 2025-10-13 16:32:43 UTC
+# Last Updated: 2025-11-10 22:22:42 UTC
 # Updated By: jdyer-nuvodia
-# Version: 1.3.0
-# Additional Info: Added detailed error/warning aggregation, offline machine name detection, and corrected HTML styling
+# Version: 1.3.1
+# Additional Info: Fixed System.Web.HttpUtility dependency error by implementing native PowerShell HTML encoding
 # =============================================================================
 
 <#
@@ -182,6 +182,27 @@ function Test-AdminPrivilege {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# Convert string to HTML-safe format
+function ConvertTo-HtmlEncodedString {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$InputString
+    )
+
+    if ([string]::IsNullOrEmpty($InputString)) {
+        return ""
+    }
+
+    $InputString = $InputString.Replace("&", "&amp;")
+    $InputString = $InputString.Replace("<", "&lt;")
+    $InputString = $InputString.Replace(">", "&gt;")
+    $InputString = $InputString.Replace('"', "&quot;")
+    $InputString = $InputString.Replace("'", "&#39;")
+
+    return $InputString
 }
 
 # Attempt to resolve the machine name from offline log files when a directory is provided
@@ -632,7 +653,7 @@ function New-HTMLReport {
         <tr><th>Provider</th><th>Event ID</th><th>Detail</th><th>Count</th></tr>
 "@
             foreach ($err in $stat.TopErrorDetails) {
-                $HTMLBody += "<tr><td>$($err.Provider)</td><td>$($err.EventId)</td><td>$([System.Web.HttpUtility]::HtmlEncode($err.Detail))</td><td>$($err.Count)</td></tr>"
+             $HTMLBody += "<tr><td>$($err.Provider)</td><td>$($err.EventId)</td><td>$(ConvertTo-HtmlEncodedString -InputString $err.Detail)</td><td>$($err.Count)</td></tr>"
             }
             $HTMLBody += "</table>"
 
@@ -643,7 +664,7 @@ function New-HTMLReport {
         <tr><th>Provider</th><th>Event ID</th><th>Detail</th><th>Count</th></tr>
 "@
             foreach ($wd in $stat.TopWarningDetails) {
-                $HTMLBody += "<tr><td>$($wd.Provider)</td><td>$($wd.EventId)</td><td>$([System.Web.HttpUtility]::HtmlEncode($wd.Detail))</td><td>$($wd.Count)</td></tr>"
+             $HTMLBody += "<tr><td>$($wd.Provider)</td><td>$($wd.EventId)</td><td>$(ConvertTo-HtmlEncodedString -InputString $wd.Detail)</td><td>$($wd.Count)</td></tr>"
             }
             $HTMLBody += "</table>"
         }
