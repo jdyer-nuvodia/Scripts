@@ -653,7 +653,7 @@ function New-HTMLReport {
         <tr><th>Provider</th><th>Event ID</th><th>Detail</th><th>Count</th></tr>
 "@
             foreach ($err in $stat.TopErrorDetails) {
-             $HTMLBody += "<tr><td>$($err.Provider)</td><td>$($err.EventId)</td><td>$(ConvertTo-HtmlEncodedString -InputString $err.Detail)</td><td>$($err.Count)</td></tr>"
+                $HTMLBody += "<tr><td>$($err.Provider)</td><td>$($err.EventId)</td><td>$(ConvertTo-HtmlEncodedString -InputString $err.Detail)</td><td>$($err.Count)</td></tr>"
             }
             $HTMLBody += "</table>"
 
@@ -664,7 +664,7 @@ function New-HTMLReport {
         <tr><th>Provider</th><th>Event ID</th><th>Detail</th><th>Count</th></tr>
 "@
             foreach ($wd in $stat.TopWarningDetails) {
-             $HTMLBody += "<tr><td>$($wd.Provider)</td><td>$($wd.EventId)</td><td>$(ConvertTo-HtmlEncodedString -InputString $wd.Detail)</td><td>$($wd.Count)</td></tr>"
+                $HTMLBody += "<tr><td>$($wd.Provider)</td><td>$($wd.EventId)</td><td>$(ConvertTo-HtmlEncodedString -InputString $wd.Detail)</td><td>$($wd.Count)</td></tr>"
             }
             $HTMLBody += "</table>"
         }
